@@ -296,15 +296,7 @@ app.disable('view cache');
 
 // Fichiers statiques
 app.get('/favicon.ico', (req, res) => {
-  res.setHeader('Content-Type', 'image/svg+xml');
-  res.setHeader('Cache-Control', 'public, max-age=86400');
-  res.send(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-      <rect width="64" height="64" rx="14" fill="#1877f2"/>
-      <rect x="16" y="16" width="14" height="14" rx="3" fill="#fff"/>
-      <rect x="34" y="34" width="14" height="14" rx="3" fill="#fff"/>
-    </svg>
-  `);
+  res.sendFile(path.join(__dirname, 'public', 'assets', 'trasx-logo-mark.png'));
 });
 
 // Route spéciale pour l'icône de profil par défaut (avatar manquant)

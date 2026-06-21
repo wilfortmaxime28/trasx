@@ -50,7 +50,7 @@
             </button>
           </div>
 
-          <form class="auth-form auth-form-stepped" action="/auth/register" method="POST" id="registerForm">
+          <form class="auth-form auth-form-stepped" action="/auth/register" method="POST" id="registerForm" novalidate>
             <section class="auth-form-step is-active" data-register-step="1">
               <div class="auth-form-step-head">
                 <h2><%= tText("Personal information") %></h2>
@@ -146,10 +146,10 @@
               <button type="button" class="auth-secondary-btn auth-secondary-btn-muted" id="registerPrevBtn" disabled>
                 <%= tText("Back") %>
               </button>
-              <button type="button" class="auth-submit auth-submit-solid" id="registerNextBtn">
+              <button type="button" class="auth-submit auth-submit-solid" id="registerNextBtn" style="display:none">
                 <%= tText("Continue") %>
               </button>
-              <button type="submit" class="auth-submit auth-submit-solid" id="registerSubmitBtn" hidden>
+              <button type="submit" class="auth-submit auth-submit-solid" id="registerSubmitBtn" style="display:none">
                 <%= tText("Create my account") %>
               </button>
             </div>
@@ -211,11 +211,23 @@
 
   <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/intlTelInput.min.js"></script>
   <script>
+    console.log('[Register] Script starting...');
+
     const phoneInput = document.querySelector('#phone');
-    const iti = window.intlTelInput(phoneInput, {
-      initialCountry: 'us',
-      utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/utils.js',
-    });
+    let iti;
+    try {
+      if (typeof window.intlTelInput === 'function') {
+        iti = window.intlTelInput(phoneInput, {
+          initialCountry: 'us',
+          utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/utils.js',
+        });
+        console.log('[Register] intlTelInput initialized OK');
+      } else {
+        console.warn('[Register] intlTelInput not loaded - CDN failed. Using fallback validation.');
+      }
+    } catch (e) {
+      console.error('[Register] Failed to initialize intlTelInput:', e);
+    }
 
     const phoneFeedback = document.getElementById('phoneFeedback');
     const registerForm = document.getElementById('registerForm');
@@ -224,25 +236,68 @@
     const prevBtn = document.getElementById('registerPrevBtn');
     const nextBtn = document.getElementById('registerNextBtn');
     const submitBtn = document.getElementById('registerSubmitBtn');
+
+    // --- CRITICAL: Declare these BEFORE validateCurrentStep uses them ---
+    const usernameInput = document.getElementById('username');
+    const firstNameInput = document.getElementById('first_name');
+    const lastNameInput = document.getElementById('last_name');
+    const usernameFeedback = document.getElementById('usernameFeedback');
+    const usernameSuggestions = document.getElementById('usernameSuggestions');
+    const dobInput = document.getElementById('dob');
+
     let activeStep = 1;
+    let timeout = null;
+
+    console.log('[Register] Elements loaded:', {
+      registerForm: !!registerForm,
+      nextBtn: !!nextBtn,
+      prevBtn: !!prevBtn,
+      submitBtn: !!submitBtn,
+      usernameInput: !!usernameInput,
+      phoneInput: !!phoneInput,
+      dobInput: !!dobInput,
+      stepPanels: stepPanels.length
+    });
 
     function checkPhone() {
-      if (phoneInput.value.trim() === '') {
+      const val = phoneInput.value.trim();
+      console.log('[Register] checkPhone() called, val:', val);
+      if (val === '') {
         phoneFeedback.className = 'auth-feedback';
         phoneFeedback.textContent = '';
         return false;
       }
-      if (iti.isValidNumber()) {
-        phoneFeedback.textContent = <%- JSON.stringify(tText('Valid phone number for the selected country.')) %>;
-        phoneFeedback.className = 'auth-feedback success';
+
+      const phoneRegex = /^[+]?[0-9\s\-()]{5,20}$/;
+
+      if (iti && typeof iti.isValidNumber === 'function') {
+        try {
+          if (iti.isValidNumber()) {
+            phoneFeedback.textContent = <%- JSON.stringify(tText('Valid phone number for the selected country.')) %>;
+            phoneFeedback.className = 'auth-feedback success';
+            console.log('[Register] checkPhone() => true (iti valid)');
+            return true;
+          }
+          console.log('[Register] iti.isValidNumber() returned false, trying regex fallback');
+        } catch (e) {
+          console.warn('[Register] intlTelInput validation threw error, using fallback regex:', e);
+        }
+      }
+
+      // Fallback: basic format check so we don't block registration
+      if (phoneRegex.test(val)) {
+        phoneFeedback.textContent = '';
+        phoneFeedback.className = 'auth-feedback';
+        console.log('[Register] checkPhone() => true (regex fallback)');
         return true;
       }
-      phoneFeedback.textContent = <%- JSON.stringify(tText('Invalid phone number for the selected country.')) %>;
+
+      phoneFeedback.textContent = <%- JSON.stringify(tText('Please enter a valid phone number.')) %>;
       phoneFeedback.className = 'auth-feedback error';
+      console.log('[Register] checkPhone() => false');
       return false;
     }
 
-    const dobInput = document.getElementById('dob');
     function checkAge() {
       if (!dobInput) return;
       const dobVal = dobInput.value;
@@ -260,17 +315,14 @@
       const birthDay = parseInt(parts[2], 10);
 
       const today = new Date();
-      const currentYear = today.getFullYear();
-      const currentMonth = today.getMonth();
-      const currentDay = today.getDate();
-
-      let age = currentYear - birthYear;
-      if (currentMonth < birthMonth || (currentMonth === birthMonth && currentDay < birthDay)) {
+      let age = today.getFullYear() - birthYear;
+      if (today.getMonth() < birthMonth || (today.getMonth() === birthMonth && today.getDate() < birthDay)) {
         age--;
       }
 
       if (age < 18) {
         dobInput.setCustomValidity(<%- JSON.stringify(tText('You must be at least 18 years old to register.')) %>);
+        console.log('[Register] checkAge() => under 18, age:', age);
       } else {
         dobInput.setCustomValidity('');
       }
@@ -288,6 +340,7 @@
     }
 
     function setStep(step) {
+      console.log('[Register] setStep() called, step:', step);
       activeStep = step;
       stepPanels.forEach((panel) => {
         const panelStep = Number(panel.getAttribute('data-register-step'));
@@ -301,38 +354,56 @@
         indicator.classList.toggle('is-complete', indicatorStep < activeStep);
       });
       prevBtn.disabled = activeStep === 1;
-      nextBtn.hidden = activeStep === stepPanels.length;
-      submitBtn.hidden = activeStep !== stepPanels.length;
+      // Use style.display for bulletproof show/hide (CSS can override the `hidden` attribute)
+      const isLastStep = activeStep === stepPanels.length;
+      nextBtn.style.display = isLastStep ? 'none' : '';
+      submitBtn.style.display = isLastStep ? '' : 'none';
+      console.log('[Register] setStep() done. isLastStep:', isLastStep, '=> nextBtn:', nextBtn.style.display, 'submitBtn:', submitBtn.style.display);
     }
 
     function validateCurrentStep() {
+      console.log('[Register] validateCurrentStep() called, activeStep:', activeStep);
+
       if (activeStep === 1 && typeof checkAge === 'function') {
         checkAge();
       }
+
       const currentPanel = stepPanels.find((panel) => Number(panel.getAttribute('data-register-step')) === activeStep);
-      if (!currentPanel) return true;
+      if (!currentPanel) {
+        console.log('[Register] validateCurrentStep() => no panel found, returning true');
+        return true;
+      }
+
       const fields = Array.from(currentPanel.querySelectorAll('input[required]'));
+      console.log('[Register] Fields to validate:', fields.map(f => ({ id: f.id, type: f.type, value: f.value, valid: f.checkValidity() })));
+
       for (const field of fields) {
         if (field.type === 'checkbox') {
           if (!field.checked) {
+            console.log('[Register] Checkbox not checked:', field.id);
+            field.reportValidity();
             field.focus();
             return false;
           }
           continue;
         }
         if (!field.value.trim()) {
+          console.log('[Register] Empty required field:', field.id);
           field.reportValidity();
           field.focus();
           return false;
         }
         if (!field.checkValidity()) {
+          console.log('[Register] Invalid field:', field.id, 'customValidity:', field.validationMessage);
           field.reportValidity();
           field.focus();
           return false;
         }
       }
+
       if (activeStep === 1) {
         const username = usernameInput.value.trim();
+        console.log('[Register] Step 1 username check:', username);
         if (username.length < 3) {
           usernameFeedback.className = 'auth-feedback error';
           usernameFeedback.textContent = <%- JSON.stringify(tText('Username must be at least 3 characters.')) %>;
@@ -348,35 +419,46 @@
           return false;
         }
       }
+
       if (activeStep === 2) {
-        return checkPhone();
+        const phoneResult = checkPhone();
+        console.log('[Register] Step 2 phone check result:', phoneResult);
+        return phoneResult;
       }
+
+      console.log('[Register] validateCurrentStep() => true');
       return true;
     }
 
     prevBtn.addEventListener('click', () => {
-      if (activeStep > 1) {
-        setStep(activeStep - 1);
+      console.log('[Register] prevBtn clicked, activeStep:', activeStep);
+      try {
+        if (activeStep > 1) {
+          setStep(activeStep - 1);
+        }
+      } catch (err) {
+        console.error('[Register] Error in prevBtn click handler:', err);
       }
     });
 
     nextBtn.addEventListener('click', () => {
-      if (!validateCurrentStep()) return;
-      if (activeStep < stepPanels.length) {
-        setStep(activeStep + 1);
+      console.log('[Register] nextBtn clicked, activeStep:', activeStep);
+      try {
+        const valid = validateCurrentStep();
+        console.log('[Register] validateCurrentStep result:', valid);
+        if (!valid) return;
+        if (activeStep < stepPanels.length) {
+          setStep(activeStep + 1);
+        }
+      } catch (err) {
+        console.error('[Register] Error in nextBtn click handler:', err);
+        alert('Une erreur est survenue lors de la transition : ' + err.message);
       }
     });
 
     phoneInput.addEventListener('keyup', checkPhone);
     phoneInput.addEventListener('change', checkPhone);
     phoneInput.addEventListener('countrychange', checkPhone);
-
-    const usernameInput = document.getElementById('username');
-    const firstNameInput = document.getElementById('first_name');
-    const lastNameInput = document.getElementById('last_name');
-    const usernameFeedback = document.getElementById('usernameFeedback');
-    const usernameSuggestions = document.getElementById('usernameSuggestions');
-    let timeout = null;
 
     usernameInput.addEventListener('input', function () {
       clearTimeout(timeout);
@@ -443,28 +525,65 @@
     });
 
     registerForm.addEventListener('submit', function (e) {
-      if (!validateCurrentStep()) {
-        e.preventDefault();
-        return;
-      }
+      console.log('[Register] Form submit triggered');
+      try {
+        if (!validateCurrentStep()) {
+          console.log('[Register] Submit blocked by validateCurrentStep()');
+          e.preventDefault();
+          return;
+        }
 
-      if (!iti.isValidNumber()) {
-        e.preventDefault();
-        phoneFeedback.textContent = <%- JSON.stringify(tText('Please enter a valid phone number with the correct country code.')) %>;
-        phoneFeedback.className = 'auth-feedback error';
-        setStep(2);
-        phoneInput.focus();
-        return;
-      }
+        const hiddenPhone = document.getElementById('hidden_phone');
+        const hiddenCountry = document.getElementById('hidden_country');
+        const val = phoneInput.value.trim();
+        const phoneRegex = /^[+]?[0-9\s\-()]{5,20}$/;
 
-      const hiddenPhone = document.getElementById('hidden_phone');
-      const hiddenCountry = document.getElementById('hidden_country');
-      hiddenPhone.value = iti.getNumber();
-      const countryData = iti.getSelectedCountryData();
-      hiddenCountry.value = countryData.name;
+        if (iti && typeof iti.isValidNumber === 'function') {
+          let isValid = false;
+          try {
+            isValid = iti.isValidNumber();
+          } catch (err) {
+            console.warn('[Register] iti.isValidNumber() threw error:', err);
+          }
+
+          if (!isValid && !phoneRegex.test(val)) {
+            e.preventDefault();
+            console.log('[Register] Submit blocked: invalid phone');
+            phoneFeedback.textContent = <%- JSON.stringify(tText('Please enter a valid phone number with the correct country code.')) %>;
+            phoneFeedback.className = 'auth-feedback error';
+            setStep(2);
+            phoneInput.focus();
+            return;
+          }
+
+          try { hiddenPhone.value = iti.getNumber(); } catch (err) { hiddenPhone.value = val; }
+          try {
+            const countryData = iti.getSelectedCountryData();
+            hiddenCountry.value = (countryData && countryData.name) ? countryData.name : '';
+          } catch (err) { hiddenCountry.value = ''; }
+        } else {
+          if (!phoneRegex.test(val)) {
+            e.preventDefault();
+            phoneFeedback.textContent = <%- JSON.stringify(tText('Please enter a valid phone number.')) %>;
+            phoneFeedback.className = 'auth-feedback error';
+            setStep(2);
+            phoneInput.focus();
+            return;
+          }
+          hiddenPhone.value = val;
+          hiddenCountry.value = '';
+        }
+
+        console.log('[Register] Form submission proceeding to server...');
+      } catch (err) {
+        e.preventDefault();
+        console.error('[Register] Critical error during submit:', err);
+        alert('Une erreur est survenue lors de la validation : ' + err.message);
+      }
     });
 
     setStep(1);
+    console.log('[Register] Initialization complete. Ready.');
   </script>
 </body>
 </html>
