@@ -1,0 +1,131 @@
+<%
+  const notificationItems = (typeof notifications !== 'undefined' && Array.isArray(notifications)) ? notifications : [];
+  const unreadCount = Number(typeof unreadNotificationCount !== 'undefined' ? unreadNotificationCount : 0);
+%>
+  <!-- Responsive Mobile Topbar (Sticky on Mobile) -->
+  <header class="mobile-header">
+    <div class="mobile-logo">
+      <div class="logo-icon"></div>
+      <span>TrasX</span>
+    </div>
+    <div class="mobile-header-actions" style="display: flex; align-items: center; gap: 12px;">
+      <button class="icon-btn mobile-notification-btn" aria-label="<%= t('header.notifications', 'Notifications') %>" data-notification-toggle>
+        <i data-lucide="bell"></i>
+        <span class="badge red notification-badge" style="<%= unreadCount > 0 ? '' : 'display:none;' %>"><%= unreadCount > 99 ? '99+' : unreadCount %></span>
+      </button>
+      <button class="icon-btn theme-toggle-btn" aria-label="<%= tText("Toggle Dark Mode") %>" id="mobileThemeToggleBtn" style="width: 36px; height: 36px;">
+        <i data-lucide="moon" class="theme-icon-moon" style="width: 18px; height: 18px;"></i>
+        <i data-lucide="sun" class="theme-icon-sun" style="width: 18px; height: 18px;"></i>
+      </button>
+      <button class="mobile-menu-toggle" id="menuToggle" aria-label="<%= tText("Toggle Navigation") %>">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo">
+        <div class="logo-icon"></div>
+        <span>TrasX</span>
+      </div>
+      <div class="search-bar">
+        <i data-lucide="search" class="search-icon"></i>
+        <input type="text" placeholder="<%= t('header.searchPlaceholder', 'Search') %>" aria-label="<%= tText("Search posts, people, and groups") %>">
+        <button type="button" class="header-search-emoji-btn emoji-trigger-btn" title="<%= tText("Add emoji") %>">😊</button>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <button type="button" class="desktop-short-create-btn" data-open-short-create title="<%= tText("Add Short") %>">
+        <i data-lucide="plus"></i>
+        <span><%= tText("Add Short") %></span>
+      </button>
+      <div style="position: relative;">
+        <button class="icon-btn" aria-label="<%= t('header.notifications', 'Notifications') %>" id="notificationBtn" data-notification-toggle>
+          <i data-lucide="bell"></i>
+          <span class="badge red notification-badge" id="notificationBadge" style="<%= unreadCount > 0 ? '' : 'display:none;' %>"><%= unreadCount > 99 ? '99+' : unreadCount %></span>
+        </button>
+        <div class="dropdown-menu notifications-dropdown-panel" id="notificationsDropdown" style="width: 320px; right: 0; padding: 12px 0; display: none; position: absolute; top: 50px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-item); box-shadow: var(--shadow-lg); z-index: 200;">
+          <div style="padding: 0 16px 10px 16px; border-bottom: 1px solid var(--border-color); font-weight: 700; font-size: 14px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-primary);"><%= t('header.notifications', 'Notifications') %></span>
+            <button id="markAllReadBtn" style="font-size: 11px; color: var(--primary); font-weight: 600; cursor: pointer;"><%= t('header.markAllRead', 'Mark all as read') %></button>
+          </div>
+          <div id="notificationItemsList" style="max-height: 250px; overflow-y: auto;">
+            <% if (notificationItems.length > 0) { %>
+              <% notificationItems.forEach((notification) => { %>
+                <div class="notification-item <%= notification.is_read ? '' : 'is-unread' %>" data-notification-id="<%= notification.id %>" data-ad-url="<%= notification.ad_url || '' %>" data-post-id="<%= notification.post_id || '' %>" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; <%= notification.is_read ? '' : 'background: rgba(59, 130, 246, 0.06);' %>">
+                  <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0; overflow: hidden;">
+                    <img src="<%= notification.actor_avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= notification.actor_name %>" style="width: 100%; height: 100%; object-fit: cover;">
+                  </div>
+                  <div style="font-size: 12.5px; line-height: 1.35; color: var(--text-secondary); flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                    <strong style="color: var(--text-primary);"><%= notification.actor_name %></strong>
+                    <span><%= notification.message %></span>
+                    <% if (notification.ad_image_url) { %>
+                      <div style="margin-top: 6px; width: 100%; max-width: 180px; height: 55px; border-radius: 6px; overflow: hidden; background: #000;">
+                        <img src="<%= notification.ad_image_url %>" alt="Banner" style="width: 100%; height: 100%; object-fit: cover;">
+                      </div>
+                    <% } %>
+                    <div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;"><%= new Date(notification.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) %></div>
+                  </div>
+                </div>
+              <% }) %>
+            <% } else { %>
+              <div data-notification-empty style="padding: 22px 16px; text-align: center; color: var(--text-muted); font-size: 13px;">
+                <%= t('header.noNotifications', 'No notifications yet.') %>
+              </div>
+            <% } %>
+          </div>
+        </div>
+      </div>
+      <button class="icon-btn" aria-label="<%= t('nav.bookmarks', 'Bookmarks') %>" id="bookmarkBtn">
+        <i data-lucide="bookmark"></i>
+      </button>
+      <button class="icon-btn theme-toggle-btn" aria-label="<%= tText("Toggle Dark Mode") %>" id="themeToggleBtn">
+        <i data-lucide="moon" class="theme-icon-moon"></i>
+        <i data-lucide="sun" class="theme-icon-sun"></i>
+      </button>
+      
+      <div class="profile-dropdown" id="profileDropdownBtn">
+        <div class="avatar header-avatar">
+          <img src="<%= currentUser.avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= currentUser.name %>" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+        </div>
+        <span class="profile-name"><%= currentUser.name %></span>
+        <i data-lucide="chevron-down" class="dropdown-arrow"></i>
+        
+        <!-- Dropdown menu -->
+        <div class="dropdown-menu" id="profileDropdownMenu">
+          <a href="/profile"><i data-lucide="user"></i> <%= t('header.myProfile', 'My Profile') %></a>
+          <a href="/settings"><i data-lucide="settings"></i> <%= t('header.settings', 'Settings') %></a>
+          <a href="/auth/logout"><i data-lucide="log-out"></i> <%= t('header.logOut', 'Log Out') %></a>
+        </div>
+      </div>
+    </div>
+  </header>
+  
+  <script>
+    <% if (typeof currentUser !== 'undefined' && currentUser) { %>
+      window.currentUserId = <%= currentUser.id %>;
+      window.currentUsername = "<%= currentUser.username %>";
+      window.currentUserAvatar = "<%= currentUser.avatar || '/assets/avatar_placeholder.jpg' %>";
+    <% } %>
+  </script>
+
+  <script>
+    // Gestionnaire global : si une image avatar échoue, afficher le placeholder
+    document.addEventListener('error', function(e) {
+      const target = e.target;
+      if (target.tagName === 'IMG' && target.src && !target.src.includes('avatar_placeholder')) {
+        const classList = target.className || '';
+        const parentClass = (target.parentElement && target.parentElement.className) || '';
+        const isAvatar = classList.includes('avatar') || classList.includes('profile-avatar')
+          || parentClass.includes('avatar') || target.alt === 'Avatar'
+          || target.closest && target.closest('.avatar, .header-avatar, .profile-avatar-wrapper');
+        if (isAvatar) {
+          target.onerror = null;
+          target.src = '/assets/avatar_placeholder.jpg';
+        }
+      }
+    }, true);
+  </script>

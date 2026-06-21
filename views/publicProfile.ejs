@@ -1,0 +1,617 @@
+<%- include('partials/head') %>
+<%
+function getYouTubeId(url) {
+  if (!url) return null;
+  const cleaned = url.trim();
+  if (cleaned.length === 11 && !cleaned.includes('/') && !cleaned.includes('.')) {
+    return cleaned;
+  }
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|live\/)([^#\&\?]*).*/;
+  const match = cleaned.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+}
+%>
+  <%- include('partials/header') %>
+    <style>
+      .profile-page-wrapper {
+        padding: 0;
+        width: 100%;
+        box-sizing: border-box;
+        max-width: 600px;
+        margin: 0 auto;
+        background: var(--bg-card);
+        min-height: 100%;
+        border-left: 1px solid var(--border-color);
+        border-right: 1px solid var(--border-color);
+      }
+
+      .profile-cover-wrap {
+        background: var(--primary);
+        padding: 80px 20px 80px;
+        text-align: center;
+        color: #fff;
+        position: relative;
+        clip-path: polygon(0 0, 100% 0, 100% 70%, 0 100%);
+      }
+
+      .profile-avatar-wrapper {
+        position: relative;
+        margin-top: -110px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 30px;
+        z-index: 2;
+      }
+
+      .profile-avatar-circle {
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        border: 6px solid var(--bg-card);
+        object-fit: cover;
+        background: var(--bg-card);
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+      }
+
+      .alert {
+        padding: 16px;
+        border-radius: 8px;
+        margin: 16px;
+        font-weight: 500;
+      }
+
+      .alert.success {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+      }
+
+      .alert.error {
+        background: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.2);
+      }
+
+      .profile-stats-container {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        margin: 20px 32px;
+        padding: 16px 0;
+        align-items: stretch;
+      }
+
+      .stat-box {
+        text-align: center;
+        min-width: 0;
+        border-right: 1px solid var(--border-color);
+      }
+
+      .stat-box:last-child {
+        border-right: none;
+      }
+
+      .stat-label {
+        color: var(--text-muted);
+        font-size: 14px;
+        font-weight: 400;
+        margin-top: 4px;
+      }
+
+      @media screen and (max-width: 768px) {
+        .profile-stats-container {
+          gap: 14px;
+          margin: 20px 16px;
+          padding: 12px 0;
+        }
+
+        .stat-box {
+          padding: 0 10px;
+        }
+      }
+
+      .stat-number {
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--text-main);
+      }
+
+      .profile-tabs {
+        display: flex;
+        border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+        margin-top: 24px;
+      }
+
+      .profile-tab {
+        flex: 1;
+        text-align: center;
+        padding: 14px;
+        cursor: pointer;
+        font-weight: 500;
+        color: var(--text-muted);
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .profile-tab.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+      }
+
+      .profile-grid-container {
+        display: none;
+      }
+
+      .profile-grid-container.active {
+        display: grid;
+      }
+
+      .profile-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2px;
+      }
+
+      .grid-item {
+        aspect-ratio: 1;
+        background: var(--bg-card);
+        position: relative;
+        overflow: hidden;
+        cursor: pointer;
+        border: 1px solid var(--border-color);
+      }
+
+      .grid-item img,
+      .grid-item video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .grid-item .views {
+        position: absolute;
+        bottom: 8px;
+        left: 8px;
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+      }
+
+      .profile-follow-btn {
+        display: block;
+        width: 200px;
+        margin: 20px auto;
+        padding: 12px;
+        border-radius: 30px;
+        background: var(--primary);
+        color: white;
+        text-align: center;
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 16px;
+        box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+        transition: transform 0.2s;
+        border: none;
+        cursor: pointer;
+      }
+
+      .profile-follow-btn:hover {
+        transform: translateY(-2px);
+      }
+
+      .profile-social-grid {
+        padding: 0 16px 24px 16px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      #socialListModal {
+        position: fixed;
+        inset: 0;
+        display: none;
+        justify-content: center;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 1000;
+        padding: 20px;
+        backdrop-filter: blur(5px);
+      }
+
+      #socialListModal.active {
+        display: flex;
+      }
+
+      @media screen and (max-width: 768px) {
+        .profile-social-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+
+    <div class="app-wrapper">
+      <div class="main-layout">
+        <%- include('partials/leftSidebar') %>
+
+          <main class="feed-column" style="padding: 0; align-items: center;">
+            <div class="profile-page-wrapper">
+              <div class="profile-cover-wrap"
+                style="background: <%- profileUser.banner_color ? profileUser.banner_color : 'linear-gradient(135deg, #1e3a8a, var(--primary))' %>;">
+                <span
+                  style="position: absolute; left: 20px; top: 20px; color: rgba(255,255,255,0.9); font-size: 13px; font-weight: 600;">Public
+                  Profile</span>
+              </div>
+
+              <div class="profile-avatar-wrapper" style="gap: 0;">
+                <img src="<%= profileUser.avatar || '/assets/avatar_placeholder.jpg' %>" class="profile-avatar-circle" alt="Avatar" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+              </div>
+
+              <div style="text-align: center; margin-top: 16px; padding: 0 16px;">
+                <h1
+                  style="font-size: 24px; font-weight: 600; margin: 0; color: var(--text-main); font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                  <%= profileUser.first_name %> <%= profileUser.last_name %>
+                  <% if ((profileUser.certification_type || 'None') !== 'None') { %>
+                    <span class="verified-badge-small" title="<%= profileUser.certification_type %>" data-type="<%= profileUser.certification_type %>" style="display: inline-flex; margin-left: 8px;">
+                      <i data-lucide="badge-check"></i>
+                    </span>
+                  <% } %>
+                  <button type="button" class="profile-game-request-btn"
+                    data-user-id="<%= profileUser.id %>"
+                    data-user-name="<%= profileUser.first_name %> <%= profileUser.last_name %>"
+                    data-user-avatar="<%= profileUser.avatar %>"
+                    data-user-online="<%= profileIsOnline ? '1' : '0' %>"
+                    data-user-presence="<%= profilePresenceText || 'Offline' %>"
+                    title="<%= tText("Demander de jouer") %>"
+                    style="background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.15)'"
+                    onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="gamepad-2" style="width: 22px; height: 22px; color: var(--primary); flex-shrink: 0;"></i>
+                  </button>
+                </h1>
+                <p style="font-size: 15px; color: var(--text-muted); margin: 4px 0 0 0;">@<%= String(profileUser.username || 'unknown').trim().replace(/^@+/, '') %>
+                </p>
+                <p
+                  style="font-size: 12px; color: var(--text-muted); margin: 6px 0 0 0; display: inline-flex; align-items: center; gap: 4px;">
+                  <i data-lucide="circle-dot" style="width: 12px;"></i>
+                  <%= profilePresenceText || 'Offline' %>
+                </p>
+                <p
+                  style="font-size: 13px; color: var(--text-muted); margin: 6px 0 0 0; display: inline-flex; align-items: center; gap: 4px;">
+                  <i data-lucide="map-pin" style="width: 14px;"></i>
+                  <%= profileUser.country || 'Unknown Location' %>
+                </p>
+              </div>
+
+              <div
+                style="text-align: center; margin-top: 12px; padding: 0 32px; color: var(--text-main); font-size: 15px; font-weight: 400;">
+                <%= profileUser.bio || 'No bio yet.' %>
+              </div>
+
+              <div style="display: flex; justify-content: center; gap: 10px; margin-top: 16px; padding: 0 16px;">
+                <% if (profileUser.id !==currentUser.id) { %>
+                  <button type="button" class="follow-toggle-btn" data-follow-target-id="<%= profileUser.id %>"
+                    data-following="<%= viewerFollowsProfile ? '1' : '0' %>"
+                    title="<%= viewerFollowsProfile ? 'Unfollow' : 'Follow' %>"
+                    aria-label="<%= viewerFollowsProfile ? 'Unfollow' : 'Follow' %>" style="width: 40px; height: 40px;">
+                    <i data-lucide="<%= viewerFollowsProfile ? 'user-check' : 'user-plus' %>"
+                      style="width: 16px; height: 16px;"></i>
+                  </button>
+                  <button type="button" class="profile-follow-btn profile-message-btn"
+                    data-profile-message-id="<%= profileUser.id %>"
+                    data-profile-message-name="<%= profileUser.first_name %> <%= profileUser.last_name %>"
+                    data-profile-message-avatar="<%= profileUser.avatar %>"
+                    data-profile-message-online="<%= profileIsOnline ? '1' : '0' %>"
+                    data-profile-message-presence="<%= profilePresenceText || 'Offline' %>"
+                    style="width: auto; padding: 0 18px; margin: 0; height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                    <i data-lucide="message-circle" style="width: 15px; height: 15px;"></i>
+                    Message
+                  </button>
+                  <button type="button" class="profile-follow-btn"
+                    style="width: auto; padding: 0 18px; margin: 0; height: 40px;"
+                    onclick="document.getElementById('profilePostsSection').scrollIntoView({behavior:'smooth', block:'start'})">
+                    View posts
+                  </button>
+                  <% } %>
+              </div>
+
+              <div class="profile-stats-container">
+                <div class="stat-box">
+                  <div class="stat-number" data-follow-stat="following">
+                    <%= formatNumber(followingCount) %>
+                  </div>
+                  <div class="stat-label">Following</div>
+                </div>
+                <div class="stat-box">
+                  <div class="stat-number" data-follow-stat="followers">
+                    <%= formatNumber(followersCount) %>
+                  </div>
+                  <div class="stat-label">Followers</div>
+                </div>
+                <div class="stat-box">
+                  <div class="stat-number">
+                    <%= formatNumber(totalLikesCount) %>
+                  </div>
+                  <div class="stat-label">Likes</div>
+                </div>
+              </div>
+
+              <% const followersPreview=(followersList || []).slice(0, 5); const followingPreview=(followingList ||
+                []).slice(0, 5); %>
+                <div class="profile-social-grid">
+                  <section
+                    style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; min-width: 0;">
+                    <div
+                      style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px;">
+                      <div>
+                        <h3 style="margin: 0; font-size: 15px; color: var(--text-main);">Followers</h3>
+                        <div style="font-size: 11px; color: var(--text-muted);">
+                          <%= formatNumber(followersCount) %> total
+                        </div>
+                      </div>
+                      <button type="button" class="profile-follow-btn profile-view-all-btn"
+                        style="width: auto; margin: 0; padding: 8px 12px; font-size: 12px; height: 34px;"
+                        data-open-list-modal="followers"><%= tText("View all") %></button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow: auto;">
+                      <% if (followersPreview.length) { %>
+                        <% followersPreview.forEach((person)=> { %>
+                          <div class="social-user-item">
+                            <a href="/profile/u/<%= person.username %>" class="social-user-link">
+                              <div class="avatar social-user-avatar">
+                                <img src="<%= person.avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= person.name %>"
+                                  style="width:100%; height:100%; object-fit:cover;">
+                              </div>
+                              <div style="min-width: 0;">
+                                <div class="social-user-name">
+                                  <%= person.name %>
+                                  <% if ((person.certification_type || 'None') !== 'None') { %>
+                                    <span class="verified-badge-small" title="<%= person.certification_type %>" data-type="<%= person.certification_type %>" style="display: inline-flex; margin-left: 4px;">
+                                      <i data-lucide="badge-check"></i>
+                                    </span>
+                                  <% } %>
+                                </div>
+                                <div class="social-user-handle">@<%= String(person.username || 'unknown').trim().replace(/^@+/, '') %>
+                                </div>
+                              </div>
+                            </a>
+                            <span class="social-user-pill"
+                              data-tone="<%= person.is_mutual ? 'success' : (person.is_following ? 'muted' : 'primary') %>">
+                              <%= person.is_mutual ? 'Friends' : (person.is_following ? 'Following' : 'Follow back' ) %>
+                            </span>
+                          </div>
+                          <% }) %>
+                            <% } else { %>
+                              <div style="color: var(--text-muted); font-size: 13px; padding: 4px 0;">No followers yet.
+                              </div>
+                              <% } %>
+                    </div>
+                  </section>
+
+                  <section
+                    style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; min-width: 0;">
+                    <div
+                      style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px;">
+                      <div>
+                        <h3 style="margin: 0; font-size: 15px; color: var(--text-main);">Following</h3>
+                        <div style="font-size: 11px; color: var(--text-muted);">
+                          <%= formatNumber(followingCount) %> total
+                        </div>
+                      </div>
+                      <button type="button" class="profile-follow-btn profile-view-all-btn"
+                        style="width: auto; margin: 0; padding: 8px 12px; font-size: 12px; height: 34px;"
+                        data-open-list-modal="following"><%= tText("View all") %></button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow: auto;">
+                      <% if (followingPreview.length) { %>
+                        <% followingPreview.forEach((person)=> { %>
+                          <div class="social-user-item">
+                            <a href="/profile/u/<%= person.username %>" class="social-user-link">
+                              <div class="avatar social-user-avatar">
+                                <img src="<%= person.avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= person.name %>"
+                                  style="width:100%; height:100%; object-fit:cover;">
+                              </div>
+                              <div style="min-width: 0;">
+                                <div class="social-user-name">
+                                  <%= person.name %>
+                                  <% if ((person.certification_type || 'None') !== 'None') { %>
+                                    <span class="verified-badge-small" title="<%= person.certification_type %>" data-type="<%= person.certification_type %>" style="display: inline-flex; margin-left: 4px;">
+                                      <i data-lucide="badge-check"></i>
+                                    </span>
+                                  <% } %>
+                                </div>
+                                <div class="social-user-handle">@<%= String(person.username || 'unknown').trim().replace(/^@+/, '') %>
+                                </div>
+                              </div>
+                            </a>
+                            <span class="social-user-pill" data-tone="<%= person.is_mutual ? 'success' : 'muted' %>">
+                              <%= person.is_mutual ? 'Friends' : 'Following' %>
+                            </span>
+                          </div>
+                          <% }) %>
+                            <% } else { %>
+                              <div style="color: var(--text-muted); font-size: 13px; padding: 4px 0;">This user is not
+                                following anyone yet.</div>
+                              <% } %>
+                    </div>
+                  </section>
+                </div>
+
+                <!-- GRID TABS -->
+                <div class="profile-tabs" style="margin-top: 16px;">
+                  <div class="profile-tab active" onclick="switchGrid('posts', this)">
+                    <i data-lucide="grid" style="width: 18px;"></i> Posts
+                  </div>
+                  <div class="profile-tab" onclick="switchGrid('shorts', this)">
+                    <i data-lucide="play-square" style="width: 18px;"></i> Shorts
+                  </div>
+                </div>
+
+                <!-- POSTS GRID -->
+                <div id="postsGrid" class="profile-grid profile-grid-container active">
+                  <% if (userPosts && userPosts.length> 0) { %>
+                    <% userPosts.forEach(post=> { %>
+                      <div class="grid-item" data-post-id="<%= post.id %>">
+                        <% if (post.is_live === 1) { 
+                             const ytId = getYouTubeId(post.live_url);
+                        %>
+                          <div style="position: relative; width: 100%; height: 100%;">
+                            <img src="https://img.youtube.com/vi/<%= ytId %>/hqdefault.jpg" alt="<%= tText("Live YouTube") %>" style="width: 100%; height: 100%; object-fit: cover;">
+                            <span style="position: absolute; top: 8px; left: 8px; background: #ef4444; color: white; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: flex; align-items: center; gap: 4px; z-index: 2;">
+                              <span style="width: 6px; height: 6px; background: white; border-radius: 50%; display: inline-block;"></span> LIVE
+                            </span>
+                          </div>
+                        <% } else if (post.image_url) { %>
+                          <img src="<%= post.image_url %>" alt="Post">
+                          <% } else { %>
+                            <!-- Text only post -->
+                            <div
+                              style="padding: 12px; font-size: 12px; color: var(--text-main); background: var(--bg-card); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; border: 1px solid var(--border-color); box-sizing: border-box;">
+                              <%= post.content.substring(0, 60) %>...
+                            </div>
+                            <% } %>
+                              <div class="views" style="display: flex; gap: 8px;">
+                                <span style="display: flex; align-items: center; gap: 3px;">
+                                  <i data-lucide="eye" style="width: 12px; height: 12px;"></i>
+                                  <%= formatNumber((post.likes_count || 0) * 12 + (post.id % 7) * 3 + 15) %>
+                                </span>
+                                <span style="display: flex; align-items: center; gap: 3px;">
+                                  <i data-lucide="heart" style="width: 12px; height: 12px;"></i>
+                                  <%= formatNumber(post.likes_count) %>
+                                </span>
+                              </div>
+                      </div>
+                      <% }) %>
+                        <% } else { %>
+                          <div
+                            style="grid-column: span 3; text-align: center; padding: 40px; color: var(--text-muted);">
+                            <%= t('profile.noPostsYet', 'No posts yet.' ) %>
+                          </div>
+                          <% } %>
+                </div>
+
+                <!-- SHORTS GRID -->
+                <div id="shortsGrid" class="profile-grid profile-grid-container">
+                  <% if (userReels && userReels.length> 0) { %>
+                    <% userReels.forEach(reel=> { %>
+                      <% let resolvedVideoUrl=reel.video_url; if (resolvedVideoUrl &&
+                        resolvedVideoUrl.includes('unsplash.com')) { const
+                        videoUrls=[ 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4'
+                        , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4'
+                        , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
+                        , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4'
+                        , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4' ];
+                        const videoIdx=(reel.id - 1) % videoUrls.length; resolvedVideoUrl=videoUrls[videoIdx>= 0 ?
+                        videoIdx : 0];
+                        }
+                        const reelMediaFit = reel.media_fit === 'contain' ? 'contain' : 'cover';
+                        %>
+                        <div class="grid-item" data-reel-id="<%= reel.id %>">
+                          <% if (!reel.media_type || reel.media_type==='video' ) { %>
+                            <video src="<%= resolvedVideoUrl %>" muted loop
+                              style="object-fit: <%= reelMediaFit %>;"></video>
+                            <% } else if (reel.media_type==='image_audio' ) { %>
+                              <img src="<%= resolvedVideoUrl %>"
+                                style="width: 100%; height: 100%; object-fit: <%= reelMediaFit %>;">
+                              <% } else if (reel.media_type==='voice' ) { %>
+                                <div
+                                  style="width: 100%; height: 100%; background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); display: flex; align-items: center; justify-content: center; color: white;">
+                                  <i data-lucide="mic" style="width: 24px; height: 24px;"></i>
+                                </div>
+                                <% } else if (reel.media_type==='audio' ) { %>
+                                  <div
+                                    style="width: 100%; height: 100%; background: linear-gradient(135deg, #1e1b4b 0%, #311042 100%); display: flex; align-items: center; justify-content: center; color: white;">
+                                    <i data-lucide="music" style="width: 24px; height: 24px;"></i>
+                                  </div>
+                                  <% } %>
+                                    <div class="views" style="display: flex; gap: 8px;">
+                                      <span style="display: flex; align-items: center; gap: 3px;">
+                                        <i data-lucide="eye" style="width: 12px; height: 12px;"></i>
+                                        <%= formatNumber((reel.likes_count || 0) * 15 + (reel.id % 9) * 4 + 21) %>
+                                      </span>
+                                      <span style="display: flex; align-items: center; gap: 3px;">
+                                        <i data-lucide="heart" style="width: 12px; height: 12px;"></i>
+                                        <%= formatNumber(reel.likes_count) %>
+                                      </span>
+                                    </div>
+                        </div>
+                        <% }) %>
+                          <% } else { %>
+                            <div
+                              style="grid-column: span 3; text-align: center; padding: 40px; color: var(--text-muted);">
+                              <%= t('profile.noReelsYet', 'No reels yet.' ) %>
+                            </div>
+                            <% } %>
+                </div>
+            </div>
+          </main>
+
+          <%- include('partials/rightSidebar') %>
+      </div>
+    </div>
+
+    <div class="chat-boxes-container" id="chatBoxesContainer"></div>
+
+    <%- include('partials/mobileNav') %>
+
+      <div id="appToast"
+        style="position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--text-primary); color: var(--bg-card); padding: 12px 24px; border-radius: var(--border-radius-pill); font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg); z-index: 2000; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease; opacity: 0; pointer-events: none; border: 1px solid var(--border-color);">
+        <%= t('settings.actionSuccessful', 'Action successful' ) %>
+      </div>
+      <div class="modal-overlay" id="socialListModal">
+        <div class="modal-content" style="max-width: 520px; width: 100%;">
+          <button class="modal-close" type="button"
+            onclick="window.closeSocialListModal && window.closeSocialListModal()"
+            data-close-list-modal="socialListModal"><i data-lucide="x"></i></button>
+          <h2 class="modal-title" id="socialListModalTitle"><i data-lucide="users"></i>
+            <%= t('profile.connections', 'Connections' ) %>
+          </h2>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="position: relative;">
+              <input type="text" id="socialListSearch" placeholder="<%= t('header.searchPlaceholder', 'Search') %>"
+                style="width: 100%; padding: 10px 12px 10px 36px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 13px; outline: none;">
+              <i data-lucide="search"
+                style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted);"></i>
+            </div>
+            <div id="socialListModalCount" style="font-size: 12px; color: var(--text-muted);"></div>
+            <div id="socialListModalBody"
+              style="display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow: auto;"></div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        window.currentUserId = <%= currentUser.id %>;
+        window.currentUserAvatar = "<%= currentUser.avatar %>";
+        window.viewedProfileId = <%= profileUser.id %>;
+        window.profileSocialLists = {
+          followers: <%- JSON.stringify(followersList || []).replace(/</g, '\\u003c') %>,
+          following: <%- JSON.stringify(followingList || []).replace(/</g, '\\u003c') %>
+  };
+
+        function switchGrid(gridName, tabElement) {
+          document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
+          tabElement.classList.add('active');
+
+          document.getElementById('postsGrid').classList.remove('active');
+          document.getElementById('shortsGrid').classList.remove('active');
+
+          if (gridName === 'posts') {
+            document.getElementById('postsGrid').classList.add('active');
+          } else {
+            document.getElementById('shortsGrid').classList.add('active');
+          }
+        }
+      </script>
+      <script src="/js/client.js?v=200"></script>
+      </body>
+
+      </html>

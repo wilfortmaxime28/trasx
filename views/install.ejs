@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrasX - Assistant d'Installation</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --indigo-glow: rgba(99, 102, 241, 0.15);
+      --violet-glow: rgba(139, 92, 246, 0.15);
+      --card-bg: rgba(17, 24, 39, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #6366f1;
+      --primary-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+      --success: #10b981;
+      --success-bg: rgba(16, 185, 129, 0.1);
+      --error: #f43f5e;
+      --error-bg: rgba(244, 63, 94, 0.1);
+      --input-bg: rgba(15, 23, 42, 0.6);
+      --input-border: rgba(255, 255, 255, 0.1);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      font-family: 'Inter', sans-serif;
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Background glow animations */
+    body::before, body::after {
+      content: '';
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      filter: blur(120px);
+      z-index: -1;
+      animation: floatGlow 12s infinite alternate ease-in-out;
+    }
+
+    body::before {
+      background: var(--indigo-glow);
+      top: -10%;
+      left: 10%;
+    }
+
+    body::after {
+      background: var(--violet-glow);
+      bottom: -10%;
+      right: 10%;
+      animation-delay: -6s;
+    }
+
+    @keyframes floatGlow {
+      0% {
+        transform: translate(0, 0) scale(1);
+      }
+      100% {
+        transform: translate(50px, 30px) scale(1.2);
+      }
+    }
+
+    .install-container {
+      width: 100%;
+      max-width: 580px;
+      padding: 40px 30px;
+      margin: 20px;
+      background: var(--card-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+      position: relative;
+      overflow: hidden;
+      animation: fadeIn 0.6s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .logo-container {
+      text-align: center;
+      margin-bottom: 35px;
+    }
+
+    .logo-container h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 36px;
+      font-weight: 700;
+      margin: 0;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, #a5b4fc, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 4px 20px rgba(99, 102, 241, 0.35);
+    }
+
+    .logo-container p {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin: 8px 0 0;
+    }
+
+    /* Stepper UI */
+    .stepper {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      margin-bottom: 40px;
+      padding: 0 10px;
+    }
+
+    .stepper::before {
+      content: '';
+      position: absolute;
+      top: 18px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.05);
+      z-index: 1;
+    }
+
+    .stepper-progress {
+      position: absolute;
+      top: 18px;
+      left: 0;
+      height: 2px;
+      background: var(--primary-gradient);
+      width: 0%;
+      z-index: 2;
+      transition: width 0.4s ease;
+    }
+
+    .step-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 3;
+      position: relative;
+    }
+
+    .step-badge {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: #111827;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-muted);
+      transition: all 0.3s ease;
+      box-shadow: 0 0 0 4px #090d16;
+    }
+
+    .step-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-top: 8px;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .step-item.active .step-badge {
+      border-color: var(--primary);
+      background: var(--primary-gradient);
+      color: white;
+      box-shadow: 0 0 15px rgba(99, 102, 241, 0.4), 0 0 0 4px #090d16;
+    }
+
+    .step-item.active .step-label {
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    .step-item.completed .step-badge {
+      border-color: var(--success);
+      background: var(--success);
+      color: white;
+    }
+
+    /* Panels Configuration */
+    .panel {
+      display: none;
+      animation: slideIn 0.4s ease-out;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(15px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .form-group-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 22px;
+      position: relative;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 12px;
+      color: var(--text-main);
+      font-size: 15px;
+      transition: all 0.25s ease;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--primary);
+      background: rgba(15, 23, 42, 0.8);
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+    }
+
+    /* Action Buttons styling */
+    .button-group {
+      display: flex;
+      gap: 15px;
+      margin-top: 30px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px 20px;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn-primary {
+      background: var(--primary-gradient);
+      color: white;
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.25);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(99, 102, 241, 0.35);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-primary:disabled {
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.2);
+      box-shadow: none;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.08);
+      transform: translateY(-2px);
+    }
+
+    .btn-secondary:active {
+      transform: translateY(0);
+    }
+
+    /* Feedback Box */
+    .status-alert {
+      padding: 14px 18px;
+      border-radius: 12px;
+      font-size: 14px;
+      margin-bottom: 22px;
+      display: none;
+      align-items: center;
+      gap: 12px;
+      animation: alertIn 0.3s ease-out;
+    }
+
+    @keyframes alertIn {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .status-alert.success {
+      display: flex;
+      background: var(--success-bg);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .status-alert.error {
+      display: flex;
+      background: var(--error-bg);
+      color: var(--error);
+      border: 1px solid rgba(244, 63, 94, 0.2);
+    }
+
+    /* Loading state */
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2.5px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Installation steps console */
+    .installation-console {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--input-border);
+      border-radius: 12px;
+      padding: 18px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      max-height: 220px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+
+    .console-line {
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0.8;
+      animation: logIn 0.2s ease-out forwards;
+    }
+
+    @keyframes logIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .console-line.success {
+      color: var(--success);
+    }
+
+    .console-line.error {
+      color: var(--error);
+    }
+
+    .console-line.loading {
+      color: var(--primary);
+    }
+
+    .circle-progress-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 30px 0;
+    }
+
+    .installing-text {
+      font-size: 16px;
+      font-weight: 500;
+      margin-top: 15px;
+      color: var(--text-main);
+    }
+  </style>
+</head>
+<body>
+  <div class="install-container">
+    <div class="logo-container">
+      <h1>TrasX Setup</h1>
+      <p>Assistant de configuration de la plateforme</p>
+    </div>
+
+    <!-- Stepper Navigation -->
+    <div class="stepper">
+      <div class="stepper-progress" id="stepperProgress"></div>
+      <div class="step-item active" id="step1">
+        <div class="step-badge">1</div>
+        <div class="step-label">Base de données</div>
+      </div>
+      <div class="step-item" id="step2">
+        <div class="step-badge">2</div>
+        <div class="step-label">Admin</div>
+      </div>
+      <div class="step-item" id="step3">
+        <div class="step-badge">3</div>
+        <div class="step-label">Installation</div>
+      </div>
+    </div>
+
+    <!-- Panel 1: DB configuration -->
+    <div class="panel active" id="panel1">
+      <div class="status-alert" id="dbAlert"></div>
+
+      <div class="form-group-row">
+        <div class="form-group">
+          <label for="dbHost">Hôte MySQL</label>
+          <input type="text" id="dbHost" value="<%= dbConfig.host %>" placeholder="localhost">
+        </div>
+        <div class="form-group">
+          <label for="dbPort">Port</label>
+          <input type="number" id="dbPort" value="<%= dbConfig.port %>" placeholder="3306">
+        </div>
+      </div>
+
+      <div class="form-group-row">
+        <div class="form-group">
+          <label for="dbUser">Utilisateur</label>
+          <input type="text" id="dbUser" value="<%= dbConfig.user %>" placeholder="root">
+        </div>
+        <div class="form-group">
+          <label for="dbPassword">Mot de passe</label>
+          <input type="password" id="dbPassword" value="<%= dbConfig.password %>" placeholder="Laisser vide si aucun">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="dbName">Nom de la base de données</label>
+        <input type="text" id="dbName" value="<%= dbConfig.database %>" placeholder="weshare">
+      </div>
+
+      <div class="button-group">
+        <button class="btn btn-secondary" id="btnTestDb">
+          <span class="spinner" id="testDbSpinner"></span>
+          <span>Tester la connexion</span>
+        </button>
+        <button class="btn btn-primary" id="btnNext1" disabled>
+          Suivant
+        </button>
+      </div>
+    </div>
+
+    <!-- Panel 2: Super Admin Account setup -->
+    <div class="panel" id="panel2">
+      <div class="status-alert" id="adminAlert"></div>
+
+      <div class="form-group">
+        <label for="adminDisplayName">Nom d'affichage</label>
+        <input type="text" id="adminDisplayName" placeholder="Super Administrateur">
+      </div>
+
+      <div class="form-group">
+        <label for="adminEmail">Adresse Email</label>
+        <input type="email" id="adminEmail" placeholder="admin@weshare.com">
+      </div>
+
+      <div class="form-group-row">
+        <div class="form-group">
+          <label for="adminPassword">Mot de passe</label>
+          <input type="password" id="adminPassword" placeholder="••••••••">
+        </div>
+        <div class="form-group">
+          <label for="adminConfirmPassword">Confirmer le mot de passe</label>
+          <input type="password" id="adminConfirmPassword" placeholder="••••••••">
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button class="btn btn-secondary" id="btnPrev2">Retour</button>
+        <button class="btn btn-primary" id="btnStartInstall">
+          Installer la plateforme
+        </button>
+      </div>
+    </div>
+
+    <!-- Panel 3: Installation loading & logs console -->
+    <div class="panel" id="panel3">
+      <div class="circle-progress-container">
+        <div class="spinner" id="installSpinner" style="display: block; width: 45px; height: 45px; border-width: 4px; border-top-color: var(--primary);"></div>
+        <div class="installing-text" id="installStatusText">Création et configuration du système...</div>
+      </div>
+
+      <div class="installation-console" id="consoleContainer">
+        <!-- Lines will be dynamically appended here -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let dbVerified = false;
+
+    // Dom elements
+    const panels = [document.getElementById('panel1'), document.getElementById('panel2'), document.getElementById('panel3')];
+    const steps = [document.getElementById('step1'), document.getElementById('step2'), document.getElementById('step3')];
+    const stepperProgress = document.getElementById('stepperProgress');
+
+    // DB input elements
+    const dbHostInput = document.getElementById('dbHost');
+    const dbPortInput = document.getElementById('dbPort');
+    const dbUserInput = document.getElementById('dbUser');
+    const dbPasswordInput = document.getElementById('dbPassword');
+    const dbNameInput = document.getElementById('dbName');
+    const btnTestDb = document.getElementById('btnTestDb');
+    const testDbSpinner = document.getElementById('testDbSpinner');
+    const dbAlert = document.getElementById('dbAlert');
+    const btnNext1 = document.getElementById('btnNext1');
+
+    // Admin input elements
+    const adminDisplayInput = document.getElementById('adminDisplayName');
+    const adminEmailInput = document.getElementById('adminEmail');
+    const adminPasswordInput = document.getElementById('adminPassword');
+    const adminConfirmPasswordInput = document.getElementById('adminConfirmPassword');
+    const btnPrev2 = document.getElementById('btnPrev2');
+    const btnStartInstall = document.getElementById('btnStartInstall');
+    const adminAlert = document.getElementById('adminAlert');
+
+    // Console elements
+    const consoleContainer = document.getElementById('consoleContainer');
+    const installStatusText = document.getElementById('installStatusText');
+    const installSpinner = document.getElementById('installSpinner');
+
+    function showPanel(index) {
+      panels.forEach((p, idx) => {
+        if (idx === index) {
+          p.classList.add('active');
+        } else {
+          p.classList.remove('active');
+        }
+      });
+
+      steps.forEach((s, idx) => {
+        if (idx < index) {
+          s.classList.add('completed');
+          s.classList.remove('active');
+        } else if (idx === index) {
+          s.classList.add('active');
+          s.classList.remove('completed');
+        } else {
+          s.classList.remove('active', 'completed');
+        }
+      });
+
+      // Update progress line
+      if (index === 0) stepperProgress.style.width = '0%';
+      else if (index === 1) stepperProgress.style.width = '50%';
+      else stepperProgress.style.width = '100%';
+    }
+
+    // --- DB connection testing ---
+    btnTestDb.addEventListener('click', async () => {
+      dbAlert.style.display = 'none';
+      testDbSpinner.style.display = 'block';
+      btnTestDb.disabled = true;
+
+      try {
+        const response = await fetch('/api/install/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            host: dbHostInput.value,
+            port: dbPortInput.value,
+            user: dbUserInput.value,
+            password: dbPasswordInput.value,
+            database: dbNameInput.value
+          })
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+          dbAlert.className = 'status-alert success';
+          dbAlert.textContent = data.message;
+          dbAlert.style.display = 'flex';
+          dbVerified = true;
+          btnNext1.disabled = false;
+        } else {
+          dbAlert.className = 'status-alert error';
+          dbAlert.textContent = data.error;
+          dbAlert.style.display = 'flex';
+          dbVerified = false;
+          btnNext1.disabled = true;
+        }
+      } catch (err) {
+        dbAlert.className = 'status-alert error';
+        dbAlert.textContent = 'Erreur lors du test de connexion à la base de données.';
+        dbAlert.style.display = 'flex';
+        dbVerified = false;
+        btnNext1.disabled = true;
+      } finally {
+        testDbSpinner.style.display = 'none';
+        btnTestDb.disabled = false;
+      }
+    });
+
+    // Inputs change resets verification
+    [dbHostInput, dbPortInput, dbUserInput, dbPasswordInput, dbNameInput].forEach(input => {
+      input.addEventListener('input', () => {
+        dbVerified = false;
+        btnNext1.disabled = true;
+      });
+    });
+
+    btnNext1.addEventListener('click', () => {
+      if (dbVerified) {
+        showPanel(1);
+      }
+    });
+
+    // --- Admin profile ---
+    btnPrev2.addEventListener('click', () => {
+      showPanel(0);
+    });
+
+    function appendConsoleLine(text, type = 'info') {
+      const line = document.createElement('div');
+      line.className = `console-line ${type}`;
+      
+      let symbol = '➜';
+      if (type === 'success') symbol = '✔';
+      if (type === 'error') symbol = '✖';
+      if (type === 'loading') symbol = '⚡';
+
+      line.innerHTML = `<span style="font-weight: bold;">${symbol}</span> <span>${text}</span>`;
+      consoleContainer.appendChild(line);
+      consoleContainer.scrollTop = consoleContainer.scrollHeight;
+    }
+
+    btnStartInstall.addEventListener('click', async () => {
+      adminAlert.style.display = 'none';
+
+      // Validations
+      const email = adminEmailInput.value.trim();
+      const displayName = adminDisplayInput.value.trim();
+      const password = adminPasswordInput.value;
+      const confirmPassword = adminConfirmPasswordInput.value;
+
+      if (!displayName || !email || !password) {
+        adminAlert.className = 'status-alert error';
+        adminAlert.textContent = 'Veuillez remplir tous les champs.';
+        adminAlert.style.display = 'flex';
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        adminAlert.className = 'status-alert error';
+        adminAlert.textContent = 'Les mots de passe ne correspondent pas.';
+        adminAlert.style.display = 'flex';
+        return;
+      }
+
+      if (password.length < 6) {
+        adminAlert.className = 'status-alert error';
+        adminAlert.textContent = 'Le mot de passe doit comporter au moins 6 caractères.';
+        adminAlert.style.display = 'flex';
+        return;
+      }
+
+      // Enter Panel 3
+      showPanel(2);
+      
+      appendConsoleLine('Lancement du processus d\'installation...', 'info');
+      
+      try {
+        appendConsoleLine('Connexion au serveur de base de données...', 'loading');
+        
+        const response = await fetch('/api/install/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            db_host: dbHostInput.value,
+            db_port: dbPortInput.value,
+            db_user: dbUserInput.value,
+            db_password: dbPasswordInput.value,
+            db_name: dbNameInput.value,
+            admin_display_name: displayName,
+            admin_email: email,
+            admin_password: password
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          appendConsoleLine('Mise à jour du fichier de configuration .env complétée.', 'success');
+          appendConsoleLine('Base de données créée / sélectionnée.', 'success');
+          appendConsoleLine('Importation du schéma schema.sql réussie.', 'success');
+          appendConsoleLine('Migration et création des tables annexes terminées.', 'success');
+          appendConsoleLine('Création du compte Super Administrateur réussie.', 'success');
+          appendConsoleLine('Installation terminée avec succès !', 'success');
+          
+          installStatusText.textContent = 'Installation complétée !';
+          installStatusText.style.color = 'var(--success)';
+          installSpinner.style.display = 'none';
+
+          appendConsoleLine('Redirection vers le backoffice dans 3 secondes...', 'info');
+          
+          setTimeout(() => {
+            window.location.href = data.redirectUrl;
+          }, 3000);
+        } else {
+          appendConsoleLine(`Erreur fatale : ${data.error}`, 'error');
+          installStatusText.textContent = 'L\'installation a échoué.';
+          installStatusText.style.color = 'var(--error)';
+          installSpinner.style.display = 'none';
+        }
+      } catch (err) {
+        appendConsoleLine(`Erreur inattendue : ${err.message}`, 'error');
+        installStatusText.textContent = 'Erreur réseau/serveur.';
+        installStatusText.style.color = 'var(--error)';
+        installSpinner.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

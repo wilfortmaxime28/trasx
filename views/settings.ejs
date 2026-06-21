@@ -1,0 +1,709 @@
+<%- include('partials/head') %>
+<%- include('partials/header') %>
+<%
+  const safeSettingsStatus = typeof settingsStatus !== 'undefined' ? settingsStatus : null;
+  const safeSettingsError = typeof settingsError !== 'undefined' ? settingsError : null;
+  const safeLanguageOptions = Array.isArray(typeof languageOptions !== 'undefined' ? languageOptions : null)
+    ? languageOptions
+    : [];
+  const safePremiumProgress = Number.isFinite(Number(typeof premiumProgress !== 'undefined' ? premiumProgress : 0))
+    ? Number(typeof premiumProgress !== 'undefined' ? premiumProgress : 0)
+    : 0;
+  const safeEventsProgress = Number.isFinite(Number(typeof eventsProgress !== 'undefined' ? eventsProgress : 0))
+    ? Number(typeof eventsProgress !== 'undefined' ? eventsProgress : 0)
+    : 0;
+  const safeFollowersCount = Number.isFinite(Number(typeof followersCount !== 'undefined' ? followersCount : 0))
+    ? Number(typeof followersCount !== 'undefined' ? followersCount : 0)
+    : 0;
+  const safeFollowingCount = Number.isFinite(Number(typeof followingCount !== 'undefined' ? followingCount : 0))
+    ? Number(typeof followingCount !== 'undefined' ? followingCount : 0)
+    : 0;
+  const safeUnreadNotificationCount = Number.isFinite(Number(typeof unreadNotificationCount !== 'undefined' ? unreadNotificationCount : 0))
+    ? Number(typeof unreadNotificationCount !== 'undefined' ? unreadNotificationCount : 0)
+    : 0;
+  const safePremiumFeatures = Array.isArray(typeof premiumFeatures !== 'undefined' ? premiumFeatures : null)
+    ? premiumFeatures
+    : [];
+  const safeHiddenPosts = Array.isArray(typeof hiddenPosts !== 'undefined' ? hiddenPosts : null)
+    ? hiddenPosts.map((post) => {
+        const safeUsername = String(post?.author_username || '').trim().replace(/^@+/, '') || 'unknown';
+        return {
+          ...post,
+          author_username: safeUsername,
+          author_name: safeUsername
+        };
+      })
+    : [];
+  const safePremiumEligibility = typeof premiumEligibility !== 'undefined' && premiumEligibility
+    ? premiumEligibility
+    : { canAutoActivate: false, needsKyc: false, thresholdReached: false, followersCount: 0, requiredFollowers: 0, reasons: [] };
+  const safePremiumKycRequest = typeof premiumKycRequest !== 'undefined' && premiumKycRequest
+    ? premiumKycRequest
+    : null;
+  const safeEventKycRequest = typeof eventKycRequest !== 'undefined' && eventKycRequest
+    ? eventKycRequest
+    : null;
+  const safeTokenSwapModal = typeof tokenSwapModal !== 'undefined' && tokenSwapModal
+    ? tokenSwapModal
+    : null;
+  const safeTokenPriceUsd = Number.isFinite(Number(typeof tokenPriceUsd !== 'undefined' ? tokenPriceUsd : 0.1))
+    ? Number(typeof tokenPriceUsd !== 'undefined' ? tokenPriceUsd : 0.1)
+    : 0.1;
+  const premiumStatusLabel = currentUser.premium_status === 'active'
+    ? t('settings.premiumActive', 'Premium active')
+    : t('settings.premiumLocked', 'Premium locked');
+  const premiumStatusTone = currentUser.premium_status === 'active' ? 'success' : 'primary';
+  const premiumUnlockMethodLabel = currentUser.premium_status === 'active'
+    ? t('settings.automatic', 'Automatic')
+    : (safePremiumKycRequest && safePremiumKycRequest.status === 'pending'
+      ? t('settings.kycPending', 'KYC pending')
+      : null)
+    || (safePremiumEligibility.needsKyc
+      ? t('settings.kycRequired', 'KYC required')
+      : null)
+    || (safePremiumEligibility.thresholdReached
+      ? t('settings.readyToAutoUnlock', 'Ready to auto-unlock')
+      : t('settings.automatic', 'Automatic'));
+  const premiumThreshold = Number(currentUser.premium_followers_threshold || 1000);
+  const premiumActivatedAtText = currentUser.premium_activated_at
+    ? new Date(currentUser.premium_activated_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+    : t('settings.notYetActive', 'Not yet active');
+  const depositBalance = Number(currentUser.deposit_account_balance || 0).toFixed(2);
+  const withdrawalBalance = Number(currentUser.withdrawal_account_balance || 0).toFixed(2);
+  const bonusBalance = Number(currentUser.bonus_account_balance || 0).toFixed(2);
+  const tokenBalance = Number(currentUser.token_balance || 0).toFixed(4).replace(/\.?0+$/, '');
+  const tokenSwapRateCopy = safeTokenPriceUsd > 0
+    ? `1 token = ${safeTokenPriceUsd.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')} USDT`
+    : 'Token pricing unavailable';
+  const premiumProgressValue = safePremiumProgress;
+  const eventsThreshold = Number(currentUser.events_followers_threshold || 1000);
+  const eventsProgressValue = safeEventsProgress;
+  const eventsStatusLabel = currentUser.events_status === 'active'
+    ? t('settings.eventsUnlocked', 'Events unlocked')
+    : t('settings.eventsLocked', 'Events locked');
+  const messageRequestCount = (typeof messageInbox !== 'undefined' && messageInbox && messageInbox.counts)
+    ? Number(messageInbox.counts.requests || 0)
+    : 0;
+  const selectedLocale = typeof currentLanguage !== 'undefined' ? currentLanguage : 'en';
+%>
+
+<div class="app-wrapper">
+  <div class="main-layout settings-layout">
+    <%- include('partials/leftSidebar') %>
+
+    <main class="feed-column settings-column">
+      <% if (safeSettingsStatus) { %>
+        <div class="alert success"><%= safeSettingsStatus %></div>
+      <% } %>
+      <% if (safeSettingsError) { %>
+        <div class="alert error"><%= safeSettingsError %></div>
+      <% } %>
+
+      <section class="settings-hero-card">
+        <div>
+          <h1 class="settings-hero-title"><%= t('settings.title', 'Settings & privacy') %></h1>
+          <p class="settings-hero-subtitle">
+            <%= t('settings.subtitle', 'Manage your account, privacy shortcuts, notifications, language, and premium access from a single place.') %>
+          </p>
+        </div>
+        <div class="settings-status-row">
+          <span class="settings-status-pill" data-tone="<%= premiumStatusTone %>">
+            <i data-lucide="badge-check"></i>
+            <%= premiumStatusLabel %>
+          </span>
+          <span class="settings-status-pill">
+            <i data-lucide="users"></i>
+            <%= safeFollowersCount %> <%= t('settings.followersSuffix', 'followers') %>
+          </span>
+          <span class="settings-status-pill">
+            <i data-lucide="user-plus"></i>
+            <%= safeFollowingCount %> <%= t('settings.followingSuffix', 'following') %>
+          </span>
+        </div>
+      </section>
+
+      <div class="settings-shell">
+        <aside class="settings-nav-card">
+          <div class="settings-nav-title"><%= t('settings.menu', 'Menu') %></div>
+          <nav class="settings-nav-list">
+            <a href="#account" class="settings-nav-link">
+              <i data-lucide="user"></i>
+              <span><%= t('settings.accountOverview', 'Account overview') %></span>
+            </a>
+            <a href="#privacy" class="settings-nav-link">
+              <i data-lucide="shield"></i>
+              <span><%= t('settings.privacyShortcuts', 'Privacy shortcuts') %></span>
+            </a>
+            <a href="#hidden-posts" class="settings-nav-link">
+              <i data-lucide="eye-off"></i>
+              <span><%= t('settings.hiddenPosts', 'Hidden posts') %></span>
+            </a>
+            <a href="#notifications" class="settings-nav-link">
+              <i data-lucide="bell"></i>
+              <span><%= t('settings.notifications', 'Notifications') %></span>
+            </a>
+            <a href="#language" class="settings-nav-link">
+              <i data-lucide="languages"></i>
+              <span><%= t('settings.language', 'Language') %></span>
+            </a>
+            <a href="#premium" class="settings-nav-link">
+              <i data-lucide="sparkles"></i>
+              <span><%= t('settings.premiumAccess', 'Premium access') %></span>
+            </a>
+            <a href="#billing" class="settings-nav-link">
+              <i data-lucide="wallet"></i>
+              <span><%= t('settings.billing', 'Billing') %></span>
+            </a>
+          </nav>
+        </aside>
+
+        <div class="settings-content">
+          <section class="settings-panel-card" id="account">
+            <div class="settings-panel-header">
+              <div>
+                <h2 class="settings-panel-title"><%= t('settings.accountOverview', 'Account overview') %></h2>
+                <div class="settings-panel-subtitle"><%= t('settings.accountOverviewSubtitle', 'Your profile details and current account activity.') %></div>
+              </div>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.nameLabel', 'Name') %></span>
+              <strong><%= currentUser.first_name %> <%= currentUser.last_name %></strong>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.usernameLabel', 'Username') %></span>
+              <strong>@<%= currentUser.username %></strong>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.emailLabel', 'Email') %></span>
+              <strong><%= currentUser.email %></strong>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.lastSeenLabel', 'Last seen') %></span>
+              <strong><%= currentUser.last_seen_at ? new Date(currentUser.last_seen_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : t('messages.offline', 'Offline') %></strong>
+            </div>
+          </section>
+
+          <section class="settings-panel-card" id="privacy">
+            <div class="settings-panel-header">
+              <div>
+                <h2 class="settings-panel-title"><%= t('settings.privacyShortcuts', 'Privacy shortcuts') %></h2>
+                <div class="settings-panel-subtitle"><%= t('settings.privacyShortcutsSubtitle', 'Quick access to the parts of your profile people usually inspect first.') %></div>
+              </div>
+            </div>
+            <div class="settings-grid">
+              <a class="settings-feature-card" href="/profile">
+                <div class="premium-feature-icon"><i data-lucide="user"></i></div>
+                <div class="premium-feature-title"><%= t('settings.myProfile', 'My profile') %></div>
+                <div class="premium-feature-description"><%= t('settings.myProfileSubtitle', 'Edit your bio, avatar, banner, and profile appearance.') %></div>
+              </a>
+              <a class="settings-feature-card" href="/profile?section=followers">
+                <div class="premium-feature-icon"><i data-lucide="users"></i></div>
+                <div class="premium-feature-title"><%= t('settings.followers', 'Followers') %></div>
+                <div class="premium-feature-description"><%= t('settings.followersSubtitle', 'Review who follows you and manage the people you know.') %></div>
+              </a>
+            </div>
+          </section>
+
+          <section class="settings-panel-card" id="hidden-posts">
+            <div class="settings-panel-header">
+              <div>
+                <h2 class="settings-panel-title"><%= t('settings.hiddenPosts', 'Hidden posts') %></h2>
+                <div class="settings-panel-subtitle"><%= t('settings.hiddenPostsSubtitle', 'Posts hidden from your feed stay here until you decide to restore them.') %></div>
+              </div>
+              <span class="settings-status-pill">
+                <i data-lucide="eye-off"></i>
+                <span data-hidden-post-count><%= safeHiddenPosts.length %></span> <%= t('settings.hiddenCount', 'hidden') %>
+              </span>
+            </div>
+
+            <div class="hidden-posts-list" data-hidden-posts-list>
+              <% if (safeHiddenPosts.length > 0) { %>
+                <% safeHiddenPosts.forEach((post) => { %>
+                  <% const previewImage = post.thumbnail_url || post.image_url || post.image_url_2 || post.image_url_3 || post.image_url_4 || ''; %>
+                  <% const safeAuthorUsername = String(post.author_username || 'unknown').trim().replace(/^@+/, ''); %>
+                  <article class="hidden-post-card" data-hidden-post-card>
+                    <div class="hidden-post-media">
+                      <% if (previewImage) { %>
+                        <img src="<%= previewImage %>" alt="<%= safeAuthorUsername %>">
+                      <% } else { %>
+                        <div class="hidden-post-media-fallback">
+                          <i data-lucide="<%= post.media_type === 'video' ? 'clapperboard' : 'file-text' %>"></i>
+                        </div>
+                      <% } %>
+                    </div>
+                    <div class="hidden-post-body">
+                      <div class="hidden-post-meta">
+                        <div class="hidden-post-author">
+                          <img src="<%= post.author_avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= safeAuthorUsername %>">
+                          <div>
+                            <div class="hidden-post-author-name"><%= safeAuthorUsername %></div>
+                            <div class="hidden-post-author-handle">@<%= safeAuthorUsername %></div>
+                          </div>
+                        </div>
+                        <div class="hidden-post-dates">
+                          <span><%= t('settings.hiddenOn', 'Hidden') %> <%= new Date(post.hidden_at).toLocaleDateString([], { month: 'short', day: 'numeric' }) %></span>
+                          <span><%= t('settings.publishedOn', 'Posted') %> <%= new Date(post.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' }) %></span>
+                        </div>
+                      </div>
+                      <p class="hidden-post-copy"><%= (post.content && post.content.trim()) ? post.content : t('settings.mediaOnlyPost', 'Media-only post') %></p>
+                      <div class="hidden-post-actions">
+                        <a href="/profile/u/<%= encodeURIComponent(safeAuthorUsername) %>" class="hidden-post-link">
+                          <i data-lucide="external-link"></i>
+                          <span><%= t('settings.viewAuthor', 'View author') %></span>
+                        </a>
+                        <button type="button" class="hidden-post-restore-btn" data-hidden-post-action="unhide" data-post-id="<%= post.post_id %>">
+                          <i data-lucide="eye"></i>
+                          <span><%= t('settings.restoreToFeed', 'Restore to feed') %></span>
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                <% }) %>
+              <% } else { %>
+                <div class="hidden-posts-empty" data-hidden-post-empty="1">
+                  <div class="hidden-posts-empty-icon"><i data-lucide="eye"></i></div>
+                  <div class="hidden-posts-empty-title"><%= t('settings.noHiddenPosts', 'No hidden posts yet') %></div>
+                  <div class="hidden-posts-empty-copy"><%= t('settings.noHiddenPostsSubtitle', 'When you hide a post from the feed, it will appear here so you can restore it anytime.') %></div>
+                </div>
+              <% } %>
+            </div>
+          </section>
+
+          <section class="settings-panel-card" id="notifications">
+            <div class="settings-panel-header">
+              <div>
+                <h2 class="settings-panel-title"><%= t('settings.notifications', 'Notifications') %></h2>
+                <div class="settings-panel-subtitle"><%= t('settings.notificationsSubtitle', 'Everything is already real-time here, and the bell badge stays in sync.') %></div>
+              </div>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.unreadNotifications', 'Unread notifications') %></span>
+              <strong><%= safeUnreadNotificationCount %></strong>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.messageRequests', 'Message requests') %></span>
+              <strong><%= messageRequestCount %></strong>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.realtimeSync', 'Realtime sync') %></span>
+              <strong><%= t('settings.enabled', 'Enabled') %></strong>
+            </div>
+          </section>
+
+          <section class="settings-panel-card" id="language">
+            <div class="settings-panel-header">
+              <div>
+                <h2 class="settings-panel-title"><%= t('settings.language', 'Language') %></h2>
+                <div class="settings-panel-subtitle"><%= t('settings.languageSubtitle', "Choose the interface language for the app.") %></div>
+              </div>
+            </div>
+
+            <form class="settings-form" action="/settings/language" method="POST">
+              <div class="settings-form-grid">
+                <div class="settings-field">
+                  <label for="language"><%= t('settings.currentLanguage', 'Current language') %></label>
+                  <select id="language" name="language">
+                    <% safeLanguageOptions.forEach((option) => { %>
+                      <option value="<%= option.code %>" <%= selectedLocale === option.code ? 'selected' : '' %>><%= option.label %></option>
+                    <% }) %>
+                  </select>
+                </div>
+                <div class="settings-field">
+                  <label><%= t('settings.language', 'Language') %></label>
+                  <div class="settings-language-preview"><%= selectedLocale.toUpperCase() %></div>
+                </div>
+              </div>
+
+              <div class="settings-action-row">
+                <div style="font-size: 12px; color: var(--text-muted);">
+                  <%= t('events.languageHint', 'Your selected language is applied across the app.') %>
+                </div>
+                <button type="submit" class="settings-primary-btn">
+                  <i data-lucide="save"></i>
+                  <%= t('settings.saveLanguage', 'Save language') %>
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section class="settings-panel-card" id="events-access">
+            <div class="settings-panel-header">
+              <div>
+                <h2 class="settings-panel-title"><%= t('settings.eventsAccess', 'Events access') %></h2>
+                <div class="settings-panel-subtitle"><%= t('settings.eventsAccessSubtitle', 'Events access can unlock automatically when you reach the required threshold, or by paying the admin fee and completing KYC.') %></div>
+              </div>
+              <span class="settings-status-pill" data-tone="<%= currentUser.events_status === 'active' ? 'success' : 'primary' %>">
+                <i data-lucide="<%= currentUser.events_status === 'active' ? 'check-circle' : 'lock' %>"></i>
+                <%= eventsStatusLabel %>
+              </span>
+            </div>
+
+            <div class="premium-balance-grid" style="margin-bottom: 14px;">
+              <div class="premium-balance-card">
+                <div class="premium-balance-label"><%= t('settings.eventsGoal', 'Followers goal') %></div>
+                <div class="premium-balance-value"><%= eventsThreshold %></div>
+              </div>
+              <div class="premium-balance-card">
+                <div class="premium-balance-label"><%= t('settings.goalProgress', 'Goal progress') %></div>
+                <div class="premium-balance-value"><%= eventsProgressValue %>%</div>
+              </div>
+              <div class="premium-balance-card">
+                <div class="premium-balance-label"><%= t('settings.currentStatus', 'Current status') %></div>
+                <div class="premium-balance-value" style="font-size: 13px; line-height: 1.2;"><%= eventsStatusLabel %></div>
+              </div>
+            </div>
+
+            <div class="settings-progress" style="margin-bottom: 10px;">
+              <div class="settings-progress-bar" style="width: <%= eventsProgressValue %>%;"></div>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+              <%= t('settings.eventsManagedNote', 'This threshold is managed by admins. Event access can also be unlocked by paying the configured fee and passing KYC.') %>
+            </div>
+            <% if (currentUser.events_status !== 'active') { %>
+              <div class="settings-action-row" style="margin-bottom: 14px;">
+                <div style="font-size: 12px; color: var(--text-muted);">
+                  <%= t('settings.eventsPayShortcut', 'Prefer not to wait for the follower threshold? Pay the admin fee and complete KYC to unlock event access now.') %>
+                </div>
+                <form action="/events/unlock" method="POST" style="margin: 0;" data-events-unlock-form data-events-unlock-context="settings" data-events-unlock-fee="<%= Number(eventsUnlockFee || 0).toFixed(2) %>">
+                  <button type="submit" class="settings-primary-btn">
+                    <i data-lucide="credit-card"></i>
+                    <%= t('settings.payAndUnlockEvents', 'Pay and unlock events') %><% if (Number(eventsUnlockFee || 0) > 0) { %> - $<%= Number(eventsUnlockFee || 0).toFixed(2) %><% } %>
+                  </button>
+                </form>
+              </div>
+              <% if (Number(eventsUnlockFee || 0) <= 0) { %>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                  <%= t('settings.eventsFeeNotConfigured', 'The admin has not configured the event unlock fee yet.') %>
+                </div>
+              <% } %>
+            <% } %>
+            <div class="settings-info-row" style="margin-top: 4px;">
+              <span><%= t('settings.managedByAdmin', 'Managed by admin') %></span>
+              <strong><%= t('settings.adminOnly', 'Admin only') %></strong>
+            </div>
+            <% if (safeEventKycRequest) { %>
+              <div class="settings-info-row">
+                <span><%= t('events.kycPaymentStatus', 'Payment status') %></span>
+                <strong><%= safeEventKycRequest.payment_status === 'paid' ? t('events.kycPaymentReceived', 'Payment received, complete KYC') : t('events.kycPending', 'Pending') %></strong>
+              </div>
+              <div class="settings-info-row">
+                <span><%= t('events.kycScore', 'Verification score') %></span>
+                <strong><%= safeEventKycRequest.verification_score ?? '—' %></strong>
+              </div>
+            <% } %>
+          </section>
+
+          <section class="settings-panel-card" id="premium">
+            <div class="settings-panel-header">
+              <div>
+                <h2 class="settings-panel-title"><%= t('settings.premiumAccess', 'Premium access') %></h2>
+                <div class="settings-panel-subtitle"><%= t('settings.premiumAccessSubtitle', 'Unlock premium automatically when you reach the admin-managed follower threshold and complete KYC when prompted.') %></div>
+              </div>
+              <span class="settings-status-pill" data-tone="<%= premiumStatusTone %>">
+                <i data-lucide="<%= currentUser.premium_status === 'active' ? 'check-circle' : 'lock' %>"></i>
+                <%= premiumUnlockMethodLabel %>
+              </span>
+            </div>
+
+            <div class="premium-balance-grid" style="margin-bottom: 14px;">
+              <div class="premium-balance-card">
+                <div class="premium-balance-label"><%= t('settings.premiumFollowersGoal', 'Followers goal') %></div>
+                <div class="premium-balance-value"><%= premiumThreshold %></div>
+              </div>
+              <div class="premium-balance-card">
+                <div class="premium-balance-label"><%= t('settings.goalProgress', 'Goal progress') %></div>
+                <div class="premium-balance-value"><%= premiumProgressValue %>%</div>
+              </div>
+              <div class="premium-balance-card">
+                <div class="premium-balance-label"><%= t('settings.activated', 'Activated') %></div>
+                <div class="premium-balance-value" style="font-size: 13px; line-height: 1.2;"><%= premiumActivatedAtText %></div>
+              </div>
+            </div>
+
+            <div class="settings-progress" style="margin-bottom: 10px;">
+              <div class="settings-progress-bar" style="width: <%= premiumProgressValue %>%;"></div>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+              <%= t('settings.autoUnlockNote', 'Automatic activation triggers when your follower count reaches the threshold managed by admins, and KYC appears when it is needed.') %>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.activationMode', 'Activation mode') %></span>
+              <strong><%= t('settings.automatic', 'Automatic') %></strong>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.kycStatus', 'KYC status') %></span>
+              <strong>
+                <%= currentUser.premium_status === 'active'
+                  ? t('settings.premiumActive', 'Premium active')
+                  : (safePremiumKycRequest && safePremiumKycRequest.status === 'pending'
+                    ? t('settings.kycPending', 'KYC pending')
+                    : (safePremiumEligibility.needsKyc ? t('settings.kycRequired', 'KYC required') : t('settings.readyToAutoUnlock', 'Ready to auto-unlock'))) %>
+              </strong>
+            </div>
+            <% if (currentUser.premium_status !== 'active' && safePremiumEligibility.needsKyc && safePremiumKycRequest && safePremiumKycRequest.status === 'pending') { %>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+                  <%= t('settings.kycPendingNote', 'Your KYC request is being reviewed by the administration team.') %>
+                </div>
+            <% } %>
+            <% if (currentUser.premium_status !== 'active' && safePremiumEligibility.needsKyc && (!safePremiumKycRequest || safePremiumKycRequest.status !== 'pending')) { %>
+              <form class="settings-form" action="/settings/premium/kyc" method="POST">
+                <div class="settings-action-row">
+                  <div style="font-size: 12px; color: var(--text-muted);">
+                    <%= t('settings.kycButtonHint', 'Your account has reached the threshold. Start KYC so we can verify you.') %>
+                  </div>
+                  <button type="submit" class="settings-primary-btn">
+                    <i data-lucide="badge-check"></i>
+                    <%= t('settings.startKyc', 'Start KYC') %>
+                  </button>
+                </div>
+              </form>
+            <% } %>
+          </section>
+
+          <section class="settings-panel-card" id="billing">
+            <div class="settings-panel-header">
+              <div>
+                <h2 class="settings-panel-title"><%= t('settings.billing', 'Billing') %></h2>
+                <div class="settings-panel-subtitle"><%= t('settings.billingSubtitle', 'Premium is automatic. Billing only remains for admin-managed fees where enabled.') %></div>
+              </div>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.depositBalance', 'Deposit balance') %></span>
+              <strong id="settings-deposit-balance">$<%= depositBalance %></strong>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.withdrawalBalance', 'Withdrawal balance') %></span>
+              <strong id="settings-withdrawal-balance">$<%= withdrawalBalance %></strong>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.bonusBalance', 'Bonus balance') %></span>
+              <strong id="settings-bonus-balance">$<%= bonusBalance %></strong>
+            </div>
+            <div class="settings-info-row">
+              <span><%= t('settings.tokenBalance', 'Token balance') %></span>
+              <strong id="settings-token-balance"><%= tokenBalance %></strong>
+            </div>
+            <div style="margin-top: 18px; padding: 16px; border: 1px solid var(--border-color); border-radius: 16px; background: var(--bg-hover);">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
+                <div>
+                  <div style="font-size: 15px; font-weight: 700; color: var(--text-primary);"><%= t('settings.swapDepositToTokens', 'Swap deposit to tokens') %></div>
+                  <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;"><%= t('settings.swapDepositToTokensSubtitle', 'Move money from your deposit account into your token balance using the admin-defined token price.') %></div>
+                </div>
+                <div style="padding: 8px 12px; border-radius: 999px; background: rgba(24, 119, 242, 0.12); color: var(--primary); font-size: 12px; font-weight: 700;">
+                  <%= tokenSwapRateCopy %>
+                </div>
+              </div>
+              <form class="settings-form" action="/settings/token-swap" method="POST" style="margin-top: 0;">
+                <div class="settings-form-grid">
+                  <div class="settings-field">
+                    <label for="depositSwapAmount"><%= t('settings.swapAmountUsd', 'Deposit amount ($)') %></label>
+                    <input id="depositSwapAmount" type="number" name="deposit_amount" min="0.01" step="0.01" placeholder="10.00" required>
+                  </div>
+                  <div class="settings-field">
+                    <label><%= t('settings.estimatedTokens', 'Estimated tokens') %></label>
+                    <div class="settings-language-preview" id="tokenSwapEstimate">0</div>
+                  </div>
+                </div>
+                <div class="settings-action-row">
+                  <div class="field-help-text" style="margin-top: 0;">
+                    <%= t('settings.swapHelp', 'Your deposit balance will decrease and your token balance will increase immediately after confirmation.') %>
+                  </div>
+                  <button type="submit" class="settings-primary-btn">
+                    <i data-lucide="repeat"></i>
+                    <%= t('settings.convertToTokens', 'Convert to tokens') %>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section class="settings-panel-card">
+            <div class="settings-panel-header">
+              <div>
+                <h2 class="settings-panel-title"><%= t('settings.premiumBenefits', 'Premium benefits') %></h2>
+                <div class="settings-panel-subtitle"><%= t('settings.premiumBenefitsSubtitle', 'What you unlock once premium goes live.') %></div>
+              </div>
+            </div>
+            <div class="premium-feature-grid">
+              <% safePremiumFeatures.forEach((feature) => { %>
+                <div class="premium-feature-card">
+                  <div class="premium-feature-icon"><i data-lucide="<%= feature.icon %>"></i></div>
+                  <div class="premium-feature-title"><%= t(feature.titleKey || '', feature.title) %></div>
+                  <div class="premium-feature-description"><%= t(feature.descriptionKey || '', feature.description) %></div>
+                </div>
+              <% }) %>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="chat-boxes-container" id="chatBoxesContainer"></div>
+
+<div class="modal-overlay" id="eventsUnlockModal" style="display: none; z-index: 3200; backdrop-filter: blur(10px);">
+  <div class="modal-content" style="max-width: 420px; padding: 24px; background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-lg); border-radius: 16px;">
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px;">
+      <div>
+        <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;"><%= t('events.unlockModalEyebrow', 'Paid access') %></div>
+        <h3 id="eventsUnlockModalTitle" style="margin: 0; color: var(--text-primary); font-size: 22px; font-weight: 700;"><%= t('events.unlockModalTitle', 'Pay and start KYC') %></h3>
+      </div>
+      <button type="button" id="closeEventsUnlockModal" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 4px;">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <p id="eventsUnlockModalText" style="margin: 0 0 18px; color: var(--text-secondary); font-size: 14px; line-height: 1.55;">
+      <%= t('events.unlockModalBody', 'You will pay the admin fee, then complete the KYC verification to unlock event creation. Refused requests are not refundable.') %>
+    </p>
+
+    <div id="eventsUnlockModalStatus" style="display: none; margin-bottom: 14px; font-size: 13px; line-height: 1.45; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-secondary);"></div>
+
+    <div style="display: grid; gap: 10px; margin-bottom: 18px;">
+      <div class="settings-info-row" style="margin: 0;">
+        <span><%= t('events.unlockModalFee', 'Fee') %></span>
+        <strong id="eventsUnlockModalFee">$<%= Number(eventsUnlockFee || 0).toFixed(2) %></strong>
+      </div>
+      <div class="settings-info-row" style="margin: 0;">
+        <span><%= t('events.unlockModalNextStep', 'Next step') %></span>
+        <strong><%= t('events.unlockModalKyc', 'KYC review') %></strong>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 12px;">
+      <button type="button" id="cancelEventsUnlockModal" class="settings-secondary-btn" style="flex: 1;">
+        <%= t('events.unlockModalCancel', 'Cancel') %>
+      </button>
+      <button type="button" id="confirmEventsUnlockModal" class="settings-primary-btn" style="flex: 1;">
+        <i data-lucide="credit-card"></i>
+        <span><%= t('events.unlockModalConfirm', 'Pay & start KYC') %></span>
+      </button>
+    </div>
+    <% if (Number(eventsUnlockFee || 0) <= 0) { %>
+      <div style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">
+        <%= t('events.feeNotConfigured', 'The admin has not configured the event unlock fee yet.') %>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<div class="modal-overlay" id="tokenSwapResultModal" style="display: none; z-index: 3200; backdrop-filter: blur(10px);">
+  <div class="modal-content" style="max-width: 430px; padding: 24px; background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-lg); border-radius: 16px;">
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px;">
+      <div>
+        <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;">
+          <%= safeTokenSwapModal && safeTokenSwapModal.tone === 'success' ? t('settings.tokenSwapSuccessEyebrow', 'Conversion complete') : t('settings.tokenSwapErrorEyebrow', 'Conversion issue') %>
+        </div>
+        <h3 style="margin: 0; color: var(--text-primary); font-size: 22px; font-weight: 700;">
+          <%= safeTokenSwapModal && safeTokenSwapModal.tone === 'success' ? t('settings.tokenSwapSuccessTitle', 'Tokens added successfully') : t('settings.tokenSwapErrorTitle', 'Token conversion failed') %>
+        </h3>
+      </div>
+      <button type="button" id="closeTokenSwapResultModal" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 4px;">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <% if (safeTokenSwapModal && safeTokenSwapModal.tone === 'success') { %>
+      <p style="margin: 0 0 18px; color: var(--text-secondary); font-size: 14px; line-height: 1.55;">
+        <%= t('settings.tokenSwapSuccessBody', 'Your deposit balance was converted and your token balance has been updated.') %>
+      </p>
+      <div style="display: grid; gap: 10px; margin-bottom: 18px;">
+        <div class="settings-info-row" style="margin: 0;">
+          <span><%= t('settings.swapAmountUsd', 'Deposit amount ($)') %></span>
+          <strong>$<%= Number(safeTokenSwapModal.amount || 0).toFixed(2) %></strong>
+        </div>
+        <div class="settings-info-row" style="margin: 0;">
+          <span><%= t('settings.tokensReceived', 'Tokens received') %></span>
+          <strong><%= Number(safeTokenSwapModal.tokens || 0).toFixed(4).replace(/\.?0+$/, '') %></strong>
+        </div>
+      </div>
+    <% } else { %>
+      <p style="margin: 0 0 18px; color: var(--text-secondary); font-size: 14px; line-height: 1.55;">
+        <%= (safeTokenSwapModal && safeTokenSwapModal.message) ? safeTokenSwapModal.message : t('settings.tokenSwapErrorBody', 'We could not complete the token conversion right now.') %>
+      </p>
+    <% } %>
+
+    <button type="button" id="confirmTokenSwapResultModal" class="settings-primary-btn" style="width: 100%; justify-content: center;">
+      <i data-lucide="<%= safeTokenSwapModal && safeTokenSwapModal.tone === 'success' ? 'check-circle' : 'alert-triangle' %>"></i>
+      <span><%= t('settings.closeModal', 'Close') %></span>
+    </button>
+  </div>
+</div>
+
+<%- include('partials/mobileNav') %>
+
+<div id="appToast" style="position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--text-primary); color: var(--bg-card); padding: 12px 24px; border-radius: var(--border-radius-pill); font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg); z-index: 2000; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease; opacity: 0; pointer-events: none; border: 1px solid var(--border-color);">
+  <%= t('settings.actionSuccessful', 'Action successful') %>
+</div>
+
+<script>
+  window.currentUserId = <%= currentUser.id %>;
+  window.currentUserAvatar = "<%= currentUser.avatar %>";
+  window.currentLocale = "<%= selectedLocale %>";
+  window.tokenPriceUsd = <%= Number(safeTokenPriceUsd || 0) %>;
+  window.tokenSwapModalTone = <%- JSON.stringify(safeTokenSwapModal ? safeTokenSwapModal.tone : '') %>;
+</script>
+<script src="/js/client.js?v=200"></script>
+<script>
+  (() => {
+    const amountInput = document.getElementById('depositSwapAmount');
+    const estimateNode = document.getElementById('tokenSwapEstimate');
+    const tokenPrice = Number(window.tokenPriceUsd || 0);
+
+    if (!amountInput || !estimateNode || !Number.isFinite(tokenPrice) || tokenPrice <= 0) return;
+
+    const updateEstimate = () => {
+      const amount = Number.parseFloat(amountInput.value || '0');
+      if (!Number.isFinite(amount) || amount <= 0) {
+        estimateNode.textContent = '0';
+        return;
+      }
+
+      const estimatedTokens = Math.round((amount / tokenPrice) * 10000) / 10000;
+      estimateNode.textContent = estimatedTokens.toFixed(4).replace(/\.?0+$/, '');
+    };
+
+    amountInput.addEventListener('input', updateEstimate);
+    updateEstimate();
+  })();
+
+  (() => {
+    const modal = document.getElementById('tokenSwapResultModal');
+    const closeBtn = document.getElementById('closeTokenSwapResultModal');
+    const confirmBtn = document.getElementById('confirmTokenSwapResultModal');
+    const hasModalPayload = Boolean(window.tokenSwapModalTone);
+
+    if (!modal || !hasModalPayload) return;
+
+    const closeModal = () => {
+      modal.style.display = 'none';
+      document.body.style.overflow = '';
+      try {
+        const url = new URL(window.location.href);
+        ['token_swap', 'swap_amount', 'swap_tokens', 'swap_message'].forEach((key) => url.searchParams.delete(key));
+        window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+      } catch (error) {
+        console.warn('Unable to cleanup token swap URL params:', error);
+      }
+    };
+
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    closeBtn?.addEventListener('click', closeModal);
+    confirmBtn?.addEventListener('click', closeModal);
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) {
+        closeModal();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && modal.style.display === 'flex') {
+        closeModal();
+      }
+    });
+  })();
+</script>
+</body>
+</html>

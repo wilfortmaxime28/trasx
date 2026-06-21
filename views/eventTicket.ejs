@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="<%= typeof locale !== 'undefined' ? locale : 'en' %>">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= ticket.event_title %> <%= tText("- Ticket") %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css?v=13">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 34%),
+        radial-gradient(circle at bottom right, rgba(124, 58, 237, 0.10), transparent 32%),
+        var(--bg-body);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .ticket-shell {
+      width: min(100%, 860px);
+      border: 1px solid var(--border-color);
+      border-radius: 22px;
+      overflow: hidden;
+      background: var(--bg-card);
+      box-shadow: var(--shadow-xl);
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+    }
+    .ticket-hero {
+      padding: 28px;
+      background: linear-gradient(135deg, #1d4ed8, #7c3aed);
+      color: white;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 18px;
+      position: relative;
+      min-height: 420px;
+    }
+    .ticket-hero::after {
+      content: '';
+      position: absolute;
+      inset: 18px;
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 18px;
+      pointer-events: none;
+    }
+    .ticket-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      opacity: 0.95;
+    }
+    .ticket-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 36px;
+      font-weight: 800;
+      margin: 0;
+      line-height: 1.05;
+    }
+    .ticket-subtitle {
+      margin: 10px 0 0;
+      max-width: 46ch;
+      font-size: 14px;
+      line-height: 1.6;
+      opacity: 0.92;
+    }
+    .ticket-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.18);
+      font-size: 12px;
+      font-weight: 700;
+      width: fit-content;
+    }
+    .ticket-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      position: relative;
+      z-index: 1;
+    }
+    .ticket-meta {
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(10px);
+    }
+    .ticket-meta span {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      opacity: 0.78;
+      margin-bottom: 5px;
+    }
+    .ticket-meta strong {
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .ticket-body {
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .ticket-code-box {
+      padding: 18px;
+      border-radius: 18px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+    }
+    .ticket-code-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .ticket-code-value {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text-primary);
+      word-break: break-all;
+    }
+    .ticket-preview {
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      background: var(--bg-input);
+      min-height: 180px;
+      display: grid;
+      place-items: center;
+    }
+    .ticket-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #ffffff;
+    }
+    .ticket-preview-empty {
+      padding: 20px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+    .ticket-download-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .ticket-download-btn {
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 12px;
+      background: var(--primary);
+      color: white;
+      text-decoration: none;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ticket-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .ticket-link {
+      color: var(--primary);
+      font-weight: 700;
+      text-decoration: none;
+    }
+    @media (max-width: 860px) {
+      .ticket-shell {
+        grid-template-columns: 1fr;
+      }
+      .ticket-hero {
+        min-height: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="ticket-shell">
+    <section class="ticket-hero">
+      <div style="position: relative; z-index: 1;">
+        <div class="ticket-brand"><i data-lucide="ticket"></i> <%= t('events.ticketBrand', 'TrasX Ticket') %></div>
+        <h1 class="ticket-title"><%= ticket.event_title %></h1>
+        <p class="ticket-subtitle"><%= ticket.event_description || t('events.ticketReady', 'Your personalized ticket is ready for this event.') %></p>
+      </div>
+      <div class="ticket-meta-grid">
+        <div class="ticket-meta">
+          <span><%= t('events.ticketHolder', 'Holder') %></span>
+          <strong><%= ticket.holder_name %></strong>
+        </div>
+        <div class="ticket-meta">
+          <span><%= t('events.ticketType', 'Type') %></span>
+          <strong><%= ticket.ticket_type === 'paid' ? t('events.paid', 'Paid') : t('events.free', 'Free') %></strong>
+        </div>
+        <div class="ticket-meta">
+          <span><%= t('events.ticketDate', 'Date') %></span>
+          <strong><%= ticket.starts_at ? new Date(ticket.starts_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : t('events.tba', 'TBA') %></strong>
+        </div>
+        <div class="ticket-meta">
+          <span><%= t('events.ticketLocation', 'Location') %></span>
+          <strong><%= ticket.location_name || ticket.location_address || t('events.online', 'Online') %></strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="ticket-body">
+      <div class="ticket-code-box">
+        <div class="ticket-code-label"><%= t('events.ticketCode', 'Ticket code') %></div>
+        <div class="ticket-code-value"><%= ticket.ticket_code %></div>
+      </div>
+
+      <div class="ticket-preview">
+        <% if (ticket.ticket_asset_url) { %>
+          <% if (String(ticket.ticket_asset_type || '').startsWith('image/')) { %>
+            <img src="<%= ticket.ticket_asset_url %>" alt="<%= tText("Ticket preview") %>">
+          <% } else { %>
+            <div class="ticket-preview-empty">
+              <i data-lucide="file-image" style="width: 28px; height: 28px; margin-bottom: 8px;"></i>
+              <div><%= t('events.uploadedTicketFile', 'Uploaded ticket file') %></div>
+              <div style="font-size: 12px; margin-top: 6px;"><%= ticket.ticket_asset_name %></div>
+            </div>
+          <% } %>
+        <% } else { %>
+          <div class="ticket-preview-empty">
+            <i data-lucide="qr-code" style="width: 28px; height: 28px; margin-bottom: 8px;"></i>
+            <div><%= t('events.platformGeneratedTicket', 'Platform generated ticket') %></div>
+            <div style="font-size: 12px; margin-top: 6px;"><%= t('events.ticketUniqueFor', 'Unique and personalized for') %> <%= ticket.holder_name %></div>
+          </div>
+        <% } %>
+      </div>
+
+      <div class="ticket-download-actions">
+        <% if (ticketDownloadUrl) { %>
+          <a class="ticket-download-btn" href="<%= ticketDownloadUrl %>" download>
+            <i data-lucide="download"></i>
+            <span><%= t('events.ticketDownload', 'Download ticket') %></span>
+          </a>
+        <% } %>
+        <a class="ticket-link" href="/events"><%= t('events.backToEvents', 'Back to Events') %></a>
+      </div>
+
+      <div class="ticket-footer">
+        <div>
+          <div style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700;"><%= t('events.organizer', 'Organizer') %></div>
+          <div style="font-weight: 700; color: var(--text-primary);"><%= ticket.organizer_name %></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>lucide.createIcons();</script>
+</body>
+</html>

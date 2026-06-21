@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="<%= typeof locale !== 'undefined' ? locale : 'en' %>" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title><%= tText("TrasX - Verify Email") %></title>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background-color: var(--bg-body);
+      margin: 0;
+    }
+    .auth-container {
+      background: var(--bg-card);
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: var(--shadow-md);
+      width: 100%;
+      max-width: 400px;
+      border: 1px solid var(--border-color);
+    }
+    .auth-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .auth-header h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 28px;
+      color: var(--text-primary);
+      margin: 0 0 8px 0;
+    }
+    .auth-header p {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin: 0;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+    .form-group input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: var(--bg-body);
+      color: var(--text-primary);
+      font-size: 14px;
+      box-sizing: border-box;
+      text-align: center;
+      letter-spacing: 2px;
+      font-weight: 600;
+    }
+    .btn-submit {
+      width: 100%;
+      padding: 12px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: background 0.2s;
+    }
+    .btn-submit:hover {
+      background: var(--primary-hover);
+    }
+    .error-msg {
+      background: rgba(255, 59, 48, 0.1);
+      color: #ff3b30;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(255, 59, 48, 0.2);
+    }
+    .info-msg {
+      background: rgba(24, 119, 242, 0.08);
+      color: #1d4ed8;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(29, 78, 216, 0.18);
+      line-height: 1.5;
+    }
+    .info-msg strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 18px;
+      letter-spacing: 3px;
+      color: var(--text-primary);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="auth-container">
+    <div class="auth-header">
+      <h1><%= tText("Verification") %></h1>
+      <p><%= tText("Enter the 6-digit code sent to your email.") %></p>
+    </div>
+
+    <% if (error) { %>
+      <div class="error-msg"><%= error %></div>
+    <% } %>
+
+    <% if (deliveryFallback) { %>
+      <div class="info-msg">
+        <%= tText("Le service email est temporairement indisponible. Utilisez ce code de verification pour activer le compte") %> <%= deliveryFallback.email %>.
+        <strong><%= deliveryFallback.code %></strong>
+      </div>
+    <% } %>
+
+    <form action="/auth/verify" method="POST">
+      <input type="hidden" name="userId" value="<%= userId %>">
+      
+      <div class="form-group">
+        <label><%= tText("Verification Code") %></label>
+        <input type="text" name="code" required placeholder="123456" maxlength="6" pattern="\d{6}">
+      </div>
+
+      <button type="submit" class="btn-submit"><%= tText("Verify") %></button>
+    </form>
+  </div>
+
+</body>
+</html>

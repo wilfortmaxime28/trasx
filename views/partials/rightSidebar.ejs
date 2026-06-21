@@ -1,0 +1,414 @@
+<%
+  const translate = typeof t === 'function' ? t : ((key, fallback = '') => fallback || key);
+  const inbox = (typeof messageInbox !== 'undefined' && messageInbox)
+    ? messageInbox
+    : { sections: { general: [], requests: [] }, counts: { general: 0, requests: 0 } };
+  const sidebarDashboard = (typeof dashboard !== 'undefined' && dashboard) ? dashboard : null;
+  const sidebarHostedEvents = sidebarDashboard?.hostedEvents || [];
+  const sidebarUpcomingEvents = sidebarDashboard?.upcomingEvents || [];
+  const sidebarEventsSource = sidebarHostedEvents.length > 0 ? sidebarHostedEvents : sidebarUpcomingEvents;
+  const sidebarEventTimestamp = (event) => {
+    const time = new Date(event?.created_at || 0).getTime();
+    return Number.isFinite(time) ? time : 0;
+  };
+  const sidebarEvents = [...sidebarEventsSource]
+    .sort((a, b) => sidebarEventTimestamp(b) - sidebarEventTimestamp(a))
+    .slice(0, 4);
+  const formatSidebarEventPrice = (event) => {
+    if (!event || !event.is_paid) {
+      return translate('events.free', 'Free');
+    }
+    const price = Number(event.ticket_price || 0);
+    return `$${Number.isFinite(price) ? price.toFixed(2) : '0.00'}`;
+  };
+  const composeSections = inbox.sections || { general: [], requests: [] };
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[char]);
+  const renderComposeItem = (contact) => {
+    const relationLabel = contact.is_mutual
+      ? translate('messages.friends', 'Friends')
+      : (contact.is_followed_by && !contact.is_following)
+        ? translate('messages.followBack', 'Follow back')
+        : contact.is_following
+          ? translate('messages.following', 'Following')
+          : translate('messages.request', 'Message request');
+    const searchText = String([
+      contact.name || '',
+      contact.username || '',
+      contact.preview || '',
+      contact.presence_text || '',
+      relationLabel
+    ].join(' ')).toLowerCase();
+
+    return `
+      <button
+        type="button"
+        class="compose-contact-item"
+        data-compose-contact-id="${escapeHtml(contact.id)}"
+        data-compose-contact-name="${escapeHtml(contact.name)}"
+        data-compose-contact-avatar="${escapeHtml(contact.avatar)}"
+        data-compose-contact-online="${contact.is_online ? '1' : '0'}"
+        data-compose-contact-presence="${escapeHtml(contact.presence_text || '')}"
+        data-compose-contact-following="${contact.is_following ? '1' : '0'}"
+        data-compose-contact-followed-by="${contact.is_followed_by ? '1' : '0'}"
+        data-compose-contact-mutual="${contact.is_mutual ? '1' : '0'}"
+        data-search-text="${escapeHtml(searchText)}"
+      >
+        <div class="compose-contact-main">
+          <div class="msg-avatar-wrapper ${contact.is_online ? 'online' : ''}">
+            <div class="avatar" style="width: 40px; height: 40px;">
+              <img src="${escapeHtml(contact.avatar)}" alt="${escapeHtml(contact.name)}">
+            </div>
+            <span class="status-dot"></span>
+          </div>
+          <div class="compose-contact-copy">
+            <div class="compose-contact-topline">
+              <h4 class="compose-contact-name">${escapeHtml(contact.name)}</h4>
+              <span class="compose-contact-chip">${escapeHtml(relationLabel)}</span>
+            </div>
+            <div class="compose-contact-username">@${escapeHtml(contact.username)}</div>
+            <div class="compose-contact-preview">${escapeHtml(contact.preview || translate('messages.startConversation', 'Start a conversation...'))}</div>
+          </div>
+        </div>
+        <div class="compose-contact-meta">
+          <div class="compose-contact-presence">${escapeHtml(contact.presence_text || translate('messages.offline', 'Offline'))}</div>
+          ${contact.time_text ? `<div class="compose-contact-time">${escapeHtml(contact.time_text)}</div>` : ''}
+        </div>
+      </button>
+    `;
+  };
+  const renderMessageItem = (contact) => {
+%>
+  <div class="message-item <%= contact.is_online ? 'online' : '' %>" data-contact-id="<%= contact.id %>" data-message-category="<%= contact.category %>" data-message-request-status="<%= contact.request_status || '' %>" data-can-manage-request="<%= contact.can_manage_request ? '1' : '0' %>" data-follow-target-id="<%= contact.id %>" data-following="<%= contact.is_following ? '1' : '0' %>" data-followed-by="<%= contact.is_followed_by ? '1' : '0' %>" data-mutual="<%= contact.is_mutual ? '1' : '0' %>" data-is-online="<%= contact.is_online ? '1' : '0' %>" data-last-seen-text="<%= contact.presence_text || '' %>" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
+    <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
+      <div class="msg-avatar-wrapper <%= contact.is_online ? 'online' : '' %>">
+        <div class="avatar" style="width: 36px; height: 36px;">
+          <img src="<%= contact.avatar %>" alt="<%= contact.name %>">
+        </div>
+        <span class="status-dot"></span>
+      </div>
+      <div class="message-details" style="flex: 1; min-width: 0;">
+        <h4 class="contact-name" style="margin: 0; font-size: 13px; font-weight: 600;"><%= contact.name %></h4>
+        <p class="message-preview" id="chat-preview-<%= contact.id %>" style="margin: 2px 0 0 0; font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><%= contact.preview %></p>
+        <p class="message-presence" id="chat-presence-<%= contact.id %>" style="margin: 2px 0 0 0; font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><%= contact.presence_text %></p>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+      <% if (contact.time_text) { %>
+        <span class="chat-time" id="chat-time-<%= contact.id %>" style="font-size: 10px; color: var(--text-muted); white-space: nowrap;"><%= contact.time_text %></span>
+      <% } else { %>
+        <span class="chat-time" id="chat-time-<%= contact.id %>" style="font-size: 10px; color: var(--text-muted); white-space: nowrap;"></span>
+      <% } %>
+      <button type="button" class="follow-toggle-btn" data-follow-target-id="<%= contact.id %>" data-following="<%= contact.is_following ? '1' : '0' %>" title="<%= contact.is_following ? 'Unfollow' : 'Follow' %>" aria-label="<%= contact.is_following ? 'Unfollow' : 'Follow' %>">
+        <i data-lucide="<%= contact.is_following ? 'user-check' : 'user-plus' %>" style="width: 14px; height: 14px;"></i>
+      </button>
+    </div>
+    <% if (contact.can_manage_request) { %>
+      <div class="message-request-actions">
+        <button type="button" class="message-request-action accept" data-message-request-action="accept" data-requester-id="<%= contact.id %>">Accepter</button>
+        <button type="button" class="message-request-action decline" data-message-request-action="decline" data-requester-id="<%= contact.id %>">Refuser</button>
+      </div>
+    <% } %>
+  </div>
+<% }; %>
+
+      <!-- Right Sidebar -->
+      <aside class="sidebar right-sidebar" id="rightSidebar">
+        <!-- Sponsored Ads Card (Facebook Style) -->
+        <div class="sidebar-card ads-card" style="margin-bottom: 24px;">
+          <header class="card-header">
+            <h3 class="card-title" style="display: flex; align-items: center; gap: 8px;">
+              <i data-lucide="megaphone" style="width: 16px; height: 16px; color: var(--primary);"></i>
+              <%= translate('ads.sponsored', 'Sponsored') %>
+            </h3>
+            <button class="card-action-icon-btn" aria-label="<%= translate('ads.createAd', 'Create Ad') %>" id="openAdModalBtn" type="button" title="<%= translate('ads.createAd', 'Create Ad') %>">
+              <i data-lucide="plus-circle"></i>
+            </button>
+          </header>
+          
+          <div class="ads-slideshow-container" style="position: relative; height: 215px; width: 100%; overflow: hidden;">
+            <% if (typeof activeAds !== 'undefined' && activeAds.length > 0) { %>
+              <% activeAds.forEach((ad, index) => { %>
+                <a href="<%= ad.ad_url %>" target="_blank" rel="noopener noreferrer" class="ad-item-link ad-slideshow-item <%= index === 0 ? 'active' : '' %>" style="position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: inherit; transition: opacity 0.6s ease-in-out, transform 0.6s ease-in-out; opacity: <%= index === 0 ? 1 : 0 %>; pointer-events: <%= index === 0 ? 'auto' : 'none' %>; z-index: <%= index === 0 ? 2 : 1 %>;">
+                  <div class="ad-banner-wrapper" style="width: 100%; height: 130px; border-radius: 10px; overflow: hidden; background: #000; position: relative;">
+                    <img src="<%= ad.image_url %>" alt="<%= ad.title %>" style="width: 100%; height: 100%; object-fit: cover;">
+                  </div>
+                  <div style="min-width: 0;">
+                    <h4 class="ad-title" style="margin: 0; font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><%= ad.title %></h4>
+                    <p class="ad-description" style="margin: 2px 0 0 0; font-size: 11px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35;"><%= ad.description %></p>
+                    <span class="ad-link-text" style="display: inline-block; margin-top: 4px; font-size: 10px; color: var(--primary); font-weight: 600;"><%= ad.ad_url.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0] %></span>
+                  </div>
+                </a>
+              <% }) %>
+            <% } else { %>
+              <!-- Premium Self-Serve Ad Placeholder -->
+              <a href="#" id="adPlaceholderBtn" class="ad-item-link ad-slideshow-item active" style="position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: inherit; transition: opacity 0.6s ease-in-out, transform 0.6s ease-in-out; opacity: 1; pointer-events: auto; z-index: 2;">
+                <div class="ad-banner-wrapper" style="width: 100%; height: 130px; border-radius: 10px; overflow: hidden; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); display: flex; align-items: center; justify-content: center; color: white;">
+                  <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+                    <i data-lucide="megaphone" style="width: 28px; height: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));"></i>
+                    <span style="font-size: 11px; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,0.2);"><%= translate('ads.promoteTitle', 'Promote your brand here') %></span>
+                  </div>
+                </div>
+                <div>
+                  <h4 class="ad-title" style="margin: 0; font-size: 13px; font-weight: 700; color: var(--text-primary);"><%= translate('ads.placeholderTitle', 'Create your self-serve Ad') %></h4>
+                  <p class="ad-description" style="margin: 2px 0 0 0; font-size: 11px; color: var(--text-secondary); line-height: 1.35;"><%= translate('ads.placeholderDesc', 'Get visibility and direct traffic to your profile or website. Only $5.00 for 24 hours.') %></p>
+                </div>
+              </a>
+            <% } %>
+          </div>
+        </div>
+
+        <!-- Messages Card -->
+        <div class="sidebar-card messages-card">
+          <header class="card-header">
+            <h3 class="card-title"><%= translate('messages.title', 'Messages') %></h3>
+            <button class="card-action-icon-btn" aria-label="<%= translate('messages.compose', 'Compose Message') %>" id="composeMessageBtn" type="button">
+              <i data-lucide="edit"></i>
+            </button>
+          </header>
+          
+          <div class="messages-search-wrapper">
+            <i data-lucide="search" class="search-icon"></i>
+            <input type="text" placeholder="<%= translate('messages.search', 'Search') %>" aria-label="<%= tText("Search messages") %>">
+            <i data-lucide="sliders-horizontal" class="filter-icon" title="<%= translate('messages.filterMessages', 'Filter messages') %>"></i>
+          </div>
+
+          <!-- Messages Tabs -->
+          <div class="messages-tabs">
+            <button class="tab-btn active" data-tab="general"><%= translate('messages.general', 'General') %><span class="tab-count">(<%= inbox.counts.general %>)</span></button>
+            <button class="tab-btn" data-tab="requests">
+              <%= translate('messages.requests', 'Requests') %><span class="tab-count">(<%= inbox.counts.requests %>)</span>
+            </button>
+          </div>
+
+          <div class="messages-list active" data-message-tab-list="general">
+            <% inbox.sections.general.forEach(contact => { %>
+              <%- renderMessageItem(contact) %>
+            <% }) %>
+          </div>
+
+          <div class="messages-list" data-message-tab-list="requests">
+            <% inbox.sections.requests.forEach(contact => { %>
+              <%- renderMessageItem(contact) %>
+            <% }) %>
+          </div>
+        </div>
+
+        <div class="modal-overlay compose-message-modal" id="composeMessageModal" aria-hidden="true">
+          <div class="modal-content compose-message-modal-content" role="dialog" aria-modal="true" aria-labelledby="composeMessageModalTitle">
+            <button class="modal-close" type="button" data-compose-close aria-label="<%= tText("Close compose message modal") %>">
+              <i data-lucide="x"></i>
+            </button>
+            <div class="compose-message-header">
+              <div>
+                <h2 class="modal-title" id="composeMessageModalTitle"><i data-lucide="edit-3"></i> <%= translate('messages.compose', 'Compose Message') %></h2>
+                <p class="compose-message-subtitle"><%= translate('messages.chooseSomeone', 'Choose someone to start a conversation.') %></p>
+              </div>
+            </div>
+            <div class="messages-search-wrapper compose-message-search">
+              <i data-lucide="search" class="search-icon"></i>
+              <input type="text" id="composeMessageSearch" placeholder="<%= translate('messages.searchPeople', 'Search people') %>" aria-label="<%= tText("Search people to message") %>">
+              <i data-lucide="sliders-horizontal" class="filter-icon" title="<%= translate('messages.filterContacts', 'Filter contacts') %>"></i>
+            </div>
+            <div class="compose-message-groups" id="composeMessageGroups">
+              <% if (composeSections.general.length > 0) { %>
+                <section class="compose-message-section" data-compose-section="general">
+                  <div class="compose-message-section-title"><%= translate('messages.connections', 'Connections') %></div>
+                  <div class="compose-message-section-list">
+                    <% composeSections.general.forEach(contact => { %>
+                      <%- renderComposeItem(contact) %>
+                    <% }) %>
+                  </div>
+                </section>
+              <% } %>
+
+              <% if (composeSections.requests.length > 0) { %>
+                <section class="compose-message-section" data-compose-section="requests">
+                  <div class="compose-message-section-title"><%= translate('messages.requests', 'Requests') %></div>
+                  <div class="compose-message-section-list">
+                    <% composeSections.requests.forEach(contact => { %>
+                      <%- renderComposeItem(contact) %>
+                    <% }) %>
+                  </div>
+                </section>
+              <% } %>
+
+              <% if (composeSections.general.length === 0 && composeSections.requests.length === 0) { %>
+                <div class="compose-message-empty"><%= translate('messages.noContacts', 'No contacts available yet.') %></div>
+              <% } %>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upcoming Events Card -->
+        <div class="sidebar-card events-card">
+          <header class="card-header">
+            <h3 class="card-title"><%= translate('events.myEvents', 'My events') %></h3>
+            <button class="card-action-icon-btn" aria-label="<%= translate('nav.events', 'Event options') %>">
+              <i data-lucide="more-horizontal"></i>
+            </button>
+          </header>
+
+          <div class="events-list">
+            <% if (sidebarEvents.length > 0) { %>
+              <% sidebarEvents.forEach((event) => { %>
+                <a href="/events#event-<%= event.id %>" class="event-item event-item-link alignment-top">
+                  <div class="event-icon-wrapper <%= event.is_paid ? 'meetup' : 'invites' %>">
+                    <i data-lucide="<%= event.is_paid ? 'ticket' : 'calendar-days' %>"></i>
+                  </div>
+                  <div class="event-info">
+                    <span class="event-title"><%= event.title %></span>
+                    <span class="event-meta">
+                      <%= event.time_label %> · <%= formatSidebarEventPrice(event) %>
+                    </span>
+                  </div>
+                </a>
+              <% }) %>
+            <% } else { %>
+              <div class="event-item alignment-top" style="opacity: 0.9;">
+                <div class="event-icon-wrapper meetup">
+                  <i data-lucide="calendar-plus"></i>
+                </div>
+                <div class="event-info">
+                  <span class="event-title"><%= translate('events.noEvents', 'No events yet.') %></span>
+                  <span class="event-meta"><a href="/events#create-event" style="color: inherit; text-decoration: underline;"><%= translate('events.createYourEvent', 'Create your event') %></a></span>
+                </div>
+              </div>
+            <% } %>
+          </div>
+        </div>
+
+        <!-- Create Ad Modal (Premium Design) -->
+        <div class="modal-overlay" id="createAdModal"
+          style="display: none; z-index: 3200; backdrop-filter: blur(10px); padding: 12px; box-sizing: border-box;">
+          <div class="modal-content"
+            style="max-width: 480px; width: min(92vw, 480px); max-height: min(92vh, calc(100dvh - 24px)); padding: 0; background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-xl); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;">
+            <div
+              style="display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 20px; background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%); color: white; flex-shrink: 0;">
+              <div>
+                <div style="font-size: 18px; font-weight: 800; font-family: 'Outfit', sans-serif;">Créer une publicité
+                </div>
+                <div style="font-size: 12px; opacity: 0.86; margin-top: 3px;">Faites la promotion de votre marque auprès
+                  de la communauté</div>
+              </div>
+              <button id="closeAdModalBtn" type="button"
+                style="width: 30px; height: 30px; border-radius: 50%; border: none; background: rgba(255,255,255,0.15); color: white; cursor: display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                <i data-lucide="x" style="width: 15px; height: 15px;"></i>
+              </button>
+            </div>
+
+            <form id="createAdForm" novalidate
+              style="padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; min-height: 0; flex: 1 1 auto; overscroll-behavior: contain; scrollbar-gutter: stable;">
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label for="adTitleInput" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Titre
+                  de la publicité</label>
+                <input type="text" id="adTitleInput" name="title" required
+                  placeholder="<%= tText("Ex. Découvrez nos nouveaux designs") %>"
+                  style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-primary); font-size: 13px; outline: none;">
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label for="adDescInput"
+                  style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Description</label>
+                <textarea id="adDescInput" name="description" required
+                  placeholder="<%= tText("Ex. Une courte description accrocheuse qui invite au clic...") %>" rows="3"
+                  style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-primary); font-size: 13px; outline: none; resize: none;"></textarea>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label for="adUrlInput" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Lien de
+                  redirection (URL)</label>
+                <input type="url" id="adUrlInput" name="ad_url" required placeholder="https://votre-site.com"
+                  style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-primary); font-size: 13px; outline: none;">
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label for="adImageInput"
+                  style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Bannière publicitaire
+                  (Image)</label>
+                <input type="file" id="adImageInput" name="image" accept="image/*" style="display: none;">
+                <div id="adImageZone"
+                  style="border: 2px dashed var(--border-color); border-radius: 10px; padding: 18px; text-align: center; cursor: pointer; background: var(--bg-hover); transition: all 0.2s;">
+                  <i data-lucide="upload-cloud"
+                    style="color: var(--text-secondary); width: 28px; height: 28px; margin: 0 auto 6px auto;"></i>
+                  <div id="adImageZoneLabel" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">
+                    Cliquez pour ajouter une image</div>
+                  <div style="font-size: 10px; color: var(--text-secondary); margin-top: 2px;">Format paysage recommandé
+                    (600 x 315 px), max 10 Mo</div>
+                </div>
+                <div id="adImagePreviewWrapper"
+                  style="display: none; width: 100%; height: 100px; border-radius: 8px; overflow: hidden; background: #000; margin-top: 6px; position: relative;">
+                  <img id="adImagePreview" src="" alt="<%= tText("Aperçu") %>" style="width: 100%; height: 100%; object-fit: cover;">
+                  <button id="removeAdImageBtn" type="button"
+                    style="position: absolute; right: 8px; top: 8px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,0,0,0.6); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i
+                    data-lucide="x" style="width: 12px; height: 12px;"></i></button>
+                </div>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label for="adDaysInput" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Durée de
+                  la publication (Jours)</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <input type="range" id="adDaysInput" name="days" min="1" max="30" value="1"
+                    style="flex: 1; accent-color: var(--primary); height: 6px; border-radius: 3px; cursor: pointer;">
+                  <span id="adDaysVal"
+                    style="font-family: monospace; font-size: 13px; font-weight: 700; width: 50px; text-align: right;">1
+                    jour</span>
+                </div>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 10px; padding: 4px 0;">
+                <label
+                  style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-primary); cursor: pointer;">
+                  <input type="checkbox" id="adSendNotificationInput" name="send_notification"
+                    style="width: 16px; height: 16px; accent-color: var(--primary);">
+                  <span><%= tText("Envoyer des notifications à tous (+1.00 $)") %></span>
+                </label>
+                <label
+                  style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-primary); cursor: pointer;">
+                  <input type="checkbox" id="adShowInFeedInput" name="show_in_feed"
+                    style="width: 16px; height: 16px; accent-color: var(--primary);">
+                  <span><%= tText("Afficher dans le flux de posts (+1.00 $)") %></span>
+                </label>
+              </div>
+
+              <!-- Price breakdown and user balance -->
+              <div
+                style="background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+                <div
+                  style="display: flex; justify-content: space-between; align-items: center; color: var(--text-secondary);">
+                  <span><%= tText("Tarif unitaire :") %></span>
+                  <span style="font-weight: 600; color: var(--text-primary);"><%= tText("$5.00 / 24h") %></span>
+                </div>
+                <div
+                  style="display: flex; justify-content: space-between; align-items: center; color: var(--text-secondary);">
+                  <span><%= tText("Votre solde de dépôt :") %></span>
+                  <span style="font-weight: 600; color: var(--text-primary);">$<%=
+                      parseFloat(currentUser.deposit_account_balance || 0).toFixed(2) %></span>
+                </div>
+                <div style="height: 1px; background: var(--border-color); margin: 4px 0;"></div>
+                <div
+                  style="display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 800;">
+                  <span style="color: var(--text-primary);"><%= tText("Total à payer :") %></span>
+                  <span id="adTotalPriceVal" style="color: #10b981;">$5.00</span>
+                </div>
+              </div>
+
+              <div id="adFormStatus" role="alert"
+                style="display: none; border-radius: 10px; padding: 10px 12px; font-size: 12.5px; font-weight: 700; line-height: 1.35; border: 1px solid rgba(239, 68, 68, 0.28); background: rgba(239, 68, 68, 0.08); color: #ef4444;">
+              </div>
+
+              <button type="submit" id="submitAdBtn"
+                style="width: 100%; padding: 14px; border-radius: 10px; background: linear-gradient(to right, #2563eb, #7c3aed); color: white; border: none; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.25); position: sticky; bottom: 0; z-index: 2;">
+                <i data-lucide="wallet"></i>
+                Payer et Publier
+              </button>
+            </form>
+          </div>
+        </div>
+      </aside>

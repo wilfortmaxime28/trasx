@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="<%= typeof locale !== 'undefined' ? locale : 'en' %>">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- PWA & Mobile Optimization -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#090d16">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/assets/trasx-logo-mark.png">
+  <title><%= tText("TrasX - Premium Social Dashboard") %></title>
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="<%= tText('TrasX is a responsive premium social media dashboard featuring stories, feed, messages, and events with sleek glassmorphism and modern UI design.') %>">
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="/css/styles.css?v=174">
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    window.__APP_LOCALE__ = <%- JSON.stringify(typeof locale !== 'undefined' ? locale : 'en') %>;
+    window.__APP_I18N__ = <%- JSON.stringify(typeof clientTranslations === 'object' && clientTranslations ? clientTranslations : {}) %>;
+    window.__APP_SOURCE_TEXT_I18N__ = <%- JSON.stringify(typeof clientSourceTextTranslations === 'object' && clientSourceTextTranslations ? clientSourceTextTranslations : {}) %>;
+    window.__ = function(key, fallback = '') {
+      if (window.__APP_I18N__ && typeof window.__APP_I18N__[key] === 'string') {
+        return window.__APP_I18N__[key];
+      }
+      return fallback || key;
+    };
+    window.__text = function(source, fallback = '') {
+      const normalized = String(source || '').trim();
+      if (window.__APP_SOURCE_TEXT_I18N__ && typeof window.__APP_SOURCE_TEXT_I18N__[normalized] === 'string') {
+        return window.__APP_SOURCE_TEXT_I18N__[normalized];
+      }
+      return fallback || normalized;
+    };
+    window.__translateDomText = function(root = document.body) {
+      const attributeNames = ['placeholder', 'title', 'aria-label'];
+      const shouldSkipElement = (element) => {
+        if (!element) return true;
+        if (element.closest && element.closest('[data-i18n-skip]')) return true;
+        const tagName = element.tagName;
+        return tagName === 'SCRIPT' || tagName === 'STYLE' || tagName === 'TEXTAREA' || tagName === 'CODE' || tagName === 'PRE';
+      };
+      const translateExactText = (value) => {
+        const raw = String(value || '');
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed.length > 180) return raw;
+        if (/^(https?:\/\/|www\.)/i.test(trimmed)) return raw;
+        const translated = window.__text(trimmed, trimmed);
+        if (translated === trimmed) return raw;
+        return raw.replace(trimmed, translated);
+      };
+      const translateNodeText = (textNode) => {
+        if (!textNode || !textNode.nodeValue || !textNode.parentElement || shouldSkipElement(textNode.parentElement)) return;
+        const nextValue = translateExactText(textNode.nodeValue);
+        if (nextValue !== textNode.nodeValue) {
+          textNode.nodeValue = nextValue;
+        }
+      };
+      const translateAttributes = (element) => {
+        if (!(element instanceof Element) || shouldSkipElement(element)) return;
+        attributeNames.forEach((name) => {
+          if (!element.hasAttribute(name)) return;
+          const current = element.getAttribute(name);
+          const next = translateExactText(current);
+          if (next !== current) {
+            element.setAttribute(name, next);
+          }
+        });
+        if (element.tagName === 'INPUT') {
+          const type = String(element.getAttribute('type') || '').toLowerCase();
+          if (['button', 'submit', 'reset'].includes(type) && element.value) {
+            const nextValue = translateExactText(element.value);
+            if (nextValue !== element.value) {
+              element.value = nextValue;
+            }
+          }
+        }
+      };
+      const translateTree = (container) => {
+        if (!container) return;
+        if (container.nodeType === Node.TEXT_NODE) {
+          translateNodeText(container);
+          return;
+        }
+        if (container instanceof Element) {
+          translateAttributes(container);
+        }
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+        let textNode = walker.nextNode();
+        while (textNode) {
+          translateNodeText(textNode);
+          textNode = walker.nextNode();
+        }
+        if (container.querySelectorAll) {
+          container.querySelectorAll('*').forEach(translateAttributes);
+        }
+      };
+
+      translateTree(root);
+
+      if (!window.__APP_I18N_OBSERVER__ && document.body) {
+        const observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            if (mutation.type === 'characterData') {
+              translateNodeText(mutation.target);
+              return;
+            }
+            if (mutation.type === 'attributes' && mutation.target instanceof Element) {
+              translateAttributes(mutation.target);
+              return;
+            }
+            mutation.addedNodes.forEach((node) => {
+              translateTree(node);
+            });
+          });
+        });
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+          attributes: true,
+          attributeFilter: ['placeholder', 'title', 'aria-label', 'value']
+        });
+        window.__APP_I18N_OBSERVER__ = observer;
+      }
+    };
+    document.addEventListener('DOMContentLoaded', function () {
+      window.__translateDomText(document.body);
+    });
+  </script>
+  <!-- Socket.io client -->
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>

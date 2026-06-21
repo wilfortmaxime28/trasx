@@ -1,0 +1,97 @@
+      <!-- Left Sidebar -->
+      <aside class="sidebar left-sidebar" id="leftSidebar">
+        <!-- User Profile Card -->
+        <div class="profile-card">
+          <div class="profile-card-header">
+            <div class="avatar card-avatar">
+              <img src="<%= currentUser.avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= currentUser.first_name %>" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+            </div>
+            <div class="profile-card-info">
+              <h2 class="profile-card-name">
+                <%= currentUser.first_name %> <%= currentUser.last_name %>
+                <span class="verified-badge" title="<%= currentUser.certification_type %>" data-type="<%= currentUser.certification_type %>">
+                  <i data-lucide="badge-check"></i>
+                </span>
+              </h2>
+              <span class="profile-card-handle">@<%= String(currentUser.username || 'unknown').trim().replace(/^@+/, '') %></span>
+            </div>
+          </div>
+          
+          <div class="profile-stats">
+            <div class="stat-item">
+              <span class="stat-value" data-follow-stat="followers"><%= typeof followersCount !== 'undefined' ? formatNumber(followersCount) : 0 %></span>
+              <span class="stat-label">Followers</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" data-follow-stat="following"><%= typeof followingCount !== 'undefined' ? formatNumber(followingCount) : 0 %></span>
+              <span class="stat-label">Following</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value"><%= typeof totalLikesCount !== 'undefined' ? formatNumber(totalLikesCount) : 0 %></span>
+              <span class="stat-label">Likes</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sidebar Navigation Menu -->
+        <nav class="sidebar-nav">
+          <a href="/" class="nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'feed' ? 'active' : (typeof activeTab === 'undefined' ? 'active' : '') %>" data-nav-action="feed">
+            <i data-lucide="home"></i>
+            <span><%= t('nav.feed', 'Feed') %></span>
+          </a>
+          <a href="/profile" class="nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'profile' ? 'active' : '' %>" data-nav-action="profile">
+            <i data-lucide="user"></i>
+            <span><%= t('nav.profile', 'My Profile') %></span>
+          </a>
+          <a href="/profile?section=connections" class="nav-item" data-nav-action="connections">
+            <i data-lucide="users"></i>
+            <span><%= t('nav.connections', 'Connections') %></span>
+          </a>
+          <a href="/?view=shorts" class="nav-item" id="shortsSidebarBtn" data-nav-action="shorts">
+            <i data-lucide="clapperboard"></i>
+            <span><%= t('nav.shorts', 'Shorts') %></span>
+          </a>
+          <a href="/?view=market" class="nav-item" data-nav-action="market">
+            <i data-lucide="hand-coins"></i>
+            <span><%= tText("P2P Market") %></span>
+          </a>
+          <a href="/?view=bookmarks" class="nav-item" id="bookmarksSidebarBtn" data-nav-action="bookmarks">
+            <i data-lucide="bookmark"></i>
+            <span><%= t('nav.bookmarks', 'Bookmarks') %></span>
+          </a>
+          <a href="/?view=games" class="nav-item" id="gamesSidebarBtn" data-nav-action="games">
+            <i data-lucide="gamepad-2"></i>
+            <span><%= t('nav.games', 'Jeux') %></span>
+          </a>
+          <a href="/events" class="nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'events' ? 'active' : '' %>" data-nav-action="events">
+            <i data-lucide="calendar"></i>
+            <span><%= t('nav.events', 'Events') %></span>
+          </a>
+          <a href="/settings" class="nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'settings' ? 'active' : '' %>" data-nav-action="settings">
+            <i data-lucide="settings"></i>
+            <span><%= t('nav.settings', 'Settings') %></span>
+          </a>
+          <a href="/auth/logout" class="nav-item" style="color: var(--danger);">
+            <i data-lucide="log-out"></i>
+            <span><%= t('nav.logout', 'Logout') %></span>
+          </a>
+        </nav>
+
+        <!-- PWA Install Button -->
+        <div class="pwa-install-wrapper" id="pwaInstallWrapper" style="display: none; padding: 0 15px; margin: 15px 0 10px;">
+          <button id="btnPwaInstall" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 14px; padding: 12px; border-radius: 12px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; color: white; cursor: pointer; font-weight: 600; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.25); transition: all 0.2s ease;">
+            <i data-lucide="download"></i>
+            <span>Installer l'App</span>
+          </button>
+        </div>
+
+        <!-- Sidebar Footer -->
+        <footer class="sidebar-footer">
+          <div class="footer-links">
+            <a href="/auth/terms"><%= t('sidebar.privacyTerms', 'Privacy terms') %></a>
+            <a href="#"><%= t('sidebar.advertising', 'Advertising') %></a>
+            <a href="#"><%= t('sidebar.cookies', 'Cookies') %></a>
+          </div>
+          <p class="copyright"><%= tText("Platform &copy; 2026") %></p>
+        </footer>
+      </aside>

@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<%
+  const termsLanguages = {
+    fr: {
+      htmlLang: 'fr',
+      tab: 'Francais',
+      eyebrow: 'Cadre legal TrasX',
+      title: 'Conditions generales',
+      subtitle: 'Veuillez lire attentivement ces regles avant d utiliser la plateforme.',
+      back: 'Retour a l inscription',
+      visualTitle: 'Des regles claires inspirent confiance.',
+      visualCopy: 'Ces conditions expliquent le fonctionnement de la plateforme, les usages autorises et la protection des comptes.',
+      highlights: [
+        { label: 'Age minimum', value: '18 ans et plus' },
+        { label: 'Droit d auteur', value: 'Responsabilite de l utilisateur' },
+        { label: 'Controle', value: 'La plateforme peut restreindre un compte' }
+      ],
+      contentsTitle: 'Sommaire',
+      noticeTitle: 'Points essentiels',
+      noticeItems: [
+        'Tout contenu publie vous engage personnellement.',
+        'Les violations de droits d auteur sont sanctionnables.',
+        'La plateforme peut bloquer un compte pour securite ou conformite.'
+      ],
+      sections: [
+        {
+          title: 'Informations de compte',
+          body: 'Vous devez fournir des informations reelles, exactes et coherentes lors de la creation de votre compte. Toute information fausse, trompeuse ou usurpee peut entrainer la suspension ou la suppression definitive du compte.'
+        },
+        {
+          title: 'Securite et identifiants',
+          body: 'Vous etes responsable de la protection de votre mot de passe, de vos codes de verification et de l acces a votre appareil. Toute activite effectuee depuis votre compte est presumee relever de votre responsabilite, sauf preuve contraire.'
+        },
+        {
+          title: 'Contenus et conduite',
+          body: 'Vous acceptez de ne pas publier de contenu illegal, abusif, frauduleux, haineux, sexuellement explicite, nuisible ou trompeur. Vous restez personnellement responsable de tout contenu, media, texte, musique, video, image ou autre element publie depuis votre compte. La plateforme peut moderer, restreindre, masquer ou supprimer tout contenu qui viole ses regles.'
+        },
+        {
+          title: 'Droit d auteur et propriete intellectuelle',
+          body: 'Toute violation du droit d auteur, toute utilisation non autorisee d un contenu protege, toute atteinte a une marque, tout acte de piratage ou toute publication illicite reste de la seule responsabilite de l utilisateur qui a publie ou transmis le contenu. La plateforme n est pas l auteur legal des contenus generes par les utilisateurs et ne peut pas etre tenue responsable des violations de droits d auteur commises personnellement par un utilisateur. Toutefois, la plateforme se reserve le droit de retirer le contenu, de limiter sa visibilite, de cooperer avec les titulaires de droits et d appliquer des sanctions au compte en cause.'
+        },
+        {
+          title: 'Paiements et services numeriques',
+          body: 'Certaines fonctionnalites de la plateforme peuvent impliquer des paiements, des tokens, des cadeaux, des boosts de promotion ou d autres services monetises. En les utilisant, vous acceptez les prix, frais et soldes appliques par la plateforme au moment de la transaction.'
+        },
+        {
+          title: 'Age minimum requis',
+          body: 'La plateforme est strictement reservee aux utilisateurs ages de 18 ans et plus. En creant un compte ou en continuant a utiliser la plateforme, vous declarez avoir au moins 18 ans. Tout compte soupconne d appartenir a un mineur peut etre restreint, suspendu ou supprime sans preavis.'
+        },
+        {
+          title: 'Verification et conformite',
+          body: 'La plateforme peut demander une verification d identite, une certification ou des controles supplementaires pour activer certaines fonctionnalites. Le refus de cooperer a une demande de verification legitime peut limiter l acces a certains services.'
+        },
+        {
+          title: 'Controle du compte, suspension et suppression',
+          body: 'Tous les comptes, noms d utilisateur, droits d acces, badges, soldes internes et acces techniques au service demeurent sous le controle de la plateforme. La plateforme peut suspendre, geler, restreindre, examiner ou bloquer definitivement n importe quel compte a sa seule discretion, notamment en cas de fraude, d abus, de violation des regles, d activite suspecte, de risque juridique, d enjeu de securite ou de besoin de protection de la plateforme.'
+        },
+        {
+          title: 'Confidentialite et usage des donnees',
+          body: 'En utilisant la plateforme, vous acceptez que les donnees de votre compte, les journaux d activite et les contenus soumis soient traites pour des raisons de securite, de moderation, de conformite legale, d amelioration du produit et de fourniture du service.'
+        },
+        {
+          title: 'Acceptation',
+          body: 'En creant un compte ou en continuant a utiliser la plateforme, vous confirmez avoir lu, compris et accepte les presentes conditions generales.'
+        }
+      ]
+    },
+    en: {
+      htmlLang: 'en',
+      tab: 'English',
+      eyebrow: 'TrasX legal framework',
+      title: 'Terms and Conditions',
+      subtitle: 'Please read these rules carefully before using the platform.',
+      back: 'Back to registration',
+      visualTitle: 'Clear rules build trust.',
+      visualCopy: 'These terms explain how the platform works, what is allowed, and how accounts are protected.',
+      highlights: [
+        { label: 'Minimum age', value: '18 years and older' },
+        { label: 'Copyright', value: 'User remains legally responsible' },
+        { label: 'Control', value: 'The platform may restrict any account' }
+      ],
+      contentsTitle: 'Contents',
+      noticeTitle: 'Key points',
+      noticeItems: [
+        'Everything you publish remains your personal responsibility.',
+        'Copyright violations may trigger sanctions.',
+        'The platform may block an account for safety or compliance reasons.'
+      ],
+      sections: [
+        {
+          title: 'Account information',
+          body: 'You must provide real, accurate, and consistent information when creating your account. False, misleading, or impersonated information may lead to suspension or permanent removal of the account.'
+        },
+        {
+          title: 'Security and credentials',
+          body: 'You are responsible for protecting your password, verification codes, and access to your device. Any activity carried out from your account is presumed to be your responsibility unless proven otherwise.'
+        },
+        {
+          title: 'Content and conduct',
+          body: 'You agree not to publish illegal, abusive, fraudulent, hateful, sexually explicit, harmful, or misleading content. You remain personally responsible for all content, media, text, music, videos, images, and other materials published from your account. The platform may moderate, restrict, hide, or remove any content that violates its rules.'
+        },
+        {
+          title: 'Copyright and intellectual property',
+          body: 'Any copyright infringement, unauthorized use of protected content, trademark violation, piracy, or unlawful publication remains the sole responsibility of the user who published or transmitted the content. The platform is not the legal author of user generated content and cannot be held responsible for copyright violations committed personally by a user. However, the platform reserves the right to remove the content, restrict its visibility, cooperate with rights holders, and apply sanctions against the offending account.'
+        },
+        {
+          title: 'Payments and digital services',
+          body: 'Certain features of the platform may involve payments, tokens, gifts, promotion boosts, or other monetized services. By using them, you agree to the pricing, fees, and balances applied by the platform at the time of the transaction.'
+        },
+        {
+          title: 'Minimum age requirement',
+          body: 'The platform is strictly reserved for users aged 18 years or older. By creating an account or continuing to use the platform, you declare that you are at least 18 years old. Any account suspected of belonging to a minor may be restricted, suspended, or removed without prior notice.'
+        },
+        {
+          title: 'Verification and compliance',
+          body: 'The platform may request identity verification, certification, or additional checks to unlock certain features. Refusal to cooperate with a legitimate verification request may limit access to some services.'
+        },
+        {
+          title: 'Account control, suspension, and termination',
+          body: 'All accounts, usernames, access rights, badges, internal balances, and technical access to the service remain under the control of the platform. The platform may suspend, freeze, restrict, review, or permanently block any account at its sole discretion, especially in cases of fraud, abuse, rule violations, suspicious activity, legal risk, security concerns, or platform protection needs.'
+        },
+        {
+          title: 'Privacy and data use',
+          body: 'By using the platform, you agree that your account data, activity logs, and submitted content may be processed for security, moderation, legal compliance, product improvement, and service delivery.'
+        },
+        {
+          title: 'Acceptance',
+          body: 'By creating an account or continuing to use the platform, you confirm that you have read, understood, and accepted these terms and conditions.'
+        }
+      ]
+    },
+    es: {
+      htmlLang: 'es',
+      tab: 'Espanol',
+      eyebrow: 'Marco legal de TrasX',
+      title: 'Terminos y condiciones',
+      subtitle: 'Lea atentamente estas reglas antes de utilizar la plataforma.',
+      back: 'Volver al registro',
+      visualTitle: 'Las reglas claras generan confianza.',
+      visualCopy: 'Estos terminos explican como funciona la plataforma, que esta permitido y como se protegen las cuentas.',
+      highlights: [
+        { label: 'Edad minima', value: '18 anos o mas' },
+        { label: 'Derechos de autor', value: 'El usuario asume la responsabilidad' },
+        { label: 'Control', value: 'La plataforma puede restringir cualquier cuenta' }
+      ],
+      contentsTitle: 'Contenido',
+      noticeTitle: 'Puntos clave',
+      noticeItems: [
+        'Todo lo que publique sigue siendo su responsabilidad personal.',
+        'Las infracciones de derechos de autor pueden ser sancionadas.',
+        'La plataforma puede bloquear una cuenta por seguridad o cumplimiento.'
+      ],
+      sections: [
+        {
+          title: 'Informacion de la cuenta',
+          body: 'Debe proporcionar informacion real, exacta y coherente al crear su cuenta. La informacion falsa, enganosa o suplantada puede provocar la suspension o eliminacion permanente de la cuenta.'
+        },
+        {
+          title: 'Seguridad y credenciales',
+          body: 'Usted es responsable de proteger su contrasena, sus codigos de verificacion y el acceso a su dispositivo. Toda actividad realizada desde su cuenta se presume bajo su responsabilidad, salvo prueba en contrario.'
+        },
+        {
+          title: 'Contenido y conducta',
+          body: 'Usted acepta no publicar contenido ilegal, abusivo, fraudulento, de odio, sexualmente explicito, danino o enganoso. Usted sigue siendo personalmente responsable de todo contenido, medio, texto, musica, video, imagen u otro material publicado desde su cuenta. La plataforma puede moderar, restringir, ocultar o eliminar cualquier contenido que viole sus reglas.'
+        },
+        {
+          title: 'Derechos de autor y propiedad intelectual',
+          body: 'Cualquier infraccion de derechos de autor, uso no autorizado de contenido protegido, violacion de marca, pirateria o publicacion ilegal sigue siendo responsabilidad exclusiva del usuario que publico o transmitio el contenido. La plataforma no es la autora legal del contenido generado por los usuarios y no puede ser considerada responsable por violaciones de derechos de autor cometidas personalmente por un usuario. Sin embargo, la plataforma se reserva el derecho de retirar el contenido, limitar su visibilidad, cooperar con los titulares de derechos y aplicar sanciones a la cuenta infractora.'
+        },
+        {
+          title: 'Pagos y servicios digitales',
+          body: 'Algunas funciones de la plataforma pueden implicar pagos, tokens, regalos, impulsos de promocion u otros servicios monetizados. Al utilizarlos, usted acepta los precios, cargos y saldos aplicados por la plataforma en el momento de la transaccion.'
+        },
+        {
+          title: 'Edad minima requerida',
+          body: 'La plataforma esta estrictamente reservada para usuarios de 18 anos o mas. Al crear una cuenta o continuar utilizando la plataforma, usted declara que tiene al menos 18 anos. Cualquier cuenta sospechosa de pertenecer a un menor puede ser restringida, suspendida o eliminada sin previo aviso.'
+        },
+        {
+          title: 'Verificacion y cumplimiento',
+          body: 'La plataforma puede solicitar verificacion de identidad, certificacion o controles adicionales para habilitar determinadas funciones. Negarse a cooperar con una solicitud legitima de verificacion puede limitar el acceso a algunos servicios.'
+        },
+        {
+          title: 'Control de la cuenta, suspension y cierre',
+          body: 'Todas las cuentas, nombres de usuario, derechos de acceso, insignias, saldos internos y accesos tecnicos al servicio permanecen bajo el control de la plataforma. La plataforma puede suspender, congelar, restringir, revisar o bloquear permanentemente cualquier cuenta a su sola discrecion, especialmente en casos de fraude, abuso, violacion de reglas, actividad sospechosa, riesgo legal, preocupaciones de seguridad o necesidades de proteccion de la plataforma.'
+        },
+        {
+          title: 'Privacidad y uso de datos',
+          body: 'Al utilizar la plataforma, usted acepta que los datos de su cuenta, los registros de actividad y el contenido enviado puedan ser procesados por motivos de seguridad, moderacion, cumplimiento legal, mejora del producto y prestacion del servicio.'
+        },
+        {
+          title: 'Aceptacion',
+          body: 'Al crear una cuenta o continuar utilizando la plataforma, usted confirma que ha leido, comprendido y aceptado estos terminos y condiciones.'
+        }
+      ]
+    }
+  };
+  const initialLang = (typeof locale === 'string' && termsLanguages[locale]) ? locale : ((typeof locale === 'string' && locale.startsWith('es')) ? 'es' : ((typeof locale === 'string' && locale.startsWith('en')) ? 'en' : 'fr'));
+%>
+<html lang="<%= termsLanguages[initialLang].htmlLang %>" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>TrasX - <%= tText("Conditions / Terms / Terminos") %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="auth-page auth-page-terms">
+  <main class="auth-shell auth-shell-centered">
+    <section class="auth-card auth-card-terms">
+      <div class="auth-card-panel auth-card-panel-form">
+        <div class="auth-card-inner auth-card-inner-wide">
+          <div class="auth-brand-lockup">
+            <div class="auth-brand-icon" aria-label="TrasX">W</div>
+            <div>
+              <div class="auth-brand-name">TrasX</div>
+              <div class="auth-brand-tag"><%= tText("Legal information") %></div>
+            </div>
+          </div>
+
+          <div class="auth-terms-lang-switcher" role="tablist" aria-label="<%= tText("Language selector") %>">
+            <% Object.entries(termsLanguages).forEach(([langKey, langData]) => { %>
+              <button
+                type="button"
+                class="auth-terms-lang-btn <%= langKey === initialLang ? 'is-active' : '' %>"
+                data-terms-lang-btn="<%= langKey %>"
+                role="tab"
+                aria-controls="terms-panel-<%= langKey %>"
+                aria-selected="<%= langKey === initialLang ? 'true' : 'false' %>"
+              ><%= langData.tab %></button>
+            <% }) %>
+          </div>
+
+          <% Object.entries(termsLanguages).forEach(([langKey, langData]) => { %>
+            <section
+              id="terms-panel-<%= langKey %>"
+              class="auth-terms-panel <%= langKey === initialLang ? 'is-active' : '' %>"
+              data-terms-lang-panel="<%= langKey %>"
+              aria-hidden="<%= langKey === initialLang ? 'false' : 'true' %>"
+              <%= langKey === initialLang ? '' : 'hidden' %>
+            >
+              <div class="auth-terms-hero">
+                <div class="auth-terms-hero-copy">
+                  <span class="auth-terms-eyebrow"><%= langData.eyebrow %></span>
+                  <h1 class="auth-heading"><%= langData.title %></h1>
+                  <p class="auth-subheading"><%= langData.subtitle %></p>
+                </div>
+
+                <div class="auth-terms-hero-cards">
+                  <% langData.highlights.forEach((item) => { %>
+                    <article class="auth-terms-hero-card">
+                      <span class="auth-terms-hero-label"><%= item.label %></span>
+                      <strong class="auth-terms-hero-value"><%= item.value %></strong>
+                    </article>
+                  <% }) %>
+                </div>
+              </div>
+
+              <div class="auth-terms-layout">
+                <aside class="auth-terms-sidebar">
+                  <div class="auth-terms-side-block">
+                    <h2 class="auth-terms-side-title"><%= langData.contentsTitle %></h2>
+                    <nav class="auth-terms-side-nav" aria-label="<%= langData.contentsTitle %>">
+                      <% langData.sections.forEach((section, index) => { %>
+                        <a class="auth-terms-side-link" href="#terms-<%= langKey %>-<%= index + 1 %>">
+                          <span class="auth-terms-side-index"><%= index + 1 %></span>
+                          <span><%= section.title %></span>
+                        </a>
+                      <% }) %>
+                    </nav>
+                  </div>
+
+                  <div class="auth-terms-side-block auth-terms-side-block-note">
+                    <h2 class="auth-terms-side-title"><%= langData.noticeTitle %></h2>
+                    <ul class="auth-terms-notice-list">
+                      <% langData.noticeItems.forEach((item) => { %>
+                        <li><%= item %></li>
+                      <% }) %>
+                    </ul>
+                  </div>
+                </aside>
+
+                <div class="auth-terms-main">
+                  <div class="auth-terms-document">
+                    <% langData.sections.forEach((section, index) => { %>
+                      <article class="auth-terms-section" id="terms-<%= langKey %>-<%= index + 1 %>">
+                        <div class="auth-terms-section-head">
+                          <span class="auth-terms-section-index"><%= index + 1 %></span>
+                          <h2><%= section.title %></h2>
+                        </div>
+                        <p><%= section.body %></p>
+                      </article>
+                    <% }) %>
+                  </div>
+
+                  <div class="auth-step-actions auth-step-actions-single auth-terms-actions">
+                    <a href="/auth/register" class="auth-submit auth-submit-solid"><%= langData.back %></a>
+                  </div>
+                </div>
+              </div>
+            </section>
+          <% }) %>
+        </div>
+      </div>
+
+      <div class="auth-card-panel auth-card-panel-visual">
+        <div class="auth-visual-surface">
+          <div class="auth-visual-orbit auth-visual-orbit-one"></div>
+          <div class="auth-visual-orbit auth-visual-orbit-two"></div>
+          <div class="auth-visual-badge auth-visual-badge-slack">⚖</div>
+          <div class="auth-visual-badge auth-visual-badge-camera">✓</div>
+          <div class="auth-visual-badge auth-visual-badge-google">§</div>
+          <div class="auth-visual-plus"></div>
+
+          <div class="auth-visual-card auth-visual-card-main">
+            <div class="auth-visual-card-top">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div class="auth-visual-list">
+              <div class="auth-visual-user-row">
+                <div class="auth-visual-avatar"></div>
+                <div class="auth-visual-lines">
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+              <div class="auth-visual-user-row">
+                <div class="auth-visual-avatar"></div>
+                <div class="auth-visual-lines">
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+              <div class="auth-visual-user-row">
+                <div class="auth-visual-avatar"></div>
+                <div class="auth-visual-lines">
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="auth-visual-copy">
+            <h2 id="termsVisualTitle"><%= termsLanguages[initialLang].visualTitle %></h2>
+            <p id="termsVisualCopy"><%= termsLanguages[initialLang].visualCopy %></p>
+            <div class="auth-visual-dots">
+              <span class="is-active"></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const languageMeta = <%- JSON.stringify(Object.fromEntries(Object.entries(termsLanguages).map(([key, value]) => [key, {
+        htmlLang: value.htmlLang,
+        visualTitle: value.visualTitle,
+        visualCopy: value.visualCopy
+      }]))) %>;
+      const buttons = Array.from(document.querySelectorAll('[data-terms-lang-btn]'));
+      const panels = Array.from(document.querySelectorAll('[data-terms-lang-panel]'));
+      const visualTitle = document.getElementById('termsVisualTitle');
+      const visualCopy = document.getElementById('termsVisualCopy');
+
+      const activateLanguage = (lang) => {
+        buttons.forEach((button) => {
+          const active = button.dataset.termsLangBtn === lang;
+          button.classList.toggle('is-active', active);
+          button.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+
+        panels.forEach((panel) => {
+          const active = panel.dataset.termsLangPanel === lang;
+          panel.classList.toggle('is-active', active);
+          panel.hidden = !active;
+          panel.setAttribute('aria-hidden', active ? 'false' : 'true');
+        });
+
+        if (languageMeta[lang]) {
+          document.documentElement.lang = languageMeta[lang].htmlLang;
+          if (visualTitle) visualTitle.textContent = languageMeta[lang].visualTitle;
+          if (visualCopy) visualCopy.textContent = languageMeta[lang].visualCopy;
+        }
+      };
+
+      buttons.forEach((button) => {
+        button.addEventListener('click', () => activateLanguage(button.dataset.termsLangBtn));
+      });
+
+      activateLanguage('<%= initialLang %>');
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="<%= typeof locale !== 'undefined' ? locale : 'en' %>" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title><%= tText("TrasX - Login") %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="auth-page auth-page-login">
+  <main class="auth-shell auth-shell-centered">
+    <section class="auth-card auth-card-login">
+      <div class="auth-card-panel auth-card-panel-form">
+        <div class="auth-card-inner">
+          <div class="auth-brand-lockup">
+            <div class="auth-brand-icon" aria-label="TrasX">W</div>
+            <div>
+              <div class="auth-brand-name">TrasX</div>
+              <div class="auth-brand-tag"><%= tText("Social dashboard") %></div>
+            </div>
+          </div>
+
+          <div class="auth-heading-block">
+            <h1 class="auth-heading"><%= tText("Log in to your Account") %></h1>
+            <p class="auth-subheading"><%= tText("Welcome back! Select method to log in:") %></p>
+          </div>
+
+          <% if (typeof verified !== 'undefined' && verified) { %>
+            <div class="auth-alert success"><%= tText(verified) %></div>
+          <% } %>
+
+          <% if (error) { %>
+            <div class="auth-alert error"><%= tText(error) %></div>
+          <% } %>
+
+          <% if (typeof allowDispute !== 'undefined' && allowDispute) { %>
+            <form action="/auth/dispute" method="POST" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px; width: 100%;">
+              <input type="hidden" name="userId" value="<%= userId %>">
+              <button type="submit" class="auth-submit auth-submit-solid" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none; box-shadow: 0 10px 20px rgba(245, 158, 11, 0.22); color: #fff; width: 100%;">
+                <%= tText("Open a dispute with the admin") %>
+              </button>
+            </form>
+          <% } %>
+
+          <div class="auth-social-grid" aria-hidden="true">
+            <a href="https://play.google.com/store" target="_blank" rel="noreferrer" class="auth-social-btn">
+              <span class="auth-social-logo auth-social-logo-google" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M7.61 5.03 6.44 2.99a.5.5 0 1 1 .86-.5l1.24 2.15a9.5 9.5 0 0 1 6.92 0l1.24-2.15a.5.5 0 0 1 .86.5l-1.17 2.04A7.06 7.06 0 0 1 20 10.5H4a7.06 7.06 0 0 1 3.61-5.47ZM9 8.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm6 0a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM4.75 11.5h14.5c.41 0 .75.34.75.75v5.5a2.25 2.25 0 0 1-2.25 2.25H17v1.5a.75.75 0 0 1-1.5 0V20h-1v1.5a.75.75 0 0 1-1.5 0V20h-2v1.5a.75.75 0 0 1-1.5 0V20h-1v1.5a.75.75 0 0 1-1.5 0V20h-.75A2.25 2.25 0 0 1 4 17.75v-5.5c0-.41.34-.75.75-.75Z"/>
+                </svg>
+              </span>
+              <span><%= tText("Télécharger Android") %></span>
+            </a>
+            <a href="https://apps.apple.com/" target="_blank" rel="noreferrer" class="auth-social-btn">
+              <span class="auth-social-logo auth-social-logo-facebook" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M15.68 1.82c.12 1.18-.34 2.35-.97 3.13-.68.84-1.8 1.49-2.92 1.4-.14-1.13.39-2.3 1.05-3.03.72-.81 1.9-1.44 2.84-1.5ZM19.42 17.02c-.52 1.18-.77 1.7-1.44 2.77-.93 1.5-2.24 3.37-3.87 3.38-1.45.02-1.82-.95-3.79-.94-1.97.01-2.37.96-3.82.95-1.63-.01-2.87-1.7-3.8-3.2-2.59-4.2-2.86-9.13-1.27-11.58 1.12-1.74 2.9-2.76 4.57-2.76 1.7 0 2.77.95 4.17.95 1.36 0 2.18-.95 4.15-.95 1.48 0 3.04.8 4.16 2.2-3.65 2-3.06 7.23.94 9.18Z"/>
+                </svg>
+              </span>
+              <span><%= tText("Télécharger iPhone") %></span>
+            </a>
+          </div>
+
+          <div class="auth-divider-row">
+            <span><%= tText("or continue with email") %></span>
+          </div>
+
+          <form class="auth-form" action="/auth/login" method="POST">
+            <label class="auth-input-wrap" for="email">
+              <span class="auth-input-icon">✉</span>
+              <input class="auth-input auth-input-inline" id="email" type="text" name="email" required placeholder="<%= tText('Email') %>" autocomplete="username">
+            </label>
+
+            <label class="auth-input-wrap" for="password">
+              <span class="auth-input-icon">•</span>
+              <input class="auth-input auth-input-inline" id="password" type="password" name="password" required placeholder="<%= tText('Password') %>" autocomplete="current-password">
+            </label>
+
+            <div class="auth-inline-meta">
+              <label class="auth-checkline" for="rememberMe">
+                <input id="rememberMe" type="checkbox" name="remember_me">
+                <span><%= tText("Remember me") %></span>
+              </label>
+              <a href="/auth/forgot-password" class="auth-link-inline"><%= tText("Forgot Password?") %></a>
+            </div>
+
+            <button type="submit" class="auth-submit auth-submit-solid"><%= tText("Log in") %></button>
+          </form>
+
+          <p class="auth-switch-copy">
+            <%= tText("Don’t have an account?") %>
+            <a href="/auth/register"><%= tText("Create an account") %></a>
+          </p>
+        </div>
+      </div>
+
+      <div class="auth-card-panel auth-card-panel-visual">
+        <div class="auth-visual-surface">
+          <div class="auth-visual-orbit auth-visual-orbit-one"></div>
+          <div class="auth-visual-orbit auth-visual-orbit-two"></div>
+          <div class="auth-visual-badge auth-visual-badge-slack">S</div>
+          <div class="auth-visual-badge auth-visual-badge-camera">◉</div>
+          <div class="auth-visual-badge auth-visual-badge-google">G</div>
+          <div class="auth-visual-plus"></div>
+
+          <div class="auth-visual-card auth-visual-card-main">
+            <div class="auth-visual-card-top">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div class="auth-visual-list">
+              <div class="auth-visual-user-row">
+                <div class="auth-visual-avatar"></div>
+                <div class="auth-visual-lines">
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+              <div class="auth-visual-user-row">
+                <div class="auth-visual-avatar"></div>
+                <div class="auth-visual-lines">
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+              <div class="auth-visual-user-row">
+                <div class="auth-visual-avatar"></div>
+                <div class="auth-visual-lines">
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="auth-visual-copy">
+            <h2><%= tText("Welcome to the Ultimate Social Hub") %></h2>
+            <p><%= tText("Experience a unified social platform: share in the Feed, publish video Shorts, chat in real-time, trade assets via P2P Market, and manage secure ticketing events.") %></p>
+            <div class="auth-visual-dots">
+              <span class="is-active"></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

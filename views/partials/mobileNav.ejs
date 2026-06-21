@@ -1,0 +1,35 @@
+<% const mobileMessageBadgeCount=(typeof messageInbox !=='undefined' && messageInbox && messageInbox.counts) ?
+  messageInbox.counts.requests : 0; %>
+  <!-- Mobile Bottom Navigation (Sticky on Mobile) -->
+  <nav class="mobile-nav">
+    <a href="/"
+      class="mobile-nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'feed' ? 'active' : (typeof activeTab === 'undefined' ? 'active' : '') %>"
+      id="mobileHomeBtn" data-nav-action="feed">
+      <i data-lucide="home"></i>
+    </a>
+    <a href="/?view=shorts" class="mobile-nav-item" id="mobileShortsBtn" data-nav-action="shorts">
+      <i data-lucide="clapperboard"></i>
+    </a>
+    <a href="/" class="mobile-nav-item tiktok-btn-container" id="mobileCreatePostBtn" data-nav-action="create-post">
+      <div class="tiktok-btn">
+        <div class="tiktok-wing tiktok-wing-left"></div>
+        <div class="tiktok-wing tiktok-wing-right"></div>
+        <div class="tiktok-body">
+          <i data-lucide="plus" style="width: 20px; height: 20px; stroke-width: 3.5px;"></i>
+        </div>
+      </div>
+    </a>
+    <a href="/?view=messages" class="mobile-nav-item" id="mobileMessagesBtn" data-nav-action="messages">
+      <i data-lucide="message-square"></i>
+      <% if (mobileMessageBadgeCount> 0) { %>
+        <span class="nav-badge red">
+          <%= mobileMessageBadgeCount %>
+        </span>
+        <% } %>
+    </a>
+    <a href="/profile"
+      class="mobile-nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'profile' ? 'active' : '' %>"
+      id="mobileProfileBtn" data-nav-action="profile">
+      <i data-lucide="user"></i>
+    </a>
+  </nav>

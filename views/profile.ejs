@@ -1,0 +1,1502 @@
+<%- include('partials/head') %>
+<%
+function getYouTubeId(url) {
+  if (!url) return null;
+  const cleaned = url.trim();
+  if (cleaned.length === 11 && !cleaned.includes('/') && !cleaned.includes('.')) {
+    return cleaned;
+  }
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|live\/)([^#\&\?]*).*/;
+  const match = cleaned.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+}
+%>
+  <%- include('partials/header') %>
+    <style>
+      .profile-page-wrapper {
+        padding: 0;
+        width: 100%;
+        box-sizing: border-box;
+        max-width: 600px;
+        margin: 0 auto;
+        background: var(--bg-card);
+        min-height: 100%;
+        border-left: 1px solid var(--border-color);
+        border-right: 1px solid var(--border-color);
+      }
+
+      .alert {
+        padding: 16px;
+        border-radius: 8px;
+        margin: 16px;
+        font-weight: 500;
+      }
+
+      .alert.success {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+      }
+
+      .alert.error {
+        background: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.2);
+      }
+
+      .moderation-alert-stack {
+        display: grid;
+        gap: 12px;
+        margin: 16px;
+      }
+
+      .moderation-alert-card {
+        border-radius: 14px;
+        padding: 16px 18px;
+        border: 1px solid rgba(239, 68, 68, 0.35);
+        background: linear-gradient(180deg, rgba(127, 29, 29, 0.28), rgba(69, 10, 10, 0.2));
+        color: #fecaca;
+      }
+
+      .moderation-alert-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 15px;
+        font-weight: 700;
+        color: #fee2e2;
+        margin-bottom: 6px;
+      }
+
+      .moderation-alert-meta,
+      .moderation-alert-detail,
+      .moderation-alert-preview {
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .moderation-alert-detail,
+      .moderation-alert-preview {
+        margin-top: 8px;
+        color: #fca5a5;
+      }
+
+      .moderation-alert-preview {
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(254, 202, 202, 0.16);
+        background: rgba(0, 0, 0, 0.14);
+      }
+
+      .profile-cover-wrap {
+        background: <%- currentUser.banner_color ? currentUser.banner_color: 'linear-gradient(135deg, #1e3a8a, var(--primary))' %>;
+        padding: 80px 20px 80px;
+        /* Increased padding to compensate for removed text */
+        text-align: center;
+        color: #fff;
+        position: relative;
+        clip-path: polygon(0 0, 100% 0, 100% 70%, 0 100%);
+      }
+
+      .profile-avatar-wrapper {
+        position: relative;
+        margin-top: -110px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 30px;
+        z-index: 2;
+      }
+
+      .profile-avatar-circle {
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        border: 6px solid var(--bg-card);
+        object-fit: cover;
+        background: var(--bg-card);
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+      }
+
+      .profile-action-btn {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: var(--primary);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+        cursor: pointer;
+        transition: transform 0.2s;
+      }
+
+      .profile-action-btn:hover {
+        transform: scale(1.1);
+      }
+
+      /* STATS (TikTok Style) */
+      .profile-stats-container {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        margin: 20px 32px;
+        padding: 16px 0;
+        align-items: stretch;
+      }
+
+      .stat-box {
+        text-align: center;
+        min-width: 0;
+        border-right: 1px solid var(--border-color);
+      }
+
+      .stat-box:last-child {
+        border-right: none;
+      }
+
+      .stat-label {
+        color: var(--text-muted);
+        font-size: 14px;
+        font-weight: 400;
+        margin-top: 4px;
+      }
+
+      @media screen and (max-width: 768px) {
+        .profile-stats-container {
+          gap: 14px;
+          margin: 20px 16px;
+          padding: 12px 0;
+        }
+
+        .stat-box {
+          padding: 0 10px;
+        }
+      }
+
+      .stat-number {
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--text-main);
+      }
+
+      /* GRID TABS */
+      .profile-tabs {
+        display: flex;
+        border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+        margin-top: 24px;
+      }
+
+      .profile-tab {
+        flex: 1;
+        text-align: center;
+        padding: 14px;
+        cursor: pointer;
+        font-weight: 500;
+        color: var(--text-muted);
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .profile-tab:hover {
+        color: var(--text-main);
+      }
+
+      .profile-tab.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+      }
+
+      /* POSTS / SHORTS GRID */
+      .profile-grid-container {
+        display: none;
+        /* hidden by default, toggled by JS */
+      }
+
+      .profile-grid-container.active {
+        display: grid;
+      }
+
+      .profile-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2px;
+      }
+
+      .grid-item {
+        aspect-ratio: 1;
+        background: var(--bg-card);
+        position: relative;
+        overflow: hidden;
+        cursor: pointer;
+        border: 1px solid var(--border-color);
+      }
+
+      .grid-item img,
+      .grid-item video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .grid-item .views {
+        position: absolute;
+        bottom: 8px;
+        left: 8px;
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+      }
+
+      /* FINANCIAL BALANCES & INFO (Moved below grid or hideable) */
+      .private-info-section {
+        padding: 24px 32px;
+        background: var(--bg-dark);
+        border-radius: 12px;
+        margin: 24px 16px;
+        border: 1px solid var(--border-color);
+      }
+
+      .private-info-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0 0 16px 0;
+        color: var(--text-main);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .balance-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 14px;
+        color: var(--text-muted);
+      }
+
+      .balance-row span:last-child {
+        font-weight: 600;
+        color: var(--text-main);
+      }
+
+      .profile-follow-btn {
+        display: block;
+        width: 200px;
+        margin: 20px auto;
+        padding: 12px;
+        border-radius: 30px;
+        background: var(--primary);
+        color: white;
+        text-align: center;
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 16px;
+        box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+        transition: transform 0.2s;
+        border: none;
+        cursor: pointer;
+      }
+
+      .profile-follow-btn:hover {
+        transform: translateY(-2px);
+      }
+
+      @keyframes pulse {
+        0% { transform: scale(0.9); opacity: 0.6; }
+        50% { transform: scale(1.1); opacity: 1; }
+        100% { transform: scale(0.9); opacity: 0.6; }
+      }
+
+      /* MODALS */
+      .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 1000;
+        display: none;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+        backdrop-filter: blur(5px);
+      }
+
+      .modal-overlay.active {
+        display: flex;
+      }
+
+      .modal-content {
+        background: var(--bg-card);
+        border-radius: 16px;
+        width: 100%;
+        max-width: 420px;
+        padding: 24px;
+        border: 1px solid var(--border-color);
+        position: relative;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+
+      .modal-close {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+      }
+
+      .modal-close:hover {
+        background: rgba(255, 255, 255, 0.2);
+        color: var(--text-main);
+      }
+
+      .modal-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 0 0 20px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      /* EDIT BUTTONS */
+      .edit-banner-btn {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.5);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        backdrop-filter: blur(4px);
+        transition: all 0.2s;
+      }
+
+      .edit-banner-btn:hover {
+        background: rgba(0, 0, 0, 0.8);
+        transform: scale(1.1);
+      }
+
+      .edit-avatar-btn {
+        position: absolute;
+        bottom: 5px;
+        right: 5px;
+        background: var(--primary);
+        color: white;
+        border: 4px solid var(--bg-card);
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s;
+      }
+
+      .edit-avatar-btn:hover {
+        transform: scale(1.1);
+      }
+
+      .edit-info-btn {
+        background: none;
+        border: none;
+        color: var(--primary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        transition: background 0.2s;
+      }
+
+      .edit-info-btn:hover {
+        background: rgba(59, 130, 246, 0.1);
+      }
+
+      /* FILE UPLOAD UI */
+      .file-upload-box {
+        border: 2px dashed var(--border-color);
+        border-radius: 12px;
+        padding: 32px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: var(--bg-dark);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .file-upload-box:hover {
+        border-color: var(--primary);
+        background: rgba(59, 130, 246, 0.05);
+      }
+
+      .file-upload-box input[type="file"] {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+      }
+
+      .file-upload-icon {
+        color: var(--primary);
+        margin-bottom: 12px;
+      }
+
+      /* COLOR SQUARES */
+      .color-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .color-option {
+        height: 60px;
+        border-radius: 12px;
+        cursor: pointer;
+        border: 2px solid transparent;
+        transition: all 0.2s;
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+      }
+
+      .color-option:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
+
+      .color-option.selected {
+        border-color: white;
+        box-shadow: 0 0 0 2px var(--primary);
+      }
+
+      /* AVATAR GRID */
+      .avatar-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+        gap: 12px;
+      }
+
+      .avatar-option {
+        cursor: pointer;
+        border-radius: 50%;
+        overflow: hidden;
+        border: 3px solid transparent;
+        transition: all 0.2s;
+      }
+
+      .avatar-option img {
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: cover;
+        display: block;
+      }
+
+      .avatar-option.selected {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+      }
+    </style>
+
+    <div class="app-wrapper">
+      <div class="main-layout">
+        <%- include('partials/leftSidebar') %>
+
+          <main class="feed-column" style="padding: 0; align-items: center;">
+
+            <div class="profile-page-wrapper">
+
+              <div class="profile-cover-wrap">
+                <button class="edit-banner-btn" onclick="openModal('themeModal')" title="<%= tText("Change Banner Theme") %>">
+                  <i data-lucide="palette" style="width: 20px;"></i>
+                </button>
+                <!-- Content moved below avatar -->
+              </div>
+
+              <div class="profile-avatar-wrapper" style="gap: 0;">
+                <div style="position: relative;">
+                  <img src="<%= currentUser.avatar || '/assets/avatar_placeholder.jpg' %>" class="profile-avatar-circle" alt="Avatar" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+                  <button class="edit-avatar-btn" onclick="openModal('avatarModal')" title="<%= tText("Change Avatar") %>">
+                    <i data-lucide="camera" style="width: 20px;"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div style="text-align: center; margin-top: 16px; padding: 0 16px;">
+                <h1
+                  style="font-size: 24px; font-weight: 600; margin: 0; color: var(--text-main); font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                  <%= currentUser.first_name %> <%= currentUser.last_name %>
+                  <% if ((currentUser.certification_type || 'None') !== 'None') { %>
+                    <span class="verified-badge-small" title="<%= currentUser.certification_type %>" data-type="<%= currentUser.certification_type %>" style="display: inline-flex; margin-left: 8px;">
+                      <i data-lucide="badge-check"></i>
+                    </span>
+                  <% } %>
+                  <button type="button" class="profile-own-game-btn"
+                    title="<%= tText("Votre profil de joueur") %>"
+                    style="background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.15)'"
+                    onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="gamepad-2" style="width: 22px; height: 22px; color: var(--primary); flex-shrink: 0;"></i>
+                  </button>
+                </h1>
+                <p style="font-size: 15px; color: var(--text-muted); margin: 4px 0 0 0;">@<%= String(currentUser.username || 'unknown').trim().replace(/^@+/, '') %>
+                </p>
+                <p
+                  style="font-size: 12px; color: var(--text-muted); margin: 6px 0 0 0; display: inline-flex; align-items: center; gap: 4px;">
+                  <i data-lucide="circle-dot" style="width: 12px;"></i>
+                  <%= currentUserPresenceText || 'Online now' %>
+                </p>
+                <p
+                  style="font-size: 13px; color: var(--text-muted); margin: 6px 0 0 0; display: inline-flex; align-items: center; gap: 4px;">
+                  <i data-lucide="map-pin" style="width: 14px;"></i>
+                  <%= currentUser.country || 'Unknown Location' %>
+                </p>
+              </div>
+
+              <div
+                style="text-align: center; margin-top: 12px; padding: 0 32px; color: var(--text-main); font-size: 15px; font-weight: 400;">
+                <%= currentUser.bio || 'No bio yet.' %>
+              </div>
+
+              <div style="text-align: center; margin-top: 16px;">
+                <button onclick="openModal('infoModal')"
+                  style="padding: 8px 24px; border-radius: 8px; background: var(--bg-dark); color: var(--text-main); border: 1px solid var(--border-color); font-weight: 600; cursor: pointer; transition: all 0.2s;">
+                  Edit Profile
+                </button>
+              </div>
+
+              <!-- TIKTOK STYLE STATS -->
+              <div class="profile-stats-container">
+                <div class="stat-box">
+                  <div class="stat-number" data-follow-stat="following">
+                    <%= formatNumber(followingCount) %>
+                  </div>
+                  <div class="stat-label">Following</div>
+                </div>
+                <div class="stat-box">
+                  <div class="stat-number" data-follow-stat="followers">
+                    <%= formatNumber(followersCount) %>
+                  </div>
+                  <div class="stat-label">Followers</div>
+                </div>
+                <div class="stat-box">
+                  <div class="stat-number">
+                    <%= formatNumber(totalLikesCount) %>
+                  </div>
+                  <div class="stat-label">Likes</div>
+                </div>
+              </div>
+
+              <% const followersPreview=(followersList || []).slice(0, 5); const followingPreview=(followingList ||
+                []).slice(0, 5); %>
+                <div class="profile-social-grid"
+                  style="padding: 0 16px 20px 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+                  <section
+                    style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; min-width: 0;">
+                    <div
+                      style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px;">
+                      <div style="min-width: 0;">
+                        <h3 style="margin: 0; font-size: 15px; color: var(--text-main);">Followers</h3>
+                        <div style="font-size: 11px; color: var(--text-muted);">
+                          <%= formatNumber(followersCount) %> total
+                        </div>
+                      </div>
+                      <button type="button" class="profile-follow-btn profile-view-all-btn"
+                        style="width: auto; margin: 0; padding: 8px 12px; font-size: 12px; height: 34px;"
+                        data-open-list-modal="followers"><%= tText("View all") %></button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow: auto;">
+                      <% if (followersPreview.length) { %>
+                        <% followersPreview.forEach((person)=> { %>
+                          <div class="social-user-item">
+                            <a href="/profile/u/<%= person.username %>" class="social-user-link">
+                              <div class="avatar social-user-avatar">
+                                <img src="<%= person.avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= person.name %>"
+                                  style="width:100%; height:100%; object-fit:cover;">
+                              </div>
+                              <div style="min-width: 0;">
+                                <div class="social-user-name">
+                                  <%= person.name %>
+                                  <% if ((person.certification_type || 'None') !== 'None') { %>
+                                    <span class="verified-badge-small" title="<%= person.certification_type %>" data-type="<%= person.certification_type %>" style="display: inline-flex; margin-left: 4px;">
+                                      <i data-lucide="badge-check"></i>
+                                    </span>
+                                  <% } %>
+                                </div>
+                                <div class="social-user-handle">@<%= String(person.username || 'unknown').trim().replace(/^@+/, '') %>
+                                </div>
+                              </div>
+                            </a>
+                            <span class="social-user-pill"
+                              data-tone="<%= person.is_mutual ? 'success' : (person.is_following ? 'muted' : 'primary') %>">
+                              <%= person.is_mutual ? 'Friends' : (person.is_following ? 'Following' : 'Follow back' ) %>
+                            </span>
+                          </div>
+                          <% }) %>
+                            <% } else { %>
+                              <div style="color: var(--text-muted); font-size: 13px; padding: 4px 0;">No followers yet.
+                              </div>
+                              <% } %>
+                    </div>
+                  </section>
+
+                  <section
+                    style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; min-width: 0;">
+                    <div
+                      style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px;">
+                      <div style="min-width: 0;">
+                        <h3 style="margin: 0; font-size: 15px; color: var(--text-main);">Following</h3>
+                        <div style="font-size: 11px; color: var(--text-muted);">
+                          <%= formatNumber(followingCount) %> total
+                        </div>
+                      </div>
+                      <button type="button" class="profile-follow-btn profile-view-all-btn"
+                        style="width: auto; margin: 0; padding: 8px 12px; font-size: 12px; height: 34px;"
+                        data-open-list-modal="following"><%= tText("View all") %></button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow: auto;">
+                      <% if (followingPreview.length) { %>
+                        <% followingPreview.forEach((person)=> { %>
+                          <div class="social-user-item">
+                            <a href="/profile/u/<%= person.username %>" class="social-user-link">
+                              <div class="avatar social-user-avatar">
+                                <img src="<%= person.avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= person.name %>"
+                                  style="width:100%; height:100%; object-fit:cover;">
+                              </div>
+                              <div style="min-width: 0;">
+                                <div class="social-user-name">
+                                  <%= person.name %>
+                                  <% if ((person.certification_type || 'None') !== 'None') { %>
+                                    <span class="verified-badge-small" title="<%= person.certification_type %>" data-type="<%= person.certification_type %>" style="display: inline-flex; margin-left: 4px;">
+                                      <i data-lucide="badge-check"></i>
+                                    </span>
+                                  <% } %>
+                                </div>
+                                <div class="social-user-handle">@<%= String(person.username || 'unknown').trim().replace(/^@+/, '') %>
+                                </div>
+                              </div>
+                            </a>
+                            <span class="social-user-pill" data-tone="<%= person.is_mutual ? 'success' : 'muted' %>">
+                              <%= person.is_mutual ? 'Friends' : 'Following' %>
+                            </span>
+                          </div>
+                          <% }) %>
+                            <% } else { %>
+                              <div style="color: var(--text-muted); font-size: 13px; padding: 4px 0;">You are not
+                                following anyone yet.</div>
+                              <% } %>
+                    </div>
+                  </section>
+                </div>
+
+                <% if (moderationNotices && moderationNotices.length) { %>
+                  <div class="moderation-alert-stack">
+                    <% moderationNotices.forEach((notice) => { %>
+                      <% const postExcerpt = String(notice.post_content || '').trim(); %>
+                      <div class="moderation-alert-card">
+                        <div class="moderation-alert-title">
+                          <i data-lucide="shield-alert" style="width: 18px; height: 18px;"></i>
+                          Alerte de moderation
+                        </div>
+                        <div class="moderation-alert-meta">
+                          <strong><%= notice.target_type === 'profile' ? 'Votre profil' : 'Votre publication' %></strong>
+                          a ete signale(e) par l administration.
+                        </div>
+                        <div class="moderation-alert-detail">
+                          <strong><%= tText("Raison:") %></strong> <%= notice.reason %>
+                        </div>
+                        <% if (notice.details) { %>
+                          <div class="moderation-alert-detail">
+                            <strong><%= tText("Detail:") %></strong> <%= notice.details %>
+                          </div>
+                        <% } %>
+                        <% if (notice.target_type === 'post' && postExcerpt) { %>
+                          <div class="moderation-alert-preview">
+                            <strong><%= tText("Post concerne:") %></strong> <%= postExcerpt.length > 140 ? `${postExcerpt.slice(0, 140)}...` : postExcerpt %>
+                          </div>
+                        <% } %>
+                      </div>
+                    <% }) %>
+                  </div>
+                <% } %>
+
+                <% if (success) { %>
+                  <div class="alert success" style="text-align: center;">
+                    <%= success %>
+                  </div>
+                  <% } %>
+                    <% if (error) { %>
+                      <div class="alert error" style="text-align: center;">
+                        <%= error %>
+                      </div>
+                      <% } %>
+
+                        <!-- GRID TABS -->
+                        <div class="profile-tabs">
+                          <div class="profile-tab active" onclick="switchGrid('posts', this)">
+                            <i data-lucide="grid" style="width: 18px;"></i> Posts
+                          </div>
+                          <div class="profile-tab" onclick="switchGrid('shorts', this)">
+                            <i data-lucide="play-square" style="width: 18px;"></i> Shorts
+                          </div>
+                        </div>
+
+                        <!-- POSTS GRID -->
+                        <div id="postsGrid" class="profile-grid profile-grid-container active">
+                          <% if (userPosts && userPosts.length> 0) { %>
+                            <% userPosts.forEach(post=> { %>
+                              <div class="grid-item" data-post-id="<%= post.id %>">
+                                <% if (post.is_live === 1) { 
+                                     const ytId = getYouTubeId(post.live_url);
+                                %>
+                                  <div style="position: relative; width: 100%; height: 100%;">
+                                    <img src="https://img.youtube.com/vi/<%= ytId %>/hqdefault.jpg" alt="<%= tText("Live YouTube") %>" style="width: 100%; height: 100%; object-fit: cover;">
+                                    <span style="position: absolute; top: 8px; left: 8px; background: #ef4444; color: white; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; display: flex; align-items: center; gap: 4px; z-index: 2;">
+                                      <span style="width: 6px; height: 6px; background: white; border-radius: 50%; display: inline-block;"></span> LIVE
+                                    </span>
+                                  </div>
+                                <% } else if (post.image_url) { %>
+                                  <img src="<%= post.image_url %>" alt="Post">
+                                  <% } else { %>
+                                    <!-- Text only post -->
+                                    <div
+                                      style="padding: 12px; font-size: 12px; color: var(--text-main); background: var(--bg-card); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; border: 1px solid var(--border-color); box-sizing: border-box;">
+                                      <%= post.content.substring(0, 60) %>...
+                                    </div>
+                                    <% } %>
+                                       <div class="views" style="display: flex; gap: 8px;">
+                                         <span style="display: flex; align-items: center; gap: 3px;">
+                                           <i data-lucide="eye" style="width: 12px; height: 12px;"></i>
+                                           <%= formatNumber((post.likes_count || 0) * 12 + (post.id % 7) * 3 + 15) %>
+                                         </span>
+                                         <span style="display: flex; align-items: center; gap: 3px;">
+                                           <i data-lucide="heart" style="width: 12px; height: 12px;"></i>
+                                           <%= formatNumber(post.likes_count) %>
+                                         </span>
+                                       </div>
+                                      <form action="/profile/post/<%= post.id %>/delete" method="POST"
+                                        style="position: absolute; top: 8px; right: 8px; margin: 0;">
+                                        <button type="submit"
+                                          style="background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer;"
+                                          onclick="return confirm('Voulez-vous vraiment supprimer ou masquer ce post ?');">
+                                          <i data-lucide="trash-2" style="width: 14px;"></i>
+                                        </button>
+                                      </form>
+                              </div>
+                              <% }) %>
+                                <% } else { %>
+                                  <div
+                                    style="grid-column: span 3; text-align: center; padding: 40px; color: var(--text-muted);">
+                                    <%= t('profile.noPostsYet', 'No posts yet.' ) %>
+                                  </div>
+                                  <% } %>
+                        </div>
+
+                        <!-- SHORTS GRID -->
+                        <div id="shortsGrid" class="profile-grid profile-grid-container">
+                          <% if (userReels && userReels.length> 0) { %>
+                            <% userReels.forEach(reel=> { %>
+                              <% let resolvedVideoUrl = reel.video_url; if (resolvedVideoUrl &&
+                                resolvedVideoUrl.includes('unsplash.com')) { const
+                                videoUrls = [ 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4'
+                                , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4'
+                                , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
+                                , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4'
+                                , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4'
+                                ]; const videoIdx = (reel.id - 1) % videoUrls.length; resolvedVideoUrl = videoUrls[videoIdx >= 0 ? videoIdx : 0];
+                                }
+                                const reelMediaFit = reel.media_fit === 'contain' ? 'contain' : 'cover';
+                                %>
+                                <div class="grid-item" data-reel-id="<%= reel.id %>">
+                                  <% if (!reel.media_type || reel.media_type==='video' ) { %>
+                                    <video src="<%= resolvedVideoUrl %>" muted loop
+                                      style="object-fit: <%= reelMediaFit %>;"></video>
+                                    <% } else if (reel.media_type==='image_audio' ) { %>
+                                      <img src="<%= resolvedVideoUrl %>"
+                                        style="width: 100%; height: 100%; object-fit: <%= reelMediaFit %>;">
+                                      <% } else if (reel.media_type==='voice' ) { %>
+                                        <div
+                                          style="width: 100%; height: 100%; background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); display: flex; align-items: center; justify-content: center; color: white;">
+                                          <i data-lucide="mic" style="width: 24px; height: 24px;"></i>
+                                        </div>
+                                        <% } else if (reel.media_type==='audio' ) { %>
+                                          <div
+                                            style="width: 100%; height: 100%; background: linear-gradient(135deg, #1e1b4b 0%, #311042 100%); display: flex; align-items: center; justify-content: center; color: white;">
+                                            <i data-lucide="music" style="width: 24px; height: 24px;"></i>
+                                          </div>
+                                          <% } %>
+                                             <div class="views" style="display: flex; gap: 8px;">
+                                               <span style="display: flex; align-items: center; gap: 3px;">
+                                                 <i data-lucide="eye" style="width: 12px; height: 12px;"></i>
+                                                 <%= formatNumber((reel.likes_count || 0) * 15 + (reel.id % 9) * 4 + 21) %>
+                                               </span>
+                                               <span style="display: flex; align-items: center; gap: 3px;">
+                                                 <i data-lucide="heart" style="width: 12px; height: 12px;"></i>
+                                                 <%= formatNumber(reel.likes_count) %>
+                                               </span>
+                                             </div>
+                                            <form action="/profile/reel/<%= reel.id %>/delete" method="POST"
+                                              style="position: absolute; top: 8px; right: 8px; margin: 0;">
+                                              <button type="submit"
+                                                style="background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer;"
+                                                onclick="return confirm('Voulez-vous vraiment supprimer ou masquer ce short ?');">
+                                                <i data-lucide="trash-2" style="width: 14px;"></i>
+                                              </button>
+                                            </form>
+                                </div>
+                                <% }) %>
+                                  <% } else { %>
+                                    <div
+                                      style="grid-column: span 3; text-align: center; padding: 40px; color: var(--text-muted);">
+                                      <%= t('profile.noReelsYet', 'No reels yet.' ) %>
+                                    </div>
+                                    <% } %>
+                        </div>
+
+                        <!-- PRIVATE INFO SECTION -->
+                        <div class="private-info-section">
+                          <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3 class="private-info-title" style="margin: 0;"><i data-lucide="lock"
+                                style="width: 16px;"></i> <%= tText("Private Information") %></h3>
+                          </div>
+                          <div class="balance-row">
+                            <span><%= tText("Deposit Balance") %></span>
+                            <span id="profile-deposit-balance">$<%=
+                                parseFloat(currentUser.deposit_account_balance).toFixed(2) %></span>
+                          </div>
+                          <div class="balance-row">
+                            <span><%= tText("Withdrawal Balance") %></span>
+                            <span id="profile-withdrawal-balance">$<%=
+                                parseFloat(currentUser.withdrawal_account_balance).toFixed(2) %></span>
+                          </div>
+                          <div class="balance-row">
+                            <span><%= tText("Bonus Balance") %></span>
+                            <span id="profile-bonus-balance">$<%=
+                                parseFloat(currentUser.bonus_account_balance).toFixed(2) %></span>
+                          </div>
+                          <div class="balance-row">
+                            <span><%= tText("Token Balance") %> <i data-lucide="coins"
+                                style="width: 14px; height: 14px; vertical-align: middle; margin-left: 4px; color: #f59e0b;"></i></span>
+                            <span id="profile-token-balance" style="font-weight: bold; color: #f59e0b;">
+                              <%= currentUser.token_balance || 0 %>
+                            </span>
+                          </div>
+                          <div style="display: flex; gap: 12px; margin-top: 16px;">
+                            <button
+                              id="profile-deposit-btn"
+                              style="flex: 1; padding: 10px; border-radius: 8px; background: var(--success); color: white; border: none; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                              <i data-lucide="arrow-down-circle" style="width: 16px;"></i> Deposit
+                            </button>
+                            <% 
+                              const userWithdrawalBal = parseFloat(currentUser.withdrawal_account_balance || 0);
+                              const minWithdrawalAmt = parseFloat(minWithdrawalAmount || 50);
+                              const isWithdrawDisabled = userWithdrawalBal < minWithdrawalAmt;
+                            %>
+                            <button
+                              id="profile-withdraw-btn"
+                              <%= isWithdrawDisabled ? 'disabled' : '' %>
+                              style="flex: 1; padding: 10px; border-radius: 8px; background: var(--danger); color: white; border: none; font-weight: 600; cursor: <%= isWithdrawDisabled ? 'not-allowed' : 'pointer' %>; display: flex; align-items: center; justify-content: center; gap: 8px; <%= isWithdrawDisabled ? 'opacity: 0.5; filter: grayscale(1);' : '' %>">
+                              <i data-lucide="arrow-up-circle" style="width: 16px;"></i> Withdraw
+                            </button>
+                          </div>
+                          
+                          <div id="profile-withdraw-warning" style="margin-top: 10px; padding: 12px; border-radius: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #f87171; font-size: 12.5px; line-height: 1.5; display: <%= isWithdrawDisabled ? 'flex' : 'none' %>; align-items: flex-start; gap: 8px; text-align: left;">
+                            <i data-lucide="alert-circle" style="width: 16px; min-width: 16px; margin-top: 2px; color: #f87171;"></i>
+                            <span id="profile-withdraw-warning-text">
+                              Le bouton de retrait est désactivé car votre solde de retrait ($<span id="profile-withdraw-warning-bal"><%= userWithdrawalBal.toFixed(2) %></span><%= tText(") est inférieur au montant minimum de retrait requis de") %> <strong>$<%= minWithdrawalAmt.toFixed(2) %></strong>.<br>
+                              Le retrait sera activé dès que votre solde atteindra ou dépassera ce montant minimum.
+                            </span>
+                          </div>
+
+                          <script>
+                            window.minWithdrawalAmount = <%= minWithdrawalAmt %>;
+                            window.withdrawalFeePercent = <%= typeof withdrawalFeePercent !== 'undefined' ? withdrawalFeePercent : 30 %>;
+                          </script>
+
+                          <button
+                            id="profile-history-btn"
+                            style="width: 100%; margin-top: 10px; padding: 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); color: var(--text-main); border: 1px solid var(--border-color); font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            <i data-lucide="history" style="width: 16px;"></i> Historique des Transactions
+                          </button>
+                          <hr style="border: none; border-top: 1px solid var(--border-color); margin: 12px 0;">
+                          <div class="balance-row">
+                            <span>Username</span>
+                            <span>
+                              @<%= String(currentUser.username || 'unknown').trim().replace(/^@+/, '') %>
+                            </span>
+                          </div>
+                          <div class="balance-row">
+                            <span>Wallet</span>
+                            <span>
+                              <%= currentUser.wallet_address || 'Not provided' %>
+                            </span>
+                          </div>
+                        </div>
+
+            </div>
+
+          </main>
+
+          <!-- Right Sidebar can be included if desired, but we can leave it out for a focused profile -->
+          <%- include('partials/rightSidebar') %>
+      </div>
+    </div>
+
+    <div class="chat-boxes-container" id="chatBoxesContainer"></div>
+
+    <%- include('partials/mobileNav') %>
+
+      <!-- MODALS -->
+
+      <!-- Info Modal -->
+      <div class="modal-overlay" id="infoModal">
+        <div class="modal-content">
+          <button class="modal-close" onclick="closeModal('infoModal')"><i data-lucide="x"></i></button>
+          <h2 class="modal-title"><i data-lucide="user"></i> <%= tText("Edit Profile Info") %></h2>
+          <form action="/profile/edit" method="POST" style="display: flex; flex-direction: column; gap: 16px;">
+            <input type="hidden" name="banner_color" value="<%= currentUser.banner_color || '' %>">
+            <div>
+              <label style="display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px;">About me
+                (Bio)</label>
+              <textarea name="bio" rows="3"
+                style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-family: inherit; resize: vertical;"><%= currentUser.bio || '' %></textarea>
+            </div>
+            <div>
+              <label style="display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px;">Phone
+                Number</label>
+              <input type="text" name="phone" value="<%= currentUser.phone || '' %>"
+                style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-family: inherit;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px;">Wallet
+                Address</label>
+              <input type="text" name="wallet_address" value="<%= currentUser.wallet_address || '' %>"
+                style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-family: inherit;">
+            </div>
+            <button type="submit" class="profile-follow-btn" style="width: 100%; margin-top: 8px;"><%= tText("Save Changes") %></button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Theme Modal -->
+      <div class="modal-overlay" id="themeModal">
+        <div class="modal-content">
+          <button class="modal-close" onclick="closeModal('themeModal')"><i data-lucide="x"></i></button>
+          <h2 class="modal-title"><i data-lucide="palette"></i> <%= tText("Choose Banner Theme") %></h2>
+          <form action="/profile/edit" method="POST" id="themeForm">
+            <input type="hidden" name="bio" value="<%= currentUser.bio || '' %>">
+            <input type="hidden" name="phone" value="<%= currentUser.phone || '' %>">
+            <input type="hidden" name="wallet_address" value="<%= currentUser.wallet_address || '' %>">
+            <input type="hidden" name="banner_color" id="selectedThemeInput"
+              value="<%= currentUser.banner_color || 'linear-gradient(135deg, #1e3a8a, var(--primary))' %>">
+
+            <div class="color-grid">
+              <% const themes=[ { name: "Default Blue" , val: "linear-gradient(135deg, #1e3a8a, var(--primary))" }, {
+                name: "Dark Slate" , val: "linear-gradient(135deg, #0f172a, #334155)" }, { name: "Purple Pink" ,
+                val: "linear-gradient(135deg, #8b5cf6, #ec4899)" }, { name: "Emerald Green" ,
+                val: "linear-gradient(135deg, #059669, #10b981)" }, { name: "Sunset Orange" ,
+                val: "linear-gradient(135deg, #ea580c, #f97316)" }, { name: "Midnight" ,
+                val: "linear-gradient(135deg, #111827, #000000)" } ]; %>
+                <% themes.forEach(theme=> { %>
+                  <div class="color-option <%= currentUser.banner_color === theme.val ? 'selected' : '' %>"
+                    style="background: <%= theme.val %>;" onclick="selectTheme('<%= theme.val %>', this)"
+                    title="<%= theme.name %>"></div>
+                  <% }) %>
+            </div>
+            <button type="submit" class="profile-follow-btn" style="width: 100%; margin-top: 24px;"><%= tText("Apply Theme") %></button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Avatar Modal -->
+      <div class="modal-overlay" id="avatarModal">
+        <div class="modal-content">
+          <button class="modal-close" onclick="closeModal('avatarModal')"><i data-lucide="x"></i></button>
+          <h2 class="modal-title"><i data-lucide="image"></i> <%= tText("Update Avatar") %></h2>
+
+          <form action="/profile/avatar" method="POST" id="avatarForm" enctype="multipart/form-data">
+            <input type="hidden" name="avatarUrl" id="selectedAvatarInput" value="">
+
+            <div class="file-upload-box" id="fileUploadBox">
+              <input type="file" name="avatarFile" accept="image/*" id="avatarFileInput">
+              <i data-lucide="upload-cloud" style="width: 32px; height: 32px;" class="file-upload-icon"></i>
+              <div style="font-size: 14px; font-weight: 500; color: var(--text-main);"><%= tText("Click to upload from PC") %></div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;"><%= tText("JPEG, PNG, GIF up to 5MB") %></div>
+              <div id="fileNameDisplay"
+                style="margin-top: 12px; font-size: 13px; color: var(--primary); font-weight: 600; display: none;">
+              </div>
+            </div>
+
+            <div
+              style="text-align: center; color: var(--text-muted); font-weight: 500; font-size: 13px; margin: 24px 0 16px;">
+              Or select a preset avatar</div>
+            <div class="avatar-grid">
+              <% presetAvatars.forEach(avatar=> { %>
+                <div class="avatar-option" onclick="selectAvatar('<%= avatar %>', this)">
+                  <img src="<%= avatar %>" alt="Preset">
+                </div>
+                <% }) %>
+            </div>
+            <button type="submit" class="profile-follow-btn" style="width: 100%; margin-top: 24px;"><%= tText("Save Avatar") %></button>
+          </form>
+        </div>
+      </div>
+
+      <script>
+        // Modal Logic
+        function openModal(id) {
+          document.getElementById(id).classList.add('active');
+        }
+        function closeModal(id) {
+          document.getElementById(id).classList.remove('active');
+        }
+        // Close modal when clicking outside content
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+          overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.classList.remove('active');
+          });
+        });
+
+        // Theme Selection
+        function selectTheme(val, element) {
+          document.getElementById('selectedThemeInput').value = val;
+          document.querySelectorAll('.color-option').forEach(el => el.classList.remove('selected'));
+          element.classList.add('selected');
+        }
+
+        // File Input Display
+        document.getElementById('avatarFileInput').addEventListener('change', function (e) {
+          const fileNameDisplay = document.getElementById('fileNameDisplay');
+          if (this.files && this.files[0]) {
+            fileNameDisplay.textContent = 'Selected: ' + this.files[0].name;
+            fileNameDisplay.style.display = 'block';
+            // Clear preset selection if file uploaded
+            document.getElementById('selectedAvatarInput').value = '';
+            document.querySelectorAll('.avatar-option').forEach(el => el.classList.remove('selected'));
+          } else {
+            fileNameDisplay.style.display = 'none';
+          }
+        });
+        function selectAvatar(url, element) {
+          document.getElementById('selectedAvatarInput').value = url;
+
+          document.querySelectorAll('.avatar-option').forEach(el => {
+            el.classList.remove('selected');
+          });
+
+          element.classList.add('selected');
+        }
+
+        function switchGrid(gridName, tabElement) {
+          document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
+          tabElement.classList.add('active');
+
+          document.getElementById('postsGrid').classList.remove('active');
+          document.getElementById('shortsGrid').classList.remove('active');
+
+          if (gridName === 'posts') {
+            document.getElementById('postsGrid').classList.add('active');
+          } else {
+            document.getElementById('shortsGrid').classList.add('active');
+          }
+        }
+      </script>
+      <!-- Floating Toast Container -->
+      <div id="appToast"
+        style="position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--text-primary); color: var(--bg-card); padding: 12px 24px; border-radius: var(--border-radius-pill); font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg); z-index: 2000; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease; opacity: 0; pointer-events: none; border: 1px solid var(--border-color);">
+        <%= t('settings.actionSuccessful', 'Action successful' ) %>
+      </div>
+      <div class="modal-overlay" id="socialListModal">
+        <div class="modal-content" style="max-width: 520px; width: 100%;">
+          <button class="modal-close" type="button"
+            onclick="window.closeSocialListModal && window.closeSocialListModal()"
+            data-close-list-modal="socialListModal"><i data-lucide="x"></i></button>
+          <h2 class="modal-title" id="socialListModalTitle"><i data-lucide="users"></i>
+            <%= t('profile.connections', 'Connections' ) %>
+          </h2>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="position: relative;">
+              <input type="text" id="socialListSearch" placeholder="<%= t('header.searchPlaceholder', 'Search') %>"
+                style="width: 100%; padding: 10px 12px 10px 36px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 13px; outline: none;">
+              <i data-lucide="search"
+                style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted);"></i>
+            </div>
+            <div id="socialListModalCount" style="font-size: 12px; color: var(--text-muted);"></div>
+            <div id="socialListModalBody"
+              style="display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow: auto;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Deposit Modal -->
+      <div class="modal-overlay" id="depositModal">
+        <div class="modal-content" style="max-width: 460px;">
+          <button class="modal-close" onclick="closeModal('depositModal')"><i data-lucide="x"></i></button>
+          
+          <!-- Step 1: Configure Wallet Address -->
+          <div id="deposit-step-setup" style="display: none;">
+            <h2 class="modal-title"><i data-lucide="wallet" style="color: var(--primary);"></i> <%= tText("Configurer Wallet BEP-20") %></h2>
+            <p style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">
+              Pour approvisionner votre compte, vous devez d'abord associer votre adresse de portefeuille BEP-20 (Binance Smart Chain). Les dépôts provenant d'une autre adresse ne seront pas crédités.
+            </p>
+            <form id="walletSetupForm" style="display: flex; flex-direction: column; gap: 16px;">
+              <div>
+                <label style="display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px;"><%= tText("Votre adresse BEP-20 (BSC)") %></label>
+                <input type="text" id="walletSetupAddressInput" placeholder="0x..." required
+                  style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-family: monospace; font-size: 13px;">
+              </div>
+              <div id="walletSetupError" style="color: var(--danger); font-size: 13px; display: none;"></div>
+              <button type="submit" class="profile-follow-btn" style="width: 100%; margin-top: 8px;"><%= tText("Enregistrer & Continuer") %></button>
+            </form>
+          </div>
+
+          <!-- Step 2: Deposit Details -->
+          <div id="deposit-step-details" style="display: none;">
+            <h2 class="modal-title"><i data-lucide="arrow-down-circle" style="color: var(--success);"></i> <%= tText("Déposer des USDT (BEP-20)") %></h2>
+            
+            <!-- Address input / QR section -->
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; background: color-mix(in srgb, var(--primary) 5%, var(--bg-dark)); padding: 16px; border-radius: 12px; border: 1px dashed var(--border-color); margin-bottom: 16px;">
+              <img id="depositPlatformQr" src="" alt="<%= tText("QR Code") %>" style="width: 180px; height: 180px; border-radius: 8px; background: white; padding: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+              
+              <div style="width: 100%;">
+                <label style="display: block; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;"><%= tText("Adresse de la plateforme") %></label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="depositPlatformAddress" readonly value="0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6"
+                    style="flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-main); font-family: monospace; font-size: 11px; text-align: center;">
+                  <button id="depositCopyBtn" type="button" class="profile-follow-btn" style="padding: 10px; margin: 0; display: flex; align-items: center; justify-content: center; width: 40px; height: 38px;">
+                    <i data-lucide="copy" style="width: 16px; height: 16px;"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Warning / Info Box -->
+            <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); padding: 10px 12px; border-radius: 8px; display: flex; gap: 10px; margin-bottom: 16px;">
+              <i data-lucide="alert-triangle" style="width: 18px; height: 18px; color: #f59e0b; flex-shrink: 0;"></i>
+              <div style="font-size: 11.5px; color: #f59e0b; line-height: 1.4;">
+                Envoyez <strong><%= tText("uniquement des USDT (BEP-20)") %></strong> <%= tText("depuis votre adresse enregistrée :") %> <br>
+                <code id="depositUserWalletDisplay" style="font-family: monospace; background: rgba(0,0,0,0.2); padding: 1px 4px; border-radius: 3px; word-break: break-all;"></code>
+              </div>
+            </div>
+
+            <!-- Real-time Status Tracker -->
+            <div style="border-top: 1px solid var(--border-color); padding-top: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <span style="font-size: 13px; font-weight: 500;"><%= tText("Statut du dépôt en temps réel") %></span>
+                <span id="depositStatusBadge" class="market-status-badge market-status-badge--pending" style="font-size: 11px; display: flex; align-items: center; gap: 4px;">
+                  <span class="pulse-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #3b82f6;"></span> En attente...
+                </span>
+              </div>
+              <div id="depositStatusMessage" style="font-size: 12px; color: var(--text-muted); background: var(--bg-dark); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-color); text-align: center; font-style: italic;">
+                En attente d'un transfert sur le réseau BSC...
+              </div>
+            </div>
+            
+            <div style="display: flex; gap: 8px; margin-top: 16px;">
+              <button onclick="closeModal('depositModal')" class="profile-follow-btn" style="flex: 1; background: var(--border-color); color: var(--text-main);">Fermer</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Withdraw Modal -->
+      <div class="modal-overlay" id="withdrawModal">
+        <div class="modal-content" style="max-width: 460px;">
+          <button class="modal-close" onclick="closeModal('withdrawModal')"><i data-lucide="x"></i></button>
+          
+          <!-- Step 0: Dedicated Withdrawal KYC Verification Required -->
+          <div id="withdraw-step-kyc-required" style="display: none; padding: 10px 0;">
+            <h2 class="modal-title" style="margin-bottom: 8px;"><i data-lucide="shield-check" style="color: var(--danger);"></i> <%= tText("Vérification KYC de Retrait") %></h2>
+            
+            <form id="withdrawKycForm" style="display: flex; flex-direction: column; gap: 14px;">
+              <!-- Substep 1: Face matching -->
+              <div id="withdraw-kyc-substep-1">
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
+                  <%= tText("Étape 1 sur 2 : Reconnaissance visuelle. Prenez une photo de votre document d'identité et un selfie de comparaison en direct.") %>
+                </p>
+
+                <!-- Document file selection -->
+                <div style="margin-bottom: 14px;">
+                  <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px;"><%= tText("Document d'identité (Image de votre carte d'identité ou passeport)") %></label>
+                  <input type="file" id="withdrawKycDocument" name="identity_document" accept="image/*" required
+                    style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 13px;">
+                </div>
+                
+                <!-- Camera block -->
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
+                  <label style="display: block; font-size: 12px; color: var(--text-muted);"><%= tText("Selfie en direct") %></label>
+                  
+                  <div style="position: relative; border-radius: 8px; overflow: hidden; background: #000; border: 1px solid var(--border-color);">
+                    <video id="withdrawKycCameraVideo" autoplay muted playsinline style="width: 100%; height: 200px; object-fit: cover; display: none;"></video>
+                    <canvas id="withdrawKycCameraCanvas" hidden></canvas>
+                    
+                    <div class="event-kyc-selfie-preview" id="withdrawKycSelfiePreview" style="height: 200px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; padding: 20px; text-align: center; line-height: 1.4;">
+                      <span><%= tText("Démarrez votre caméra, puis prenez une photo claire de votre visage.") %></span>
+                    </div>
+                  </div>
+
+                  <input type="hidden" id="withdrawKycSelfieImageData" name="selfie_image_data">
+                  <input type="hidden" id="withdrawKycFaceMatchDistance" name="face_match_distance">
+
+                  <!-- Camera Controls -->
+                  <div style="display: flex; gap: 8px; justify-content: center;">
+                    <button type="button" class="profile-follow-btn" id="withdrawKycStartCameraBtn" style="flex: 1; background: var(--border-color); color: var(--text-main); border: none; font-size: 13px; margin: 0; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                      <i data-lucide="camera" style="width: 16px;"></i>
+                      <span><%= tText("Démarrer") %></span>
+                    </button>
+                    <button type="button" class="profile-follow-btn" id="withdrawKycCaptureSelfieBtn" style="flex: 1; display: none; font-size: 13px; margin: 0; padding: 10px; align-items: center; justify-content: center; gap: 6px;">
+                      <i data-lucide="camera" style="width: 16px;"></i>
+                      <span><%= tText("Prendre photo") %></span>
+                    </button>
+                    <button type="button" class="profile-follow-btn" id="withdrawKycRetakeSelfieBtn" style="flex: 1; display: none; background: var(--border-color); color: var(--text-main); border: none; font-size: 13px; margin: 0; padding: 10px; align-items: center; justify-content: center; gap: 6px;">
+                      <i data-lucide="refresh-cw" style="width: 16px;"></i>
+                      <span><%= tText("Recommencer") %></span>
+                    </button>
+                  </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 18px;">
+                  <button type="button" class="profile-follow-btn" id="withdrawKycGoToStep2Btn" disabled style="width: 100%; opacity: 0.5; cursor: not-allowed; display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
+                    <span><%= tText("Continuer vers l'Étape 2") %></span>
+                    <i data-lucide="arrow-right" style="width: 16px;"></i>
+                  </button>
+                  <button type="button" onclick="closeModal('withdrawModal')" class="profile-follow-btn" style="width: 100%; background: var(--border-color); color: var(--text-main); border: none; margin: 0;"><%= tText("Annuler") %></button>
+                </div>
+              </div>
+
+              <!-- Substep 2: Info verification -->
+              <div id="withdraw-kyc-substep-2" style="display: none;">
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
+                  <%= tText("Étape 2 sur 2 : Confirmation des informations. Les données ci-dessous doivent correspondre exactement à votre document d'identité pour que la vérification OCR automatique réussisse.") %>
+                </p>
+
+                <div style="display: flex; flex-direction: column; gap: 12px; background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                  <div>
+                    <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;"><%= tText("Prénom") %></label>
+                    <input type="text" value="<%= currentUser.first_name || '' %>" readonly disabled
+                      style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--border-color); color: var(--text-muted); font-size: 13px;">
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;"><%= tText("Nom") %></label>
+                    <input type="text" value="<%= currentUser.last_name || '' %>" readonly disabled
+                      style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--border-color); color: var(--text-muted); font-size: 13px;">
+                  </div>
+                  <div>
+                    <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;"><%= tText("Date de Naissance") %></label>
+                    <% 
+                      let dobStr = '';
+                      if (currentUser.dob) {
+                        try {
+                          dobStr = new Date(currentUser.dob).toISOString().split('T')[0];
+                        } catch(e) {}
+                      }
+                    %>
+                    <input type="text" value="<%= dobStr %>" readonly disabled
+                      style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--border-color); color: var(--text-muted); font-size: 13px;">
+                  </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 18px;">
+                  <button type="submit" class="profile-follow-btn" id="withdrawKycSubmitBtn" style="width: 100%; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border: none; color: white; display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
+                    <i data-lucide="sparkles" style="width: 16px;"></i>
+                    <span><%= tText("Finaliser et vérifier") %></span>
+                  </button>
+                  <button type="button" id="withdrawKycBackToStep1Btn" class="profile-follow-btn" style="width: 100%; background: var(--border-color); color: var(--text-main); border: none; margin: 0; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    <i data-lucide="arrow-left" style="width: 16px;"></i>
+                    <span><%= tText("Retour à l'Étape 1") %></span>
+                  </button>
+                </div>
+              </div>
+
+              <div id="withdrawKycStatusMsg" style="color: var(--text-muted); font-size: 12px; padding: 10px; border-radius: 6px; background: rgba(255,255,255,0.05); display: none; line-height: 1.4;"></div>
+              <div id="withdrawKycFormError" style="color: var(--danger); font-size: 13px; display: none; line-height: 1.4;"></div>
+            </form>
+          </div>
+
+          <!-- Step 0.5: KYC Success Modal Content -->
+          <div id="withdraw-step-kyc-success" style="display: none; padding: 20px 0; text-align: center;">
+            <div style="width: 80px; height: 80px; border-radius: 50%; background: rgba(34, 197, 94, 0.15); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; border: 2px solid #22c55e; box-shadow: 0 0 20px rgba(34, 197, 94, 0.3); animation: pulse 2s infinite;">
+              <i data-lucide="check-circle-2" style="width: 48px; height: 48px; color: #22c55e;"></i>
+            </div>
+            <h2 class="modal-title" style="color: #22c55e; margin-bottom: 12px; font-weight: 800; font-size: 22px;"><%= tText("KYC Validé avec Succès !") %></h2>
+            <p style="font-size: 14px; color: var(--text-main); margin-bottom: 24px; line-height: 1.6; padding: 0 10px;">
+              <%= tText("Félicitations ! L'IA a analysé votre document et confirmé que votre visage ainsi que vos informations (Nom, Prénom, Date de Naissance) correspondent parfaitement.") %>
+            </p>
+            <button type="button" id="withdrawKycSuccessContinueBtn" class="profile-follow-btn" style="width: 100%; background: linear-gradient(135deg, #22c55e 0%, #15803d 100%); border: none; color: white; display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; padding: 12px; font-size: 14px; font-weight: 700;">
+              <span><%= tText("Continuer le retrait") %></span>
+              <i data-lucide="arrow-right" style="width: 16px;"></i>
+            </button>
+          </div>
+
+          <!-- Step 1: Configure Secret Code (PIN) -->
+          <div id="withdraw-step-pin-setup" style="display: none;">
+            <h2 class="modal-title"><i data-lucide="shield-alert" style="color: var(--danger);"></i> <%= tText("Code Secret de Retrait") %></h2>
+            <p style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">
+              <%= tText("Pour sécuriser vos retraits, veuillez configurer un code secret à 6 chiffres. Ce code vous sera demandé pour chaque demande de retrait.") %>
+            </p>
+            <form id="pinSetupForm" style="display: flex; flex-direction: column; gap: 16px;">
+              <div>
+                <label style="display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px;"><%= tText("Définir votre PIN (6 chiffres)") %></label>
+                <input type="password" id="pinSetupInput" placeholder="xxxxxx" maxlength="6" pattern="\d{6}" required
+                  style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-family: monospace; font-size: 18px; letter-spacing: 8px; text-align: center;">
+              </div>
+              <div id="pinSetupError" style="color: var(--danger); font-size: 13px; display: none;"></div>
+              <button type="submit" class="profile-follow-btn" style="width: 100%; margin-top: 8px;"><%= tText("Enregistrer le code secret") %></button>
+            </form>
+          </div>
+
+          <!-- Step 2: Withdrawal Form -->
+          <div id="withdraw-step-form" style="display: none;">
+            <h2 class="modal-title"><i data-lucide="arrow-up-circle" style="color: var(--danger);"></i> <%= tText("Retrait USDT (BEP-20)") %></h2>
+            
+            <form id="withdrawSubmitForm" style="display: flex; flex-direction: column; gap: 16px;">
+              <!-- Display Available Balance -->
+              <div style="background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.1); padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 13px; color: var(--text-muted);"><%= tText("Solde disponible :") %></span>
+                <span id="withdrawAvailableDisplay" style="font-size: 16px; font-weight: 700; color: var(--text-main);">$<%= parseFloat(currentUser.withdrawal_account_balance).toFixed(2) %></span>
+              </div>
+
+              <!-- Recipient Wallet Address Display -->
+              <div>
+                <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;"><%= tText("Adresse de réception BEP-20") %></label>
+                <input type="text" id="withdrawRecipientAddress" readonly
+                  style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-muted); font-family: monospace; font-size: 11px; text-align: center;">
+              </div>
+
+              <!-- Amount Input -->
+              <div>
+                <label style="display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px;"><%= tText("Montant à retirer (USDT)") %></label>
+                <input type="number" id="withdrawAmountInput" min="0.01" step="0.01" placeholder="0.00" required
+                  style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 14px;">
+                
+                <!-- Fee calculation info -->
+                <div id="withdrawCalcBox" style="margin-top: 8px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; font-size: 12px; display: none; flex-direction: column; gap: 4px; border: 1px solid var(--border-color);">
+                  <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);"><%= tText("Frais de retrait (30%) :") %></span>
+                    <span id="withdrawFeeDisplay" style="color: var(--danger); font-weight: 500;">$0.00</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 4px; font-weight: 600;">
+                    <span style="color: var(--text-muted);"><%= tText("Montant à recevoir :") %></span>
+                    <span id="withdrawNetDisplay" style="color: var(--success); font-size: 13px;">$0.00</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- PIN Input -->
+              <div>
+                <label style="display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px;"><%= tText("Code secret (6 chiffres)") %></label>
+                <input type="password" id="withdrawPinInput" placeholder="xxxxxx" maxlength="6" pattern="\d{6}" required
+                  style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-family: monospace; font-size: 18px; letter-spacing: 8px; text-align: center;">
+              </div>
+
+              <div id="withdrawFormError" style="color: var(--danger); font-size: 13px; display: none;"></div>
+              <button type="submit" class="profile-follow-btn" style="width: 100%; margin-top: 8px; background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); border: none;"><%= tText("Confirmer le retrait") %></button>
+            </form>
+          </div>
+
+          <!-- Step 3: Transaction Status Loader -->
+          <div id="withdraw-step-status" style="display: none; text-align: center; padding: 20px 0;">
+            <div style="display: inline-block; position: relative; width: 64px; height: 64px; margin-bottom: 16px;">
+              <span class="pulse-dot" style="position: absolute; left: 0; top: 0; width: 64px; height: 64px; border-radius: 50%; background: #ef4444; opacity: 0.15; animation: pulse 2s infinite;"></span>
+              <div style="position: absolute; left: 16px; top: 16px; width: 32px; height: 32px; border-radius: 50%; background: #ef4444; display: flex; align-items: center; justify-content: center;">
+                <i id="withdrawStatusIcon" data-lucide="loader" class="animate-spin" style="width: 18px; height: 18px; color: white;"></i>
+              </div>
+            </div>
+            <h3 id="withdrawStatusTitle" style="font-size: 16px; font-weight: 600; margin-bottom: 8px;"><%= tText("Traitement en cours") %></h3>
+            <p id="withdrawStatusDesc" style="font-size: 13px; color: var(--text-muted); line-height: 1.5; padding: 0 20px;">
+              <%= tText("Votre transaction de retrait est en cours d'envoi sur la blockchain BSC...") %>
+            </p>
+            
+            <div style="display: flex; gap: 8px; margin-top: 24px;">
+              <button id="withdrawCloseStatusBtn" onclick="closeModal('withdrawModal')" class="profile-follow-btn" style="flex: 1; background: var(--border-color); color: var(--text-main); display: none;"><%= tText("Fermer") %></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transaction History Modal -->
+      <div class="modal-overlay" id="historyModal">
+        <div class="modal-content animate-scale" style="max-width: 500px; width: 90%; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; color: var(--text-main); position: relative; max-height: 80vh; display: flex; flex-direction: column;">
+          <button class="modal-close" onclick="closeModal('historyModal')"><i data-lucide="x"></i></button>
+          
+          <h2 style="font-size: 18px; font-weight: 700; margin-bottom: 16px; font-family: 'Outfit', sans-serif; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="history" style="color: var(--primary); width: 20px; height: 20px;"></i> <%= tText("Historique des Transactions") %>
+          </h2>
+
+          <!-- Tab Headers -->
+          <div style="display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 16px;">
+            <button id="tab-deposits-btn" onclick="switchHistoryTab('deposits')" style="flex: 1; padding: 12px; background: none; border: none; border-bottom: 2px solid var(--primary); color: var(--text-main); font-weight: 600; cursor: pointer; text-align: center; font-size: 14px; outline: none;">
+              <%= tText("Dépôts") %>
+            </button>
+            <button id="tab-withdrawals-btn" onclick="switchHistoryTab('withdrawals')" style="flex: 1; padding: 12px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer; text-align: center; font-size: 14px; outline: none;">
+              <%= tText("Retraits") %>
+            </button>
+          </div>
+
+          <!-- Tab Content (Scrollable Container) -->
+          <div style="flex: 1; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 12px;" id="historyModalContent">
+            
+            <!-- Deposits List -->
+            <div id="history-deposits-list" style="display: flex; flex-direction: column; gap: 12px;">
+              <div style="text-align: center; padding: 20px 0; color: var(--text-muted);">
+                <i data-lucide="loader" class="animate-spin" style="margin: 0 auto 8px auto; width: 18px; height: 18px;"></i> <%= tText("Chargement...") %>
+              </div>
+            </div>
+
+            <!-- Withdrawals List -->
+            <div id="history-withdrawals-list" style="display: none; flex-direction: column; gap: 12px;">
+              <div style="text-align: center; padding: 20px 0; color: var(--text-muted);">
+                <i data-lucide="loader" class="animate-spin" style="margin: 0 auto 8px auto; width: 18px; height: 18px;"></i> <%= tText("Chargement...") %>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+      <script>
+        window.currentUserId = <%= currentUser.id %>;
+        window.viewedProfileId = <%= currentUser.id %>;
+        window.profileSocialLists = {
+          followers: <%- JSON.stringify(followersList || []).replace(/</g, '\\u003c') %>,
+          following: <%- JSON.stringify(followingList || []).replace(/</g, '\\u003c') %>
+    };
+      </script>
+      <script src="/vendor/face-api/face-api.min.js"></script>
+      <script src="/js/client.js?v=200"></script>
+      </body>
+
+      </html>

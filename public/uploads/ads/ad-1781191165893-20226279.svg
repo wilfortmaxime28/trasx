@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="80" y1="80" x2="1120" y2="640" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D4ED8"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.08"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="720" rx="36" fill="#F8FAFC"/>
+  <rect x="32" y="32" width="1136" height="656" rx="32" fill="url(#bg)"/>
+  <rect x="56" y="56" width="1088" height="608" rx="28" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2"/>
+
+  <rect x="80" y="88" width="618" height="544" rx="28" fill="url(#panel)" stroke="#FFFFFF" stroke-opacity="0.14"/>
+  <rect x="728" y="88" width="392" height="544" rx="28" fill="#FFFFFF" fill-opacity="0.94"/>
+
+  <text x="110" y="138" fill="#E0E7FF" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="2">TrasX Ticket</text>
+  <text x="110" y="215" fill="#FFFFFF" font-family="Outfit, Inter, Arial, sans-serif" font-size="52" font-weight="800">Evenement test</text>
+  <text x="110" y="260" fill="#E0E7FF" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="500">Free ticket</text>
+  <text x="110" y="320" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600">Holder</text>
+  <text x="110" y="356" fill="#DBEAFE" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800">Maxime Wilfort</text>
+
+  <text x="110" y="418" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600">Date</text>
+  <text x="110" y="452" fill="#DBEAFE" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700">Tue, Jun 9, 05:22 AM</text>
+
+  <text x="110" y="512" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600">Location</text>
+  <text x="110" y="546" fill="#DBEAFE" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700">Delmas 40</text>
+
+  <text x="110" y="600" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="600" opacity="0.92">Ticket code</text>
+  <text x="110" y="628" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="800">EVT-4-16-5B73A58980</text>
+
+  <text x="770" y="138" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" letter-spacing="1.5">Scan to open ticket</text>
+  <rect x="770" y="164" width="300" height="300" rx="24" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <image href="data:image/png;base64,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" x="790" y="184" width="260" height="260" preserveAspectRatio="xMidYMid meet"/>
+
+  <rect x="770" y="490" width="300" height="90" rx="18" fill="#EEF2FF" stroke="#C7D2FE"/>
+  <text x="790" y="526" fill="#1E293B" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700">Open ticket page</text>
+  <text x="790" y="552" fill="#2563EB" font-family="Inter, Arial, sans-serif" font-size="14" font-weight="500">Scan the QR to open the ticket</text>
+</svg>

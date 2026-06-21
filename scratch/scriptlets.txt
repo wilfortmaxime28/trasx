@@ -1,0 +1,1340 @@
+[Scriptlet 1] (Line around 1):
+include('partials/head')
+-----------------------------------
+[Scriptlet 2] (Line around 5):
+include('partials/header')
+-----------------------------------
+[Scriptlet 3] (Line around 6):
+const activeStatuses=Array.isArray(statuses) ? statuses : []; const safeStatusMessage=typeof statusStatus
+      !=='undefined' ? statusStatus : null; const safeStatusError=typeof statusError !=='undefined' ? statusError :
+      null; const localeCode=typeof locale !=='undefined' ? locale : 'en' ;
+-----------------------------------
+[Scriptlet 4] (Line around 15):
+include('partials/leftSidebar')
+-----------------------------------
+[Scriptlet 5] (Line around 25):
+= currentUser.avatar
+-----------------------------------
+[Scriptlet 6] (Line around 25):
+= currentUser.name
+-----------------------------------
+[Scriptlet 7] (Line around 31):
+= t('status.addStatus', 'Add status' )
+-----------------------------------
+[Scriptlet 8] (Line around 35):
+if (activeStatuses.length> 0) {
+-----------------------------------
+[Scriptlet 9] (Line around 36):
+activeStatuses.forEach((item)=> {
+-----------------------------------
+[Scriptlet 10] (Line around 37):
+/* Defensively handle both grouped and ungrouped formats to prevent crashes */
+                          let group;
+                          if (item && Array.isArray(item.statuses)) {
+                            group = item;
+                          } else if (item) {
+                            group = {
+                              user_id: item.user_id,
+                              user_name: item.user_name || item.username,
+                              username: item.username,
+                              avatar: item.avatar,
+                              statuses: [item]
+                            };
+                          } else {
+                            return;
+                          }
+                          const latestStatus = group.statuses[group.statuses.length - 1];
+                          const serializedStatuses = JSON.stringify(group.statuses.map(s => ({
+                            id: s.id,
+                            media_url: s.media_url,
+                            media_type: s.media_type,
+                            caption: s.caption || '',
+                            expires_at: s.expires_at ? (s.expires_at instanceof Date ? s.expires_at.toISOString() : String(s.expires_at)) : '',
+                            remaining_text: s.remaining_text,
+                            trim_start: s.trim_start,
+                            trim_end: s.trim_end,
+                            bg_color: s.bg_color
+                          })));
+-----------------------------------
+[Scriptlet 11] (Line around 66):
+= group.user_id
+-----------------------------------
+[Scriptlet 12] (Line around 67):
+= group.user_name
+-----------------------------------
+[Scriptlet 13] (Line around 67):
+= group.username
+-----------------------------------
+[Scriptlet 14] (Line around 68):
+= group.avatar
+-----------------------------------
+[Scriptlet 15] (Line around 68):
+= serializedStatuses.replace(/'/g, "&#39;")
+-----------------------------------
+[Scriptlet 16] (Line around 75):
+= group.user_id
+-----------------------------------
+[Scriptlet 17] (Line around 81):
+const count=group.statuses.length; const r=46; const circumference=2 * Math.PI * r;
+                                  const gap=count> 1 ? 6 : 0;
+                                  const segmentLength = (circumference - (count * gap)) / count;
+-----------------------------------
+[Scriptlet 18] (Line around 85):
+for (let i=0; i < count; i++) {
+-----------------------------------
+[Scriptlet 19] (Line around 86):
+= r
+-----------------------------------
+[Scriptlet 20] (Line around 87):
+= group.user_id
+-----------------------------------
+[Scriptlet 21] (Line around 88):
+= segmentLength
+-----------------------------------
+[Scriptlet 22] (Line around 88):
+= segmentLength + gap
+-----------------------------------
+[Scriptlet 23] (Line around 89):
+= -i * (segmentLength + gap)
+-----------------------------------
+[Scriptlet 24] (Line around 90):
+}
+-----------------------------------
+[Scriptlet 25] (Line around 93):
+if (String(latestStatus.media_type || '' ).startsWith('video/')) {
+-----------------------------------
+[Scriptlet 26] (Line around 96):
+= latestStatus.media_url
+-----------------------------------
+[Scriptlet 27] (Line around 96):
+= latestStatus.media_type
+-----------------------------------
+[Scriptlet 28] (Line around 98):
+} else if (latestStatus.media_type==='text' ) {
+-----------------------------------
+[Scriptlet 29] (Line around 100):
+= latestStatus.bg_color || 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)'
+-----------------------------------
+[Scriptlet 30] (Line around 101):
+= (latestStatus.caption || '' ).length> 20 ? (latestStatus.caption || '').slice(0,
+                                      18) + '..' : latestStatus.caption
+-----------------------------------
+[Scriptlet 31] (Line around 104):
+} else if (latestStatus.media_type && latestStatus.media_type.startsWith('audio/'))
+                                    {
+-----------------------------------
+[Scriptlet 32] (Line around 107):
+= latestStatus.bg_color || 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)'
+-----------------------------------
+[Scriptlet 33] (Line around 110):
+} else {
+-----------------------------------
+[Scriptlet 34] (Line around 111):
+= latestStatus.media_url
+-----------------------------------
+[Scriptlet 35] (Line around 112):
+= group.user_name
+-----------------------------------
+[Scriptlet 36] (Line around 113):
+}
+-----------------------------------
+[Scriptlet 37] (Line around 115):
+= group.statuses.length
+-----------------------------------
+[Scriptlet 38] (Line around 119):
+= group.user_name
+-----------------------------------
+[Scriptlet 39] (Line around 122):
+})
+-----------------------------------
+[Scriptlet 40] (Line around 123):
+}
+-----------------------------------
+[Scriptlet 41] (Line around 127):
+if (safeStatusMessage) {
+-----------------------------------
+[Scriptlet 42] (Line around 129):
+= safeStatusMessage
+-----------------------------------
+[Scriptlet 43] (Line around 131):
+}
+-----------------------------------
+[Scriptlet 44] (Line around 132):
+if (safeStatusError) {
+-----------------------------------
+[Scriptlet 45] (Line around 134):
+= safeStatusError
+-----------------------------------
+[Scriptlet 46] (Line around 136):
+}
+-----------------------------------
+[Scriptlet 47] (Line around 138):
+if (isPartiallyBlocked) {
+-----------------------------------
+[Scriptlet 48] (Line around 145):
+} else if (isPaused) {
+-----------------------------------
+[Scriptlet 49] (Line around 152):
+}
+-----------------------------------
+[Scriptlet 50] (Line around 154):
+if (!isPartiallyBlocked && !isPaused) {
+-----------------------------------
+[Scriptlet 51] (Line around 160):
+= currentUser.avatar
+-----------------------------------
+[Scriptlet 52] (Line around 160):
+= currentUser.first_name
+-----------------------------------
+[Scriptlet 53] (Line around 165):
+=
+                                            currentUser.first_name
+-----------------------------------
+[Scriptlet 54] (Line around 580):
+}
+-----------------------------------
+[Scriptlet 55] (Line around 594):
+const feedDateValue = (value) => {
+                                        const time = new Date(value || 0).getTime();
+                                        return Number.isFinite(time) ? time : 0;
+                                      };
+                                      const escapeFeedHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+                                        '&': '&amp;',
+                                        '<': '&lt;',
+                                        '>': '&gt;',
+                                        '"': '&quot;',
+                                        "'": '&#39;'
+                                      }[char]));
+                                      const feedDisplayUrl = (url) => String(url || '').replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
+                                          const renderSponsoredFeedAd = (ad) => {
+                                          const adDisplayUrl = feedDisplayUrl(ad.ad_url);
+                                          const adCreatedAt = ad.created_at ? (ad.created_at instanceof Date ?
+                                          ad.created_at.toISOString() : String(ad.created_at)) : '';
+                                          return `
+                                          <article class="post-card sponsored-ad-card" data-feed-item-type="ad"
+                                            data-ad-id="${escapeFeedHtml(ad.id)}"
+                                            data-created-at="${escapeFeedHtml(adCreatedAt)}">
+                                            <a class="sponsored-ad-link" href="${escapeFeedHtml(ad.ad_url)}"
+                                              target="_blank" rel="noopener noreferrer">
+                                              <header class="sponsored-ad-header">
+                                                <div class="sponsored-ad-brand">
+                                                  <div class="sponsored-ad-meta">
+                                                    <span class="sponsored-ad-subtitle">Sponsorisé ·
+                                                      ${escapeFeedHtml(adDisplayUrl)}</span>
+                                                  </div>
+                                                </div>
+                                                <span class="sponsored-ad-label"><i data-lucide="badge-ad"></i>
+                                                  Annonce</span>
+                                              </header>
+                                              <div class="sponsored-ad-copy">
+                                                <h4>${escapeFeedHtml(ad.title)}</h4>
+                                                <p>${escapeFeedHtml(ad.description)}</p>
+                                              </div>
+                                              <div class="sponsored-ad-media">
+                                                <img src="${escapeFeedHtml(ad.image_url)}"
+                                                  alt="${escapeFeedHtml(ad.title)}">
+                                              </div>
+                                              <footer class="sponsored-ad-footer">
+                                                <span class="sponsored-ad-domain">${escapeFeedHtml(adDisplayUrl)}</span>
+                                                <span class="sponsored-ad-cta">Ouvrir <i
+                                                    data-lucide="arrow-up-right"></i></span>
+                                              </footer>
+                                            </a>
+                                          </article>
+                                          `;
+                                          };
+                                          const feedAds = (typeof activeAds !== 'undefined')
+                                          ? activeAds
+                                          .filter(ad => ad.show_in_feed === 1 || ad.show_in_feed === true)
+                                          .sort((a, b) => feedDateValue(b.created_at) - feedDateValue(a.created_at))
+                                          : [];
+                                          const sortedPosts = [...posts].sort((a, b) => feedDateValue(b.created_at) -
+                                          feedDateValue(a.created_at));
+                                          let feedAdCursor = 0;
+-----------------------------------
+[Scriptlet 56] (Line around 653):
+sortedPosts.forEach((post)=> {
+-----------------------------------
+[Scriptlet 57] (Line around 654):
+while (feedAdCursor < feedAds.length &&
+                                              feedDateValue(feedAds[feedAdCursor].created_at)>=
+                                              feedDateValue(post.created_at)) {
+-----------------------------------
+[Scriptlet 58] (Line around 657):
+renderSponsoredFeedAd(feedAds[feedAdCursor++])
+-----------------------------------
+[Scriptlet 59] (Line around 658):
+}
+-----------------------------------
+[Scriptlet 60] (Line around 659):
+= post.id
+-----------------------------------
+[Scriptlet 61] (Line around 660):
+= post.id
+-----------------------------------
+[Scriptlet 62] (Line around 661):
+= post.created_at ? (post.created_at instanceof Date ? post.created_at.toISOString() : String(post.created_at)) : ''
+-----------------------------------
+[Scriptlet 63] (Line around 664):
+= post.author_username
+-----------------------------------
+[Scriptlet 64] (Line around 668):
+= post.author_avatar
+-----------------------------------
+[Scriptlet 65] (Line around 669):
+= post.author_name
+-----------------------------------
+[Scriptlet 66] (Line around 673):
+= post.author_name
+-----------------------------------
+[Scriptlet 67] (Line around 676):
+let timeDiff=Date.now() - new
+                                                                Date(post.created_at).getTime(); let
+                                                                minutes=Math.floor(timeDiff / (1000 * 60)); let
+                                                                hours=Math.floor(minutes / 60); let
+                                                                days=Math.floor(hours / 24); let timeStr="" ; if (days>
+                                                                0) timeStr = days + "d ago";
+                                                                else if (hours > 0) timeStr = hours + "h ago";
+                                                                else if (minutes > 0) timeStr = minutes + "m ago";
+                                                                else timeStr = "Just now";
+-----------------------------------
+[Scriptlet 68] (Line around 686):
+= timeStr
+-----------------------------------
+[Scriptlet 69] (Line around 690):
+if (post.user_id !==currentUser.id) {
+-----------------------------------
+[Scriptlet 70] (Line around 692):
+= post.user_id
+-----------------------------------
+[Scriptlet 71] (Line around 693):
+= post.is_author_following ? '1' : '0'
+-----------------------------------
+[Scriptlet 72] (Line around 694):
+= post.is_author_following ? 'Ne plus suivre' : 'Suivre'
+-----------------------------------
+[Scriptlet 73] (Line around 695):
+= post.is_author_following ? 'Ne plus suivre' : 'Suivre'
+-----------------------------------
+[Scriptlet 74] (Line around 696):
+= post.is_author_following ? 'user-check' : 'user-plus'
+-----------------------------------
+[Scriptlet 75] (Line around 699):
+}
+-----------------------------------
+[Scriptlet 76] (Line around 707):
+if (post.bg_image_url) {
+-----------------------------------
+[Scriptlet 77] (Line around 709):
+const alignMap={ 'left' : 'flex-start' , 'right' : 'flex-end'
+                                                          , 'center' : 'center' }; const posMap={ 'top' : 'flex-start'
+                                                          , 'center' : 'center' , 'bottom' : 'flex-end' }; const
+                                                          alignVal=alignMap[post.text_alignment] || 'center' ; const
+                                                          posVal=posMap[post.text_position] || 'center' ;
+-----------------------------------
+[Scriptlet 78] (Line around 715):
+= post.bg_image_url
+-----------------------------------
+[Scriptlet 79] (Line around 715):
+= post.text_color || '#ffffff'
+-----------------------------------
+[Scriptlet 80] (Line around 715):
+= post.text_alignment || 'center'
+-----------------------------------
+[Scriptlet 81] (Line around 715):
+= post.text_font || '\'Outfit\', sans-serif'
+-----------------------------------
+[Scriptlet 82] (Line around 715):
+= alignVal
+-----------------------------------
+[Scriptlet 83] (Line around 715):
+= posVal
+-----------------------------------
+[Scriptlet 84] (Line around 715):
+= post.text_size || '20px'
+-----------------------------------
+[Scriptlet 85] (Line around 715):
+= post.text_size || '20px'
+-----------------------------------
+[Scriptlet 86] (Line around 718):
+= post.content
+-----------------------------------
+[Scriptlet 87] (Line around 721):
+} else {
+-----------------------------------
+[Scriptlet 88] (Line around 722):
+if (post.content && post.content.trim()) {
+-----------------------------------
+[Scriptlet 89] (Line around 724):
+= post.content
+-----------------------------------
+[Scriptlet 90] (Line around 726):
+}
+-----------------------------------
+[Scriptlet 91] (Line around 727):
+if (post.media_type==='video' ) {
+-----------------------------------
+[Scriptlet 92] (Line around 730):
+= post.image_url
+-----------------------------------
+[Scriptlet 93] (Line around 733):
+= post.thumbnail_url || ''
+-----------------------------------
+[Scriptlet 94] (Line around 764):
+if (Number(post.allow_download) !==0) {
+-----------------------------------
+[Scriptlet 95] (Line around 768):
+= post.id
+-----------------------------------
+[Scriptlet 96] (Line around 769):
+= post.image_url
+-----------------------------------
+[Scriptlet 97] (Line around 770):
+= post.author_username
+-----------------------------------
+[Scriptlet 98] (Line around 775):
+}
+-----------------------------------
+[Scriptlet 99] (Line around 789):
+} else {
+-----------------------------------
+[Scriptlet 100] (Line around 790):
+const postImages=[post.image_url,
+                                                                      post.image_url_2, post.image_url_3,
+                                                                      post.image_url_4].filter(Boolean); const
+                                                                      imgCount=postImages.length;
+-----------------------------------
+[Scriptlet 101] (Line around 794):
+if (imgCount===4) {
+-----------------------------------
+[Scriptlet 102] (Line around 796):
+= postImages.join(',')
+-----------------------------------
+[Scriptlet 103] (Line around 799):
+= post.image_url
+-----------------------------------
+[Scriptlet 104] (Line around 803):
+= post.image_url_2
+-----------------------------------
+[Scriptlet 105] (Line around 807):
+= post.image_url_3
+-----------------------------------
+[Scriptlet 106] (Line around 811):
+= post.image_url_4
+-----------------------------------
+[Scriptlet 107] (Line around 815):
+} else if (imgCount===3) {
+-----------------------------------
+[Scriptlet 108] (Line around 817):
+= postImages.join(',')
+-----------------------------------
+[Scriptlet 109] (Line around 820):
+= post.image_url
+-----------------------------------
+[Scriptlet 110] (Line around 826):
+= post.image_url_2
+-----------------------------------
+[Scriptlet 111] (Line around 835):
+} else if (imgCount===2) {
+-----------------------------------
+[Scriptlet 112] (Line around 837):
+= postImages.join(',')
+-----------------------------------
+[Scriptlet 113] (Line around 840):
+= post.image_url
+-----------------------------------
+[Scriptlet 114] (Line around 845):
+= post.image_url_2
+-----------------------------------
+[Scriptlet 115] (Line around 850):
+} else if (imgCount===1) {
+-----------------------------------
+[Scriptlet 116] (Line around 852):
+= postImages.join(',')
+-----------------------------------
+[Scriptlet 117] (Line around 854):
+= post.image_url
+-----------------------------------
+[Scriptlet 118] (Line around 858):
+}
+-----------------------------------
+[Scriptlet 119] (Line around 859):
+}
+-----------------------------------
+[Scriptlet 120] (Line around 860):
+}
+-----------------------------------
+[Scriptlet 121] (Line around 866):
+= post.is_liked ? 'liked' : ''
+-----------------------------------
+[Scriptlet 122] (Line around 867):
+= post.likes_count
+-----------------------------------
+[Scriptlet 123] (Line around 870):
+= formatNumber(post.likes_count)
+-----------------------------------
+[Scriptlet 124] (Line around 874):
+= post.comments_count
+-----------------------------------
+[Scriptlet 125] (Line around 877):
+= formatNumber(post.comments_count)
+-----------------------------------
+[Scriptlet 126] (Line around 881):
+= post.shares_count || 0
+-----------------------------------
+[Scriptlet 127] (Line around 884):
+= formatNumber(post.shares_count || 0)
+-----------------------------------
+[Scriptlet 128] (Line around 887):
+if (post.is_trade) {
+-----------------------------------
+[Scriptlet 129] (Line around 888):
+const
+                                                            isPossessor=(post.last_possession_user_id===currentUser.id);
+-----------------------------------
+[Scriptlet 130] (Line around 892):
+= isPossessor ? 'disabled' : ''
+-----------------------------------
+[Scriptlet 131] (Line around 893):
+= post.id
+-----------------------------------
+[Scriptlet 132] (Line around 894):
+= post.trade_price
+-----------------------------------
+[Scriptlet 133] (Line around 895):
+= post.last_possession_user_id
+-----------------------------------
+[Scriptlet 134] (Line around 896):
+=isPossessor ? 'disabled' : ''
+-----------------------------------
+[Scriptlet 135] (Line around 897):
+= isPossessor
+                                                                ? 'opacity: 0.6; cursor: not-allowed; color: #8b5cf6;'
+                                                                : 'color: #8b5cf6;'
+-----------------------------------
+[Scriptlet 136] (Line around 902):
+=
+                                                                      parseFloat(post.trade_price).toFixed(2)
+-----------------------------------
+[Scriptlet 137] (Line around 906):
+}
+-----------------------------------
+[Scriptlet 138] (Line around 909):
+= post.is_bookmarked ? 'bookmarked' : ''
+-----------------------------------
+[Scriptlet 139] (Line around 920):
+// Create lookup map for all comments const commentMap={};
+                                                          post.comments.forEach(c=> {
+                                                          commentMap[c.id] = { ...c, replies: [] };
+                                                          });
+
+                                                          const rootComments = [];
+                                                          // Sort comments chronologically by creation time
+                                                          const sortedPostComments = [...post.comments].sort((a, b) =>
+                                                          new Date(a.created_at) - new Date(b.created_at));
+
+                                                          // Clear and populate map in sorted chronological order
+                                                          const sortedCommentMap = {};
+                                                          sortedPostComments.forEach(c => {
+                                                          sortedCommentMap[c.id] = { ...c, replies: [] };
+                                                          });
+
+                                                          sortedPostComments.forEach(c => {
+                                                          const mapped = sortedCommentMap[c.id];
+                                                          if (c.parent_id) {
+                                                          let parent = sortedCommentMap[c.parent_id];
+                                                          if (parent) {
+                                                          let ancestor = parent;
+                                                          while (ancestor.parent_id &&
+                                                          sortedCommentMap[ancestor.parent_id]) {
+                                                          ancestor = sortedCommentMap[ancestor.parent_id];
+                                                          }
+                                                          ancestor.replies.push(mapped);
+                                                          } else {
+                                                          rootComments.push(mapped);
+                                                          }
+                                                          } else {
+                                                          rootComments.push(mapped);
+                                                          }
+                                                          });
+
+                                                          // Keep root comments sorted chronologically
+                                                          rootComments.sort((a, b) => new Date(a.created_at) - new
+                                                          Date(b.created_at));
+-----------------------------------
+[Scriptlet 140] (Line around 959):
+rootComments.forEach((comment, index)=> {
+-----------------------------------
+[Scriptlet 141] (Line around 961):
+= comment.id
+-----------------------------------
+[Scriptlet 142] (Line around 962):
+= comment.voice_url ? 'voice' : 'text'
+-----------------------------------
+[Scriptlet 143] (Line around 963):
+= comment.user_name
+-----------------------------------
+[Scriptlet 144] (Line around 964):
+= index >= 2 ? 'none' : 'flex'
+-----------------------------------
+[Scriptlet 145] (Line around 970):
+= comment.user_avatar
+-----------------------------------
+[Scriptlet 146] (Line around 979):
+= comment.user_name
+-----------------------------------
+[Scriptlet 147] (Line around 981):
+= comment.content
+-----------------------------------
+[Scriptlet 148] (Line around 983):
+if (comment.voice_url) {
+-----------------------------------
+[Scriptlet 149] (Line around 1005):
+= comment.voice_duration_seconds ?
+                                                                              `${Math.floor(comment.voice_duration_seconds
+                                                                              /
+                                                                              60)}:${String(comment.voice_duration_seconds
+                                                                              % 60).padStart(2, '0' )}` : '0:00'
+-----------------------------------
+[Scriptlet 150] (Line around 1012):
+= comment.voice_url
+-----------------------------------
+[Scriptlet 151] (Line around 1016):
+}
+-----------------------------------
+[Scriptlet 152] (Line around 1027):
+= new
+                                                                        Date(comment.created_at).toLocaleTimeString([],
+                                                                        {hour: '2-digit' , minute:'2-digit'})
+-----------------------------------
+[Scriptlet 153] (Line around 1036):
+const replies=comment.replies || [];
+-----------------------------------
+[Scriptlet 154] (Line around 1040):
+replies.forEach((reply, index)=> {
+-----------------------------------
+[Scriptlet 155] (Line around 1041):
+/* Calculate depth level by traversing up the parent chain */
+                                                                      let depth = 0;
+                                                                      let curr = reply;
+                                                                      while (curr.parent_id && sortedCommentMap[curr.parent_id]) {
+                                                                        depth++;
+                                                                        curr = sortedCommentMap[curr.parent_id];
+                                                                      }
+                                                                      let directParent = sortedCommentMap[reply.parent_id];
+                                                                      let replyToName = directParent ? directParent.user_name : null;
+                                                                      /* Indent based on depth (each depth level above 1 adds 16px margin) */
+                                                                      let indentStyle = depth > 1 ? `margin-left: ${Math.min((depth - 1) * 16, 48)}px;` : '';
+-----------------------------------
+[Scriptlet 156] (Line around 1055):
+= reply.id
+-----------------------------------
+[Scriptlet 157] (Line around 1056):
+= reply.id
+-----------------------------------
+[Scriptlet 158] (Line around 1057):
+= reply.voice_url ? 'voice' : 'text'
+-----------------------------------
+[Scriptlet 159] (Line around 1058):
+= reply.user_name
+-----------------------------------
+[Scriptlet 160] (Line around 1059):
+= depth
+-----------------------------------
+[Scriptlet 161] (Line around 1060):
+= index >= 2 ? 'none' : 'flex'
+-----------------------------------
+[Scriptlet 162] (Line around 1060):
+= indentStyle
+-----------------------------------
+[Scriptlet 163] (Line around 1063):
+= reply.user_avatar
+-----------------------------------
+[Scriptlet 164] (Line around 1072):
+= reply.user_name
+-----------------------------------
+[Scriptlet 165] (Line around 1074):
+if (replyToName) {
+-----------------------------------
+[Scriptlet 166] (Line around 1077):
+= replyToName
+-----------------------------------
+[Scriptlet 167] (Line around 1078):
+}
+-----------------------------------
+[Scriptlet 168] (Line around 1079):
+= reply.content
+-----------------------------------
+[Scriptlet 169] (Line around 1081):
+if (reply.voice_url) {
+-----------------------------------
+[Scriptlet 170] (Line around 1104):
+= reply.voice_duration_seconds
+                                                                                          ?
+                                                                                          `${Math.floor(reply.voice_duration_seconds
+                                                                                          /
+                                                                                          60)}:${String(reply.voice_duration_seconds
+                                                                                          % 60).padStart(2, '0' )}`
+                                                                                          : '0:00'
+-----------------------------------
+[Scriptlet 171] (Line around 1113):
+= reply.voice_url
+-----------------------------------
+[Scriptlet 172] (Line around 1117):
+}
+-----------------------------------
+[Scriptlet 173] (Line around 1130):
+= new
+                                                                                Date(reply.created_at).toLocaleTimeString([],
+                                                                                {hour: '2-digit' , minute:'2-digit'})
+-----------------------------------
+[Scriptlet 174] (Line around 1141):
+= currentUser.avatar
+-----------------------------------
+[Scriptlet 175] (Line around 1147):
+= reply.voice_url ? `Répondre à la note vocale de ${reply.user_name}...` : `Répondre au commentaire de ${reply.user_name}...`
+-----------------------------------
+[Scriptlet 176] (Line around 1174):
+})
+-----------------------------------
+[Scriptlet 177] (Line around 1177):
+if (replies.length> 2) {
+-----------------------------------
+[Scriptlet 178] (Line around 1182):
+= replies.length - 2
+-----------------------------------
+[Scriptlet 179] (Line around 1185):
+}
+-----------------------------------
+[Scriptlet 180] (Line around 1193):
+= currentUser.avatar
+-----------------------------------
+[Scriptlet 181] (Line around 1199):
+= comment.voice_url ? `Répondre à la note vocale de ${comment.user_name}...` : `Répondre au commentaire de ${comment.user_name}...`
+-----------------------------------
+[Scriptlet 182] (Line around 1256):
+})
+-----------------------------------
+[Scriptlet 183] (Line around 1257):
+if (rootComments.length> 2) {
+-----------------------------------
+[Scriptlet 184] (Line around 1262):
+= rootComments.length - 2
+-----------------------------------
+[Scriptlet 185] (Line around 1264):
+}
+-----------------------------------
+[Scriptlet 186] (Line around 1270):
+= currentUser.avatar
+-----------------------------------
+[Scriptlet 187] (Line around 1332):
+})
+-----------------------------------
+[Scriptlet 188] (Line around 1333):
+while (feedAdCursor < feedAds.length) {
+-----------------------------------
+[Scriptlet 189] (Line around 1334):
+renderSponsoredFeedAd(feedAds[feedAdCursor++])
+-----------------------------------
+[Scriptlet 190] (Line around 1335):
+}
+-----------------------------------
+[Scriptlet 191] (Line around 1364):
+reels.forEach(reel=> {
+-----------------------------------
+[Scriptlet 192] (Line around 1365):
+let resolvedVideoUrl=reel.video_url; if (resolvedVideoUrl &&
+                      resolvedVideoUrl.includes('unsplash.com')) { const
+                      videoUrls=[ 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4'
+                      , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4'
+                      , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
+                      , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4'
+                      , 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4' ];
+                      const videoIdx=(reel.id - 1) % videoUrls.length; resolvedVideoUrl=videoUrls[videoIdx>= 0 ?
+                      videoIdx : 0];
+                      }
+                      const reelMediaFit = reel.media_fit === 'contain' ? 'contain' : 'cover';
+-----------------------------------
+[Scriptlet 193] (Line around 1377):
+= reel.id
+-----------------------------------
+[Scriptlet 194] (Line around 1377):
+= reel.id
+-----------------------------------
+[Scriptlet 195] (Line around 1378):
+= reel.author_username
+-----------------------------------
+[Scriptlet 196] (Line around 1378):
+= reel.user_id
+-----------------------------------
+[Scriptlet 197] (Line around 1380):
+if (!reel.media_type || reel.media_type==='video' ) {
+-----------------------------------
+[Scriptlet 198] (Line around 1381):
+= resolvedVideoUrl
+-----------------------------------
+[Scriptlet 199] (Line around 1382):
+= reelMediaFit
+-----------------------------------
+[Scriptlet 200] (Line around 1383):
+= reelMediaFit
+-----------------------------------
+[Scriptlet 201] (Line around 1384):
+= reel.audio_start_time || 0
+-----------------------------------
+[Scriptlet 202] (Line around 1385):
+= reel.audio_duration || 30
+-----------------------------------
+[Scriptlet 203] (Line around 1386):
+} else if (reel.media_type==='image_audio' ) {
+-----------------------------------
+[Scriptlet 204] (Line around 1389):
+= resolvedVideoUrl
+-----------------------------------
+[Scriptlet 205] (Line around 1390):
+= reelMediaFit
+-----------------------------------
+[Scriptlet 206] (Line around 1391):
+= reelMediaFit
+-----------------------------------
+[Scriptlet 207] (Line around 1392):
+= reel.audio_start_time || 0
+-----------------------------------
+[Scriptlet 208] (Line around 1393):
+= reel.audio_duration || 30
+-----------------------------------
+[Scriptlet 209] (Line around 1394):
+= reel.audio_url
+-----------------------------------
+[Scriptlet 210] (Line around 1397):
+} else if (reel.media_type==='voice' ) {
+-----------------------------------
+[Scriptlet 211] (Line around 1400):
+= reel.audio_start_time || 0
+-----------------------------------
+[Scriptlet 212] (Line around 1401):
+= reel.audio_duration || 30
+-----------------------------------
+[Scriptlet 213] (Line around 1422):
+= reel.audio_url
+-----------------------------------
+[Scriptlet 214] (Line around 1425):
+} else if (reel.media_type==='audio' ) {
+-----------------------------------
+[Scriptlet 215] (Line around 1428):
+= reel.audio_start_time || 0
+-----------------------------------
+[Scriptlet 216] (Line around 1429):
+= reel.audio_duration || 30
+-----------------------------------
+[Scriptlet 217] (Line around 1450):
+= reel.sound_name
+-----------------------------------
+[Scriptlet 218] (Line around 1454):
+= reel.sound_name
+-----------------------------------
+[Scriptlet 219] (Line around 1460):
+= reel.audio_url
+-----------------------------------
+[Scriptlet 220] (Line around 1463):
+}
+-----------------------------------
+[Scriptlet 221] (Line around 1495):
+= reel.author_avatar
+-----------------------------------
+[Scriptlet 222] (Line around 1499):
+= reel.author_name
+-----------------------------------
+[Scriptlet 223] (Line around 1500):
+if (Number(currentUser.id) !==Number(reel.user_id)) {
+-----------------------------------
+[Scriptlet 224] (Line around 1502):
+= reel.user_id
+-----------------------------------
+[Scriptlet 225] (Line around 1503):
+= reel.is_author_following ? '1' : '0'
+-----------------------------------
+[Scriptlet 226] (Line around 1505):
+= reel.is_author_following ? 'Following' : 'Follow'
+-----------------------------------
+[Scriptlet 227] (Line around 1507):
+}
+-----------------------------------
+[Scriptlet 228] (Line around 1510):
+= new Date(reel.created_at).toLocaleDateString([], {
+                                                    month: 'short' , day: 'numeric' })
+-----------------------------------
+[Scriptlet 229] (Line around 1518):
+= reel.sound_name
+-----------------------------------
+[Scriptlet 230] (Line around 1521):
+= reel.sound_name
+-----------------------------------
+[Scriptlet 231] (Line around 1529):
+= reel.caption
+-----------------------------------
+[Scriptlet 232] (Line around 1534):
+= reel.id
+-----------------------------------
+[Scriptlet 233] (Line around 1540):
+= formatNumber(reel.likes_count)
+-----------------------------------
+[Scriptlet 234] (Line around 1543):
+= reel.id
+-----------------------------------
+[Scriptlet 235] (Line around 1549):
+= formatNumber(reel.comments_count)
+-----------------------------------
+[Scriptlet 236] (Line around 1552):
+= reel.id
+-----------------------------------
+[Scriptlet 237] (Line around 1558):
+= formatNumber(reel.shares_count)
+-----------------------------------
+[Scriptlet 238] (Line around 1561):
+if (reel.is_trade) {
+-----------------------------------
+[Scriptlet 239] (Line around 1562):
+const
+                                        isReelPossessor=Number(reel.last_possession_user_id)===Number(currentUser.id);
+                                        const reelTradePrice=Number(reel.trade_price || 0);
+-----------------------------------
+[Scriptlet 240] (Line around 1566):
+= isReelPossessor ? 'disabled' : ''
+-----------------------------------
+[Scriptlet 241] (Line around 1567):
+= reel.id
+-----------------------------------
+[Scriptlet 242] (Line around 1567):
+= reelTradePrice
+-----------------------------------
+[Scriptlet 243] (Line around 1568):
+= reel.last_possession_user_id
+-----------------------------------
+[Scriptlet 244] (Line around 1568):
+=isReelPossessor
+                                          ? 'disabled' : ''
+-----------------------------------
+[Scriptlet 245] (Line around 1572):
+= reelTradePrice.toFixed(2)
+-----------------------------------
+[Scriptlet 246] (Line around 1575):
+}
+-----------------------------------
+[Scriptlet 247] (Line around 1579):
+= reel.id
+-----------------------------------
+[Scriptlet 248] (Line around 1583):
+= formatNumber(reel.comments_count)
+-----------------------------------
+[Scriptlet 249] (Line around 1593):
+= reel.id
+-----------------------------------
+[Scriptlet 250] (Line around 1629):
+})
+-----------------------------------
+[Scriptlet 251] (Line around 1657):
+const inbox=(typeof messageInbox !=='undefined' && messageInbox) ? messageInbox : { sections: {
+                    general: [], requests: [] }, counts: { general: 0, requests: 0 } };
+-----------------------------------
+[Scriptlet 252] (Line around 1660):
+=
+                            inbox.counts.general
+-----------------------------------
+[Scriptlet 253] (Line around 1663):
+= inbox.counts.requests
+-----------------------------------
+[Scriptlet 254] (Line around 1669):
+inbox.sections.general.forEach(contact=> {
+-----------------------------------
+[Scriptlet 255] (Line around 1670):
+= contact.is_online ? 'online' : ''
+-----------------------------------
+[Scriptlet 256] (Line around 1671):
+= contact.id
+-----------------------------------
+[Scriptlet 257] (Line around 1671):
+= contact.category
+-----------------------------------
+[Scriptlet 258] (Line around 1672):
+= contact.request_status || ''
+-----------------------------------
+[Scriptlet 259] (Line around 1673):
+= contact.can_manage_request ? '1' : '0'
+-----------------------------------
+[Scriptlet 260] (Line around 1674):
+= contact.id
+-----------------------------------
+[Scriptlet 261] (Line around 1675):
+= contact.is_following ? '1' : '0'
+-----------------------------------
+[Scriptlet 262] (Line around 1676):
+= contact.is_followed_by ? '1' : '0'
+-----------------------------------
+[Scriptlet 263] (Line around 1677):
+= contact.is_mutual ? '1' : '0'
+-----------------------------------
+[Scriptlet 264] (Line around 1678):
+= contact.is_online ? '1' : '0'
+-----------------------------------
+[Scriptlet 265] (Line around 1679):
+= contact.presence_text || ''
+-----------------------------------
+[Scriptlet 266] (Line around 1682):
+= contact.is_online ? 'online' : ''
+-----------------------------------
+[Scriptlet 267] (Line around 1684):
+= contact.avatar
+-----------------------------------
+[Scriptlet 268] (Line around 1684):
+= contact.name
+-----------------------------------
+[Scriptlet 269] (Line around 1691):
+= contact.name
+-----------------------------------
+[Scriptlet 270] (Line around 1693):
+= contact.id
+-----------------------------------
+[Scriptlet 271] (Line around 1695):
+= contact.preview
+-----------------------------------
+[Scriptlet 272] (Line around 1697):
+= contact.id
+-----------------------------------
+[Scriptlet 273] (Line around 1699):
+= contact.presence_text
+-----------------------------------
+[Scriptlet 274] (Line around 1704):
+if (contact.time_text) {
+-----------------------------------
+[Scriptlet 275] (Line around 1705):
+= contact.id
+-----------------------------------
+[Scriptlet 276] (Line around 1707):
+= contact.time_text
+-----------------------------------
+[Scriptlet 277] (Line around 1709):
+} else {
+-----------------------------------
+[Scriptlet 278] (Line around 1710):
+= contact.id
+-----------------------------------
+[Scriptlet 279] (Line around 1712):
+}
+-----------------------------------
+[Scriptlet 280] (Line around 1714):
+= contact.id
+-----------------------------------
+[Scriptlet 281] (Line around 1715):
+= contact.is_following ? '1' : '0'
+-----------------------------------
+[Scriptlet 282] (Line around 1716):
+= contact.is_following ? 'Unfollow' : 'Follow'
+-----------------------------------
+[Scriptlet 283] (Line around 1717):
+= contact.is_following ? 'Unfollow' : 'Follow'
+-----------------------------------
+[Scriptlet 284] (Line around 1718):
+= contact.is_following ? 'user-check' : 'user-plus'
+-----------------------------------
+[Scriptlet 285] (Line around 1723):
+})
+-----------------------------------
+[Scriptlet 286] (Line around 1728):
+inbox.sections.requests.forEach(contact=> {
+-----------------------------------
+[Scriptlet 287] (Line around 1729):
+= contact.is_online ? 'online' : ''
+-----------------------------------
+[Scriptlet 288] (Line around 1730):
+= contact.id
+-----------------------------------
+[Scriptlet 289] (Line around 1730):
+= contact.category
+-----------------------------------
+[Scriptlet 290] (Line around 1731):
+= contact.request_status || ''
+-----------------------------------
+[Scriptlet 291] (Line around 1732):
+= contact.can_manage_request ? '1' : '0'
+-----------------------------------
+[Scriptlet 292] (Line around 1733):
+= contact.id
+-----------------------------------
+[Scriptlet 293] (Line around 1734):
+= contact.is_following ? '1' : '0'
+-----------------------------------
+[Scriptlet 294] (Line around 1735):
+= contact.is_followed_by ? '1' : '0'
+-----------------------------------
+[Scriptlet 295] (Line around 1736):
+= contact.is_mutual ? '1' : '0'
+-----------------------------------
+[Scriptlet 296] (Line around 1737):
+= contact.is_online ? '1' : '0'
+-----------------------------------
+[Scriptlet 297] (Line around 1738):
+= contact.presence_text || ''
+-----------------------------------
+[Scriptlet 298] (Line around 1741):
+= contact.is_online ? 'online' : ''
+-----------------------------------
+[Scriptlet 299] (Line around 1743):
+= contact.avatar
+-----------------------------------
+[Scriptlet 300] (Line around 1743):
+= contact.name
+-----------------------------------
+[Scriptlet 301] (Line around 1750):
+= contact.name
+-----------------------------------
+[Scriptlet 302] (Line around 1752):
+= contact.id
+-----------------------------------
+[Scriptlet 303] (Line around 1754):
+= contact.preview
+-----------------------------------
+[Scriptlet 304] (Line around 1756):
+= contact.id
+-----------------------------------
+[Scriptlet 305] (Line around 1758):
+= contact.presence_text
+-----------------------------------
+[Scriptlet 306] (Line around 1763):
+if (contact.time_text) {
+-----------------------------------
+[Scriptlet 307] (Line around 1764):
+= contact.id
+-----------------------------------
+[Scriptlet 308] (Line around 1766):
+= contact.time_text
+-----------------------------------
+[Scriptlet 309] (Line around 1768):
+} else {
+-----------------------------------
+[Scriptlet 310] (Line around 1769):
+= contact.id
+-----------------------------------
+[Scriptlet 311] (Line around 1771):
+}
+-----------------------------------
+[Scriptlet 312] (Line around 1773):
+= contact.id
+-----------------------------------
+[Scriptlet 313] (Line around 1774):
+= contact.is_following ? '1' : '0'
+-----------------------------------
+[Scriptlet 314] (Line around 1775):
+= contact.is_following ? 'Unfollow' : 'Follow'
+-----------------------------------
+[Scriptlet 315] (Line around 1776):
+= contact.is_following ? 'Unfollow' : 'Follow'
+-----------------------------------
+[Scriptlet 316] (Line around 1777):
+= contact.is_following ? 'user-check' : 'user-plus'
+-----------------------------------
+[Scriptlet 317] (Line around 1781):
+if (contact.can_manage_request) {
+-----------------------------------
+[Scriptlet 318] (Line around 1785):
+= contact.id
+-----------------------------------
+[Scriptlet 319] (Line around 1788):
+= contact.id
+-----------------------------------
+[Scriptlet 320] (Line around 1790):
+}
+-----------------------------------
+[Scriptlet 321] (Line around 1792):
+})
+-----------------------------------
+[Scriptlet 322] (Line around 1798):
+include('partials/rightSidebar')
+-----------------------------------
+[Scriptlet 323] (Line around 1803):
+include('partials/mobileNav')
+-----------------------------------
+[Scriptlet 324] (Line around 1919):
+= t('status.createStatus', 'Create status' )
+-----------------------------------
+[Scriptlet 325] (Line around 1922):
+= t('status.subtitle', 'Share a status that stays live for 24 hours.' )
+-----------------------------------
+[Scriptlet 326] (Line around 1957):
+= t('status.caption', 'Caption' )
+-----------------------------------
+[Scriptlet 327] (Line around 1960):
+= t('status.captionPlaceholder', 'Add a short caption...')
+-----------------------------------
+[Scriptlet 328] (Line around 1966):
+= t('status.media', 'Media' )
+-----------------------------------
+[Scriptlet 329] (Line around 1971):
+= t('status.chooseFile', 'Choose file' )
+-----------------------------------
+[Scriptlet 330] (Line around 1974):
+= t('status.noFileChosen', 'No file chosen' )
+-----------------------------------
+[Scriptlet 331] (Line around 2084):
+= t('status.createStatus', 'Create status' )
+-----------------------------------
+[Scriptlet 332] (Line around 2180):
+= Number(currentUser.token_balance || 0) < 5 ? 'is-insufficient' : ''
+-----------------------------------
+[Scriptlet 333] (Line around 2182):
+= Number(currentUser.token_balance || 0)
+-----------------------------------
+[Scriptlet 334] (Line around 2186):
+if (Number(currentUser.token_balance || 0) < 5) {
+-----------------------------------
+[Scriptlet 335] (Line around 2188):
+}
+-----------------------------------
+[Scriptlet 336] (Line around 2569):
+if (followingShareTargets && followingShareTargets.length) {
+-----------------------------------
+[Scriptlet 337] (Line around 2570):
+followingShareTargets.forEach((person)=> {
+-----------------------------------
+[Scriptlet 338] (Line around 2571):
+= person.id
+-----------------------------------
+[Scriptlet 339] (Line around 2572):
+= person.first_name
+-----------------------------------
+[Scriptlet 340] (Line around 2572):
+= person.last_name
+-----------------------------------
+[Scriptlet 341] (Line around 2573):
+= person.username
+-----------------------------------
+[Scriptlet 342] (Line around 2574):
+= person.avatar
+-----------------------------------
+[Scriptlet 343] (Line around 2575):
+= person.first_name
+-----------------------------------
+[Scriptlet 344] (Line around 2575):
+= person.last_name
+-----------------------------------
+[Scriptlet 345] (Line around 2578):
+= person.first_name
+-----------------------------------
+[Scriptlet 346] (Line around 2579):
+= person.last_name
+-----------------------------------
+[Scriptlet 347] (Line around 2581):
+= person.username
+-----------------------------------
+[Scriptlet 348] (Line around 2584):
+})
+-----------------------------------
+[Scriptlet 349] (Line around 2585):
+} else {
+-----------------------------------
+[Scriptlet 350] (Line around 2587):
+}
+-----------------------------------
+[Scriptlet 351] (Line around 2594):
+if (friendShareTargets && friendShareTargets.length) {
+-----------------------------------
+[Scriptlet 352] (Line around 2595):
+friendShareTargets.forEach((person)=> {
+-----------------------------------
+[Scriptlet 353] (Line around 2596):
+= person.id
+-----------------------------------
+[Scriptlet 354] (Line around 2597):
+= person.first_name
+-----------------------------------
+[Scriptlet 355] (Line around 2597):
+= person.last_name
+-----------------------------------
+[Scriptlet 356] (Line around 2598):
+= person.username
+-----------------------------------
+[Scriptlet 357] (Line around 2599):
+= person.avatar
+-----------------------------------
+[Scriptlet 358] (Line around 2600):
+= person.first_name
+-----------------------------------
+[Scriptlet 359] (Line around 2600):
+= person.last_name
+-----------------------------------
+[Scriptlet 360] (Line around 2603):
+= person.first_name
+-----------------------------------
+[Scriptlet 361] (Line around 2604):
+= person.last_name
+-----------------------------------
+[Scriptlet 362] (Line around 2606):
+= person.username
+-----------------------------------
+[Scriptlet 363] (Line around 2609):
+})
+-----------------------------------
+[Scriptlet 364] (Line around 2610):
+} else {
+-----------------------------------
+[Scriptlet 365] (Line around 2612):
+}
+-----------------------------------
+[Scriptlet 366] (Line around 2698):
+if (followingShareTargets && followingShareTargets.length) {
+-----------------------------------
+[Scriptlet 367] (Line around 2699):
+followingShareTargets.forEach((person)=> {
+-----------------------------------
+[Scriptlet 368] (Line around 2700):
+= person.id
+-----------------------------------
+[Scriptlet 369] (Line around 2701):
+= person.first_name
+-----------------------------------
+[Scriptlet 370] (Line around 2701):
+= person.last_name
+-----------------------------------
+[Scriptlet 371] (Line around 2703):
+= person.avatar
+-----------------------------------
+[Scriptlet 372] (Line around 2703):
+= person.first_name
+-----------------------------------
+[Scriptlet 373] (Line around 2706):
+= person.first_name
+-----------------------------------
+[Scriptlet 374] (Line around 2709):
+})
+-----------------------------------
+[Scriptlet 375] (Line around 2710):
+} else {
+-----------------------------------
+[Scriptlet 376] (Line around 2712):
+}
+-----------------------------------
+[Scriptlet 377] (Line around 2912):
+=
+                      parseFloat(currentUser.deposit_account_balance || 0).toFixed(2)
+-----------------------------------
+[Scriptlet 378] (Line around 3125):
+= currentUser.id
+-----------------------------------
+[Scriptlet 379] (Line around 3126):
+= currentUser.username
+-----------------------------------
+[Scriptlet 380] (Line around 3127):
+= Number(currentUser.token_balance || 0)
+-----------------------------------
+[Scriptlet 381] (Line around 3128):
+= currentUser.avatar
+-----------------------------------
+[Scriptlet 382] (Line around 3129):
+= localeCode
+-----------------------------------
+[Scriptlet 383] (Line around 3130):
+- JSON.stringify(followingShareTargets || []).replace(/</g, '\\u003c')
+-----------------------------------
+[Scriptlet 384] (Line around 3131):
+- JSON.stringify(friendShareTargets || []).replace(/</g, '\\u003c')
+-----------------------------------

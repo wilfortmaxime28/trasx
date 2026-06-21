@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrasX - Premium Social Dashboard</title>
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="TrasX is a responsive premium social media dashboard featuring stories, feed, messages, and events with sleek glassmorphism and modern UI design.">
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="styles.css?v=2">
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+  <!-- Responsive Mobile Topbar (Sticky on Mobile) -->
+  <header class="mobile-header">
+    <div class="mobile-logo">
+      <div class="logo-icon"></div>
+      <span>TrasX</span>
+    </div>
+    <div class="mobile-header-actions" style="display: flex; align-items: center; gap: 12px;">
+      <button class="icon-btn theme-toggle-btn" aria-label="Toggle Dark Mode" id="mobileThemeToggleBtn" style="width: 36px; height: 36px;">
+        <i data-lucide="moon" class="theme-icon-moon" style="width: 18px; height: 18px;"></i>
+        <i data-lucide="sun" class="theme-icon-sun" style="width: 18px; height: 18px;"></i>
+      </button>
+      <button class="mobile-menu-toggle" id="menuToggle" aria-label="Toggle Navigation">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo">
+        <div class="logo-icon"></div>
+        <span>TrasX</span>
+      </div>
+      <div class="search-bar">
+        <i data-lucide="search" class="search-icon"></i>
+        <input type="text" placeholder="Search" aria-label="Search posts, people, and groups">
+        <button type="button" class="header-search-emoji-btn emoji-trigger-btn" title="Add emoji">😊</button>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div style="position: relative;">
+        <button class="icon-btn" aria-label="Notifications" id="notificationBtn">
+          <i data-lucide="bell"></i>
+          <span class="badge red" id="notificationBadge"></span>
+        </button>
+        <div class="dropdown-menu" id="notificationsDropdown" style="width: 320px; right: 0; padding: 12px 0; display: none; position: absolute; top: 50px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-item); box-shadow: var(--shadow-lg); z-index: 200;">
+          <div style="padding: 0 16px 10px 16px; border-bottom: 1px solid var(--border-color); font-weight: 700; font-size: 14px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: var(--text-primary);">Notifications</span>
+            <button id="markAllReadBtn" style="font-size: 11px; color: var(--primary); font-weight: 600; cursor: pointer;">Mark all as read</button>
+          </div>
+          <div style="max-height: 250px; overflow-y: auto;">
+            <div class="notification-item" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: center; transition: background 0.2s;">
+              <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0;"><img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=80&h=80&q=80"></div>
+              <div style="font-size: 12.5px; line-height: 1.3; color: var(--text-secondary);"><strong style="color: var(--text-primary);">Roger Korsgaard</strong> liked your story.<div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;">2 minutes ago</div></div>
+            </div>
+            <div class="notification-item" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: center; transition: background 0.2s;">
+              <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0;"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&h=80&q=80"></div>
+              <div style="font-size: 12.5px; line-height: 1.3; color: var(--text-secondary);"><strong style="color: var(--text-primary);">Terry Lipshutz</strong> commented on your post.<div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;">1 hour ago</div></div>
+            </div>
+            <div class="notification-item" style="display: flex; gap: 12px; padding: 12px 16px; cursor: pointer; align-items: center; transition: background 0.2s;">
+              <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0;"><img src="https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=80&h=80&q=80"></div>
+              <div style="font-size: 12.5px; line-height: 1.3; color: var(--text-secondary);"><strong style="color: var(--text-primary);">Randy Saris</strong> sent you a friend request.<div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;">5 hours ago</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="icon-btn" aria-label="Bookmarks" id="bookmarkBtn">
+        <i data-lucide="bookmark"></i>
+      </button>
+      <button class="icon-btn theme-toggle-btn" aria-label="Toggle Dark Mode" id="themeToggleBtn">
+        <i data-lucide="moon" class="theme-icon-moon"></i>
+        <i data-lucide="sun" class="theme-icon-sun"></i>
+      </button>
+      
+      <div class="profile-dropdown" id="profileDropdownBtn">
+        <div class="avatar header-avatar">
+          <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80" alt="Jakob Botosh">
+        </div>
+        <span class="profile-name">Jakob Botosh</span>
+        <i data-lucide="chevron-down" class="dropdown-arrow"></i>
+        
+        <!-- Dropdown menu -->
+        <div class="dropdown-menu" id="profileDropdownMenu">
+          <a href="#"><i data-lucide="user"></i> My Profile</a>
+          <a href="#"><i data-lucide="settings"></i> Settings</a>
+          <a href="#"><i data-lucide="log-out"></i> Log Out</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- App Wrapper -->
+  <div class="app-wrapper">
+    <!-- Main Layout Container -->
+    <div class="main-layout">
+
+      <!-- Left Sidebar -->
+      <aside class="sidebar left-sidebar" id="leftSidebar">
+        <!-- User Profile Card -->
+        <div class="profile-card">
+          <div class="profile-card-header">
+            <div class="avatar card-avatar">
+              <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80" alt="Jakob Botosh">
+            </div>
+            <div class="profile-card-info">
+              <h2 class="profile-card-name">
+                Jakob Botosh
+                <span class="verified-badge" title="Verified User">
+                  <i data-lucide="badge-check"></i>
+                </span>
+              </h2>
+              <span class="profile-card-handle">@jakobbtsh</span>
+            </div>
+          </div>
+          
+          <div class="profile-stats">
+            <div class="stat-item">
+              <span class="stat-value">2.3k</span>
+              <span class="stat-label">Follower</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value">235</span>
+              <span class="stat-label">Following</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value">80</span>
+              <span class="stat-label">Post</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sidebar Navigation Menu -->
+        <nav class="sidebar-nav">
+          <a href="#" class="nav-item active">
+            <i data-lucide="home"></i>
+            <span>Feed</span>
+          </a>
+          <a href="#" class="nav-item">
+            <i data-lucide="users"></i>
+            <span>Friends</span>
+          </a>
+          <a href="#" class="nav-item">
+            <div class="nav-item-content">
+              <i data-lucide="calendar"></i>
+              <span>Event</span>
+            </div>
+            <span class="nav-badge red">4</span>
+          </a>
+          <a href="#" class="nav-item" id="shortsSidebarBtn">
+            <i data-lucide="clapperboard"></i>
+            <span>Shorts</span>
+          </a>
+          <a href="#" class="nav-item">
+            <i data-lucide="image"></i>
+            <span>Photos</span>
+          </a>
+          <a href="#" class="nav-item">
+            <i data-lucide="shopping-bag"></i>
+            <span>Marketplace</span>
+          </a>
+          <a href="#" class="nav-item">
+            <div class="nav-item-content">
+              <i data-lucide="folder"></i>
+              <span>Files</span>
+            </div>
+            <span class="nav-badge purple">7</span>
+          </a>
+        </nav>
+
+        <hr class="sidebar-divider">
+
+        <!-- Pages You Like -->
+        <div class="pages-section">
+          <h3 class="section-title">PAGES YOU LIKE</h3>
+          <div class="page-list">
+            <a href="#" class="page-item">
+              <div class="page-icon uiux">UI</div>
+              <span class="page-name">UI/UX Community...</span>
+            </a>
+            <a href="#" class="page-item">
+              <div class="page-icon webdes">WD</div>
+              <span class="page-name">Web Designer</span>
+            </a>
+            <a href="#" class="page-item">
+              <div class="page-icon dribbble">D</div>
+              <span class="page-name">Dribbble Community</span>
+            </a>
+            <a href="#" class="page-item">
+              <div class="page-icon behance">Be</div>
+              <span class="page-name">
+                Behance
+                <span class="verified-badge-small">
+                  <i data-lucide="badge-check"></i>
+                </span>
+              </span>
+            </a>
+          </div>
+          <a href="#" class="view-all-link">View All</a>
+        </div>
+
+        <!-- Sidebar Footer -->
+        <footer class="sidebar-footer">
+          <div class="footer-links">
+            <a href="#">Privacy terms</a>
+            <a href="#">Advertising</a>
+            <a href="#">Cookies</a>
+          </div>
+          <p class="copyright">Platform &copy; 2026</p>
+        </footer>
+      </aside>
+
+      <!-- Middle Feed Column -->
+      <main class="feed-column">
+        <div id="feedMainContent" style="display: flex; flex-direction: column; gap: 24px; width: 100%;">
+        <!-- Stories Horizontal Container -->
+        <div class="stories-wrapper">
+          <div class="stories-container">
+            
+            <!-- Story 1: Add Story -->
+            <div class="story-card add-story">
+              <div class="story-avatar-container main-user">
+                <img class="story-avatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80" alt="Jakob Botosh">
+                <div class="add-story-btn">
+                  <i data-lucide="plus"></i>
+                </div>
+              </div>
+              <span class="story-username">Your Story</span>
+            </div>
+
+            <!-- Story 2 -->
+            <div class="story-card">
+              <div class="story-avatar-container active-story">
+                <img class="story-avatar" src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&h=150&q=80" alt="Justin Rosser">
+              </div>
+              <span class="story-username">Justin Rosser</span>
+            </div>
+
+            <!-- Story 3 -->
+            <div class="story-card">
+              <div class="story-avatar-container active-story">
+                <img class="story-avatar" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80" alt="Davis Dorwart">
+              </div>
+              <span class="story-username">Davis Dorwart</span>
+            </div>
+
+            <!-- Story 4 -->
+            <div class="story-card">
+              <div class="story-avatar-container active-story">
+                <img class="story-avatar" src="https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=150&h=150&q=80" alt="Randy Saris">
+              </div>
+              <span class="story-username">Randy Saris</span>
+            </div>
+
+            <!-- Story 5 -->
+            <div class="story-card">
+              <div class="story-avatar-container active-story">
+                <img class="story-avatar" src="https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=150&h=150&q=80" alt="Charlie Press">
+              </div>
+              <span class="story-username">Charlie Press</span>
+            </div>
+
+            <!-- Story 6 -->
+            <div class="story-card">
+              <div class="story-avatar-container active-story">
+                <img class="story-avatar" src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=150&h=150&q=80" alt="Zaire Herwitz">
+              </div>
+              <span class="story-username">Zaire Herwitz</span>
+            </div>
+
+            <!-- Story 7 -->
+            <div class="story-card">
+              <div class="story-avatar-container active-story">
+                <img class="story-avatar" src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&h=150&q=80" alt="Talan Philips">
+              </div>
+              <span class="story-username">Talan Philips</span>
+            </div>
+
+            <!-- Story 8 -->
+            <div class="story-card">
+              <div class="story-avatar-container active-story">
+                <img class="story-avatar" src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&h=150&q=80" alt="Corey Gouse">
+              </div>
+              <span class="story-username">Corey Gouse</span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Create Post Card -->
+        <div class="create-post-card">
+          <div class="create-post-upper">
+            <div class="avatar post-creator-avatar">
+              <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80" alt="Jakob Botosh">
+            </div>
+            <div class="create-post-input-wrapper">
+              <input type="text" id="postInput" placeholder="What's on your mind?" aria-label="Write a new post">
+              <button type="button" class="emoji-picker-btn emoji-trigger-btn" aria-label="Add emoji">😊</button>
+            </div>
+            <button class="share-post-btn" id="sharePostBtn">Share Post</button>
+          </div>
+          
+          <div class="create-post-lower">
+            <div class="post-options-list">
+              <button class="post-opt-btn image-video">
+                <i data-lucide="image"></i>
+                <span>Image/Video</span>
+              </button>
+              <button class="post-opt-btn attachment">
+                <i data-lucide="paperclip"></i>
+                <span>Attachment</span>
+              </button>
+              <button class="post-opt-btn live">
+                <i data-lucide="video"></i>
+                <span>Live</span>
+              </button>
+              <button class="post-opt-btn hashtag">
+                <i data-lucide="hash"></i>
+                <span>Hashtag</span>
+              </button>
+              <button class="post-opt-btn mention">
+                <i data-lucide="at-sign"></i>
+                <span>Mention</span>
+              </button>
+            </div>
+            
+            <div class="post-privacy-dropdown" style="position: relative;">
+              <button class="privacy-select-btn" id="privacyBtn">
+                <i data-lucide="globe" id="privacyBtnIcon"></i>
+                <span id="privacyBtnText">Public</span>
+                <i data-lucide="chevron-down"></i>
+              </button>
+              <div class="dropdown-menu" id="privacyMenu" style="position: absolute; right: 0; bottom: 48px; width: 140px; display: none; flex-direction: column; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-item); box-shadow: var(--shadow-lg); z-index: 100;">
+                <a href="#" class="privacy-option" data-value="Public" data-icon="globe"><i data-lucide="globe"></i> Public</a>
+                <a href="#" class="privacy-option" data-value="Friends" data-icon="users"><i data-lucide="users"></i> Friends</a>
+                <a href="#" class="privacy-option" data-value="Only Me" data-icon="lock"><i data-lucide="lock"></i> Only Me</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feed Sorting Info -->
+        <div class="feed-sort-row">
+          <span>Sort by: <strong>Following</strong></span>
+          <i data-lucide="chevron-down"></i>
+        </div>
+
+        <!-- Posts List -->
+        <div class="posts-list" id="postsContainer">
+          
+          <!-- Post 1: Cameron Williamson -->
+          <article class="post-card">
+            <header class="post-header">
+              <div class="post-author-info">
+                <div class="avatar author-avatar">
+                  <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&h=150&q=80" alt="Cameron Williamson">
+                </div>
+                <div class="author-details">
+                  <h3 class="author-name">Cameron Williamson</h3>
+                  <span class="post-time">14 Aug at 4:21 PM</span>
+                </div>
+              </div>
+              <button class="post-options-btn" aria-label="Post settings">
+                <i data-lucide="more-horizontal"></i>
+              </button>
+            </header>
+            
+            <div class="post-content">
+              <!-- Grid Layout for Images -->
+              <div class="post-images-grid">
+                <div class="grid-image-wrapper">
+                  <img src="assets/headset_3d.png" alt="3D Headset render in lavender background" class="post-img">
+                </div>
+                <div class="grid-image-wrapper">
+                  <img src="assets/pop_shapes.png" alt="3D Abstract geometric shapes in light blue background" class="post-img">
+                </div>
+              </div>
+            </div>
+            
+            <footer class="post-footer">
+              <div class="post-actions">
+                <button class="post-action-btn like-btn" data-likes="30">
+                  <i data-lucide="heart"></i>
+                  <span class="action-label"><span class="like-count">30</span> Like</span>
+                </button>
+                <button class="post-action-btn comment-btn" data-comments="12">
+                  <i data-lucide="message-circle"></i>
+                  <span class="action-label">12 Comment</span>
+                </button>
+                <button class="post-action-btn share-btn" data-shares="5">
+                  <i data-lucide="share-2"></i>
+                  <span class="action-label">5 Share</span>
+                </button>
+              </div>
+              <button class="post-bookmark-btn" aria-label="Bookmark post">
+                <i data-lucide="bookmark"></i>
+              </button>
+            </footer>
+          </article>
+
+          <!-- Post 2: Terry Lipshutz -->
+          <article class="post-card">
+            <header class="post-header">
+              <div class="post-author-info">
+                <div class="avatar author-avatar">
+                  <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&h=150&q=80" alt="Terry Lipshutz">
+                </div>
+                <div class="author-details">
+                  <h3 class="author-name">Terry Lipshutz</h3>
+                  <span class="post-time">14 Aug at 4:21 PM</span>
+                </div>
+              </div>
+              <button class="post-options-btn" aria-label="Post settings">
+                <i data-lucide="more-horizontal"></i>
+              </button>
+            </header>
+            
+            <div class="post-content">
+              <div class="post-single-image">
+                <img src="assets/abstract_waves.png" alt="Soft pastel 3D fluid wave render" class="post-img">
+              </div>
+            </div>
+            
+            <footer class="post-footer">
+              <div class="post-actions">
+                <button class="post-action-btn like-btn" data-likes="128">
+                  <i data-lucide="heart"></i>
+                  <span class="action-label"><span class="like-count">128</span> Like</span>
+                </button>
+                <button class="post-action-btn comment-btn" data-comments="42">
+                  <i data-lucide="message-circle"></i>
+                  <span class="action-label">42 Comment</span>
+                </button>
+                <button class="post-action-btn share-btn" data-shares="18">
+                  <i data-lucide="share-2"></i>
+                  <span class="action-label">18 Share</span>
+                </button>
+              </div>
+              <button class="post-bookmark-btn" aria-label="Bookmark post">
+                <i data-lucide="bookmark"></i>
+              </button>
+            </footer>
+          </article>
+
+        </div>
+        </div>
+
+        <!-- Shorts Column View (Hidden by default) -->
+        <div class="shorts-container-section" id="shortsSection" style="display: none; flex-direction: column; gap: 20px; width: 100%;">
+          <!-- Shorts Header -->
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0;">
+            <h2 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--text-primary);">
+              <i data-lucide="clapperboard" style="color: var(--primary);"></i> TrasX Shorts
+            </h2>
+            <button class="icon-btn" id="backToFeedBtn" title="Back to Feed" style="font-size: 13px; font-weight: 600; padding: 0 16px; border-radius: 20px; background: var(--bg-card); border: 1px solid var(--border-color); width: auto; height: 36px; display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer;">
+              <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Feed
+            </button>
+          </div>
+
+          <!-- Reels Vertical Feed -->
+          <div class="reels-feed" style="display: flex; flex-direction: column; gap: 24px; align-items: center; width: 100%;">
+            
+            <!-- Reel Card 1 -->
+            <div class="reel-card" style="position: relative; width: 100%; max-width: 440px; aspect-ratio: 9/16; border-radius: var(--border-radius-card); overflow: hidden; box-shadow: var(--shadow-lg); background: #000; border: 1px solid var(--border-color);">
+              <img src="https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=600&q=80" alt="Short video overlay" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.85;">
+              <div style="position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;">
+                <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: grid; place-items: center; border: 1.5px solid rgba(255,255,255,0.4);">
+                  <i data-lucide="play" style="color: white; fill: white; width: 20px; height: 20px; margin-left: 3px;"></i>
+                </div>
+              </div>
+              <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 60%, transparent 100%); padding: 24px 20px; color: white; display: flex; flex-direction: column; gap: 12px; pointer-events: auto;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div class="avatar" style="width: 36px; height: 36px; border: 2px solid white; overflow: hidden; flex-shrink: 0;"><img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&h=150&q=80" style="width:100%; height:100%; object-fit:cover;"></div>
+                  <div>
+                    <h4 style="font-size: 13.5px; font-weight: 700; color: white; margin: 0;">Justin Rosser <span style="font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.7); margin-left: 6px; cursor: pointer;">• Follow</span></h4>
+                    <span style="font-size: 11px; color: rgba(255,255,255,0.8); display: flex; align-items: center; gap: 4px; margin-top: 2px;"><i data-lucide="music" style="width: 10px; height: 10px;"></i> original sound - Justin R.</span>
+                  </div>
+                </div>
+                <p style="font-size: 13px; color: rgba(255,255,255,0.95); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0;">Exploring the amazing nature views this weekend! 🌲🏔️ #adventure #vibe #nature</p>
+              </div>
+              <div style="position: absolute; right: 16px; bottom: 120px; display: flex; flex-direction: column; gap: 18px; align-items: center; color: white; z-index: 5;">
+                <button class="reel-action-btn" style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: white; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));"><div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); display: grid; place-items: center;"><i data-lucide="heart" style="width: 20px; height: 20px;"></i></div><span style="font-size: 11px; font-weight: 600;">12.4k</span></button>
+                <button class="reel-action-btn" style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: white; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));"><div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); display: grid; place-items: center;"><i data-lucide="message-square" style="width: 20px; height: 20px;"></i></div><span style="font-size: 11px; font-weight: 600;">842</span></button>
+                <button class="reel-action-btn" style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: white; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));"><div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); display: grid; place-items: center;"><i data-lucide="share-2" style="width: 20px; height: 20px;"></i></div><span style="font-size: 11px; font-weight: 600;">1.2k</span></button>
+              </div>
+            </div>
+
+            <!-- Reel Card 2 -->
+            <div class="reel-card" style="position: relative; width: 100%; max-width: 440px; aspect-ratio: 9/16; border-radius: var(--border-radius-card); overflow: hidden; box-shadow: var(--shadow-lg); background: #000; border: 1px solid var(--border-color);">
+              <img src="https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=600&q=80" alt="Short video overlay" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.85;">
+              <div style="position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;">
+                <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: grid; place-items: center; border: 1.5px solid rgba(255,255,255,0.4);">
+                  <i data-lucide="play" style="color: white; fill: white; width: 20px; height: 20px; margin-left: 3px;"></i>
+                </div>
+              </div>
+              <div style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 60%, transparent 100%); padding: 24px 20px; color: white; display: flex; flex-direction: column; gap: 12px; pointer-events: auto;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div class="avatar" style="width: 36px; height: 36px; border: 2px solid white; overflow: hidden; flex-shrink: 0;"><img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80" style="width:100%; height:100%; object-fit:cover;"></div>
+                  <div>
+                    <h4 style="font-size: 13.5px; font-weight: 700; color: white; margin: 0;">Angel Bergson <span style="font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.7); margin-left: 6px; cursor: pointer;">• Follow</span></h4>
+                    <span style="font-size: 11px; color: rgba(255,255,255,0.8); display: flex; align-items: center; gap: 4px; margin-top: 2px;"><i data-lucide="music" style="width: 10px; height: 10px;"></i> Acoustic Pop Mix - Angel</span>
+                  </div>
+                </div>
+                <p style="font-size: 13px; color: rgba(255,255,255,0.95); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0;">My new room setup is finally complete! 💻✨ Rate it 1-10! #setup #rgb #aesthetic</p>
+              </div>
+              <div style="position: absolute; right: 16px; bottom: 120px; display: flex; flex-direction: column; gap: 18px; align-items: center; color: white; z-index: 5;">
+                <button class="reel-action-btn" style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: white; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));"><div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); display: grid; place-items: center;"><i data-lucide="heart" style="width: 20px; height: 20px;"></i></div><span style="font-size: 11px; font-weight: 600;">9.8k</span></button>
+                <button class="reel-action-btn" style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: white; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));"><div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); display: grid; place-items: center;"><i data-lucide="message-square" style="width: 20px; height: 20px;"></i></div><span style="font-size: 11px; font-weight: 600;">612</span></button>
+                <button class="reel-action-btn" style="display: flex; flex-direction: column; align-items: center; gap: 4px; color: white; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));"><div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); display: grid; place-items: center;"><i data-lucide="share-2" style="width: 20px; height: 20px;"></i></div><span style="font-size: 11px; font-weight: 600;">450</span></button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </main>
+
+      <!-- Right Sidebar -->
+      <aside class="sidebar right-sidebar" id="rightSidebar">
+        <!-- Messages Card -->
+        <div class="sidebar-card messages-card">
+          <header class="card-header">
+            <h3 class="card-title">Messages</h3>
+            <button class="card-action-icon-btn" aria-label="Compose Message">
+              <i data-lucide="edit"></i>
+            </button>
+          </header>
+          
+          <div class="messages-search-wrapper">
+            <i data-lucide="search" class="search-icon"></i>
+            <input type="text" placeholder="Search" aria-label="Search messages">
+            <i data-lucide="sliders-horizontal" class="filter-icon" title="Filter messages"></i>
+          </div>
+
+          <!-- Messages Tabs -->
+          <div class="messages-tabs">
+            <button class="tab-btn active" data-tab="primary">Primary</button>
+            <button class="tab-btn" data-tab="general">General</button>
+            <button class="tab-btn" data-tab="requests">
+              Requests<span class="tab-count">(4)</span>
+            </button>
+          </div>
+
+          <!-- Messages List -->
+          <div class="messages-list active" id="messages-primary">
+            <!-- Contact 1 -->
+            <div class="message-item online">
+              <div class="avatar msg-avatar">
+                <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=150&h=150&q=80" alt="Roger Korsgaard">
+                <span class="status-dot"></span>
+              </div>
+              <div class="message-details">
+                <span class="contact-name">Roger Korsgaard</span>
+                <span class="message-preview">Hey, did you check the new wireframes?</span>
+              </div>
+            </div>
+            
+            <!-- Contact 2 -->
+            <div class="message-item online">
+              <div class="avatar msg-avatar">
+                <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&h=150&q=80" alt="Terry Torff">
+                <span class="status-dot"></span>
+              </div>
+              <div class="message-details">
+                <span class="contact-name">Terry Torff</span>
+                <span class="message-preview">Perfect, let's schedule a call tomorrow.</span>
+              </div>
+            </div>
+
+            <!-- Contact 3 -->
+            <div class="message-item">
+              <div class="avatar msg-avatar">
+                <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80" alt="Angel Bergson">
+                <span class="status-dot"></span>
+              </div>
+              <div class="message-details">
+                <span class="contact-name">Angel Bergson</span>
+                <span class="message-preview">Can you send me the asset files?</span>
+              </div>
+            </div>
+
+            <!-- Contact 4 -->
+            <div class="message-item online">
+              <div class="avatar msg-avatar">
+                <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&h=150&q=80" alt="Emerson Gouse">
+                <span class="status-dot"></span>
+              </div>
+              <div class="message-details">
+                <span class="contact-name">Emerson Gouse</span>
+                <span class="message-preview">Thanks, this looks fantastic!</span>
+              </div>
+            </div>
+
+            <!-- Contact 5 -->
+            <div class="message-item">
+              <div class="avatar msg-avatar">
+                <img src="https://images.unsplash.com/photo-1519345182560-3f2917c472ef?auto=format&fit=crop&w=150&h=150&q=80" alt="Corey Baptista">
+                <span class="status-dot"></span>
+              </div>
+              <div class="message-details">
+                <span class="contact-name">Corey Baptista</span>
+                <span class="message-preview">I'll review it by tonight.</span>
+              </div>
+            </div>
+
+            <!-- Contact 6 -->
+            <div class="message-item online">
+              <div class="avatar msg-avatar">
+                <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=150&h=150&q=80" alt="Zain Culhane">
+                <span class="status-dot"></span>
+              </div>
+              <div class="message-details">
+                <span class="contact-name">Zain Culhane</span>
+                <span class="message-preview">Are you attending the dev meetup?</span>
+              </div>
+            </div>
+
+            <!-- Contact 7 -->
+            <div class="message-item">
+              <div class="avatar msg-avatar">
+                <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=150&h=150&q=80" alt="Randy Lipshutz">
+                <span class="status-dot"></span>
+              </div>
+              <div class="message-details">
+                <span class="contact-name">Randy Lipshutz</span>
+                <span class="message-preview">Let's connect soon.</span>
+              </div>
+            </div>
+
+            <!-- Contact 8 -->
+            <div class="message-item online">
+              <div class="avatar msg-avatar">
+                <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&h=150&q=80" alt="Craig Botosh">
+                <span class="status-dot"></span>
+              </div>
+              <div class="message-details">
+                <span class="contact-name">Craig Botosh</span>
+                <span class="message-preview">Great work on the dashboard!</span>
+              </div>
+            </div>
+          </div>
+          
+          <a href="#" class="view-all-link text-center">View All</a>
+        </div>
+
+        <!-- Events Card -->
+        <div class="sidebar-card events-card">
+          <header class="card-header">
+            <h3 class="card-title">Events</h3>
+            <button class="card-action-icon-btn" aria-label="Event Options">
+              <i data-lucide="more-horizontal"></i>
+            </button>
+          </header>
+          
+          <div class="events-list">
+            <!-- Event 1 -->
+            <div class="event-item">
+              <div class="event-icon-wrapper invites">
+                <i data-lucide="calendar"></i>
+              </div>
+              <div class="event-info">
+                <span class="event-title">10 Events Invites</span>
+              </div>
+            </div>
+            
+            <!-- Event 2 -->
+            <div class="event-item alignment-top">
+              <div class="event-icon-wrapper collab">
+                <i data-lucide="users"></i>
+              </div>
+              <div class="event-info">
+                <span class="event-title">Design System Collaboration</span>
+                <span class="event-meta">Thu - Harpoon Mall, YK</span>
+              </div>
+            </div>
+
+            <!-- Event 3 -->
+            <div class="event-item alignment-top">
+              <div class="event-icon-wrapper meetup">
+                <i data-lucide="map-pin"></i>
+              </div>
+              <div class="event-info">
+                <span class="event-title">Web Dev 2.0 Meetup</span>
+                <span class="event-meta">Yoshkar-Ola, Russia</span>
+              </div>
+            </div>
+
+            <!-- Event 4 -->
+            <div class="event-item">
+              <div class="event-icon-wrapper gift">
+                <i data-lucide="gift"></i>
+              </div>
+              <div class="event-info">
+                <span class="event-title">Prada's Invitation Birthday</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Navigation (Sticky on Mobile) -->
+  <nav class="mobile-nav">
+    <a href="#" class="mobile-nav-item active" id="mobileHomeBtn">
+      <i data-lucide="home"></i>
+    </a>
+    <a href="#" class="mobile-nav-item" id="mobileShortsBtn">
+      <i data-lucide="clapperboard"></i>
+    </a>
+    <a href="#" class="mobile-nav-item" id="mobileCreatePostBtn">
+      <i data-lucide="plus-square"></i>
+    </a>
+    <a href="#" class="mobile-nav-item" id="mobileMessagesBtn">
+      <i data-lucide="message-square"></i>
+      <span class="nav-badge red">4</span>
+    </a>
+    <a href="#" class="mobile-nav-item" id="mobileProfileBtn">
+      <i data-lucide="user"></i>
+    </a>
+  </nav>
+
+  <!-- Mobile Messages Drawer -->
+  <div class="mobile-drawer" id="messagesDrawer">
+    <div class="drawer-header">
+      <h3>Messages</h3>
+      <button class="drawer-close-btn" id="closeMessagesDrawer"><i data-lucide="x"></i></button>
+    </div>
+    <div class="drawer-content" id="messagesDrawerContent">
+      <!-- Will clone right-sidebar messages card here -->
+    </div>
+  </div>
+
+  <!-- Floating Toast Container -->
+  <div id="appToast" style="position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--text-primary); color: var(--bg-card); padding: 12px 24px; border-radius: var(--border-radius-pill); font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg); z-index: 2000; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease; opacity: 0; pointer-events: none; border: 1px solid var(--border-color);">
+    Action successful
+  </div>
+
+  <!-- JavaScript file -->
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,433 @@
+<%- include('partials/head') %>
+<%- include('partials/header') %>
+<%
+  const createdEvents = dashboard?.hostedEvents || [];
+  const attendingEvents = dashboard?.attendingEvents || [];
+  const upcomingEvents = dashboard?.upcomingEvents || [];
+  const suggestedEvents = dashboard?.suggestedEvents || [];
+  const eventStats = dashboard?.stats || { hostedCount: 0, attendingCount: 0, interestedCount: 0, totalUpcomingCount: 0 };
+  const localeCode = typeof locale !== 'undefined' ? locale : 'en';
+  const canCreateEvents = typeof canCreateEvent !== 'undefined' ? canCreateEvent : false;
+  const eventCreationEligibilitySafe = typeof eventCreationEligibility !== 'undefined' && eventCreationEligibility
+    ? eventCreationEligibility
+    : { reasons: [], thresholdReached: false, requiredFollowers: 0, followersCount: 0, isAccountActive: false, isVerified: false, hasCertification: false };
+  const safeEventKycRequest = typeof eventKycRequest !== 'undefined' && eventKycRequest ? eventKycRequest : null;
+  const eventsThreshold = Number(eventsFollowersThreshold || 1000);
+  const eventsProgressValue = Number.isFinite(Number(eventsProgress)) ? Number(eventsProgress) : 0;
+  const eventsUnlockFeeValue = Number.isFinite(Number(eventsUnlockFee)) ? Number(eventsUnlockFee) : 0;
+  const eventsKycStatus = String(safeEventKycRequest?.status || 'draft');
+  const eventsKycPaid = safeEventKycRequest?.payment_status === 'paid';
+  const canContinueEventsKyc = eventsKycPaid && ['draft', 'pending'].includes(eventsKycStatus);
+  const shouldOfferEventsPayment = !canCreateEvents && (!eventsKycPaid || eventsKycStatus === 'rejected' || eventsUnlockFeeValue <= 0);
+%>
+
+<div class="app-wrapper">
+  <div class="main-layout events-layout">
+    <%- include('partials/leftSidebar') %>
+
+    <main class="feed-column events-column">
+      <% if (eventsStatus) { %>
+        <div class="alert success"><%= tText(eventsStatus) %></div>
+      <% } %>
+      <% if (eventsError) { %>
+        <div class="alert error"><%= tText(eventsError) %></div>
+      <% } %>
+
+      <section class="events-hero-card">
+        <div class="events-hero-copy">
+          <div class="events-hero-kicker"><i data-lucide="calendar-days"></i> <%= t('events.featured', 'Featured events') %></div>
+          <h1 class="events-hero-title"><%= t('events.title', 'Events') %></h1>
+          <p class="events-hero-subtitle"><%= t('events.subtitle', 'Create, discover, and manage events with a clean professional workspace.') %></p>
+        </div>
+        <div class="events-hero-actions">
+          <a href="#create-event" class="events-primary-btn">
+            <i data-lucide="<%= canCreateEvents ? 'plus' : 'lock' %>"></i>
+            <span><%= canCreateEvents ? t('events.createEvent', 'Create event') : t('events.createEventLocked', 'Create event locked') %></span>
+          </a>
+          <div class="events-language-note"><%= t('events.languageHint', 'Your selected language is applied across the app.') %></div>
+        </div>
+      </section>
+
+      <section class="events-stats-grid">
+        <div class="events-stat-card">
+          <span class="events-stat-label"><%= t('events.allEvents', 'All events') %></span>
+          <strong><%= eventStats.totalUpcomingCount %></strong>
+        </div>
+        <div class="events-stat-card">
+          <span class="events-stat-label"><%= t('events.hosted', 'Hosting') %></span>
+          <strong><%= eventStats.hostedCount %></strong>
+        </div>
+        <div class="events-stat-card">
+          <span class="events-stat-label"><%= t('events.attending', 'Attending') %></span>
+          <strong><%= eventStats.attendingCount %></strong>
+        </div>
+        <div class="events-stat-card">
+          <span class="events-stat-label"><%= t('events.interested', 'Interested') %></span>
+          <strong><%= eventStats.interestedCount %></strong>
+        </div>
+      </section>
+
+      <section class="events-panel-card" id="create-event">
+        <div class="settings-panel-header">
+          <div>
+            <h2 class="settings-panel-title"><%= canCreateEvents ? t('events.createYourEvent', 'Create your event') : t('events.createEventAccess', 'Create event access') %></h2>
+            <div class="settings-panel-subtitle">
+              <%= canCreateEvents
+                ? t('events.subtitle', 'Create, discover, and manage events with a clean professional workspace.')
+                : t('events.lockedNotice', 'You can browse and join events, but event creation is locked until your account is eligible and certified.') %>
+            </div>
+          </div>
+        </div>
+        <% if (canCreateEvents) { %>
+          <form class="events-create-form" action="/events/create" method="POST" enctype="multipart/form-data">
+            <div class="events-form-grid">
+              <div class="settings-field">
+                <label for="eventTitle"><%= t('events.eventTitle', 'Event title') %></label>
+                <input type="text" id="eventTitle" name="title" maxlength="120" required>
+              </div>
+              <div class="settings-field">
+                <label for="eventCategory"><%= t('events.category', 'Category') %></label>
+                <select id="eventCategory" name="category">
+                  <% eventCategoryOptions.forEach((category) => { %>
+                    <option value="<%= category %>"><%= category %></option>
+                  <% }) %>
+                </select>
+              </div>
+              <div class="settings-field events-field-wide">
+                <label for="eventDescription"><%= t('events.description', 'Description') %></label>
+                <textarea id="eventDescription" name="description" rows="3" placeholder="<%= t('events.subtitle', 'Create, discover, and manage events with a clean professional workspace.') %>"></textarea>
+              </div>
+              <div class="settings-field">
+                <label for="eventLocationName"><%= t('events.venueName', 'Venue name') %></label>
+                <input type="text" id="eventLocationName" name="location_name" maxlength="120">
+              </div>
+              <div class="settings-field">
+                <label for="eventLocationAddress"><%= t('events.venueAddress', 'Address or neighborhood') %></label>
+                <input type="text" id="eventLocationAddress" name="location_address" maxlength="160">
+              </div>
+              <div class="settings-field">
+                <label for="eventStartsAt"><%= t('events.startDate', 'Start date') %></label>
+                <input type="datetime-local" id="eventStartsAt" name="starts_at" required>
+              </div>
+              <div class="settings-field">
+                <label for="eventEndsAt"><%= t('events.endDate', 'End date') %></label>
+                <input type="datetime-local" id="eventEndsAt" name="ends_at">
+              </div>
+              <div class="settings-field">
+                <label for="eventVisibility"><%= t('events.visibility', 'Visibility') %></label>
+                <select id="eventVisibility" name="visibility">
+                  <option value="public"><%= t('events.public', 'Public') %></option>
+                  <option value="friends"><%= t('events.friendsOnly', 'Friends only') %></option>
+                  <option value="private"><%= t('events.private', 'Private') %></option>
+                </select>
+              </div>
+              <div class="settings-field">
+                <label for="eventCapacity"><%= t('events.capacity', 'Capacity') %></label>
+                <input type="number" id="eventCapacity" name="capacity" min="0" step="1" placeholder="0">
+              </div>
+              <div class="settings-field events-field-wide">
+                <label for="eventCoverImage"><%= t('events.coverImage', 'Cover image') %></label>
+                <input type="url" id="eventCoverImage" name="cover_image_url" placeholder="https://...">
+              </div>
+              <div class="settings-field">
+                <label for="ticketMode"><%= t('events.ticketMode', 'Ticket mode') %></label>
+                <select id="ticketMode" name="ticket_mode" data-ticket-mode-select>
+                  <option value="generated"><%= t('events.platformGeneratedTicket', 'Platform generated') %></option>
+                  <option value="uploaded"><%= t('events.uploadedTicket', 'Uploaded ticket') %></option>
+                </select>
+                <div class="field-help-text">
+                  <%= t('events.ticketModeHint', 'Generated tickets include the attendee details and a QR code. Uploaded tickets are used as provided by the creator.') %>
+                </div>
+              </div>
+              <div class="settings-field">
+                <label for="ticketPrice"><%= t('events.ticketPrice', 'Ticket price') %></label>
+                <input type="number" id="ticketPrice" name="ticket_price" min="0" step="0.01" placeholder="0.00">
+                <div class="field-help-text">
+                  <%= t('events.creationFeePolicy', 'Free events pay a $10 creation fee. Paid events cost $0 to create, and the platform keeps 10% of each ticket sold.') %>
+                </div>
+              </div>
+              <div class="settings-field events-field-wide ticket-upload-field" data-ticket-upload-field>
+                <label for="ticketFile"><%= t('events.ticketFile', 'Ticket file') %></label>
+                <input type="file" id="ticketFile" name="ticket_file" accept="image/*,.pdf">
+                <div class="field-help-text">
+                  <%= t('events.ticketFileHint', 'Upload a file only when you choose the uploaded ticket mode.') %>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-action-row">
+              <div style="font-size: 12px; color: var(--text-muted);">
+                <%= t('events.publishedNote', 'The event will appear instantly in the discovery feed after publishing.') %>
+              </div>
+              <button type="submit" class="events-primary-btn">
+                <i data-lucide="send"></i>
+                <span><%= t('events.submitEvent', 'Publish event') %></span>
+              </button>
+            </div>
+          </form>
+        <% } else { %>
+          <div class="events-empty-state" id="event-create-lock" style="margin-top: 6px;">
+            <i data-lucide="lock"></i>
+            <h3 style="margin: 0 0 8px; color: var(--text-primary); font-size: 18px;"><%= t('events.eventCreationLocked', 'Event creation is locked') %></h3>
+            <p style="margin: 0 0 14px; max-width: 760px;">
+              <%= t('events.lockedDetails', 'You can still browse, join, and RSVP to events. To create one, your account must be active, verified, certified, and above your follower threshold.') %>
+            </p>
+            <div class="settings-progress" style="max-width: 420px; margin: 0 auto 14px;">
+              <div class="settings-progress-bar" style="width: <%= eventsProgressValue %>%;"></div>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+              <%= t('events.eligibilitySummary', 'Eligibility summary') %>:
+              <%= formatNumber(eventCreationEligibilitySafe.followersCount || 0) %> / <%= formatNumber(eventCreationEligibilitySafe.requiredFollowers || 0) %>
+            </div>
+            <div style="display: grid; gap: 8px; text-align: left; max-width: 760px; margin: 0 auto 16px; color: var(--text-secondary); font-size: 13px;">
+              <% (eventCreationEligibilitySafe.reasons || []).forEach((reason) => { %>
+                <div style="display: flex; gap: 8px; align-items: flex-start;">
+                  <i data-lucide="circle-alert" style="width: 16px; height: 16px; margin-top: 2px;"></i>
+                  <span><%= reason %></span>
+                </div>
+              <% }) %>
+            </div>
+            <div style="display: grid; gap: 10px; margin-top: 16px;">
+              <% if (shouldOfferEventsPayment) { %>
+                <form action="/events/unlock" method="POST" data-events-unlock-form data-events-unlock-context="events" data-events-unlock-fee="<%= Number(eventsUnlockFeeValue || 0).toFixed(2) %>">
+                  <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+                    <%= t('events.payAndStartKycNote', 'Pay the admin fee and start KYC to unlock event creation.') %>
+                  </div>
+                  <button type="submit" class="events-primary-btn" style="display: inline-flex;">
+                    <i data-lucide="credit-card"></i>
+                    <span><%= eventsKycStatus === 'rejected' ? t('events.payAndRetryKyc', 'Pay again and restart KYC') : t('events.payAndStartKyc', 'Pay & start KYC') %><% if (eventsUnlockFeeValue > 0) { %> - $<%= eventsUnlockFeeValue.toFixed(2) %><% } %></span>
+                  </button>
+                </form>
+              <% } %>
+
+              <% if (canContinueEventsKyc) { %>
+                <a href="/events/kyc" class="events-primary-btn" style="display: inline-flex; text-decoration: none;">
+                  <i data-lucide="badge-check"></i>
+                  <span><%= t('events.continueKyc', 'Continue KYC') %></span>
+                </a>
+              <% } %>
+
+              <% if (eventsKycStatus === 'pending') { %>
+                <div style="font-size: 12px; color: var(--text-muted);">
+                  <%= t('events.kycContinueReview', 'Your KYC is under review right now. Event access will unlock automatically if it is approved.') %>
+                </div>
+              <% } else if (eventsKycStatus === 'rejected') { %>
+                <div style="font-size: 12px; color: var(--text-muted);">
+                  <%= t('events.kycRejectedRestart', 'Your previous KYC was rejected. The fee is not refundable, and a new payment is required to start over.') %>
+                </div>
+              <% } %>
+            </div>
+
+            <% if (eventsUnlockFeeValue > 0) { %>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">
+                <%= t('events.kycRefusalNonRefundable', 'Refused KYC requests are not refundable.') %>
+              </div>
+            <% } else if (!canCreateEvents) { %>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">
+                <%= t('events.feeNotConfigured', 'The admin has not configured the event unlock fee yet.') %>
+              </div>
+            <% } %>
+            <a href="/settings#events-access" class="events-secondary-btn" style="display: inline-flex;"><%= t('events.manageAccess', 'Manage access in Settings') %></a>
+          </div>
+        <% } %>
+      </section>
+
+      <section class="events-panel-card">
+        <div class="settings-panel-header">
+          <div>
+            <h2 class="settings-panel-title"><%= t('events.discoverEvents', 'Discover events') %></h2>
+            <div class="settings-panel-subtitle"><%= t('events.upcoming', 'Upcoming') %> <%= upcomingEvents.length %></div>
+          </div>
+        </div>
+
+        <div class="events-card-grid">
+          <% if (upcomingEvents.length > 0) { %>
+            <% upcomingEvents.forEach((event) => { %>
+              <article class="event-card" id="event-<%= event.id %>">
+                <div class="event-card-cover" style="<%= event.cover_image_url ? `background-image: linear-gradient(180deg, rgba(10, 14, 25, 0.15), rgba(10, 14, 25, 0.72)), url('${event.cover_image_url}')` : '' %>">
+                  <div class="event-card-cover-meta">
+                    <span class="event-status-pill"><i data-lucide="calendar-clock"></i> <%= event.time_label %></span>
+                    <% if (event.capacity) { %>
+                      <span class="event-status-pill"><i data-lucide="users"></i> <%= event.remaining_spots %> <%= t('events.spotsLeft', 'left') %></span>
+                    <% } %>
+                  </div>
+                </div>
+
+                <div class="event-card-body">
+                  <div class="event-card-topline">
+                    <div>
+                      <h3 class="event-card-title"><%= event.title %></h3>
+                      <div class="event-card-subtitle">
+                        <span><i data-lucide="map-pin"></i> <%= event.location_name || event.location_address || t('events.online', 'Online') %></span>
+                        <span><i data-lucide="tag"></i> <%= event.category || t('events.community', 'Community') %></span>
+                      </div>
+                    </div>
+                    <span class="event-card-badge <%= event.my_status ? event.my_status : 'none' %>">
+                      <%= event.my_status === 'going' ? t('events.going', 'Going') : (event.my_status === 'interested' ? t('events.interested', 'Interested') : t('events.upcoming', 'Upcoming')) %>
+                    </span>
+                  </div>
+
+                  <p class="event-card-description"><%= event.description || t('events.noDescription', 'No description provided yet.') %></p>
+
+                  <div class="event-card-meta-grid">
+                    <div class="event-meta-item">
+                      <span><%= t('events.organizer', 'Organizer') %></span>
+                      <strong><%= event.organizer_name %></strong>
+                    </div>
+                    <div class="event-meta-item">
+                      <span><%= t('events.attendees', 'attendees') %></span>
+                      <strong><%= event.attendee_count %></strong>
+                    </div>
+                    <div class="event-meta-item">
+                      <span><%= t('events.endsAt', 'Ends at') %></span>
+                      <strong><%= event.end_label || 'TBA' %></strong>
+                    </div>
+                  </div>
+
+                  <div class="event-card-actions">
+                    <% if (event.my_status === 'going') { %>
+                      <form action="/events/<%= event.id %>/rsvp" method="POST" class="event-rsvp-form">
+                        <input type="hidden" name="status" value="none">
+                        <button type="submit" class="events-secondary-btn"><i data-lucide="log-out"></i> <%= t('events.leaveEvent', 'Leave') %></button>
+                      </form>
+                    <% } else { %>
+                      <form action="/events/<%= event.id %>/rsvp" method="POST" class="event-rsvp-form">
+                        <input type="hidden" name="status" value="going">
+                        <button type="submit" class="events-primary-btn"><i data-lucide="check"></i> <%= t('events.joinEvent', 'Join') %></button>
+                      </form>
+                      <form action="/events/<%= event.id %>/rsvp" method="POST" class="event-rsvp-form">
+                        <input type="hidden" name="status" value="interested">
+                        <button type="submit" class="events-secondary-btn"><i data-lucide="star"></i> <%= t('events.interested', 'Interested') %></button>
+                      </form>
+                    <% } %>
+                  </div>
+                </div>
+              </article>
+            <% }) %>
+          <% } else { %>
+            <div class="events-empty-state">
+              <i data-lucide="calendar-x"></i>
+              <p><%= t('events.noEvents', 'No events yet.') %></p>
+            </div>
+          <% } %>
+        </div>
+      </section>
+
+      <section class="events-panel-card">
+        <div class="settings-panel-header">
+          <div>
+            <h2 class="settings-panel-title"><%= t('events.myEvents', 'My events') %></h2>
+            <div class="settings-panel-subtitle"><%= createdEvents.length + attendingEvents.length %> <%= t('events.totalLabel', 'total') %></div>
+          </div>
+        </div>
+
+        <div class="events-mini-grid">
+          <% createdEvents.forEach((event) => { %>
+            <div class="events-mini-card">
+              <div class="events-mini-title"><%= event.title %></div>
+              <div class="events-mini-meta"><%= event.time_label %></div>
+              <div class="events-mini-meta"><%= event.attendee_count %> <%= t('events.attendees', 'attendees') %></div>
+            </div>
+          <% }) %>
+          <% attendingEvents.forEach((event) => { %>
+            <div class="events-mini-card">
+              <div class="events-mini-title"><%= event.title %></div>
+              <div class="events-mini-meta"><%= event.time_label %></div>
+              <div class="events-mini-meta"><%= event.my_status === 'going' ? t('events.going', 'Going') : t('events.interested', 'Interested') %></div>
+            </div>
+          <% }) %>
+          <% if (createdEvents.length === 0 && attendingEvents.length === 0) { %>
+            <div class="events-empty-mini"><%= t('events.noEvents', 'No events yet.') %></div>
+          <% } %>
+        </div>
+      </section>
+
+      <% if (suggestedEvents.length > 0) { %>
+        <section class="events-panel-card">
+          <div class="settings-panel-header">
+            <div>
+              <h2 class="settings-panel-title"><%= t('events.inYourNetwork', 'In your network') %></h2>
+              <div class="settings-panel-subtitle"><%= t('events.featured', 'Featured events') %></div>
+            </div>
+          </div>
+          <div class="events-suggested-list">
+            <% suggestedEvents.forEach((event) => { %>
+              <div class="events-suggested-item">
+                <div class="events-suggested-copy">
+                  <div class="events-suggested-title"><%= event.title %></div>
+                  <div class="events-suggested-meta"><%= event.organizer_name %> · <%= event.time_label %></div>
+                </div>
+                <span class="event-status-pill"><i data-lucide="sparkles"></i> <%= event.category || t('events.community', 'Community') %></span>
+              </div>
+            <% }) %>
+          </div>
+        </section>
+      <% } %>
+    </main>
+
+    <%- include('partials/rightSidebar') %>
+  </div>
+</div>
+
+<div class="modal-overlay" id="eventsUnlockModal" style="display: none; z-index: 3200; backdrop-filter: blur(10px);">
+  <div class="modal-content" style="max-width: 420px; padding: 24px; background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-lg); border-radius: 16px;">
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px;">
+      <div>
+        <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;"><%= t('events.unlockModalEyebrow', 'Paid access') %></div>
+        <h3 id="eventsUnlockModalTitle" style="margin: 0; color: var(--text-primary); font-size: 22px; font-weight: 700;"><%= t('events.unlockModalTitle', 'Pay and start KYC') %></h3>
+      </div>
+      <button type="button" id="closeEventsUnlockModal" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 4px;">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <p id="eventsUnlockModalText" style="margin: 0 0 18px; color: var(--text-secondary); font-size: 14px; line-height: 1.55;">
+      <%= t('events.unlockModalBody', 'You will pay the admin fee, then complete the KYC verification to unlock event creation. Refused requests are not refundable.') %>
+    </p>
+
+    <div id="eventsUnlockModalStatus" style="display: none; margin-bottom: 14px; font-size: 13px; line-height: 1.45; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-secondary);"></div>
+
+    <div style="display: grid; gap: 10px; margin-bottom: 18px;">
+      <div class="settings-info-row" style="margin: 0;">
+        <span><%= t('events.unlockModalFee', 'Fee') %></span>
+        <strong id="eventsUnlockModalFee">$<%= Number(eventsUnlockFeeValue || 0).toFixed(2) %></strong>
+      </div>
+      <div class="settings-info-row" style="margin: 0;">
+        <span><%= t('events.unlockModalNextStep', 'Next step') %></span>
+        <strong><%= t('events.unlockModalKyc', 'KYC review') %></strong>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 12px;">
+      <button type="button" id="cancelEventsUnlockModal" class="settings-secondary-btn" style="flex: 1;">
+        <%= t('events.unlockModalCancel', 'Cancel') %>
+      </button>
+      <button type="button" id="confirmEventsUnlockModal" class="settings-primary-btn" style="flex: 1;">
+        <i data-lucide="credit-card"></i>
+        <span><%= t('events.unlockModalConfirm', 'Pay & start KYC') %></span>
+      </button>
+    </div>
+    <% if (eventsUnlockFeeValue <= 0) { %>
+      <div style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">
+        <%= t('events.feeNotConfigured', 'The admin has not configured the event unlock fee yet.') %>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<div class="chat-boxes-container" id="chatBoxesContainer"></div>
+
+<%- include('partials/mobileNav') %>
+
+<div id="appToast" style="position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--text-primary); color: var(--bg-card); padding: 12px 24px; border-radius: var(--border-radius-pill); font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg); z-index: 2000; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease; opacity: 0; pointer-events: none; border: 1px solid var(--border-color);">
+  <%= t('settings.actionSuccessful', 'Action successful') %>
+</div>
+
+<script>
+  window.currentUserId = <%= currentUser.id %>;
+  window.currentUserAvatar = "<%= currentUser.avatar %>";
+  window.currentLocale = "<%= localeCode %>";
+</script>
+<script src="/js/client.js?v=200"></script>
+</body>
+</html>

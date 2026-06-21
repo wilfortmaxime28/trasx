@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="<%= typeof locale !== 'undefined' ? locale : 'en' %>">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= tText("TrasX - Publication partagée") %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css?v=13">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 38%),
+        radial-gradient(circle at bottom right, rgba(124, 58, 237, 0.10), transparent 34%),
+        var(--bg-body);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .share-shell {
+      width: min(100%, 760px);
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      box-shadow: var(--shadow-xl);
+      overflow: hidden;
+    }
+    .share-hero {
+      padding: 18px 20px;
+      background: linear-gradient(135deg, #1d4ed8 0%, #7c3aed 100%);
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+    }
+    .share-brand {
+      font-family: 'Outfit', sans-serif;
+      font-size: 18px;
+      font-weight: 800;
+      margin: 0;
+    }
+    .share-subtitle {
+      margin: 4px 0 0 0;
+      font-size: 12px;
+      opacity: 0.88;
+    }
+    .share-body {
+      padding: 18px 20px 20px 20px;
+    }
+    .share-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      background: var(--bg-hover);
+      margin-bottom: 16px;
+    }
+    .share-avatar {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      overflow: hidden;
+      flex-shrink: 0;
+      border: 1px solid var(--border-color);
+    }
+    .share-avatar img,
+    .share-media img,
+    .share-media video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .share-meta-title {
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .share-meta-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+    .share-media {
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      background: #0b0f19;
+      margin-bottom: 14px;
+    }
+    .share-caption {
+      font-size: 14px;
+      color: var(--text-primary);
+      line-height: 1.55;
+      margin: 0 0 16px 0;
+      white-space: pre-wrap;
+    }
+    .share-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .share-action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .share-action-btn.primary {
+      background: var(--primary);
+      color: white;
+      border-color: transparent;
+    }
+    .share-stats {
+      margin-top: 14px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .share-header-right {
+      font-size: 12px;
+      opacity: 0.9;
+      text-align: right;
+    }
+    @media (max-width: 640px) {
+      .share-hero {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="share-shell">
+    <section class="share-hero">
+      <div>
+        <p class="share-brand">TrasX</p>
+        <p class="share-subtitle"><%= tText("Publication partagée par") %> <strong>@<%= sharerUsername %></strong></p>
+      </div>
+      <div class="share-header-right">
+        <div><%= tText("Partage unique") %></div>
+        <div><%= tText("Token:") %> <%= shareToken %></div>
+      </div>
+    </section>
+
+    <section class="share-body">
+      <div class="share-meta">
+        <div class="share-avatar">
+          <img src="<%= share.sharer_avatar %>" alt="<%= sharerDisplayName %>">
+        </div>
+        <div style="min-width: 0;">
+          <div class="share-meta-title"><%= sharerDisplayName %></div>
+          <div class="share-meta-sub">
+            <span>@<%= sharerUsername %></span>
+            <% if (sharePlatform) { %>
+              <span> <%= tText("- via") %> <%= sharePlatform %></span>
+            <% } %>
+          </div>
+        </div>
+      </div>
+
+      <div class="share-media">
+        <% if (post.media_type === 'video') { %>
+          <video src="<%= post.image_url %>" controls playsinline preload="metadata" poster="<%= post.thumbnail_url || '' %>" style="width:100%; max-height: 560px; background:#0b0f19;"></video>
+        <% } else if (post.image_url) { %>
+          <img src="<%= post.image_url %>" alt="<%= tText("Publication partagée") %>" style="max-height: 560px;">
+        <% } %>
+      </div>
+
+      <% if (post.content && post.content.trim()) { %>
+        <p class="share-caption"><%= post.content %></p>
+      <% } %>
+
+      <div class="share-actions">
+        <a href="/" class="share-action-btn primary"><%= tText("Ouvrir le fil") %></a>
+        <button type="button" class="share-action-btn" id="copySharedLinkBtn">
+          <i data-lucide="copy" style="width:14px; height:14px;"></i>
+          <%= tText("Copier le lien") %>
+        </button>
+      </div>
+
+      <div class="share-stats">
+        <%= formatNumber(post.shares_count || 0) %> <%= tText("partage(s) enregistrés au clic") %>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+    const copyBtn = document.getElementById('copySharedLinkBtn');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+          copyBtn.innerHTML = '<i data-lucide="check" style="width:14px; height:14px;"></i> <%= tText("Lien copié") %>';
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        } catch (err) {
+          copyBtn.innerHTML = '<i data-lucide="x" style="width:14px; height:14px; color: #ef4444;"></i> <%= tText("Erreur de copie") %>';
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+      });
+    }
+  </script>
+</body>
+</html>

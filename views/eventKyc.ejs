@@ -1,0 +1,311 @@
+<%- include('partials/head') %>
+<%- include('partials/header') %>
+<%
+  const safeSettingsStatus = typeof eventsStatus !== 'undefined' ? eventsStatus : null;
+  const safeSettingsError = typeof eventsError !== 'undefined' ? eventsError : null;
+  const safeEventKycRequest = typeof eventKycRequest !== 'undefined' && eventKycRequest ? eventKycRequest : null;
+  const safeEventsUnlockFee = Number.isFinite(Number(typeof eventsUnlockFee !== 'undefined' ? eventsUnlockFee : 0))
+    ? Number(typeof eventsUnlockFee !== 'undefined' ? eventsUnlockFee : 0)
+    : 0;
+  const requestStatus = String(safeEventKycRequest?.status || 'draft');
+  const requestTone = requestStatus === 'approved' ? 'success' : 'primary';
+  const requestTitle = requestStatus === 'approved'
+    ? t('events.kycOutcomeApproved', 'KYC approved')
+    : (requestStatus === 'rejected'
+      ? t('events.kycOutcomeRejected', 'KYC rejected')
+      : (safeEventKycRequest?.payment_status === 'paid'
+        ? t('events.kycPaymentReceived', 'Payment received, complete KYC')
+        : t('events.kycPageTitle', 'Event access KYC')));
+  const requestStatusLabel = requestStatus === 'approved'
+    ? t('events.kycApproved', 'Approved')
+    : (requestStatus === 'rejected'
+      ? t('events.kycRejected', 'Rejected')
+      : (safeEventKycRequest?.payment_status === 'paid'
+        ? t('events.kycContinueReview', 'Review in progress')
+        : t('events.kycPending', 'Pending')));
+  const rejectionRawText = String(
+    safeEventKycRequest?.request_note
+      || safeEventKycRequest?.verification_notes
+      || safeSettingsError
+      || ''
+  ).replace(/^Automated KYC rejected:\s*/i, '');
+  const rejectionReasons = rejectionRawText
+    .split(' | ')
+    .map((reason) => reason.trim())
+    .filter(Boolean);
+  const detectedDates = (() => {
+    try {
+      const parsed = JSON.parse(safeEventKycRequest?.ocr_detected_dates || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  })();
+  const ocrTextExcerpt = String(safeEventKycRequest?.ocr_text_excerpt || '').trim();
+  const selectedDobFromAi = String(safeEventKycRequest?.ocr_selected_dob || '').trim();
+  const selectedDobReason = String(safeEventKycRequest?.ocr_selected_dob_reason || '').trim();
+  const accountDobForDisplay = typeof currentUserDob !== 'undefined' && currentUserDob
+    ? currentUserDob
+    : (currentUser.dob ? currentUser.dob : '');
+  const currentFullName = `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim();
+  const submittedFullName = currentFullName;
+  const submittedUsername = currentUser.username || '';
+  const submittedEmail = currentUser.email || '';
+  const submittedCountry = currentUser.country || '';
+  const currentDobDate = currentUser.dob ? new Date(currentUser.dob) : null;
+  const submittedDob = typeof currentUserDob !== 'undefined' && currentUserDob
+    ? currentUserDob
+    : (currentDobDate && !Number.isNaN(currentDobDate.getTime())
+      ? currentDobDate.toISOString().slice(0, 10)
+      : '');
+%>
+
+<div class="app-wrapper">
+  <div class="main-layout events-layout">
+    <%- include('partials/leftSidebar') %>
+
+    <main class="feed-column events-column">
+      <% if (safeSettingsStatus) { %>
+        <div class="alert success"><%= safeSettingsStatus %></div>
+      <% } %>
+      <% if (safeSettingsError) { %>
+        <div class="alert error"><%= safeSettingsError %></div>
+      <% } %>
+
+      <section class="events-hero-card">
+        <div class="events-hero-copy">
+          <div class="events-hero-kicker"><i data-lucide="badge-check"></i> <%= t('events.kycPageTitle', 'Event access KYC') %></div>
+          <h1 class="events-hero-title"><%= requestTitle %></h1>
+          <p class="events-hero-subtitle">
+            <%= t('events.kycPageSubtitle', 'After payment, complete the real-time identity check so the platform can unlock event creation automatically.') %>
+          </p>
+          <div class="event-kyc-lock-note">
+            <%= t('events.kycLockedInfo', 'Your account details are locked from your profile and cannot be edited here. We verify the identity document against the information stored in your account.') %>
+          </div>
+        </div>
+        <div class="events-hero-actions">
+          <span class="settings-status-pill" data-tone="<%= requestTone %>">
+            <i data-lucide="<%= requestStatus === 'approved' ? 'check-circle' : (requestStatus === 'rejected' ? 'x-circle' : 'badge-check') %>"></i>
+            <%= requestStatusLabel %>
+          </span>
+          <div class="events-language-note"><%= t('events.kycRefusalNonRefundable', 'Refused KYC requests are not refundable.') %></div>
+        </div>
+      </section>
+
+      <section class="settings-panel-card">
+        <div class="settings-panel-header">
+          <div>
+            <h2 class="settings-panel-title"><%= t('events.kycAutoReviewTitle', 'Automatic identity review') %></h2>
+            <div class="settings-panel-subtitle"><%= t('events.kycAutoReviewSubtitle', 'We compare the information you submit with your account details and validate the uploaded document in real time.') %></div>
+          </div>
+        </div>
+
+        <div class="premium-balance-grid" style="margin-bottom: 18px;">
+          <div class="premium-balance-card">
+            <div class="premium-balance-label"><%= t('events.kycPaymentStatus', 'Payment status') %></div>
+            <div class="premium-balance-value" style="font-size: 14px;"><%= safeEventKycRequest?.payment_status === 'paid' ? t('events.kycPaymentReceived', 'Payment received, complete KYC') : t('events.kycPending', 'Pending') %></div>
+          </div>
+          <div class="premium-balance-card">
+            <div class="premium-balance-label"><%= t('events.kycScore', 'Verification score') %></div>
+            <div class="premium-balance-value"><%= safeEventKycRequest?.verification_score ?? '—' %></div>
+          </div>
+          <div class="premium-balance-card">
+            <div class="premium-balance-label"><%= t('events.kycFee', 'Fee') %></div>
+            <div class="premium-balance-value">$<%= safeEventsUnlockFee.toFixed(2) %></div>
+          </div>
+        </div>
+
+        <% if (safeEventKycRequest?.verification_notes) { %>
+          <div class="events-empty-state" style="margin-bottom: 18px;">
+            <i data-lucide="<%= requestStatus === 'approved' ? 'badge-check' : 'file-search' %>"></i>
+            <h3 style="margin: 0 0 8px; color: <%= requestStatus === 'approved' ? 'var(--success)' : 'var(--danger)' %>; font-size: 18px;">
+              <%= requestStatus === 'approved' ? t('events.kycOutcomeApproved', 'KYC approved') : t('events.kycOutcomeRejected', 'KYC rejected') %>
+            </h3>
+            <p style="margin: 0; color: <%= requestStatus === 'approved' ? 'var(--success)' : 'var(--danger)' %>;">
+              <%= safeEventKycRequest.verification_notes %>
+            </p>
+          </div>
+        <% } %>
+
+        <% if (selectedDobFromAi || detectedDates.length || ocrTextExcerpt) { %>
+          <div class="events-empty-state" style="margin-bottom: 18px; text-align: left;">
+            <i data-lucide="file-search"></i>
+            <h3 style="margin: 0 0 8px; color: var(--text-primary); font-size: 18px;"><%= t('events.kycOcrAnalysisTitle', 'What the AI read') %></h3>
+            <% if (accountDobForDisplay) { %>
+              <div style="margin-bottom: 12px; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card);">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;"><%= t('events.kycAccountDob', 'Account date of birth') %></div>
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary);"><%= accountDobForDisplay %></div>
+              </div>
+            <% } %>
+            <% if (selectedDobFromAi) { %>
+              <div style="margin-bottom: 12px; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card);">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;"><%= t('events.kycSelectedDob', 'Selected date of birth') %></div>
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary);"><%= selectedDobFromAi %></div>
+                <% if (selectedDobReason) { %>
+                  <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);"><%= selectedDobReason %></div>
+                <% } %>
+              </div>
+            <% } %>
+            <% if (detectedDates.length) { %>
+              <div style="font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;"><%= t('events.kycDetectedDates', 'Detected dates') %></div>
+              <ul style="margin: 0 0 14px; padding-left: 18px; color: var(--text-secondary); font-size: 13px; line-height: 1.6;">
+                <% detectedDates.forEach((dateItem) => { %>
+                  <li>
+                    <span style="font-weight: 600; color: var(--text-primary);"><%= dateItem.raw || dateItem.normalized || '' %></span>
+                    <% if (dateItem.normalized && dateItem.normalized !== dateItem.raw) { %>
+                      <span style="color: var(--text-muted);"> - <%= dateItem.normalized %></span>
+                    <% } %>
+                  </li>
+                <% }) %>
+              </ul>
+            <% } %>
+            <% if (ocrTextExcerpt) { %>
+              <div style="font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;"><%= t('events.kycOcrExcerpt', 'OCR text excerpt') %></div>
+              <pre style="margin: 0; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card); color: var(--text-secondary); font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;"><%= ocrTextExcerpt %></pre>
+            <% } %>
+          </div>
+        <% } %>
+
+        <% if (requestStatus === 'approved') { %>
+          <div class="settings-info-row">
+            <span><%= t('events.kycApprovedNote', 'Your event access is already unlocked.') %></span>
+            <strong><%= t('events.kycApproved', 'Approved') %></strong>
+          </div>
+          <div class="settings-action-row">
+            <div style="font-size: 12px; color: var(--text-muted);">
+              <%= t('events.backToEvents', 'Back to Events') %>
+            </div>
+            <a href="/events" class="settings-primary-btn" style="display: inline-flex; align-items: center; justify-content: center; text-decoration: none;">
+              <i data-lucide="arrow-left"></i>
+              <%= t('events.backToEvents', 'Back to Events') %>
+            </a>
+          </div>
+        <% } else if (requestStatus === 'rejected') { %>
+          <div class="events-empty-state" style="margin-top: 12px;">
+            <i data-lucide="triangle-alert"></i>
+            <h3 style="margin: 0 0 8px; color: var(--danger); font-size: 18px;"><%= t('events.kycOutcomeRejected', 'KYC rejected') %></h3>
+            <p style="margin: 0 0 14px; color: var(--danger);"><%= t('events.kycRejectedRestart', 'Your previous KYC was rejected. The fee is not refundable, and a new payment is required to start over.') %></p>
+            <div style="width: 100%; max-width: 720px; text-align: left; margin: 0 auto 16px; padding: 14px 16px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-card);">
+              <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px;">
+                <%= t('events.kycRejectionDetailsTitle', 'Refusal reasons') %>
+              </div>
+              <% if (rejectionReasons.length) { %>
+                <ul style="margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 13px; line-height: 1.6;">
+                  <% rejectionReasons.forEach((reason) => { %>
+                    <li><%= reason %></li>
+                  <% }) %>
+                </ul>
+              <% } else { %>
+                <div style="font-size: 13px; color: var(--text-secondary);">
+                  <%= t('events.kycRejectionNoReason', 'No detailed reason was returned by the verifier.') %>
+                </div>
+              <% } %>
+            </div>
+            <a href="/events" class="events-primary-btn" style="display: inline-flex; text-decoration: none;">
+              <i data-lucide="arrow-left"></i>
+              <span><%= t('events.backToEvents', 'Back to Events') %></span>
+            </a>
+          </div>
+        <% } else { %>
+          <form class="settings-form" action="/events/kyc" method="POST" enctype="multipart/form-data">
+            <div class="settings-form-grid">
+              <div class="settings-field">
+                <label for="kycFullName"><%= t('events.kycFullName', 'Full name') %></label>
+                <input type="text" id="kycFullName" name="full_name" value="<%= submittedFullName %>" readonly disabled class="event-kyc-locked-input">
+              </div>
+              <div class="settings-field">
+                <label for="kycUsername"><%= t('events.kycUsername', 'Username') %></label>
+                <input type="text" id="kycUsername" name="username" value="<%= submittedUsername %>" readonly disabled class="event-kyc-locked-input">
+              </div>
+              <div class="settings-field">
+                <label for="kycEmail"><%= t('events.kycEmail', 'Email') %></label>
+                <input type="email" id="kycEmail" name="email" value="<%= submittedEmail %>" readonly disabled class="event-kyc-locked-input">
+              </div>
+              <div class="settings-field">
+                <label for="kycCountry"><%= t('events.kycCountry', 'Country') %></label>
+                <input type="text" id="kycCountry" name="country" value="<%= submittedCountry %>" readonly disabled class="event-kyc-locked-input">
+              </div>
+              <div class="settings-field">
+                <label for="kycDob"><%= t('events.kycDob', 'Date of birth') %></label>
+                <input type="date" id="kycDob" name="dob" value="<%= submittedDob %>" readonly disabled class="event-kyc-locked-input">
+              </div>
+              <div class="settings-field">
+                <label for="kycDocument"><%= t('events.kycDocument', 'Identity document') %></label>
+                <input type="file" id="kycDocument" name="identity_document" accept="image/*" required>
+              </div>
+              <div class="settings-field events-field-wide">
+                <label><%= t('events.kycSelfie', 'Live selfie') %></label>
+                <div class="event-kyc-camera" data-event-kyc-camera>
+                  <video id="kycCameraVideo" class="event-kyc-camera-video" autoplay muted playsinline></video>
+                  <canvas id="kycCameraCanvas" hidden></canvas>
+                  <input type="hidden" id="kycSelfieImageData" name="selfie_image_data">
+                  <input type="hidden" id="kycFaceMatchDistance" name="face_match_distance">
+                  <div
+                    class="event-kyc-selfie-preview"
+                    id="kycSelfiePreview"
+                    data-selfie-hint="<%= t('events.kycSelfieHint', 'Start the camera, then capture a clear selfie so the AI can compare your face with the document.') %>"
+                    data-camera-denied="<%= t('events.kycCameraDenied', 'Camera access is required to capture your live selfie.') %>"
+                    data-face-analyzing="<%= t('events.kycFaceAnalyzing', 'Checking the document and selfie now...') %>"
+                    data-face-missing="<%= t('events.kycFaceMissing', 'A face could not be detected on the document or the selfie.') %>"
+                    data-face-mismatch="<%= t('events.kycFaceMismatch', 'The selfie does not match the document face.') %>"
+                    data-face-unavailable="<%= t('events.kycFaceUnavailable', 'Face verification is temporarily unavailable.') %>"
+                    data-document-missing="<%= t('events.kycDocumentMissing', 'Please upload your identity document.') %>"
+                    data-selfie-missing="<%= t('events.kycSelfieMissing', 'Please capture your live selfie.') %>"
+                  >
+                    <span><%= t('events.kycSelfieHint', 'Start the camera, then capture a clear selfie so the AI can compare your face with the document.') %></span>
+                  </div>
+                  <div class="event-kyc-camera-controls">
+                    <button type="button" class="settings-secondary-btn" id="kycStartCameraBtn">
+                      <i data-lucide="camera"></i>
+                      <span><%= t('events.kycCameraStart', 'Start camera') %></span>
+                    </button>
+                    <button type="button" class="settings-primary-btn" id="kycCaptureSelfieBtn">
+                      <i data-lucide="camera"></i>
+                      <span><%= t('events.kycCaptureSelfie', 'Capture selfie') %></span>
+                    </button>
+                    <button type="button" class="settings-secondary-btn" id="kycRetakeSelfieBtn" style="display:none;">
+                      <i data-lucide="refresh-cw"></i>
+                      <span><%= t('events.kycRetakeSelfie', 'Retake') %></span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px; margin-bottom: 16px;">
+              <%= t('events.kycDocumentHint', 'Upload a clear image of your ID. The automated verifier checks the details instantly.') %>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+              <%= t('events.kycFaceHint', 'The live selfie is compared with the document photo to confirm that the person in front of the camera is the same person on the ID.') %>
+            </div>
+
+            <div class="settings-action-row">
+              <div style="font-size: 12px; color: var(--text-muted);">
+                <%= t('events.kycRefusalNonRefundable', 'Refused KYC requests are not refundable.') %>
+              </div>
+              <button type="submit" class="settings-primary-btn">
+                <i data-lucide="sparkles"></i>
+                <%= t('events.kycSubmit', 'Run instant review') %>
+              </button>
+            </div>
+          </form>
+        <% } %>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div class="chat-boxes-container" id="chatBoxesContainer"></div>
+<%- include('partials/mobileNav') %>
+<div id="appToast" style="position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--text-primary); color: var(--bg-card); padding: 12px 24px; border-radius: var(--border-radius-pill); font-size: 13px; font-weight: 600; box-shadow: var(--shadow-lg); z-index: 2000; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease; opacity: 0; pointer-events: none; border: 1px solid var(--border-color);">
+  <%= t('settings.actionSuccessful', 'Action successful') %>
+</div>
+
+<script>
+  window.currentUserId = <%= currentUser.id %>;
+  window.currentUserAvatar = "<%= currentUser.avatar %>";
+</script>
+<script src="/vendor/face-api/face-api.min.js"></script>
+<script src="/js/client.js?v=200"></script>
+</body>
+</html>

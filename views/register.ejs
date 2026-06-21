@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="<%= typeof locale !== 'undefined' ? locale : 'en' %>" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title><%= tText("TrasX - Register") %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/css/intlTelInput.css">
+</head>
+<body class="auth-page auth-page-register">
+  <main class="auth-shell auth-shell-centered">
+    <section class="auth-card auth-card-register">
+      <div class="auth-card-panel auth-card-panel-form">
+        <div class="auth-card-inner">
+          <div class="auth-brand-lockup">
+            <div class="auth-brand-icon" aria-label="TrasX">W</div>
+            <div>
+              <div class="auth-brand-name">TrasX</div>
+              <div class="auth-brand-tag"><%= tText("Create your profile") %></div>
+            </div>
+          </div>
+
+          <div class="auth-heading-block">
+            <h1 class="auth-heading"><%= tText("Create your Account") %></h1>
+            <p class="auth-subheading"><%= tText("Complete the steps below to join the platform.") %></p>
+          </div>
+
+          <% if (error) { %>
+            <div class="auth-alert error"><%= error %></div>
+          <% } %>
+
+          <div class="auth-alert warning">
+            <strong><%= tText("Important:") %></strong>
+            <%= tText("Use real and consistent information. Incorrect data may lead to account suspension.") %>
+          </div>
+
+          <div class="auth-stepper" aria-label="<%= tText('Registration steps') %>">
+            <button type="button" class="auth-step-pill is-active" data-register-step-indicator="1">
+              <span>1</span>
+              <small><%= tText("Identity") %></small>
+            </button>
+            <button type="button" class="auth-step-pill" data-register-step-indicator="2">
+              <span>2</span>
+              <small><%= tText("Contact") %></small>
+            </button>
+            <button type="button" class="auth-step-pill" data-register-step-indicator="3">
+              <span>3</span>
+              <small><%= tText("Security") %></small>
+            </button>
+          </div>
+
+          <form class="auth-form auth-form-stepped" action="/auth/register" method="POST" id="registerForm">
+            <section class="auth-form-step is-active" data-register-step="1">
+              <div class="auth-form-step-head">
+                <h2><%= tText("Personal information") %></h2>
+                <p><%= tText("Tell us who you are.") %></p>
+              </div>
+
+              <div class="auth-form-grid">
+                <div class="auth-field">
+                  <label for="first_name"><%= tText("First Name") %></label>
+                  <label class="auth-input-wrap" for="first_name">
+                    <span class="auth-input-icon">A</span>
+                    <input id="first_name" type="text" name="first_name" required placeholder="<%= tText('John') %>" autocomplete="given-name">
+                  </label>
+                </div>
+                <div class="auth-field">
+                  <label for="last_name"><%= tText("Last Name") %></label>
+                  <label class="auth-input-wrap" for="last_name">
+                    <span class="auth-input-icon">A</span>
+                    <input id="last_name" type="text" name="last_name" required placeholder="<%= tText('Doe') %>" autocomplete="family-name">
+                  </label>
+                </div>
+              </div>
+
+              <div class="auth-field">
+                <label for="username"><%= tText("Username") %></label>
+                <label class="auth-input-wrap" for="username">
+                  <span class="auth-input-icon">@</span>
+                  <input id="username" type="text" name="username" required placeholder="<%= tText('johndoe123') %>" autocomplete="username">
+                </label>
+                <div class="auth-feedback" id="usernameFeedback"></div>
+                <div class="auth-suggestions" id="usernameSuggestions"></div>
+              </div>
+
+              <div class="auth-field">
+                <label for="dob"><%= tText("Date of Birth") %></label>
+                <label class="auth-input-wrap" for="dob">
+                  <span class="auth-input-icon">◷</span>
+                  <input id="dob" type="date" name="dob" required>
+                </label>
+              </div>
+            </section>
+
+            <section class="auth-form-step" data-register-step="2" hidden>
+              <div class="auth-form-step-head">
+                <h2><%= tText("Contact details") %></h2>
+                <p><%= tText("Add your reachable information.") %></p>
+              </div>
+
+              <div class="auth-field">
+                <label for="email"><%= tText("Email") %></label>
+                <label class="auth-input-wrap" for="email">
+                  <span class="auth-input-icon">✉</span>
+                  <input id="email" type="email" name="email" required placeholder="<%= tText('john@example.com') %>" autocomplete="email">
+                </label>
+              </div>
+
+              <div class="auth-field">
+                <label for="phone"><%= tText("Phone Number") %></label>
+                <div class="auth-phone-wrap">
+                  <input type="tel" id="phone" required>
+                </div>
+                <div class="auth-feedback" id="phoneFeedback"></div>
+                <input type="hidden" name="phone" id="hidden_phone">
+                <input type="hidden" name="country" id="hidden_country">
+              </div>
+            </section>
+
+            <section class="auth-form-step" data-register-step="3" hidden>
+              <div class="auth-form-step-head">
+                <h2><%= tText("Secure your account") %></h2>
+                <p><%= tText("Choose your password and confirm the rules.") %></p>
+              </div>
+
+              <div class="auth-field">
+                <label for="password"><%= tText("Password") %></label>
+                <label class="auth-input-wrap" for="password">
+                  <span class="auth-input-icon">•</span>
+                  <input id="password" type="password" name="password" required placeholder="<%= tText('••••••••') %>" autocomplete="new-password">
+                </label>
+              </div>
+
+              <div class="auth-terms auth-terms-card">
+                <input type="checkbox" name="terms" id="terms" required>
+                <label for="terms">
+                  <%= tText("I accept the") %>
+                  <a href="/auth/terms" target="_blank" rel="noreferrer"><%= tText("Terms and Conditions") %></a>
+                  <%= tText("and confirm that my registration details are accurate.") %>
+                </label>
+              </div>
+            </section>
+
+            <div class="auth-step-actions">
+              <button type="button" class="auth-secondary-btn auth-secondary-btn-muted" id="registerPrevBtn" disabled>
+                <%= tText("Back") %>
+              </button>
+              <button type="button" class="auth-submit auth-submit-solid" id="registerNextBtn">
+                <%= tText("Continue") %>
+              </button>
+              <button type="submit" class="auth-submit auth-submit-solid" id="registerSubmitBtn" hidden>
+                <%= tText("Create my account") %>
+              </button>
+            </div>
+          </form>
+
+          <p class="auth-switch-copy">
+            <%= tText("Already have an account?") %>
+            <a href="/auth/login"><%= tText("Log in") %></a>
+          </p>
+        </div>
+      </div>
+
+      <div class="auth-card-panel auth-card-panel-visual">
+        <div class="auth-visual-surface auth-visual-surface-register">
+          <div class="auth-visual-orbit auth-visual-orbit-one"></div>
+          <div class="auth-visual-orbit auth-visual-orbit-two"></div>
+          <div class="auth-visual-badge auth-visual-badge-star">✦</div>
+          <div class="auth-visual-badge auth-visual-badge-chat">⌁</div>
+          <div class="auth-visual-badge auth-visual-badge-user">☺</div>
+
+          <div class="auth-visual-card auth-visual-card-stacked auth-visual-card-back"></div>
+          <div class="auth-visual-card auth-visual-card-stacked auth-visual-card-front">
+            <div class="auth-visual-card-top">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div class="auth-visual-profile-block">
+              <div class="auth-visual-profile-avatar"></div>
+              <div class="auth-visual-profile-copy">
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+            <div class="auth-visual-stats-grid">
+              <div></div>
+              <div></div>
+              <div></div>
+            </div>
+            <div class="auth-visual-progress">
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+
+          <div class="auth-visual-copy">
+            <h2><%= tText("Join a Secure & Verified Network") %></h2>
+            <p><%= tText("Create your profile, unlock real-time chats, participate in events, exchange securely in our P2P market, and link your BSC wallet.") %></p>
+            <div class="auth-visual-dots">
+              <span></span>
+              <span class="is-active"></span>
+              <span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/intlTelInput.min.js"></script>
+  <script>
+    const phoneInput = document.querySelector('#phone');
+    const iti = window.intlTelInput(phoneInput, {
+      initialCountry: 'us',
+      utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/utils.js',
+    });
+
+    const phoneFeedback = document.getElementById('phoneFeedback');
+    const registerForm = document.getElementById('registerForm');
+    const stepPanels = Array.from(document.querySelectorAll('[data-register-step]'));
+    const stepIndicators = Array.from(document.querySelectorAll('[data-register-step-indicator]'));
+    const prevBtn = document.getElementById('registerPrevBtn');
+    const nextBtn = document.getElementById('registerNextBtn');
+    const submitBtn = document.getElementById('registerSubmitBtn');
+    let activeStep = 1;
+
+    function checkPhone() {
+      if (phoneInput.value.trim() === '') {
+        phoneFeedback.className = 'auth-feedback';
+        phoneFeedback.textContent = '';
+        return false;
+      }
+      if (iti.isValidNumber()) {
+        phoneFeedback.textContent = <%- JSON.stringify(tText('Valid phone number for the selected country.')) %>;
+        phoneFeedback.className = 'auth-feedback success';
+        return true;
+      }
+      phoneFeedback.textContent = <%- JSON.stringify(tText('Invalid phone number for the selected country.')) %>;
+      phoneFeedback.className = 'auth-feedback error';
+      return false;
+    }
+
+    const dobInput = document.getElementById('dob');
+    function checkAge() {
+      if (!dobInput) return;
+      const dobVal = dobInput.value;
+      if (!dobVal) {
+        dobInput.setCustomValidity('');
+        return;
+      }
+      const parts = dobVal.split('-');
+      if (parts.length !== 3) {
+        dobInput.setCustomValidity('');
+        return;
+      }
+      const birthYear = parseInt(parts[0], 10);
+      const birthMonth = parseInt(parts[1], 10) - 1;
+      const birthDay = parseInt(parts[2], 10);
+
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth();
+      const currentDay = today.getDate();
+
+      let age = currentYear - birthYear;
+      if (currentMonth < birthMonth || (currentMonth === birthMonth && currentDay < birthDay)) {
+        age--;
+      }
+
+      if (age < 18) {
+        dobInput.setCustomValidity(<%- JSON.stringify(tText('You must be at least 18 years old to register.')) %>);
+      } else {
+        dobInput.setCustomValidity('');
+      }
+    }
+
+    if (dobInput) {
+      const today = new Date();
+      const eighteenYearsAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+      const yyyy = eighteenYearsAgo.getFullYear();
+      const mm = String(eighteenYearsAgo.getMonth() + 1).padStart(2, '0');
+      const dd = String(eighteenYearsAgo.getDate()).padStart(2, '0');
+      dobInput.max = `${yyyy}-${mm}-${dd}`;
+      dobInput.addEventListener('change', checkAge);
+      dobInput.addEventListener('input', checkAge);
+    }
+
+    function setStep(step) {
+      activeStep = step;
+      stepPanels.forEach((panel) => {
+        const panelStep = Number(panel.getAttribute('data-register-step'));
+        const isActive = panelStep === activeStep;
+        panel.hidden = !isActive;
+        panel.classList.toggle('is-active', isActive);
+      });
+      stepIndicators.forEach((indicator) => {
+        const indicatorStep = Number(indicator.getAttribute('data-register-step-indicator'));
+        indicator.classList.toggle('is-active', indicatorStep === activeStep);
+        indicator.classList.toggle('is-complete', indicatorStep < activeStep);
+      });
+      prevBtn.disabled = activeStep === 1;
+      nextBtn.hidden = activeStep === stepPanels.length;
+      submitBtn.hidden = activeStep !== stepPanels.length;
+    }
+
+    function validateCurrentStep() {
+      if (activeStep === 1 && typeof checkAge === 'function') {
+        checkAge();
+      }
+      const currentPanel = stepPanels.find((panel) => Number(panel.getAttribute('data-register-step')) === activeStep);
+      if (!currentPanel) return true;
+      const fields = Array.from(currentPanel.querySelectorAll('input[required]'));
+      for (const field of fields) {
+        if (field.type === 'checkbox') {
+          if (!field.checked) {
+            field.focus();
+            return false;
+          }
+          continue;
+        }
+        if (!field.value.trim()) {
+          field.reportValidity();
+          field.focus();
+          return false;
+        }
+        if (!field.checkValidity()) {
+          field.reportValidity();
+          field.focus();
+          return false;
+        }
+      }
+      if (activeStep === 1) {
+        const username = usernameInput.value.trim();
+        if (username.length < 3) {
+          usernameFeedback.className = 'auth-feedback error';
+          usernameFeedback.textContent = <%- JSON.stringify(tText('Username must be at least 3 characters.')) %>;
+          usernameFeedback.style.display = 'block';
+          usernameInput.focus();
+          return false;
+        }
+        if (username.includes('@')) {
+          usernameFeedback.className = 'auth-feedback error';
+          usernameFeedback.textContent = <%- JSON.stringify(tText('Username cannot resemble an email address.')) %>;
+          usernameFeedback.style.display = 'block';
+          usernameInput.focus();
+          return false;
+        }
+      }
+      if (activeStep === 2) {
+        return checkPhone();
+      }
+      return true;
+    }
+
+    prevBtn.addEventListener('click', () => {
+      if (activeStep > 1) {
+        setStep(activeStep - 1);
+      }
+    });
+
+    nextBtn.addEventListener('click', () => {
+      if (!validateCurrentStep()) return;
+      if (activeStep < stepPanels.length) {
+        setStep(activeStep + 1);
+      }
+    });
+
+    phoneInput.addEventListener('keyup', checkPhone);
+    phoneInput.addEventListener('change', checkPhone);
+    phoneInput.addEventListener('countrychange', checkPhone);
+
+    const usernameInput = document.getElementById('username');
+    const firstNameInput = document.getElementById('first_name');
+    const lastNameInput = document.getElementById('last_name');
+    const usernameFeedback = document.getElementById('usernameFeedback');
+    const usernameSuggestions = document.getElementById('usernameSuggestions');
+    let timeout = null;
+
+    usernameInput.addEventListener('input', function () {
+      clearTimeout(timeout);
+      usernameSuggestions.innerHTML = '';
+      const username = this.value.trim();
+
+      if (username.length < 3) {
+        usernameFeedback.className = 'auth-feedback error';
+        usernameFeedback.textContent = <%- JSON.stringify(tText('Username must be at least 3 characters.')) %>;
+        usernameFeedback.style.display = 'block';
+        return;
+      }
+
+      if (username.includes('@')) {
+        usernameFeedback.className = 'auth-feedback error';
+        usernameFeedback.textContent = <%- JSON.stringify(tText('Username cannot resemble an email address.')) %>;
+        usernameFeedback.style.display = 'block';
+        return;
+      }
+
+      usernameFeedback.className = 'auth-feedback';
+      usernameFeedback.textContent = <%- JSON.stringify(tText('Checking availability...')) %>;
+      usernameFeedback.style.display = 'block';
+      usernameFeedback.style.color = 'var(--text-secondary)';
+
+      timeout = setTimeout(async () => {
+        try {
+          const fn = firstNameInput.value.trim();
+          const ln = lastNameInput.value.trim();
+          const res = await fetch(`/auth/check-username?username=${encodeURIComponent(username)}&first_name=${encodeURIComponent(fn)}&last_name=${encodeURIComponent(ln)}`);
+          const data = await res.json();
+
+          usernameFeedback.style.color = '';
+
+          if (data.available) {
+            usernameFeedback.textContent = <%- JSON.stringify(tText('Username is available!')) %>;
+            usernameFeedback.className = 'auth-feedback success';
+          } else {
+            usernameFeedback.textContent = <%- JSON.stringify(tText('Username is already taken.')) %>;
+            usernameFeedback.className = 'auth-feedback error';
+
+            if (data.suggestions && data.suggestions.length > 0) {
+              const span = document.createElement('span');
+              span.textContent = <%- JSON.stringify(tText('Suggestions:')) %> + ' ';
+              usernameSuggestions.appendChild(span);
+
+              data.suggestions.forEach((sug) => {
+                const chip = document.createElement('div');
+                chip.className = 'auth-suggestion-chip';
+                chip.textContent = sug;
+                chip.onclick = () => {
+                  usernameInput.value = sug;
+                  usernameInput.dispatchEvent(new Event('input'));
+                };
+                usernameSuggestions.appendChild(chip);
+              });
+            }
+          }
+        } catch (e) {
+          console.error(e);
+          usernameFeedback.className = 'auth-feedback';
+        }
+      }, 500);
+    });
+
+    registerForm.addEventListener('submit', function (e) {
+      if (!validateCurrentStep()) {
+        e.preventDefault();
+        return;
+      }
+
+      if (!iti.isValidNumber()) {
+        e.preventDefault();
+        phoneFeedback.textContent = <%- JSON.stringify(tText('Please enter a valid phone number with the correct country code.')) %>;
+        phoneFeedback.className = 'auth-feedback error';
+        setStep(2);
+        phoneInput.focus();
+        return;
+      }
+
+      const hiddenPhone = document.getElementById('hidden_phone');
+      const hiddenCountry = document.getElementById('hidden_country');
+      hiddenPhone.value = iti.getNumber();
+      const countryData = iti.getSelectedCountryData();
+      hiddenCountry.value = countryData.name;
+    });
+
+    setStep(1);
+  </script>
+</body>
+</html>
