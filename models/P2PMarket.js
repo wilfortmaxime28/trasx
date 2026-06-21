@@ -86,19 +86,21 @@ async function ensureMarketSchema() {
       `);
 
       try {
-        await db.query(`
-          ALTER TABLE p2p_offers
-          ADD COLUMN IF NOT EXISTS usd_rate DECIMAL(12,4) NULL DEFAULT NULL
-        `);
-      } catch (err) {
-        try {
-          await db.query(`ALTER TABLE p2p_offers ADD COLUMN usd_rate DECIMAL(12,4) NULL DEFAULT NULL`);
-        } catch (alterErr) {
-          if (!alterErr.message.includes('duplicate column') && !alterErr.message.includes('already exists')) {
-            console.error('Failed to alter p2p_offers table:', alterErr);
-          }
-        }
-      }
+  await db.query(`
+    ALTER TABLE p2p_offers
+    ADD COLUMN usd_rate DECIMAL(12,4) NULL DEFAULT NULL
+  `);
+} catch (alterErr) {
+  const msg = String(alterErr.message || '').toLowerCase();
+
+  if (
+    alterErr.code !== 'ER_DUP_FIELDNAME' &&
+    !msg.includes('duplicate column') &&
+    !msg.includes('already exists')
+  ) {
+    console.error('Failed to alter p2p_offers table:', alterErr);
+  }
+}
 
       await db.query(`
         CREATE TABLE IF NOT EXISTS p2p_orders (
