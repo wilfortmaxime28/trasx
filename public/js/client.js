@@ -3902,6 +3902,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!isOutgoing && window.innerWidth > 768 && conversation?.category !== 'requests') {
         openChatBox(partnerId, conversation?.contactName || sender_name, conversation?.contactAvatar || sender_avatar, !!conversation?.isOnline, conversation?.presenceText || '');
       }
+    }
     showToast(isOutgoing ? 'Message sent' : `New message from ${sender_name}: "${previewText}"`);
     if (!isOutgoing) {
       triggerNotification(
@@ -20997,7 +20998,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // On page load, check if there is a post_id to scroll to
-  {
   const urlParamsScroll = new URLSearchParams(window.location.search);
   const scrollPostId = urlParamsScroll.get('post_id');
   if (scrollPostId) {
@@ -21015,7 +21015,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 3000);
       }
     }, 600); // Small delay to let cards render completely
-  } // end post_id block scope
+  } // end scrollPostId block
 
   // ==========================================
   // PWA & Notification Integration Settings
