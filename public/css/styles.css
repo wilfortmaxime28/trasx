@@ -6142,6 +6142,19 @@ body[data-theme="dark"] .birthday-feed-card-shell::before {
     padding: 16px;
   }
 
+  .create-post-card:not(.expanded) .create-post-lower {
+    display: none !important;
+  }
+
+  .create-post-card .post-input-placeholder {
+    font-size: 11px;
+    top: 13px;
+  }
+
+  .create-post-card .create-post-input-wrapper input::placeholder {
+    font-size: 11px;
+  }
+
   .create-post-upper {
     display: flex;
     flex-direction: column;
@@ -16982,11 +16995,12 @@ body[data-theme="dark"] .market-container-section {
 .game-chat-msg-bubble {
   background: var(--bg-hover);
   border: 1px solid var(--border-color);
-  padding: 10px 12px;
-  border-radius: 16px;
+  padding: 6px 10px;
+  border-radius: 12px;
   max-width: 82%;
   width: fit-content;
   box-shadow: var(--shadow-sm);
+  font-size: 12.5px;
 }
 
 .spectator-list-item {

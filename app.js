@@ -119,7 +119,9 @@ document.addEventListener('DOMContentLoaded', () => {
               <div style="display: flex; gap: 10px; align-items: flex-start;">
                 <div class="avatar" style="width: 28px; height: 28px; flex-shrink: 0; overflow: hidden;"><img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=80&h=80&q=80" style="width:100%; height:100%; object-fit:cover;"></div>
                 <div style="background: var(--bg-card); padding: 8px 12px; border-radius: 12px; font-size: 12.5px; border: 1px solid var(--border-color); flex: 1; color: var(--text-primary);">
-                  <strong style="color: var(--text-primary); font-size: 12px; display: block; margin-bottom: 2px;">Justin Rosser</strong>
+                  <a href="/profile/u/justinrosser" style="text-decoration: none; color: inherit; font-weight: bold; cursor: pointer;">
+                    <strong style="color: var(--text-primary); font-size: 12px; display: block; margin-bottom: 2px;">Justin Rosser</strong>
+                  </a>
                   This looks incredible! Love the colors.
                 </div>
               </div>
@@ -155,7 +157,9 @@ document.addEventListener('DOMContentLoaded', () => {
           item.innerHTML = `
             <div class="avatar" style="width: 28px; height: 28px; flex-shrink: 0; overflow: hidden;"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=80&h=80&q=80" style="width:100%; height:100%; object-fit:cover;"></div>
             <div style="background: var(--bg-card); padding: 8px 12px; border-radius: 12px; font-size: 12.5px; border: 1px solid var(--border-color); flex: 1; color: var(--text-primary);">
-              <strong style="color: var(--text-primary); font-size: 12px; display: block; margin-bottom: 2px;">Jakob Botosh</strong>
+              <a href="/profile/u/jakobbotosh" style="text-decoration: none; color: inherit; font-weight: bold; cursor: pointer;">
+                <strong style="color: var(--text-primary); font-size: 12px; display: block; margin-bottom: 2px;">Jakob Botosh</strong>
+              </a>
               ${text}
             </div>
           `;
@@ -385,6 +389,12 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Clear input
       postInput.value = '';
+
+      // Collapse create-post-card on mobile
+      const createPostCard = document.querySelector('.create-post-card');
+      if (createPostCard) {
+        createPostCard.classList.remove('expanded');
+      }
       
       // Re-initialize Lucide Icons for new post
       if (typeof lucide !== 'undefined') {
@@ -401,6 +411,30 @@ document.addEventListener('DOMContentLoaded', () => {
         handleSharePost();
       }
     });
+
+    // Expand/collapse create-post-card on focus/click outside (specifically for mobile layout hiding of create-post-lower)
+    const createPostCard = document.querySelector('.create-post-card');
+    if (postInput && createPostCard) {
+      const expandPostCard = () => {
+        createPostCard.classList.add('expanded');
+      };
+
+      const checkCollapsePostCard = (e) => {
+        const clickedInsideCard = createPostCard.contains(e.target);
+        const clickedInsideModal = e.target.closest('.modal-overlay') || e.target.closest('.dropdown-menu') || e.target.closest('.emoji-picker-popover') || e.target.closest('.picker-container');
+
+        if (!clickedInsideCard && !clickedInsideModal) {
+          const hasText = postInput.value && postInput.value.trim().length > 0;
+          if (!hasText) {
+            createPostCard.classList.remove('expanded');
+          }
+        }
+      };
+
+      postInput.addEventListener('focus', expandPostCard);
+      postInput.addEventListener('click', expandPostCard);
+      document.addEventListener('click', checkCollapsePostCard);
+    }
   }
 
   // --- Global Toast Notification Helper ---

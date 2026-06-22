@@ -1473,15 +1473,17 @@ function getYouTubeId(url) {
                                                                   style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
                                                                   <div
                                                                     style="background: var(--bg-card); padding: 10px 14px; border-radius: 14px; font-size: 13px; border: 1px solid var(--border-color); color: var(--text-primary); width: fit-content; max-width: 100%; word-break: break-word;">
-                                                                    <strong
-                                                                      style="color: var(--text-primary); font-size: 12.5px; display: block; margin-bottom: 2px;">
-                                                                      <%= comment.user_name %>
-                                                                      <% if ((comment.user_certification_type || 'None') !== 'None') { %>
-                                                                        <span class="verified-badge-small" title="<%= comment.user_certification_type %>" data-type="<%= comment.user_certification_type %>" style="display: inline-flex; margin-left: 4px;">
-                                                                          <i data-lucide="badge-check"></i>
-                                                                        </span>
-                                                                      <% } %>
-                                                                    </strong>
+                                                                    <a href="/profile/u/<%= encodeURIComponent(comment.user_username || '') %>" style="text-decoration: none; color: inherit; font-weight: bold; cursor: pointer;">
+                                                                      <strong
+                                                                        style="color: var(--text-primary); font-size: 12.5px; display: block; margin-bottom: 2px;">
+                                                                        <%= comment.user_name %>
+                                                                        <% if ((comment.user_certification_type || 'None') !== 'None') { %>
+                                                                          <span class="verified-badge-small" title="<%= comment.user_certification_type %>" data-type="<%= comment.user_certification_type %>" style="display: inline-flex; margin-left: 4px;">
+                                                                            <i data-lucide="badge-check"></i>
+                                                                          </span>
+                                                                        <% } %>
+                                                                      </strong>
+                                                                    </a>
                                                                     <%= comment.content %>
 
                                                                       <% if (comment.voice_url) { %>
@@ -1571,15 +1573,17 @@ function getYouTubeId(url) {
                                                                           style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
                                                                           <div
                                                                             style="background: var(--bg-hover); padding: 8px 12px; border-radius: 12px; font-size: 12.5px; border: 1px solid var(--border-color); color: var(--text-primary); width: fit-content; max-width: 100%; word-break: break-word;">
-                                                                            <strong
-                                                                              style="color: var(--text-primary); font-size: 11.5px; display: block; margin-bottom: 2px;">
-                                                                              <%= reply.user_name %>
-                                                                              <% if ((reply.user_certification_type || 'None') !== 'None') { %>
-                                                                                <span class="verified-badge-small" title="<%= reply.user_certification_type %>" data-type="<%= reply.user_certification_type %>" style="display: inline-flex; margin-left: 4px;">
-                                                                                  <i data-lucide="badge-check"></i>
-                                                                                </span>
-                                                                              <% } %>
-                                                                            </strong>
+                                                                            <a href="/profile/u/<%= encodeURIComponent(reply.user_username || '') %>" style="text-decoration: none; color: inherit; font-weight: bold; cursor: pointer;">
+                                                                              <strong
+                                                                                style="color: var(--text-primary); font-size: 11.5px; display: block; margin-bottom: 2px;">
+                                                                                <%= reply.user_name %>
+                                                                                <% if ((reply.user_certification_type || 'None') !== 'None') { %>
+                                                                                  <span class="verified-badge-small" title="<%= reply.user_certification_type %>" data-type="<%= reply.user_certification_type %>" style="display: inline-flex; margin-left: 4px;">
+                                                                                    <i data-lucide="badge-check"></i>
+                                                                                  </span>
+                                                                                <% } %>
+                                                                              </strong>
+                                                                            </a>
                                                                             <% if (replyToName) { %>
                                                                               <span class="comment-reply-to"
                                                                                 style="color: #3b82f6; font-weight: 700; margin-right: 4px;">@

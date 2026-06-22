@@ -5558,7 +5558,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 3. Comment append in real time
   socket.on('comment-created', (data) => {
-    const { id, postId, user_name, user_avatar, certification_type, content, parent_id, voice_url, voice_duration_seconds, created_at } = data;
+    const { id, postId, user_name, user_avatar, certification_type, content, parent_id, voice_url, voice_duration_seconds, created_at, user_username } = data;
     const certificationBadgeHtml = renderCertificationBadgeHtml(certification_type);
     const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
     if (postCard) {
@@ -5617,7 +5617,9 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
               <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
                 <div style="background: var(--bg-hover); padding: 8px 12px; border-radius: 12px; font-size: 12.5px; border: 1px solid var(--border-color); color: var(--text-primary); width: fit-content; max-width: 100%; word-break: break-word;">
-                  <strong style="color: var(--text-primary); font-size: 11.5px; display: block; margin-bottom: 2px;">${user_name}${certificationBadgeHtml}</strong>
+                  <a href="/profile/u/${encodeURIComponent(user_username || '')}" style="text-decoration: none; color: inherit; font-weight: bold; cursor: pointer;">
+                    <strong style="color: var(--text-primary); font-size: 11.5px; display: block; margin-bottom: 2px;">${user_name}${certificationBadgeHtml}</strong>
+                  </a>
                   ${replyToName ? `<span class="comment-reply-to" style="color: #3b82f6; font-weight: 700; margin-right: 4px;">@${escapeHtml(replyToName)}</span>` : ''}${escapeHtml(content)}
                   
                   ${voice_url ? `
@@ -5738,7 +5740,9 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
               <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
                 <div style="background: var(--bg-card); padding: 10px 14px; border-radius: 14px; font-size: 13px; border: 1px solid var(--border-color); color: var(--text-primary); width: fit-content; max-width: 100%; word-break: break-word;">
-                  <strong style="color: var(--text-primary); font-size: 12.5px; display: block; margin-bottom: 2px;">${user_name}${certificationBadgeHtml}</strong>
+                  <a href="/profile/u/${encodeURIComponent(user_username || '')}" style="text-decoration: none; color: inherit; font-weight: bold; cursor: pointer;">
+                    <strong style="color: var(--text-primary); font-size: 12.5px; display: block; margin-bottom: 2px;">${user_name}${certificationBadgeHtml}</strong>
+                  </a>
                   ${escapeHtml(content)}
                   
                   ${voice_url ? `
@@ -7428,6 +7432,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const confirmShareModal = document.getElementById('confirmShareModal');
       if (confirmShareModal) {
         confirmShareModal.style.display = 'none';
+      }
+
+      // Collapse create-post-card on mobile
+      const createPostCard = document.querySelector('.create-post-card');
+      if (createPostCard) {
+        createPostCard.classList.remove('expanded');
       }
     };
 
@@ -9640,7 +9650,9 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
       <div class="reel-comment-content-wrapper">
         <div class="reel-comment-user-info">
-          <span class="reel-comment-username">${escapeHTML(fullName)}${certificationBadgeHtml}</span>
+          <a href="/profile/u/${encodeURIComponent(comment.username || '')}" style="text-decoration: none; color: inherit; font-weight: bold; cursor: pointer;">
+            <span class="reel-comment-username">${escapeHTML(fullName)}${certificationBadgeHtml}</span>
+          </a>
           <span class="reel-comment-time">${timeString}</span>
         </div>
         ${textHtml}
@@ -12510,6 +12522,32 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast("Premium background selected");
     }
   });
+
+  // Expand/collapse create-post-card on focus/click outside (specifically for mobile layout hiding of create-post-lower)
+  const createPostCard = document.querySelector('.create-post-card');
+  const postMediaPreview = document.getElementById('postMediaVisualPreview');
+  if (postInputEl && createPostCard) {
+    const expandPostCard = () => {
+      createPostCard.classList.add('expanded');
+    };
+
+    const checkCollapsePostCard = (e) => {
+      const clickedInsideCard = createPostCard.contains(e.target);
+      const clickedInsideModal = e.target.closest('.modal-overlay') || e.target.closest('.dropdown-menu') || e.target.closest('.emoji-picker-popover') || e.target.closest('.picker-container');
+
+      if (!clickedInsideCard && !clickedInsideModal) {
+        const hasText = postInputEl.innerText && postInputEl.innerText.trim().length > 0;
+        const hasMedia = postMediaPreview && postMediaPreview.children.length > 0;
+        if (!hasText && !hasMedia) {
+          createPostCard.classList.remove('expanded');
+        }
+      }
+    };
+
+    postInputEl.addEventListener('focus', expandPostCard);
+    postInputEl.addEventListener('click', expandPostCard);
+    document.addEventListener('click', checkCollapsePostCard);
+  }
 
   // Real-time Text Analysis & Suggestions
   let typingTimer;
