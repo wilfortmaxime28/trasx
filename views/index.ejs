@@ -137,7 +137,7 @@ function getYouTubeId(url) {
                                         </div>
                             </div>
                             <span class="story-username">
-                              <%= group.user_name %>
+                              <%= (group.user_name || '').trim().length > 10 ? (group.user_name || '').trim().slice(0, 10) + '...' : (group.user_name || '').trim() %>
                             </span>
                           </button>
                           <% }) %>

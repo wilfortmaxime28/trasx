@@ -1,7 +1,33 @@
 const db = require('../config/db');
 
 class Comment {
+  static async ensureCommentSchema() {
+    if (Comment._schemaReady) return;
+
+    const [tableExists] = await db.query("SHOW TABLES LIKE 'comments'");
+    if (!tableExists || tableExists.length === 0) {
+      console.log('Comments table does not exist yet. Skipping comment schema check.');
+      return;
+    }
+
+    const [columns] = await db.query('SHOW COLUMNS FROM comments');
+    const columnNames = new Set(columns.map((column) => column.Field));
+
+    if (!columnNames.has('parent_id')) {
+      await db.query('ALTER TABLE comments ADD COLUMN parent_id INT DEFAULT NULL');
+    }
+    if (!columnNames.has('voice_url')) {
+      await db.query('ALTER TABLE comments ADD COLUMN voice_url VARCHAR(255) DEFAULT NULL');
+    }
+    if (!columnNames.has('voice_duration_seconds')) {
+      await db.query('ALTER TABLE comments ADD COLUMN voice_duration_seconds INT DEFAULT NULL');
+    }
+
+    Comment._schemaReady = true;
+  }
+
   static async getByPostId(postId) {
+    await Comment.ensureCommentSchema();
     const query = `
       SELECT 
         c.id,
@@ -25,6 +51,7 @@ class Comment {
   }
 
   static async getByPostIds(postIds = []) {
+    await Comment.ensureCommentSchema();
     const numericPostIds = Array.from(
       new Set(
         (Array.isArray(postIds) ? postIds : [])
@@ -61,6 +88,7 @@ class Comment {
   }
 
   static async getById(id) {
+    await Comment.ensureCommentSchema();
     const query = `
       SELECT
         c.id,
@@ -84,6 +112,7 @@ class Comment {
   }
 
   static async create(postId, userId, content, parentId = null, voiceUrl = null, voiceDurationSeconds = null) {
+    await Comment.ensureCommentSchema();
     const [result] = await db.query(
       'INSERT INTO comments (post_id, user_id, content, parent_id, voice_url, voice_duration_seconds) VALUES (?, ?, ?, ?, ?, ?)',
       [postId, userId, content, parentId, voiceUrl, voiceDurationSeconds]
@@ -92,6 +121,7 @@ class Comment {
   }
 
   static async getAllForAdmin() {
+    await Comment.ensureCommentSchema();
     const query = `
       SELECT
         c.id,

@@ -79,12 +79,25 @@ class StatusController {
         bgColor
       });
 
+      const newStatus = await Status.getById(statusId);
+
+      if (req.app?.get('io') && newStatus) {
+        req.app.get('io').emit('status-created', {
+          user_id: currentUserId,
+          user_name: currentUser.first_name + ' ' + currentUser.last_name,
+          username: currentUser.username,
+          avatar: currentUser.avatar || '/uploads/avatars/default.png',
+          status: newStatus
+        });
+      }
+
       const message = t('status.postedSuccess', 'Status posted successfully!');
 
       if (wantsJsonResponse(req)) {
         return res.json({
           success: true,
           statusId,
+          status: newStatus,
           message
         });
       }

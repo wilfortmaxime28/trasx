@@ -113,6 +113,18 @@ class Status {
     return result.insertId;
   }
 
+  static async getById(id) {
+    await ensureStatusTable();
+    const [rows] = await db.query(
+      `SELECT s.*, CONCAT(u.first_name, ' ', u.last_name) AS user_name, u.username, u.avatar 
+       FROM statuses s 
+       JOIN users u ON s.user_id = u.id 
+       WHERE s.id = ?`,
+      [id]
+    );
+    return rows.length > 0 ? normalizeStatusRow(rows[0]) : null;
+  }
+
   static async getFeedStatuses(userId, limit = 50) {
     await ensureStatusTable();
     await this.purgeExpired();

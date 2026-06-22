@@ -758,13 +758,13 @@ button {
 
 .stories-container {
   display: flex;
-  gap: 14px;
+  gap: 8px;
   padding-bottom: 4px;
   padding-top: 4px;
 }
 
 .story-card {
-  flex: 0 0 85px;
+  flex: 0 0 70px;
   display: flex;
   flex-direction: column;
   align-items: center;

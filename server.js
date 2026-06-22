@@ -2916,18 +2916,27 @@ io.on('connection', (socket) => {
   };
 
   // 1. Créer une publication en temps réel
-  socket.on('post-create', async (data) => {
+  socket.on('post-create', async (data, callback) => {
     try {
       const currentUserId = session.userId;
-      if (!currentUserId) return;
+      if (!currentUserId) {
+        if (typeof callback === 'function') callback({ success: false, error: 'Session expirée. Veuillez vous reconnecter.' });
+        return;
+      }
       const { content, paidHashtags, bgImageUrl, textColor, textAlignment, textPosition, textFont, textSize, isTrade, mediaUrl, mediaUrls, mediaType, thumbnailUrl, allowDownload, challengeConfig, isLive, liveUrl, livePrice } = data;
       const finalContent = content || '';
       const hasContent = finalContent.trim().length > 0;
-      if (!hasContent && !mediaUrl && (!mediaUrls || mediaUrls.length === 0) && !challengeConfig) return;
+      if (!hasContent && !mediaUrl && (!mediaUrls || mediaUrls.length === 0) && !challengeConfig) {
+        if (typeof callback === 'function') callback({ success: false, error: 'Empty post content' });
+        return;
+      }
 
       const db = require('./config/db');
       const currentUser = await User.getById(currentUserId);
-      if (!currentUser) return;
+      if (!currentUser) {
+        if (typeof callback === 'function') callback({ success: false, error: 'Utilisateur introuvable.' });
+        return;
+      }
       let paidBackgroundPriceUsed = 0;
       let paidHashtagCountUsed = 0;
       let postBaseIncrement = 0;
@@ -3280,8 +3289,14 @@ io.on('connection', (socket) => {
 
       // Diffuser le nouveau post à tous les clients
       io.emit('post-created', post);
+      if (typeof callback === 'function') {
+        callback({ success: true, postId });
+      }
     } catch (err) {
       console.error('Erreur post-create:', err);
+      if (typeof callback === 'function') {
+        callback({ success: false, error: err.message || 'Failed to create post' });
+      }
     }
   });
 

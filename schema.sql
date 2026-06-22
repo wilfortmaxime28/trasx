@@ -142,10 +142,13 @@ CREATE TABLE comments (
   post_id INT NOT NULL,
   user_id INT NOT NULL,
   content TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  parent_id INT DEFAULT NULL,
+  voice_url VARCHAR(255) DEFAULT NULL,
   voice_duration_seconds INT DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES comments(id) ON DELETE CASCADE
 );
 
 -- 5c. Table Notifications

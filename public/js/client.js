@@ -27,6 +27,112 @@ document.addEventListener('DOMContentLoaded', () => {
     lucide.createIcons();
   }
 
+  // Helper for background progress indicator
+  const showGlobalVideoProgress = (title, percent) => {
+    let container = document.getElementById('globalVideoProgress');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'globalVideoProgress';
+      container.style.cssText = `
+        position: fixed;
+        bottom: 96px;
+        right: 24px;
+        width: 320px;
+        background: rgba(23, 23, 23, 0.88);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        z-index: 100000;
+        color: #ffffff;
+        font-family: 'Outfit', sans-serif;
+        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        transform: translateY(120px) scale(0.9);
+        opacity: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      `;
+      document.body.appendChild(container);
+    }
+    
+    container.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+        <span id="globalVideoProgressTitle" style="font-size: 13px; font-weight: 600; color: #f3f4f6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${title}</span>
+        <span id="globalVideoProgressPercent" style="font-size: 12px; font-weight: 700; color: #10b981; flex-shrink: 0;">${percent}%</span>
+      </div>
+      <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.1); border-radius: 3px; overflow: hidden;">
+        <div id="globalVideoProgressBar" style="width: ${percent}%; height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); border-radius: 3px; transition: width 0.15s ease;"></div>
+      </div>
+    `;
+    
+    // Animate in
+    setTimeout(() => {
+      container.style.transform = 'translateY(0) scale(1)';
+      container.style.opacity = '1';
+    }, 10);
+  };
+
+  const updateGlobalVideoProgress = (percent, statusText) => {
+    const percentEl = document.getElementById('globalVideoProgressPercent');
+    const barEl = document.getElementById('globalVideoProgressBar');
+    const titleEl = document.getElementById('globalVideoProgressTitle');
+    if (percentEl) percentEl.textContent = percent + '%';
+    if (barEl) barEl.style.width = percent + '%';
+    if (statusText && titleEl) titleEl.textContent = statusText;
+  };
+
+  const hideGlobalVideoProgress = () => {
+    const container = document.getElementById('globalVideoProgress');
+    if (container) {
+      container.style.transform = 'translateY(120px) scale(0.9)';
+      container.style.opacity = '0';
+      setTimeout(() => {
+        if (container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
+      }, 300);
+    }
+  };
+
+  const uploadMediaWithProgress = (url, formData, onProgress) => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url);
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+      
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const percent = Math.round((e.loaded / e.total) * 100);
+          onProgress(percent);
+        }
+      };
+      
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch (err) {
+            resolve(xhr.responseText);
+          }
+        } else {
+          let errorMsg = 'Upload failed';
+          try {
+            const errJson = JSON.parse(xhr.responseText);
+            errorMsg = errJson.error || errJson.message || errorMsg;
+          } catch (e) {}
+          reject(new Error(errorMsg));
+        }
+      };
+      
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.send(formData);
+    });
+  };
+
   const ensureToastElement = () => {
     let toast = document.getElementById('appToast');
     if (toast) return toast;
@@ -7063,6 +7169,89 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // If media files are selected, upload them first
       if (selectedMediaFiles.length > 0) {
+        if (selectedMediaType === 'video') {
+          // Video specific background flow
+          const capturedText = text;
+          const capturedPaidHashtags = [...acceptedPaidHashtags];
+          const capturedBgImageUrl = selectedBackground ? selectedBackground.image_url : null;
+          const capturedTextColor = selectedBackground ? selectedTextColor : null;
+          const capturedTextAlignment = selectedBackground ? selectedTextAlignment : null;
+          const capturedTextPosition = selectedBackground ? selectedTextPosition : null;
+          const capturedTextFont = selectedBackground ? selectedTextFont : null;
+          const capturedTextSize = selectedBackground ? selectedTextSize : null;
+          const capturedIsTrade = isTrade;
+          const capturedChallengeConfig = selectedChallengeConfig ? { ...selectedChallengeConfig } : null;
+          const capturedLiveConfig = selectedLiveConfig ? { ...selectedLiveConfig } : null;
+          const allowDownload = document.getElementById('allowVideoDownloadToggle')?.checked !== false;
+          const capturedFiles = [...selectedMediaFiles];
+
+          // Finalize post creation immediately (clears UI inputs and closes modal)
+          finalizePostCreation();
+
+          // Show global progress UI
+          showGlobalVideoProgress("Configuration de la vidéo...", 0);
+
+          const thumbnailReady = !selectedVideoThumbnailBlob
+            ? createVideoThumbnail(capturedFiles[0]).then((blob) => {
+              selectedVideoThumbnailBlob = blob;
+            })
+            : Promise.resolve();
+
+          thumbnailReady.then(() => {
+            updateGlobalVideoProgress(5, "Téléchargement de la vidéo...");
+            const formData = new FormData();
+            capturedFiles.forEach((file) => {
+              formData.append('media', file);
+            });
+            if (selectedVideoThumbnailBlob) {
+              formData.append('thumbnail', selectedVideoThumbnailBlob, 'video-thumbnail.jpg');
+            }
+
+            return uploadMediaWithProgress('/api/posts/upload-media', formData, (percent) => {
+              const mappedPercent = Math.min(95, 5 + Math.round(percent * 0.9));
+              updateGlobalVideoProgress(mappedPercent, "Téléchargement de la vidéo (" + mappedPercent + "%)...");
+            });
+          })
+          .then(data => {
+            updateGlobalVideoProgress(98, "Création de la publication...");
+            const { mediaUrls, mediaType, thumbnailUrl } = data;
+
+            socket.emit('post-create', {
+              content: capturedText,
+              paidHashtags: capturedPaidHashtags,
+              bgImageUrl: capturedBgImageUrl,
+              textColor: capturedTextColor,
+              textAlignment: capturedTextAlignment,
+              textPosition: capturedTextPosition,
+              textFont: capturedTextFont,
+              textSize: capturedTextSize,
+              isTrade: capturedIsTrade,
+              mediaUrls: mediaUrls,
+              mediaType: mediaType,
+              thumbnailUrl: thumbnailUrl || null,
+              allowDownload: mediaType === 'video' ? allowDownload : true,
+              challengeConfig: capturedChallengeConfig,
+              isLive: capturedLiveConfig?.isLive ? 1 : 0,
+              liveUrl: capturedLiveConfig?.liveUrl || null,
+              livePrice: capturedLiveConfig?.livePrice || 0
+            }, (res) => {
+              hideGlobalVideoProgress();
+              if (res && res.success && res.postId) {
+                window.location.href = `/?view=feed&post_id=${res.postId}`;
+              } else {
+                showToast(res ? res.error : "Failed to create post");
+              }
+            });
+          })
+          .catch(err => {
+            hideGlobalVideoProgress();
+            console.error(err);
+            showToast("Posting error: " + err.message);
+          });
+
+          return;
+        }
+
         // Disable buttons
         if (sharePostBtn) {
           sharePostBtn.disabled = true;
@@ -10487,36 +10676,222 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const updateStatusCardInner = (card, statuses, userName, avatar) => {
+    if (!statuses || statuses.length === 0) return;
+    const latestStatus = statuses[statuses.length - 1];
+    const container = card.querySelector('.status-avatar-container');
+    if (!container) return;
+
+    // Remove old previews
+    container.querySelectorAll('.status-media-preview').forEach(el => el.remove());
+
+    const badge = container.querySelector('.status-duration-badge');
+
+    // Generate new preview element
+    let previewHtml = '';
+    const mType = String(latestStatus.media_type || '');
+    if (mType.startsWith('video/')) {
+      previewHtml = `
+        <video class="story-avatar status-media-preview" muted autoplay loop playsinline style="z-index: 2;">
+          <source src="${latestStatus.media_url}" type="${latestStatus.media_type}">
+        </video>
+      `;
+    } else if (mType === 'text') {
+      const cap = latestStatus.caption || '';
+      const capTruncated = cap.length > 20 ? cap.slice(0, 18) + '..' : cap;
+      const bg = latestStatus.bg_color || 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)';
+      previewHtml = `
+        <div class="story-avatar status-media-preview text-status-thumbnail"
+          style="z-index: 2; background: ${bg}; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 8px; font-weight: bold; overflow: hidden; padding: 4px; text-align: center; font-family: 'Outfit', sans-serif; word-break: break-word; line-height: 1.1; border-radius: 50%; border: 2px solid var(--bg-card); width: 52px; height: 52px; box-sizing: border-box;">
+          ${escapeHtml(capTruncated)}
+        </div>
+      `;
+    } else if (mType.startsWith('audio/')) {
+      const bg = latestStatus.bg_color || 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)';
+      previewHtml = `
+        <div class="story-avatar status-media-preview voice-status-thumbnail"
+          style="z-index: 2; background: ${bg}; display: flex; align-items: center; justify-content: center; color: #fff; border-radius: 50%; border: 2px solid var(--bg-card); width: 52px; height: 52px; box-sizing: border-box;">
+          <i data-lucide="mic" style="width: 18px; height: 18px;"></i>
+        </div>
+      `;
+    } else {
+      previewHtml = `
+        <img class="story-avatar status-media-preview" src="${latestStatus.media_url}" alt="${escapeHtml(userName)}" style="z-index: 2;">
+      `;
+    }
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = previewHtml;
+    const previewNode = tempDiv.firstElementChild;
+    if (badge) {
+      container.insertBefore(previewNode, badge);
+    } else {
+      container.appendChild(previewNode);
+    }
+
+    if (badge) {
+      badge.textContent = statuses.length;
+    }
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  const handleNewStatus = (data) => {
+    const storiesContainer = document.getElementById('storiesContainer');
+    if (!storiesContainer) return;
+
+    const userId = Number(data.user_id);
+    const isFollowing = window.shareFollowingTargets && window.shareFollowingTargets.some(target => Number(target.id) === userId);
+    const isSelf = userId === Number(window.currentUserId);
+    if (!isSelf && !isFollowing) {
+      return;
+    }
+
+    const existingCard = document.querySelector(`.status-card[data-user-id="${userId}"]`);
+
+    if (existingCard) {
+      let statuses = [];
+      try {
+        statuses = JSON.parse(existingCard.dataset.statuses || '[]');
+      } catch (e) {}
+
+      if (statuses.some(s => s.id === data.status.id)) return;
+
+      statuses.push(data.status);
+      existingCard.dataset.statuses = JSON.stringify(statuses);
+      updateStatusCardInner(existingCard, statuses, data.user_name, data.avatar);
+    } else {
+      const newCard = document.createElement('button');
+      newCard.type = 'button';
+      newCard.className = 'story-card status-card';
+      newCard.dataset.userId = userId;
+      newCard.dataset.userName = data.user_name;
+      newCard.dataset.username = data.username;
+      newCard.dataset.avatar = data.avatar;
+      newCard.dataset.statuses = JSON.stringify([data.status]);
+
+      const truncatedName = String(data.user_name || '').trim().length > 10
+        ? String(data.user_name || '').trim().slice(0, 10) + '...'
+        : String(data.user_name || '').trim();
+
+      newCard.innerHTML = `
+        <div class="story-avatar-container active-story status-avatar-container" style="position: relative;">
+          <svg class="status-ring-svg" viewBox="0 0 100 100"
+            style="position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); transform: rotate(-90deg); pointer-events: none; z-index: 1;">
+          </svg>
+          <div class="status-duration-badge" style="z-index: 3;">1</div>
+        </div>
+        <span class="story-username">${escapeHtml(truncatedName)}</span>
+      `;
+
+      updateStatusCardInner(newCard, [data.status], data.user_name, data.avatar);
+
+      const openBtn = document.getElementById('openStatusModalBtn');
+      if (openBtn) {
+        openBtn.after(newCard);
+      } else {
+        storiesContainer.appendChild(newCard);
+      }
+
+      newCard.addEventListener('click', (e) => {
+        e.preventDefault();
+        openStatusViewer(newCard);
+      });
+    }
+
+    if (typeof syncStatusTimers === 'function') {
+      syncStatusTimers();
+    }
+  };
+
+  // Register real-time status-created listener
+  socket.on('status-created', (data) => {
+    handleNewStatus(data);
+  });
+
   // --- Status Form Validation & Submission ---
   const statusCreateForm = document.getElementById('statusCreateForm');
   if (statusCreateForm) {
     statusCreateForm.addEventListener('submit', (e) => {
+      e.preventDefault();
       const type = statusTypeInput ? statusTypeInput.value : 'media';
+
+      const formData = new FormData();
+      formData.append('status_type', type);
 
       if (type === 'text') {
         const textVal = document.getElementById('statusTextTextarea')?.value?.trim() || '';
         if (!textVal) {
-          e.preventDefault();
           showToast(getPageLocale() === 'fr' ? 'Veuillez saisir du texte pour votre statut.' : 'Please enter some text for your status.');
           return;
         }
-        const captionInput = document.getElementById('statusCaption');
-        if (captionInput) {
-          captionInput.value = textVal;
-        }
+        const bgColor = document.getElementById('statusBgColorInput')?.value || '';
+        formData.append('caption', textVal);
+        formData.append('bg_color', bgColor);
       } else if (type === 'voice') {
         if (!statusVoiceAudioBlob) {
-          e.preventDefault();
           showToast(getPageLocale() === 'fr' ? 'Veuillez enregistrer une note vocale avant de publier.' : 'Please record a voice note before posting.');
           return;
         }
+        const bgColor = document.getElementById('statusBgColorInput')?.value || '';
+        formData.append('bg_color', bgColor);
+        formData.append('status_media', statusVoiceAudioBlob, 'status-voice.wav');
       } else {
         if (!statusMediaInput || statusMediaInput.files.length === 0) {
-          e.preventDefault();
           showToast(getPageLocale() === 'fr' ? 'Veuillez choisir une image ou une vidéo pour votre statut.' : 'Please choose an image or video for your status.');
           return;
         }
+
+        const file = statusMediaInput.files[0];
+        const caption = document.getElementById('statusCaption')?.value || '';
+        const trimStart = document.getElementById('statusTrimStartInput')?.value || '';
+        const trimEnd = document.getElementById('statusTrimEndInput')?.value || '';
+
+        formData.append('caption', caption);
+        formData.append('trim_start', trimStart);
+        formData.append('trim_end', trimEnd);
+        formData.append('status_media', file);
       }
+
+      // Close modal immediately and reset form inputs safely
+      closeStatusModal();
+
+      // Show background progress
+      const isVideo = type === 'media' && statusMediaInput.files[0]?.type.startsWith('video/');
+      const progressTitle = isVideo 
+        ? "Configuration du Statut..." 
+        : (getPageLocale() === 'fr' ? "Publication du statut..." : "Publishing status...");
+      
+      showGlobalVideoProgress(progressTitle, 0);
+
+      uploadMediaWithProgress('/statuses/create', formData, (percent) => {
+        updateGlobalVideoProgress(percent, isVideo 
+          ? ("Téléchargement du statut (" + percent + "%)...") 
+          : progressTitle
+        );
+      })
+      .then((data) => {
+        hideGlobalVideoProgress();
+        if (data && data.success) {
+          showToast(getPageLocale() === 'fr' ? "Votre statut a été posté avec succès !" : "Status posted successfully!");
+          if (data.status) {
+            handleNewStatus({
+              user_id: data.status.user_id,
+              user_name: data.status.user_name || window.currentFullName || 'Me',
+              username: data.status.username || window.currentUsername || 'me',
+              avatar: data.status.avatar || window.currentUserAvatar || '/uploads/avatars/default.png',
+              status: data.status
+            });
+          }
+        } else {
+          showToast(data ? data.message : "Failed to post status");
+        }
+      })
+      .catch((err) => {
+        hideGlobalVideoProgress();
+        console.error(err);
+        showToast(err.message || "Failed to post status");
+      });
     });
   }
 
@@ -12971,6 +13346,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Bind custom post-create-error socket response
   socket.on('post-create-error', (data) => {
+    hideGlobalVideoProgress();
     showToast("Error: " + data.error);
   });
 
@@ -13738,6 +14114,9 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="short-compilation-progress-fill" style="width: ${pct}%;"></div>
             </div>
           `;
+        }
+        if (typeof updateGlobalVideoProgress === 'function') {
+          updateGlobalVideoProgress(Math.round(pct * 0.5), "Compilation du Short (" + pct + "%)...");
         }
       };
 
@@ -14973,84 +15352,114 @@ document.addEventListener('DOMContentLoaded', () => {
       const duration = getActiveLimitDuration();
       const fit = mediaFitInput?.value === 'contain' ? 'contain' : 'cover';
 
-      let compiledRes = null;
-      try {
-        compiledRes = await compileShortBeforeUpload(type, filesObj, duration, fit);
-      } catch (compErr) {
-        console.error("Compilation error:", compErr);
-        setShortUploadStatus("Error: " + compErr.message);
-        if (submitBtn) submitBtn.disabled = false;
-        if (submitBtnText) submitBtnText.textContent = originalBtnText;
-        if (submitBtnIcon) {
-          submitBtnIcon.setAttribute('data-lucide', 'send');
-          submitBtnIcon.style.animation = '';
-          if (typeof lucide !== 'undefined') lucide.createIcons();
+      // Capture form state and files
+      const capturedType = type;
+      const capturedFilesObj = { ...filesObj };
+      const capturedCaption = document.getElementById('shortCaption')?.value || '';
+      const capturedSoundName = document.getElementById('shortSoundName')?.value || 'Original Sound';
+      const capturedDuration = duration;
+      const capturedFit = fit;
+      const capturedIsTrade = shortTradeToggle?.checked ? '1' : '0';
+
+      // Hide modal immediately
+      const shortCreateModal = document.getElementById('shortCreateModal');
+      if (shortCreateModal) shortCreateModal.style.display = 'none';
+      stopAllModalPreviews();
+
+      // Reset form controls immediately
+      if (shortCreateForm) shortCreateForm.reset();
+      
+      // Clear inputs / filename labels / preview boxes
+      const videoFilenameEl = document.getElementById('shortVideoFilename');
+      if (videoFilenameEl) videoFilenameEl.textContent = 'No file chosen';
+      const videoPreviewBoxEl = document.getElementById('shortVideoPreviewBox');
+      if (videoPreviewBoxEl) videoPreviewBoxEl.style.display = 'none';
+      const videoPreviewEl = document.getElementById('shortVideoPreview');
+      if (videoPreviewEl) {
+        videoPreviewEl.src = '';
+        videoPreviewEl.removeAttribute('src');
+      }
+
+      const imgFilenameEl = document.getElementById('shortImageFilename');
+      if (imgFilenameEl) imgFilenameEl.textContent = 'No image chosen';
+      const imgPreviewBoxEl = document.getElementById('shortImagePreviewBox');
+      if (imgPreviewBoxEl) imgPreviewBoxEl.style.display = 'none';
+      const imgPreviewEl = document.getElementById('shortImagePreview');
+      if (imgPreviewEl) {
+        imgPreviewEl.src = '';
+        imgPreviewEl.removeAttribute('src');
+      }
+
+      const audFilenameEl = document.getElementById('shortAudioFilename');
+      if (audFilenameEl) audFilenameEl.textContent = 'No file chosen';
+      const audPreviewBoxEl = document.getElementById('shortAudioPreviewBox');
+      if (audPreviewBoxEl) audPreviewBoxEl.style.display = 'none';
+
+      const voiceRecordedPlayBtn = document.getElementById('shortVoicePlayBtn');
+      if (voiceRecordedPlayBtn) voiceRecordedPlayBtn.style.display = 'none';
+
+      // Re-enable validation/submit buttons so modal is fresh next time it opens
+      if (submitBtn) submitBtn.disabled = false;
+      if (submitBtnText) submitBtnText.textContent = originalBtnText;
+      if (submitBtnIcon) {
+        submitBtnIcon.setAttribute('data-lucide', 'send');
+        submitBtnIcon.style.animation = '';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+      setShortUploadStatus('');
+
+      // Show global video progress
+      showGlobalVideoProgress("Configuration du Short...", 0);
+
+      // Background compilation and upload
+      (async () => {
+        let compiledRes = null;
+        try {
+          compiledRes = await compileShortBeforeUpload(capturedType, capturedFilesObj, capturedDuration, capturedFit);
+        } catch (compErr) {
+          hideGlobalVideoProgress();
+          console.error("Compilation error:", compErr);
+          showToast("Error: " + compErr.message);
+          return;
         }
-        return;
-      }
 
-      // Compilation completed, start upload status
-      if (submitBtnText) submitBtnText.textContent = 'Uploading...';
-      if (shortUploadStatus) {
-        shortUploadStatus.style.display = 'block';
-        shortUploadStatus.className = 'short-upload-status success';
-        shortUploadStatus.textContent = 'Uploading compiled Short...';
-      }
+        updateGlobalVideoProgress(50, "Téléchargement du Short...");
 
-      const formData = new FormData();
-      formData.append('media_type', 'video'); // Force video type since it is compiled to video
-      formData.append('caption', document.getElementById('shortCaption')?.value || '');
-      formData.append('sound_name', document.getElementById('shortSoundName')?.value || 'Original Sound');
-      formData.append('audio_start_time', '0');
-      formData.append('audio_duration', duration);
-      formData.append('media_fit', fit);
-      formData.append('is_trade', shortTradeToggle?.checked ? '1' : '0');
-      formData.append('reel_video', compiledRes.blob, `short-${Date.now()}.${compiledRes.ext}`);
+        const formData = new FormData();
+        formData.append('media_type', 'video'); // Force video type since it is compiled to video
+        formData.append('caption', capturedCaption);
+        formData.append('sound_name', capturedSoundName);
+        formData.append('audio_start_time', '0');
+        formData.append('audio_duration', capturedDuration);
+        formData.append('media_fit', capturedFit);
+        formData.append('is_trade', capturedIsTrade);
+        formData.append('reel_video', compiledRes.blob, `short-${Date.now()}.${compiledRes.ext}`);
 
-      try {
-        const response = await fetch('/profile/reel/create', {
-          method: 'POST',
-          body: formData
-        });
+        try {
+          const data = await uploadMediaWithProgress('/profile/reel/create', formData, (percent) => {
+            const mappedPercent = 50 + Math.round(percent * 0.5);
+            updateGlobalVideoProgress(mappedPercent, "Téléchargement du Short (" + mappedPercent + "%)...");
+          });
 
-        const data = await response.json();
-        if (response.ok && data.success) {
-          setShortUploadStatus("Short uploaded successfully!", 'success');
-          setTimeout(() => {
-            const isMobile = window.matchMedia('(max-width: 768px)').matches;
-            if (!isMobile) {
-              window.location.href = '/?view=shorts';
-            } else {
-              window.location.reload();
+          hideGlobalVideoProgress();
+          if (data && data.success && data.reelId) {
+            showToast(getPageLocale() === 'fr' ? "Short publié avec succès !" : "Short uploaded successfully!");
+            window.location.href = `/?view=shorts#reel-${data.reelId}`;
+          } else {
+            if (Number.isFinite(Number(data.currentTokens))) {
+              syncShortTradeBalanceInfo(data.currentTokens);
             }
-          }, 1000);
-        } else {
-          if (Number.isFinite(Number(data.currentTokens))) {
-            syncShortTradeBalanceInfo(data.currentTokens);
+            const uploadError = Number.isFinite(Number(data.requiredTokens)) && Number.isFinite(Number(data.currentTokens))
+              ? `Trade Short demande ${Number(data.requiredTokens)} tokens. Solde disponible: ${Number(data.currentTokens)} tokens.`
+              : (data.error || "Failed to upload short");
+            showToast("Error: " + uploadError);
           }
-          const uploadError = Number.isFinite(Number(data.requiredTokens)) && Number.isFinite(Number(data.currentTokens))
-            ? `Trade Short demande ${Number(data.requiredTokens)} tokens. Solde disponible: ${Number(data.currentTokens)} tokens.`
-            : (data.error || "Failed to upload short");
-          setShortUploadStatus("Error: " + uploadError);
-          if (submitBtn) submitBtn.disabled = false;
-          if (submitBtnText) submitBtnText.textContent = originalBtnText;
-          if (submitBtnIcon) {
-            submitBtnIcon.setAttribute('data-lucide', 'send');
-            submitBtnIcon.style.animation = '';
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-          }
+        } catch (err) {
+          hideGlobalVideoProgress();
+          console.error("Upload error", err);
+          showToast(err.message || "Network error during upload.");
         }
-      } catch (err) {
-        console.error("Upload error", err);
-        setShortUploadStatus("Network error during upload.");
-        if (submitBtn) submitBtn.disabled = false;
-        if (submitBtnText) submitBtnText.textContent = originalBtnText;
-        if (submitBtnIcon) {
-          submitBtnIcon.setAttribute('data-lucide', 'send');
-          submitBtnIcon.style.animation = '';
-          if (typeof lucide !== 'undefined') lucide.createIcons();
-        }
-      }
+      })();
     });
 
     const shortSubmitBtn = document.getElementById('shortSubmitBtn');

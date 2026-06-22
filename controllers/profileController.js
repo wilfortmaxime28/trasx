@@ -370,7 +370,7 @@ class ProfileController {
         paidBackgroundViewBonusPerDollar: 0
       });
 
-      await Reel.create({
+      const reelId = await Reel.create({
         user_id: currentUserId,
         video_url,
         sound_name: sound_name || 'Original Audio',
@@ -387,7 +387,7 @@ class ProfileController {
         promo_paid_hashtag_count: paidHashtagCountUsed
       });
 
-      res.json({ success: true, message: 'Short uploaded successfully!' });
+      res.json({ success: true, message: 'Short uploaded successfully!', reelId });
     } catch (error) {
       console.error('Create Reel Error:', error);
       res.status(500).json({ error: 'Failed to upload short.' });
