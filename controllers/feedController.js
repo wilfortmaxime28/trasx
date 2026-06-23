@@ -366,6 +366,8 @@ class FeedController {
       const shortRevealBatchSize = 2;
       const feedMemory = getFeedMemory(req.session);
       const followingCount = await User.getFollowingCount(currentUserId);
+      const noFollowingMode = Number(followingCount || 0) === 0;
+      const promoWindowDays = await getNumberSetting('new_user_promo_days', 30);
 
       // Générer un seed stable pour la session (variété entre sessions, stabilité pendant le scroll)
       if (!req.session.feedSeed) {
