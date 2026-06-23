@@ -2049,10 +2049,11 @@ app.get('/api/search', requireAuth, async (req, res) => {
 
     // Search posts
     const [postRows] = await db.query(
-      `SELECT p.id, p.content, p.media_urls, p.created_at,
-              u.id AS author_id, u.first_name, u.last_name, u.username, u.avatar, u.certification_type,
-              (SELECT COUNT(*) FROM post_likes WHERE post_id = p.id) AS likes_count,
-              (SELECT COUNT(*) FROM comments WHERE post_id = p.id) AS comments_count
+      `SELECT p.*,
+              u.first_name, u.last_name, u.username, u.avatar, u.certification_type,
+              (SELECT COUNT(*) FROM likes WHERE post_id = p.id) AS likes_count,
+              (SELECT COUNT(*) FROM comments WHERE post_id = p.id) AS comments_count,
+              (SELECT COUNT(*) FROM post_shares ps WHERE ps.post_id = p.id AND ps.clicked_at IS NOT NULL) AS shares_count
        FROM posts p
        JOIN users u ON u.id = p.user_id
        WHERE p.content LIKE ?
@@ -2070,20 +2071,57 @@ app.get('/api/search', requireAuth, async (req, res) => {
     }));
 
     const posts = postRows.map(p => {
-      let mediaUrl = null;
-      try {
-        const parsed = JSON.parse(p.media_urls || '[]');
-        mediaUrl = Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : null;
-      } catch (_) {}
+      const mediaUrl = p.image_url || p.image_url_2 || p.image_url_3 || p.image_url_4 || null;
       return {
         id: p.id,
-        content: String(p.content || '').substring(0, 160),
+        user_id: p.user_id,
+        content: p.content,
+        image_url: p.image_url,
+        image_url_2: p.image_url_2,
+        image_url_3: p.image_url_3,
+        image_url_4: p.image_url_4,
+        media_type: p.media_type,
+        bg_image_url: p.bg_image_url,
+        text_color: p.text_color,
+        text_alignment: p.text_alignment,
+        text_position: p.text_position,
+        text_font: p.text_font,
+        text_size: p.text_size,
+        is_trade: p.is_trade,
+        trade_price: p.trade_price,
+        last_possession_user_id: p.last_possession_user_id,
+        next_trade_payout_admin: p.next_trade_payout_admin,
+        challenge_type: p.challenge_type,
+        challenge_title: p.challenge_title,
+        challenge_entry_mode: p.challenge_entry_mode,
+        challenge_vote_mode: p.challenge_vote_mode,
+        challenge_vote_price: p.challenge_vote_price,
+        challenge_invited_user_id: p.challenge_invited_user_id,
+        challenge_creator_share_percent: p.challenge_creator_share_percent,
+        challenge_participant_share_percent: p.challenge_participant_share_percent,
+        challenge_end_date: p.challenge_end_date,
+        is_live: p.is_live,
+        live_url: p.live_url,
+        live_price: p.live_price,
+        live_status: p.live_status,
+        created_at: p.created_at,
+        thumbnail_url: p.thumbnail_url,
+        allow_download: p.allow_download,
+        
+        author_name: `${p.first_name} ${p.last_name}`.trim(),
+        author_username: p.username,
+        author_avatar: p.avatar || '/assets/avatar_placeholder.jpg',
+        author_certification_type: p.certification_type || null,
+        likes_count: Number(p.likes_count || 0),
+        comments_count: Number(p.comments_count || 0),
+        shares_count: Number(p.shares_count || 0),
+        
         mediaUrl,
         createdAt: p.created_at,
         likesCount: Number(p.likes_count || 0),
         commentsCount: Number(p.comments_count || 0),
         author: {
-          id: p.author_id,
+          id: p.user_id,
           name: `${p.first_name} ${p.last_name}`.trim(),
           username: p.username,
           avatar: p.avatar || '/assets/avatar_placeholder.jpg',

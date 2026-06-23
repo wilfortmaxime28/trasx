@@ -6105,321 +6105,329 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 4. Render new post in real time
-  socket.on('post-created', (post) => {
-    if (postsContainer) {
-      const newPost = document.createElement('article');
-      newPost.className = 'post-card';
-      newPost.setAttribute('data-post-id', post.id);
-      newPost.setAttribute('data-feed-item-type', 'post');
-      newPost.setAttribute('data-created-at', post.created_at || new Date().toISOString());
-      newPost.setAttribute('data-post-user-id', post.user_id);
-      newPost.setAttribute('data-challenge-type', post.challenge_type || '');
+  // Helper to dynamically build post card element (used by socket and real-time search)
+  const createPostCardElement = (post) => {
+    const newPost = document.createElement('article');
+    newPost.className = 'post-card';
+    newPost.id = `post-${post.id}`;
+    newPost.setAttribute('data-post-id', post.id);
+    newPost.setAttribute('data-feed-item-type', 'post');
+    newPost.setAttribute('data-created-at', post.created_at || new Date().toISOString());
+    newPost.setAttribute('data-post-user-id', post.user_id);
+    newPost.setAttribute('data-challenge-type', post.challenge_type || '');
 
-      // Background rendering supporting bg_image_url
-      let postContentHtml = '';
-      if (post.bg_image_url) {
-        const alignMap = { 'left': 'flex-start', 'right': 'flex-end', 'center': 'center' };
-        const posMap = { 'top': 'flex-start', 'center': 'center', 'bottom': 'flex-end' };
-        const alignVal = alignMap[post.text_alignment] || 'center';
-        const posVal = posMap[post.text_position] || 'center';
+    // Background rendering supporting bg_image_url
+    let postContentHtml = '';
+    if (post.bg_image_url) {
+      const alignMap = { 'left': 'flex-start', 'right': 'flex-end', 'center': 'center' };
+      const posMap = { 'top': 'flex-start', 'center': 'center', 'bottom': 'flex-end' };
+      const alignVal = alignMap[post.text_alignment] || 'center';
+      const posVal = posMap[post.text_position] || 'center';
 
-        postContentHtml = `
-          <div class="post-bg-container" style="background-image: url('${post.bg_image_url}'); color: ${post.text_color || '#ffffff'}; text-align: ${post.text_alignment || 'center'}; font-family: ${post.text_font || "'Outfit', sans-serif"}; align-items: ${alignVal}; justify-content: ${posVal}; font-size: ${post.text_size || '20px'}; --bg-text-size: ${post.text_size || '20px'};">
-            <p class="formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="width: 100%; text-align: inherit; margin: 0; padding: 0; white-space: pre-wrap;">${renderHashtagRichText(post.content || '')}</p>
-          </div>
-        `;
-        if (post.challenge_type) {
-          postContentHtml += renderChallengeCardHtml(post);
-        }
-      } else {
-        postContentHtml = '';
-        if (post.content && post.content.trim() && !post.challenge_type) {
-          postContentHtml += `<p class="post-text formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="padding: 0 20px 16px 20px;">${renderHashtagRichText(post.content || '')}</p>`;
-        }
-        if (post.challenge_type) {
-          postContentHtml += renderChallengeCardHtml(post);
-        }
-        if (Number(post.is_live) === 1) {
-          const ytId = getYouTubeId(post.live_url);
-          const isUnlocked = !post.live_price || parseFloat(post.live_price) === 0 || post.is_live_unlocked || (getCurrentUserId() === post.user_id);
-          
-          let livePlayerHtml = '';
-          if (isUnlocked) {
-            let endLiveBtnHtml = '';
-            if (getCurrentUserId() === post.user_id) {
-              endLiveBtnHtml = `
-                <button type="button" class="end-live-btn" data-post-id="${post.id}" style="background: #ef4444; border: none; border-radius: 8px; padding: 6px 12px; color: white; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);">
-                  Terminer le live
-                </button>
-              `;
-            }
-            
-            livePlayerHtml = `
-              <div class="post-live-shell" data-youtube-id="${ytId}" id="live-player-container-${post.id}" style="position: relative; border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 16/9;">
-                <iframe id="youtube-player-${post.id}" 
-                        src="https://www.youtube.com/embed/${ytId}?enablejsapi=1&controls=0&autoplay=0&rel=0" 
-                        frameborder="0" 
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                        allowfullscreen
-                        style="width: 100%; height: 100%; border-radius: 12px; display: block;">
-                </iframe>
-                <div class="custom-live-controls" style="position: absolute; bottom: 12px; left: 12px; right: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; z-index: 10; pointer-events: auto;">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <button type="button" class="live-control-btn play-pause-btn" data-post-id="${post.id}" aria-label="Play/Pause" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; width: 36px; height: 36px; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(8px); transition: all 0.2s;">
-                      <i data-lucide="play" class="play-icon" style="width: 16px; height: 16px;"></i>
-                      <i data-lucide="pause" class="pause-icon" style="width: 16px; height: 16px; display: none;"></i>
-                    </button>
-                    <span class="live-badge-overlay" style="background: #ef4444; color: white; font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 6px; letter-spacing: 0.05em; display: flex; align-items: center; gap: 4px;">
-                      <span style="width: 6px; height: 6px; background: white; border-radius: 50%; display: inline-block; animation: pulse 1.5s infinite;"></span> LIVE
-                    </span>
-                  </div>
-                  ${endLiveBtnHtml}
-                </div>
-              </div>
-            `;
-          } else {
-            livePlayerHtml = `
-              <!-- Paywall Card -->
-              <div class="post-live-paywall" id="live-player-container-${post.id}" data-youtube-id="${ytId}" style="position: relative; border-radius: 12px; overflow: hidden; background: linear-gradient(135deg, #1e1b4b 0%, #311042 100%); aspect-ratio: 16/9; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; border: 1px solid rgba(255,255,255,0.08); box-shadow: inset 0 0 40px rgba(0,0,0,0.6);">
-                <div style="background: rgba(255, 255, 255, 0.06); border-radius: 50%; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(8px);">
-                  <i data-lucide="lock" style="color: #a78bfa; width: 24px; height: 24px;"></i>
-                </div>
-                <h4 style="margin: 0 0 6px 0; color: white; font-size: 15px; font-weight: 700;">Diffusion Premium</h4>
-                <p style="margin: 0 0 16px 0; color: #cbd5e1; font-size: 12px; max-width: 260px;">Accédez au flux vidéo en direct de ${post.author_name}</p>
-                <button type="button" class="unlock-live-btn" data-post-id="${post.id}" data-price="${post.live_price}" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); border: none; border-radius: 10px; padding: 10px 20px; color: white; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);">
-                  <i data-lucide="zap" style="width: 14px; height: 14px;"></i>
-                  Débloquer pour ${Number(post.live_price).toFixed(2)}$
-                </button>
-              </div>
+      postContentHtml = `
+        <div class="post-bg-container" style="background-image: url('${post.bg_image_url}'); color: ${post.text_color || '#ffffff'}; text-align: ${post.text_alignment || 'center'}; font-family: ${post.text_font || "'Outfit', sans-serif"}; align-items: ${alignVal}; justify-content: ${posVal}; font-size: ${post.text_size || '20px'}; --bg-text-size: ${post.text_size || '20px'};">
+          <p class="formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="width: 100%; text-align: inherit; margin: 0; padding: 0; white-space: pre-wrap;">${renderHashtagRichText(post.content || '')}</p>
+        </div>
+      `;
+      if (post.challenge_type) {
+        postContentHtml += renderChallengeCardHtml(post);
+      }
+    } else {
+      postContentHtml = '';
+      if (post.content && post.content.trim() && !post.challenge_type) {
+        postContentHtml += `<p class="post-text formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="padding: 0 20px 16px 20px;">${renderHashtagRichText(post.content || '')}</p>`;
+      }
+      if (post.challenge_type) {
+        postContentHtml += renderChallengeCardHtml(post);
+      }
+      if (Number(post.is_live) === 1) {
+        const ytId = getYouTubeId(post.live_url);
+        const isUnlocked = !post.live_price || parseFloat(post.live_price) === 0 || post.is_live_unlocked || (getCurrentUserId() === post.user_id);
+        
+        let livePlayerHtml = '';
+        if (isUnlocked) {
+          let endLiveBtnHtml = '';
+          if (getCurrentUserId() === post.user_id) {
+            endLiveBtnHtml = `
+              <button type="button" class="end-live-btn" data-post-id="${post.id}" style="background: #ef4444; border: none; border-radius: 8px; padding: 6px 12px; color: white; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);">
+                Terminer le live
+              </button>
             `;
           }
-
-          postContentHtml += `
-            <div class="post-single-live" style="padding: 0 20px 16px 20px;">
-              ${livePlayerHtml}
-            </div>
-          `;
           
-          setTimeout(() => {
-            if (isUnlocked) {
-              window.initYouTubePlayer(post.id, ytId);
-            }
-          }, 100);
-        } else if (post.media_type === 'video') {
-          const canDownload = Number(post.allow_download) !== 0;
-          postContentHtml += `
-            <div class="post-single-video">
-                <div class="post-video-shell">
-                  <video src="${post.image_url}" class="post-video" preload="metadata" playsinline poster="${post.thumbnail_url || ''}" oncontextmenu="return false;"></video>
-                  <div class="custom-video-controls">
-                    <div class="video-controls-left">
-                      <button type="button" class="video-control-btn" data-video-control="play" aria-label="Play video" title="Play">
-                        <i data-lucide="play"></i>
-                      </button>
-                    </div>
-                    <div class="video-controls-center">
-                      <span class="video-time video-current-time">0:00</span>
-                      <input type="range" class="video-progress-slider" min="0" max="100" value="0" step="0.1" aria-label="Video progress">
-                      <span class="video-time video-duration">0:00</span>
-                    </div>
-                    <div class="video-controls-right">
-                      <button type="button" class="video-control-btn" data-video-control="mute" aria-label="Mute" title="Sound">
-                        <i data-lucide="volume-2"></i>
-                      </button>
-                      <input type="range" class="video-volume-slider" min="0" max="1" value="1" step="0.05" aria-label="Volume">
-                      ${canDownload ? `
-                        <button type="button" class="video-control-btn" data-video-download data-post-id="${post.id}" data-video-url="${post.image_url}" data-video-author="${post.author_username}" aria-label="Download video with watermark" title="Download with watermark">
-                          <i data-lucide="download"></i>
-                        </button>
-                      ` : ''}
-                      <button type="button" class="video-control-btn" data-video-control="fullscreen" aria-label="Fullscreen" title="Fullscreen">
-                        <i data-lucide="maximize"></i>
-                      </button>
-                    </div>
-                  </div>
-                <div class="video-download-status" aria-live="polite"></div>
+          livePlayerHtml = `
+            <div class="post-live-shell" data-youtube-id="${ytId}" id="live-player-container-${post.id}" style="position: relative; border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 16/9;">
+              <iframe id="youtube-player-${post.id}" 
+                      src="https://www.youtube.com/embed/${ytId}?enablejsapi=1&controls=0&autoplay=0&rel=0" 
+                      frameborder="0" 
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                      allowfullscreen
+                      style="width: 100%; height: 100%; border-radius: 12px; display: block;">
+              </iframe>
+              <div class="custom-live-controls" style="position: absolute; bottom: 12px; left: 12px; right: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; z-index: 10; pointer-events: auto;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <button type="button" class="live-control-btn play-pause-btn" data-post-id="${post.id}" aria-label="Play/Pause" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; width: 36px; height: 36px; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(8px); transition: all 0.2s;">
+                    <i data-lucide="play" class="play-icon" style="width: 16px; height: 16px;"></i>
+                    <i data-lucide="pause" class="pause-icon" style="width: 16px; height: 16px; display: none;"></i>
+                  </button>
+                  <span class="live-badge-overlay" style="background: #ef4444; color: white; font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 6px; letter-spacing: 0.05em; display: flex; align-items: center; gap: 4px;">
+                    <span style="width: 6px; height: 6px; background: white; border-radius: 50%; display: inline-block; animation: pulse 1.5s infinite;"></span> LIVE
+                  </span>
+                </div>
+                ${endLiveBtnHtml}
               </div>
             </div>
           `;
         } else {
-          const postImages = [post.image_url, post.image_url_2, post.image_url_3, post.image_url_4].filter(Boolean);
-          const imgCount = postImages.length;
-          if (imgCount === 4) {
-            postContentHtml += `
-              <div class="post-images-grid grid-4" data-images="${postImages.join(',')}" style="cursor: pointer;">
-                <div class="grid-image-wrapper">
-                  <img src="${post.image_url}" class="post-img" alt="Post attachment 1">
-                </div>
-                <div class="grid-image-wrapper">
-                  <img src="${post.image_url_2}" class="post-img" alt="Post attachment 2">
-                </div>
-                <div class="grid-image-wrapper">
-                  <img src="${post.image_url_3}" class="post-img" alt="Post attachment 3">
-                </div>
-                <div class="grid-image-wrapper">
-                  <img src="${post.image_url_4}" class="post-img" alt="Post attachment 4">
-                </div>
+          livePlayerHtml = `
+            <!-- Paywall Card -->
+            <div class="post-live-paywall" id="live-player-container-${post.id}" data-youtube-id="${ytId}" style="position: relative; border-radius: 12px; overflow: hidden; background: linear-gradient(135deg, #1e1b4b 0%, #311042 100%); aspect-ratio: 16/9; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; border: 1px solid rgba(255,255,255,0.08); box-shadow: inset 0 0 40px rgba(0,0,0,0.6);">
+              <div style="background: rgba(255, 255, 255, 0.06); border-radius: 50%; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(8px);">
+                <i data-lucide="lock" style="color: #a78bfa; width: 24px; height: 24px;"></i>
               </div>
-            `;
-          } else if (imgCount === 3) {
-            postContentHtml += `
-              <div class="post-images-grid grid-2" data-images="${postImages.join(',')}" style="cursor: pointer;">
-                <div class="grid-image-wrapper">
-                  <img src="${post.image_url}" class="post-img" alt="Post attachment 1">
-                </div>
-                <div class="grid-image-wrapper" style="position: relative;">
-                  <img src="${post.image_url_2}" class="post-img" alt="Post attachment 2">
-                  <div class="more-images-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: 700; pointer-events: none; backdrop-filter: blur(2px);">
-                    +1
+              <h4 style="margin: 0 0 6px 0; color: white; font-size: 15px; font-weight: 700;">Diffusion Premium</h4>
+              <p style="margin: 0 0 16px 0; color: #cbd5e1; font-size: 12px; max-width: 260px;">Accédez au flux vidéo en direct de ${post.author_name}</p>
+              <button type="button" class="unlock-live-btn" data-post-id="${post.id}" data-price="${post.live_price}" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); border: none; border-radius: 10px; padding: 10px 20px; color: white; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);">
+                <i data-lucide="zap" style="width: 14px; height: 14px;"></i>
+                Débloquer pour ${Number(post.live_price).toFixed(2)}$
+              </button>
+            </div>
+          `;
+        }
+
+        postContentHtml += `
+          <div class="post-single-live" style="padding: 0 20px 16px 20px;">
+            ${livePlayerHtml}
+          </div>
+        `;
+        
+        setTimeout(() => {
+          if (isUnlocked) {
+            window.initYouTubePlayer(post.id, ytId);
+          }
+        }, 100);
+      } else if (post.media_type === 'video') {
+        const canDownload = Number(post.allow_download) !== 0;
+        postContentHtml += `
+          <div class="post-single-video">
+              <div class="post-video-shell">
+                <video src="${post.image_url}" class="post-video" preload="metadata" playsinline poster="${post.thumbnail_url || ''}" oncontextmenu="return false;"></video>
+                <div class="custom-video-controls">
+                  <div class="video-controls-left">
+                    <button type="button" class="video-control-btn" data-video-control="play" aria-label="Play video" title="Play">
+                      <i data-lucide="play"></i>
+                    </button>
+                  </div>
+                  <div class="video-controls-center">
+                    <span class="video-time video-current-time">0:00</span>
+                    <input type="range" class="video-progress-slider" min="0" max="100" value="0" step="0.1" aria-label="Video progress">
+                    <span class="video-time video-duration">0:00</span>
+                  </div>
+                  <div class="video-controls-right">
+                    <button type="button" class="video-control-btn" data-video-control="mute" aria-label="Mute" title="Sound">
+                      <i data-lucide="volume-2"></i>
+                    </button>
+                    <input type="range" class="video-volume-slider" min="0" max="1" value="1" step="0.05" aria-label="Volume">
+                    ${canDownload ? `
+                      <button type="button" class="video-control-btn" data-video-download data-post-id="${post.id}" data-video-url="${post.image_url}" data-video-author="${post.author_username}" aria-label="Download video with watermark" title="Download with watermark">
+                        <i data-lucide="download"></i>
+                      </button>
+                    ` : ''}
+                    <button type="button" class="video-control-btn" data-video-control="fullscreen" aria-label="Fullscreen" title="Fullscreen">
+                      <i data-lucide="maximize"></i>
+                    </button>
                   </div>
                 </div>
+              <div class="video-download-status" aria-live="polite"></div>
+            </div>
+          </div>
+        `;
+      } else {
+        const postImages = [post.image_url, post.image_url_2, post.image_url_3, post.image_url_4].filter(Boolean);
+        const imgCount = postImages.length;
+        if (imgCount === 4) {
+          postContentHtml += `
+            <div class="post-images-grid grid-4" data-images="${postImages.join(',')}" style="cursor: pointer;">
+              <div class="grid-image-wrapper">
+                <img src="${post.image_url}" class="post-img" alt="Post attachment 1">
               </div>
-            `;
-          } else if (imgCount === 2) {
-            postContentHtml += `
-              <div class="post-images-grid grid-2" data-images="${postImages.join(',')}" style="cursor: pointer;">
-                <div class="grid-image-wrapper">
-                  <img src="${post.image_url}" class="post-img" alt="Post attachment 1">
+              <div class="grid-image-wrapper">
+                <img src="${post.image_url_2}" class="post-img" alt="Post attachment 2">
+              </div>
+              <div class="grid-image-wrapper">
+                <img src="${post.image_url_3}" class="post-img" alt="Post attachment 3">
+              </div>
+              <div class="grid-image-wrapper">
+                <img src="${post.image_url_4}" class="post-img" alt="Post attachment 4">
+              </div>
+            </div>
+          `;
+        } else if (imgCount === 3) {
+          postContentHtml += `
+            <div class="post-images-grid grid-2" data-images="${postImages.join(',')}" style="cursor: pointer;">
+              <div class="grid-image-wrapper">
+                <img src="${post.image_url}" class="post-img" alt="Post attachment 1">
+              </div>
+              <div class="grid-image-wrapper" style="position: relative;">
+                <img src="${post.image_url_2}" class="post-img" alt="Post attachment 2">
+                <div class="more-images-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: 700; pointer-events: none; backdrop-filter: blur(2px);">
+                  +1
                 </div>
-                <div class="grid-image-wrapper">
-                  <img src="${post.image_url_2}" class="post-img" alt="Post attachment 2">
-                </div>
               </div>
-            `;
-          } else if (imgCount === 1) {
-            postContentHtml += `
-              <div class="post-single-image" data-images="${postImages.join(',')}" style="cursor: pointer;">
-                <img src="${post.image_url}" class="post-img" alt="Post attachment">
+            </div>
+          `;
+        } else if (imgCount === 2) {
+          postContentHtml += `
+            <div class="post-images-grid grid-2" data-images="${postImages.join(',')}" style="cursor: pointer;">
+              <div class="grid-image-wrapper">
+                <img src="${post.image_url}" class="post-img" alt="Post attachment 1">
               </div>
-            `;
-          }
+              <div class="grid-image-wrapper">
+                <img src="${post.image_url_2}" class="post-img" alt="Post attachment 2">
+              </div>
+            </div>
+          `;
+        } else if (imgCount === 1) {
+          postContentHtml += `
+            <div class="post-single-image" data-images="${postImages.join(',')}" style="cursor: pointer;">
+              <img src="${post.image_url}" class="post-img" alt="Post attachment">
+            </div>
+          `;
         }
       }
+    }
 
-      let tradeBtnHtml = '';
-      if (post.is_trade) {
-        const isPossessor = (post.last_possession_user_id === window.currentUserId);
-        tradeBtnHtml = `
-            <button class="post-action-btn trade-btn ${isPossessor ? 'disabled' : ''}" 
-                    data-post-id="${post.id}" 
-                    data-price="${post.trade_price}" 
-                    data-possessor-id="${post.last_possession_user_id}"
-                    ${isPossessor ? 'disabled' : ''}
-                    style="${isPossessor ? 'opacity: 0.6; cursor: not-allowed; color: #8b5cf6;' : 'color: #8b5cf6;'}">
-              <i data-lucide="repeat"></i>
-              <span class="action-label">Trade (<span class="trade-price-val">$${parseFloat(post.trade_price).toFixed(2)}</span>)</span>
+    let tradeBtnHtml = '';
+    if (post.is_trade) {
+      const isPossessor = (post.last_possession_user_id === window.currentUserId);
+      tradeBtnHtml = `
+          <button class="post-action-btn trade-btn ${isPossessor ? 'disabled' : ''}" 
+                  data-post-id="${post.id}" 
+                  data-price="${post.trade_price}" 
+                  data-possessor-id="${post.last_possession_user_id}"
+                  ${isPossessor ? 'disabled' : ''}
+                  style="${isPossessor ? 'opacity: 0.6; cursor: not-allowed; color: #8b5cf6;' : 'color: #8b5cf6;'}">
+            <i data-lucide="repeat"></i>
+            <span class="action-label">Trade (<span class="trade-price-val">$${parseFloat(post.trade_price).toFixed(2)}</span>)</span>
+          </button>
+        `;
+    }
+
+    newPost.innerHTML = `
+      <header class="post-header">
+        <div class="post-author-info">
+          <a href="/profile/u/${encodeURIComponent(post.author_username)}" class="post-author-link" style="display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none;">
+            <div class="avatar author-avatar">
+              <img src="${post.author_avatar}" alt="${post.author_name}">
+            </div>
+            <div class="author-details">
+              <h3 class="author-name">${post.author_name}${renderCertificationBadgeHtml(post.author_certification_type, 6)}</h3>
+              <span class="post-time">Just now</span>
+            </div>
+          </a>
+          ${Number(post.user_id) !== Number(window.currentUserId) ? `
+            <button type="button" class="follow-toggle-btn" data-follow-target-id="${post.user_id}" data-following="${Number(post.is_author_following) ? '1' : '0'}" title="${Number(post.is_author_following) ? 'Unfollow' : 'Follow'}" aria-label="${Number(post.is_author_following) ? 'Unfollow' : 'Follow'}">
+              <i data-lucide="${Number(post.is_author_following) ? 'user-check' : 'user-plus'}" style="width: 14px; height: 14px;"></i>
             </button>
-          `;
-      }
+          ` : ''}
+        </div>
+        <button type="button" class="post-options-btn" aria-label="Post settings">
+          <i data-lucide="more-horizontal"></i>
+        </button>
+      </header>
+      
+      <div class="post-content">
+        ${postContentHtml}
+      </div>
+      
+      <footer class="post-footer">
+        <div class="post-actions">
+          <button class="post-action-btn like-btn" data-likes="${post.likes_count || 0}">
+            <i data-lucide="heart"></i>
+            <span class="action-label"><span class="like-count">${post.likes_count || 0}</span><span class="btn-text-label"> Like</span></span>
+          </button>
+          <button class="post-action-btn comment-btn" data-comments="${post.comments_count || 0}">
+            <i data-lucide="message-circle"></i>
+            <span class="action-label"><span class="comment-count">${post.comments_count || 0}</span><span class="btn-text-label"> Comment</span></span>
+          </button>
+          <button class="post-action-btn share-btn" data-shares="${post.shares_count || 0}">
+            <i data-lucide="share-2"></i>
+            <span class="action-label"><span class="share-count">${post.shares_count || 0}</span><span class="btn-text-label"> Share</span></span>
+          </button>
+          <button class="post-action-btn gift-btn" type="button">
+            <i data-lucide="gift"></i>
+            <span class="action-label"><span class="btn-text-label"> Gift</span></span>
+          </button>
+          ${tradeBtnHtml}
+        </div>
+        <button class="post-bookmark-btn" aria-label="Bookmark post">
+          <i data-lucide="bookmark"></i>
+        </button>
+      </footer>
 
-      newPost.innerHTML = `
-        <header class="post-header">
-          <div class="post-author-info">
-            <a href="/profile/u/${encodeURIComponent(post.author_username)}" class="post-author-link" style="display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none;">
-              <div class="avatar author-avatar">
-                <img src="${post.author_avatar}" alt="${post.author_name}">
-              </div>
-              <div class="author-details">
-                <h3 class="author-name">${post.author_name}${renderCertificationBadgeHtml(post.author_certification_type, 6)}</h3>
-                <span class="post-time">Just now</span>
-              </div>
-            </a>
-            ${Number(post.user_id) !== Number(window.currentUserId) ? `
-              <button type="button" class="follow-toggle-btn" data-follow-target-id="${post.user_id}" data-following="${Number(post.is_author_following) ? '1' : '0'}" title="${Number(post.is_author_following) ? 'Unfollow' : 'Follow'}" aria-label="${Number(post.is_author_following) ? 'Unfollow' : 'Follow'}">
-                <i data-lucide="${Number(post.is_author_following) ? 'user-check' : 'user-plus'}" style="width: 14px; height: 14px;"></i>
+      <!-- Comments Section -->
+      <div class="post-comments-section" style="display: none; padding: 16px 20px; border-top: 1px solid var(--border-color); background-color: var(--bg-app); border-bottom-left-radius: var(--border-radius-card); border-bottom-right-radius: var(--border-radius-card); flex-direction: column; gap: 12px;">
+        <div class="comments-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        <div class="comment-input-row" style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+          <div class="avatar" style="width: 28px; height: 28px; flex-shrink: 0; overflow: hidden;">
+            <img src="${window.currentUserAvatar || '/images/default-avatar.png'}" style="width:100%; height:100%; object-fit:cover;">
+          </div>
+          <div class="input-wrapper" style="position: relative; flex: 1; display: flex; align-items: center;">
+            <input type="text" placeholder="Write a comment..." class="comment-input" style="width: 100%; padding: 8px 90px 8px 12px; border-radius: 18px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary); font-size: 12.5px; outline: none;">
+            
+            <!-- Action buttons inside input -->
+            <div class="comment-actions-container" style="position: absolute; right: 8px; display: flex; align-items: center; gap: 4px;">
+              <button type="button" class="comment-icon-btn voice-trigger-btn" title="Record a voice note" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
+                <i data-lucide="mic" style="width: 14px; height: 14px;"></i>
               </button>
-            ` : ''}
-          </div>
-          <button type="button" class="post-options-btn" aria-label="Post settings">
-            <i data-lucide="more-horizontal"></i>
-          </button>
-        </header>
-        
-        <div class="post-content">
-          ${postContentHtml}
-        </div>
-        
-        <footer class="post-footer">
-          <div class="post-actions">
-            <button class="post-action-btn like-btn" data-likes="0">
-              <i data-lucide="heart"></i>
-              <span class="action-label"><span class="like-count">0</span><span class="btn-text-label"> Like</span></span>
-            </button>
-            <button class="post-action-btn comment-btn" data-comments="0">
-              <i data-lucide="message-circle"></i>
-              <span class="action-label"><span class="comment-count">0</span><span class="btn-text-label"> Comment</span></span>
-            </button>
-            <button class="post-action-btn share-btn" data-shares="${post.shares_count || 0}">
-              <i data-lucide="share-2"></i>
-              <span class="action-label"><span class="share-count">${post.shares_count || 0}</span><span class="btn-text-label"> Share</span></span>
-            </button>
-            <button class="post-action-btn gift-btn" type="button">
-              <i data-lucide="gift"></i>
-              <span class="action-label"><span class="btn-text-label"> Gift</span></span>
-            </button>
-            ${tradeBtnHtml}
-          </div>
-          <button class="post-bookmark-btn" aria-label="Bookmark post">
-            <i data-lucide="bookmark"></i>
-          </button>
-        </footer>
-
-        <!-- Comments Section -->
-        <div class="post-comments-section" style="display: none; padding: 16px 20px; border-top: 1px solid var(--border-color); background-color: var(--bg-app); border-bottom-left-radius: var(--border-radius-card); border-bottom-right-radius: var(--border-radius-card); flex-direction: column; gap: 12px;">
-          <div class="comments-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
-          <div class="comment-input-row" style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
-            <div class="avatar" style="width: 28px; height: 28px; flex-shrink: 0; overflow: hidden;">
-              <img src="${window.currentUserAvatar || '/images/default-avatar.png'}" style="width:100%; height:100%; object-fit:cover;">
+              <button type="button" class="comment-icon-btn emoji-trigger-btn" title="Add an emoji" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
+                <i data-lucide="smile" style="width: 14px; height: 14px;"></i>
+              </button>
+              <button type="button" class="submit-comment-btn" style="color: var(--primary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center;">
+                <i data-lucide="send" style="width: 14px; height: 14px;"></i>
+              </button>
             </div>
-            <div class="input-wrapper" style="position: relative; flex: 1; display: flex; align-items: center;">
-              <input type="text" placeholder="Write a comment..." class="comment-input" style="width: 100%; padding: 8px 90px 8px 12px; border-radius: 18px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary); font-size: 12.5px; outline: none;">
-              
-              <!-- Action buttons inside input -->
-              <div class="comment-actions-container" style="position: absolute; right: 8px; display: flex; align-items: center; gap: 4px;">
-                <button type="button" class="comment-icon-btn voice-trigger-btn" title="Record a voice note" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
-                  <i data-lucide="mic" style="width: 14px; height: 14px;"></i>
-                </button>
-                <button type="button" class="comment-icon-btn emoji-trigger-btn" title="Add an emoji" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
-                  <i data-lucide="smile" style="width: 14px; height: 14px;"></i>
-                </button>
-                <button type="button" class="submit-comment-btn" style="color: var(--primary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center;">
-                  <i data-lucide="send" style="width: 14px; height: 14px;"></i>
-                </button>
+            
+            <!-- Recording UI (Overlay, hidden by default) -->
+            <div class="voice-recording-overlay" style="display: none; position: absolute; left: 0; right: 0; top: 0; bottom: 0; background: var(--bg-card); border-radius: 18px; align-items: center; justify-content: space-between; padding: 0 12px; border: 1px solid var(--primary);">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="recording-indicator" style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: pulse-recording 1s infinite;"></span>
+                <span class="recording-timer" style="font-size: 12px; color: var(--text-primary); font-family: monospace;">00:00</span>
               </div>
-              
-              <!-- Recording UI (Overlay, hidden by default) -->
-              <div class="voice-recording-overlay" style="display: none; position: absolute; left: 0; right: 0; top: 0; bottom: 0; background: var(--bg-card); border-radius: 18px; align-items: center; justify-content: space-between; padding: 0 12px; border: 1px solid var(--primary);">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span class="recording-indicator" style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: pulse-recording 1s infinite;"></span>
-                  <span class="recording-timer" style="font-size: 12px; color: var(--text-primary); font-family: monospace;">00:00</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <button type="button" class="cancel-recording-btn" title="Annuler" style="color: var(--text-muted); background: none; border: none; cursor: pointer; display: flex; align-items: center;">
-                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
-                  </button>
-                  <button type="button" class="stop-recording-btn" title="Send voice note" style="color: var(--primary); background: none; border: none; cursor: pointer; display: flex; align-items: center;">
-                    <i data-lucide="check" style="width: 14px; height: 14px;"></i>
-                  </button>
-                </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="cancel-recording-btn" title="Annuler" style="color: var(--text-muted); background: none; border: none; cursor: pointer; display: flex; align-items: center;">
+                  <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                </button>
+                <button type="button" class="stop-recording-btn" title="Send voice note" style="color: var(--primary); background: none; border: none; cursor: pointer; display: flex; align-items: center;">
+                  <i data-lucide="check" style="width: 14px; height: 14px;"></i>
+                </button>
               </div>
             </div>
           </div>
         </div>
-      `;
+      </div>
+    `;
 
+    bindPostOptionButtons(newPost);
+
+    // Format hashtags and mentions rich text dynamically
+    hydrateHashtagMetadataFromText(post.content || '').then(() => {
+      const textNodes = newPost.querySelectorAll('.formatted-hashtag-text');
+      textNodes.forEach(node => {
+        node.innerHTML = renderHashtagRichText(post.content || '');
+      });
+    });
+    initCustomVideoPlayers(newPost);
+
+    return newPost;
+  };
+
+  // 4. Render new post in real time
+  socket.on('post-created', (post) => {
+    if (postsContainer) {
+      const newPost = createPostCardElement(post);
       // Prepend to feed container
       postsContainer.insertBefore(newPost, postsContainer.firstChild);
-      bindPostOptionButtons(newPost);
-
-      // Format hashtags and mentions rich text dynamically
-      hydrateHashtagMetadataFromText(post.content || '').then(() => {
-        const textNodes = newPost.querySelectorAll('.formatted-hashtag-text');
-        textNodes.forEach(node => {
-          node.innerHTML = renderHashtagRichText(post.content || '');
-        });
-      });
-      initCustomVideoPlayers(newPost);
 
       // Re-create icons
       if (typeof lucide !== 'undefined') {
@@ -13910,6 +13918,80 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ── Database-Backed Global Search (Desktop & Mobile) ──
+  const updateFeedWithSearch = (posts) => {
+    if (!postsContainer) return;
+
+    // 1. Mark all existing non-dynamic posts as hidden
+    const existingCards = postsContainer.querySelectorAll('.post-card:not(.search-dynamic-post)');
+    existingCards.forEach(card => card.classList.add('search-hidden'));
+
+    // 2. Process search result posts
+    const receivedIds = new Set();
+    const sortedSearchPosts = [...(posts || [])].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    const activeDynamicCards = new Set();
+
+    sortedSearchPosts.forEach(post => {
+      receivedIds.add(post.id);
+      const existingCard = document.getElementById(`post-${post.id}`);
+      if (existingCard) {
+        existingCard.classList.remove('search-hidden');
+        if (existingCard.classList.contains('search-dynamic-post')) {
+          activeDynamicCards.add(existingCard);
+        }
+      } else {
+        const newCard = createPostCardElement(post);
+        newCard.classList.add('search-dynamic-post');
+        
+        // Find correct position to insert to maintain chronological order in feed
+        const cards = Array.from(postsContainer.querySelectorAll('.post-card'));
+        const newPostTime = new Date(post.created_at || 0).getTime();
+        let inserted = false;
+        
+        for (let i = 0; i < cards.length; i++) {
+          const card = cards[i];
+          const cardTimeStr = card.getAttribute('data-created-at');
+          const cardTime = cardTimeStr ? new Date(cardTimeStr).getTime() : 0;
+          if (cardTime < newPostTime) {
+            postsContainer.insertBefore(newCard, card);
+            inserted = true;
+            break;
+          }
+        }
+        
+        if (!inserted) {
+          postsContainer.appendChild(newCard);
+        }
+        
+        activeDynamicCards.add(newCard);
+      }
+    });
+
+    // 3. Remove any dynamically added cards from previous searches that are NOT in the current search results
+    const dynamicCardsInDom = postsContainer.querySelectorAll('.search-dynamic-post');
+    dynamicCardsInDom.forEach(card => {
+      if (!activeDynamicCards.has(card)) {
+        card.remove();
+      }
+    });
+
+    // Re-create icons for new elements
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  };
+
+  const clearFeedSearchFilter = () => {
+    if (!postsContainer) return;
+    
+    // Remove all dynamically added search posts
+    postsContainer.querySelectorAll('.search-dynamic-post').forEach(el => el.remove());
+    
+    // Restore all original posts
+    postsContainer.querySelectorAll('.post-card').forEach(card => {
+      card.classList.remove('search-hidden');
+    });
+  };
+
   const performGlobalSearch = async (query, container, isDesktop = false) => {
     if (!container) return;
     container.innerHTML = `
@@ -13924,6 +14006,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
       if (!res.ok) throw new Error('Search request failed');
       const data = await res.json();
+
+      // Synchronize search results into feed in real-time
+      updateFeedWithSearch(data.posts);
 
       let html = '';
 
@@ -14047,10 +14132,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!query) {
         dropdown.style.display = 'none';
         dropdown.innerHTML = '';
+        clearFeedSearchFilter();
         return;
       }
       if (query.length < 2) {
         dropdown.style.display = 'none';
+        clearFeedSearchFilter();
         return;
       }
       debounceTimer = setTimeout(() => {
@@ -14092,6 +14179,7 @@ document.addEventListener('DOMContentLoaded', () => {
       mobileSearchOverlay.style.display = 'none';
       if (mobileSearchInput) mobileSearchInput.value = '';
       if (mobileSearchClear) mobileSearchClear.style.display = 'none';
+      clearFeedSearchFilter();
     });
   }
 
@@ -14101,6 +14189,7 @@ document.addEventListener('DOMContentLoaded', () => {
       mobileSearchInput.focus();
       mobileSearchClear.style.display = 'none';
       showMobileSearchPlaceholder();
+      clearFeedSearchFilter();
     });
   }
 
@@ -14114,9 +14203,13 @@ document.addEventListener('DOMContentLoaded', () => {
       clearTimeout(mobileDebounceTimer);
       if (!query) {
         showMobileSearchPlaceholder();
+        clearFeedSearchFilter();
         return;
       }
-      if (query.length < 2) return;
+      if (query.length < 2) {
+        clearFeedSearchFilter();
+        return;
+      }
       mobileDebounceTimer = setTimeout(() => {
         performGlobalSearch(query, mobileSearchResults, false);
       }, 300);

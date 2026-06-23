@@ -118,6 +118,10 @@ body[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   display: none !important;
 }
 
+.search-hidden {
+  display: none !important;
+}
+
 .progressive-feed-sentinel {
   width: 100%;
   height: 12px;
