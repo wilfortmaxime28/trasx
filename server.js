@@ -5365,9 +5365,62 @@ io.on('connection', (socket) => {
       const { gameId } = data || {};
       if (gameId) {
         socket.join(`game:${gameId}`);
+        const game = gamesManager.games[gameId];
+        if (game) {
+          const currentUserId = session?.userId;
+          if (currentUserId) {
+            if (Number(game.player1.id) === Number(currentUserId)) {
+              game.player1.socketId = socket.id;
+            } else if (game.player2 && Number(game.player2.id) === Number(currentUserId)) {
+              game.player2.socketId = socket.id;
+            }
+          }
+        }
       }
     } catch (err) {
       console.error('Error on game-room-join:', err);
+    }
+  });
+
+  socket.on('webrtc-signal', (data) => {
+    const { targetSocketId, signal } = data || {};
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('webrtc-signal', {
+        senderSocketId: socket.id,
+        senderUserId: session?.userId,
+        signal
+      });
+    }
+  });
+
+  socket.on('game-webrtc-state', (data) => {
+    const { gameId, isCamOn, isMicOn } = data || {};
+    const currentUserId = session?.userId;
+    if (gameId && currentUserId) {
+      const game = gamesManager.games[gameId];
+      if (game) {
+        let playerSlot = null;
+        if (Number(game.player1.id) === Number(currentUserId)) {
+          game.player1.isCamOn = isCamOn;
+          game.player1.isMicOn = isMicOn;
+          game.player1.socketId = socket.id;
+          playerSlot = 'p1';
+        } else if (game.player2 && Number(game.player2.id) === Number(currentUserId)) {
+          game.player2.isCamOn = isCamOn;
+          game.player2.isMicOn = isMicOn;
+          game.player2.socketId = socket.id;
+          playerSlot = 'p2';
+        }
+        if (playerSlot) {
+          io.to(`game:${gameId}`).emit('game-webrtc-state-updated', {
+            playerSlot,
+            userId: currentUserId,
+            isCamOn,
+            isMicOn,
+            socketId: socket.id
+          });
+        }
+      }
     }
   });
 

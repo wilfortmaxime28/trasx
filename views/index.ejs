@@ -3231,6 +3231,16 @@ function getYouTubeId(url) {
 
                     <!-- Spectator Live Badge and Button -->
                     <div class="game-header-actions">
+                      <!-- WebRTC Camera and Mic Toggles (Only visible to active players) -->
+                      <div id="webrtcControls" style="display: none; align-items: center; gap: 8px; margin-right: 8px;">
+                        <button id="gameCamBtn" class="game-webrtc-btn" type="button" title="<%= tText("Activer/Désactiver la caméra") %>" style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-main); cursor: pointer; transition: all 0.2s; padding: 0; outline: none;">
+                          <i data-lucide="video-off" style="width: 16px; height: 16px;"></i>
+                        </button>
+                        <button id="gameMicBtn" class="game-webrtc-btn" type="button" title="<%= tText("Activer/Désactiver le micro") %>" style="display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-main); cursor: pointer; transition: all 0.2s; padding: 0; outline: none;">
+                          <i data-lucide="mic-off" style="width: 16px; height: 16px;"></i>
+                        </button>
+                      </div>
+
                       <!-- Real-Time Viewer Indicator -->
                       <button id="spectatorsListBtn" class="spectators-badge-btn">
                         <span class="live-blink-dot"></span>
@@ -3253,8 +3263,9 @@ function getYouTubeId(url) {
                       
                       <!-- Player 1 -->
                       <div class="scoreboard-player p1">
-                        <div class="player-avatar-wrap">
+                        <div class="player-avatar-wrap" style="position: relative; cursor: pointer;">
                           <img id="gamePlayer1Avatar" src="/assets/avatar_placeholder.jpg" alt="<%= tText("Player 1") %>">
+                          <video id="gamePlayer1Video" autoplay playsinline muted style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; position: absolute; top: 0; left: 0; border: 2px solid var(--primary);"></video>
                           <span class="active-turn-ring"></span>
                         </div>
                         <div class="player-meta">
@@ -3273,8 +3284,9 @@ function getYouTubeId(url) {
 
                       <!-- Player 2 -->
                       <div class="scoreboard-player p2">
-                        <div class="player-avatar-wrap">
+                        <div class="player-avatar-wrap" style="position: relative; cursor: pointer;">
                           <img id="gamePlayer2Avatar" src="/assets/avatar_placeholder.jpg" alt="<%= tText("Player 2") %>">
+                          <video id="gamePlayer2Video" autoplay playsinline style="display: none; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; position: absolute; top: 0; left: 0; border: 2px solid #ec4899;"></video>
                           <span class="active-turn-ring"></span>
                         </div>
                         <div class="player-meta">
@@ -4986,6 +4998,35 @@ function getYouTubeId(url) {
             bindOnce(document.getElementById('submitAdBtn'), 'adSubmitClickBound', 'click', submitAdForm);
           })();
         </script>
+
+        <!-- WebRTC Camera Zoom Modal for Spectators -->
+        <div id="gameCameraZoomModal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 1010; background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(10px);">
+          <div class="modal-content" style="max-width: 600px; width: 90%; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; position: relative; box-shadow: var(--shadow-2xl);">
+            <button type="button" id="closeCameraZoomModal" class="modal-close-btn" style="position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-muted); cursor: pointer;" title="<%= tText("Fermer") %>">
+              <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+            
+            <h3 id="cameraZoomTitle" style="margin: 0 0 16px 0; font-size: 18px; color: var(--text-main); font-family: 'Outfit', sans-serif; font-weight: 700;">Caméra de Joueur</h3>
+            
+            <!-- Video Container -->
+            <div style="position: relative; width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); margin-bottom: 20px;">
+              <video id="zoomedPlayerVideo" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+              <!-- Placeholder in case camera has no stream yet -->
+              <div id="zoomedPlayerPlaceholder" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--text-muted);">
+                <i data-lucide="video-off" style="width: 48px; height: 48px; opacity: 0.5;"></i>
+                <span>La caméra n'est pas active.</span>
+              </div>
+            </div>
+            
+            <!-- Switch controls -->
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+              <button type="button" id="switchZoomPlayerBtn" class="settings-primary-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%);">
+                <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                <span>Voir l'autre joueur</span>
+              </button>
+            </div>
+          </div>
+        </div>
 
         <!-- JavaScript client file -->
         <script>

@@ -18670,6 +18670,30 @@ document.addEventListener('DOMContentLoaded', () => {
     if (gamesLobby) gamesLobby.style.display = 'none';
     if (activeGameArea) activeGameArea.style.display = 'grid';
 
+    // Show/Hide WebRTC Controls
+    const isPlayer = Number(game.player1.id) === Number(window.currentUserId) || 
+                     (game.player2 && Number(game.player2.id) === Number(window.currentUserId));
+    const webrtcControls = document.getElementById('webrtcControls');
+    if (webrtcControls) {
+      webrtcControls.style.display = (isPlayer && !isSpectating && game.opponentType === 'player') ? 'inline-flex' : 'none';
+    }
+
+    // Connect to WebRTC streams if camera is active
+    if (typeof cleanupGameWebRTC === 'function') {
+      cleanupGameWebRTC();
+    }
+    
+    if (game.opponentType === 'player') {
+      setTimeout(() => {
+        if (game.player1 && game.player1.socketId && game.player1.isCamOn && Number(game.player1.id) !== Number(window.currentUserId)) {
+          initiateConnection(game.player1.socketId, '1');
+        }
+        if (game.player2 && game.player2.socketId && game.player2.isCamOn && Number(game.player2.id) !== Number(window.currentUserId)) {
+          initiateConnection(game.player2.socketId, '2');
+        }
+      }, 1000);
+    }
+
     // Set headers
     const titleEl = document.getElementById('activeGameTitle');
     if (titleEl) titleEl.textContent = `${gameNames[game.gameType] || 'Jeu'} en Direct`;
@@ -19681,6 +19705,10 @@ document.addEventListener('DOMContentLoaded', () => {
       socket.emit('game-forfeit', { gameId: activeGame.id });
     }
 
+    if (typeof cleanupGameWebRTC === 'function') {
+      cleanupGameWebRTC();
+    }
+
     activeGame = null;
     window.isSpectatingActiveGame = false;
 
@@ -19691,6 +19719,24 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   if (leaveGameBtn) leaveGameBtn.addEventListener('click', performLeaveGame);
+  
+  const gameCamBtn = document.getElementById('gameCamBtn');
+  const gameMicBtn = document.getElementById('gameMicBtn');
+  if (gameCamBtn) {
+    gameCamBtn.addEventListener('click', () => {
+      if (typeof toggleLocalMedia === 'function') {
+        toggleLocalMedia('camera');
+      }
+    });
+  }
+  if (gameMicBtn) {
+    gameMicBtn.addEventListener('click', () => {
+      if (typeof toggleLocalMedia === 'function') {
+        toggleLocalMedia('mic');
+      }
+    });
+  }
+
   if (forfeitGameBtn) forfeitGameBtn.addEventListener('click', async () => {
     if (!activeGame) return;
     const confirmed = await openGameConfirmDialog({
@@ -22347,5 +22393,377 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     }
+  });
+
+  // ── WebRTC Live Game Streaming Variables ──
+  const rtcConfig = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  };
+
+  window.localGameStream = null;
+  window.gamePeerConnections = {}; // remoteSocketId -> RTCPeerConnection
+  let isCamOn = false;
+  let isMicOn = false;
+  window.activeZoomPlayerSlot = null; // '1' or '2' for the spectator zoom view
+
+  const toggleLocalMedia = async (type) => {
+    if (!activeGame) return;
+    try {
+      if (!window.localGameStream) {
+        // Request video and audio streams
+        window.localGameStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 320, height: 240, frameRate: 15, facingMode: 'user' },
+          audio: true
+        });
+        
+        // Disable both tracks initially so they only turn on when clicked
+        window.localGameStream.getVideoTracks().forEach(t => t.enabled = false);
+        window.localGameStream.getAudioTracks().forEach(t => t.enabled = false);
+      }
+
+      const isP1 = Number(activeGame.player1.id) === Number(window.currentUserId);
+      const playerSlot = isP1 ? '1' : '2';
+      const videoEl = document.getElementById(`gamePlayer${playerSlot}Video`);
+      const avatarEl = document.getElementById(`gamePlayer${playerSlot}Avatar`);
+
+      if (type === 'camera') {
+        isCamOn = !isCamOn;
+        window.localGameStream.getVideoTracks().forEach(t => t.enabled = isCamOn);
+        
+        // Update local video element
+        if (videoEl && avatarEl) {
+          if (isCamOn) {
+            videoEl.srcObject = window.localGameStream;
+            videoEl.style.display = 'block';
+            avatarEl.style.display = 'none';
+          } else {
+            videoEl.srcObject = null;
+            videoEl.style.display = 'none';
+            avatarEl.style.display = 'block';
+          }
+        }
+
+        // Update Cam toggle button visual
+        const camBtn = document.getElementById('gameCamBtn');
+        if (camBtn) {
+          camBtn.innerHTML = isCamOn ? '<i data-lucide="video"></i>' : '<i data-lucide="video-off"></i>';
+          camBtn.style.background = isCamOn ? 'var(--primary)' : 'var(--bg-input)';
+          camBtn.style.color = isCamOn ? 'white' : 'var(--text-main)';
+        }
+      } else if (type === 'mic') {
+        isMicOn = !isMicOn;
+        window.localGameStream.getAudioTracks().forEach(t => t.enabled = isMicOn);
+
+        // Update Mic toggle button visual
+        const micBtn = document.getElementById('gameMicBtn');
+        if (micBtn) {
+          micBtn.innerHTML = isMicOn ? '<i data-lucide="mic"></i>' : '<i data-lucide="mic-off"></i>';
+          micBtn.style.background = isMicOn ? 'var(--primary)' : 'var(--bg-input)';
+          micBtn.style.color = isMicOn ? 'white' : 'var(--text-main)';
+        }
+      }
+
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+
+      // Emit new WebRTC state to room
+      socket.emit('game-webrtc-state', {
+        gameId: activeGame.id,
+        isCamOn,
+        isMicOn
+      });
+
+      // Update tracks on all existing connections
+      Object.keys(window.gamePeerConnections).forEach(remoteSocketId => {
+        const pc = window.gamePeerConnections[remoteSocketId];
+        pc.getSenders().forEach(sender => {
+          try { pc.removeTrack(sender); } catch (e) {}
+        });
+        window.localGameStream.getTracks().forEach(track => {
+          pc.addTrack(track, window.localGameStream);
+        });
+      });
+
+    } catch (err) {
+      console.error('Failed to toggle local media:', err);
+      showToast('Impossible d\'accéder à la caméra ou au micro. Veuillez vérifier vos autorisations.');
+    }
+  };
+
+  const getOrCreatePC = (remoteSocketId, playerSlot, isIncoming) => {
+    if (!window.gamePeerConnections) window.gamePeerConnections = {};
+    if (window.gamePeerConnections[remoteSocketId]) {
+      return window.gamePeerConnections[remoteSocketId];
+    }
+
+    const pc = new RTCPeerConnection(rtcConfig);
+    window.gamePeerConnections[remoteSocketId] = pc;
+
+    // Send ICE candidate to target socket
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit('webrtc-signal', {
+          targetSocketId: remoteSocketId,
+          signal: { type: 'candidate', candidate: event.candidate }
+        });
+      }
+    };
+
+    // Receive remote media track stream
+    pc.ontrack = (event) => {
+      const stream = event.streams[0];
+      const videoEl = document.getElementById(`gamePlayer${playerSlot}Video`);
+      const avatarEl = document.getElementById(`gamePlayer${playerSlot}Avatar`);
+      
+      if (videoEl) {
+        videoEl.srcObject = stream;
+        videoEl.style.display = 'block';
+        if (avatarEl) avatarEl.style.display = 'none';
+      }
+
+      // Live refresh the zoom modal if this player is currently zoomed
+      if (window.activeZoomPlayerSlot === playerSlot) {
+        const zoomedVideo = document.getElementById('zoomedPlayerVideo');
+        const zoomedPlaceholder = document.getElementById('zoomedPlayerPlaceholder');
+        if (zoomedVideo) {
+          zoomedVideo.srcObject = stream;
+          zoomedVideo.style.display = 'block';
+          if (zoomedPlaceholder) zoomedPlaceholder.style.display = 'none';
+        }
+      }
+    };
+
+    // If local player has a stream, add the tracks to the connection
+    if (window.localGameStream) {
+      window.localGameStream.getTracks().forEach(track => {
+        pc.addTrack(track, window.localGameStream);
+      });
+    } else {
+      // If receiver only (e.g. spectator), add recvonly transceivers
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.addTransceiver('audio', { direction: 'recvonly' });
+    }
+
+    return pc;
+  };
+
+  const initiateConnection = async (remoteSocketId, playerSlot) => {
+    const pc = getOrCreatePC(remoteSocketId, playerSlot, false);
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.emit('webrtc-signal', {
+        targetSocketId: remoteSocketId,
+        signal: { type: 'offer', sdp: offer.sdp }
+      });
+    } catch (err) {
+      console.error('Error creating WebRTC offer:', err);
+    }
+  };
+
+  const cleanupGameWebRTC = () => {
+    if (window.gamePeerConnections) {
+      Object.keys(window.gamePeerConnections).forEach(id => {
+        try {
+          window.gamePeerConnections[id].close();
+        } catch (e) {}
+      });
+      window.gamePeerConnections = {};
+    }
+    if (window.localGameStream) {
+      window.localGameStream.getTracks().forEach(track => {
+        try {
+          track.stop();
+        } catch (e) {}
+      });
+      window.localGameStream = null;
+    }
+    isCamOn = false;
+    isMicOn = false;
+
+    // Reset button states
+    const camBtn = document.getElementById('gameCamBtn');
+    if (camBtn) {
+      camBtn.innerHTML = '<i data-lucide="video-off"></i>';
+      camBtn.style.background = 'var(--bg-input)';
+      camBtn.style.color = 'var(--text-main)';
+    }
+    const micBtn = document.getElementById('gameMicBtn');
+    if (micBtn) {
+      micBtn.innerHTML = '<i data-lucide="mic-off"></i>';
+      micBtn.style.background = 'var(--bg-input)';
+      micBtn.style.color = 'var(--text-main)';
+    }
+
+    // Restore avatars
+    ['1', '2'].forEach(slot => {
+      const videoEl = document.getElementById(`gamePlayer${slot}Video`);
+      const avatarEl = document.getElementById(`gamePlayer${slot}Avatar`);
+      if (videoEl) {
+        videoEl.srcObject = null;
+        videoEl.style.display = 'none';
+      }
+      if (avatarEl) avatarEl.style.display = 'block';
+    });
+
+    // Close zoom modal
+    const zoomModal = document.getElementById('gameCameraZoomModal');
+    if (zoomModal) zoomModal.style.display = 'none';
+    
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  window.toggleLocalMedia = toggleLocalMedia;
+  window.cleanupGameWebRTC = cleanupGameWebRTC;
+
+  // Handle incoming signals and events
+  if (socket) {
+    socket.on('webrtc-signal', async (data) => {
+      const { senderSocketId, senderUserId, signal } = data;
+      if (!activeGame) return;
+
+      let playerSlot = null;
+      if (Number(activeGame.player1.id) === Number(senderUserId)) {
+        playerSlot = '1';
+      } else if (activeGame.player2 && Number(activeGame.player2.id) === Number(senderUserId)) {
+        playerSlot = '2';
+      }
+
+      if (!playerSlot) return; // Skip signals not from active players
+
+      const pc = getOrCreatePC(senderSocketId, playerSlot, true);
+
+      try {
+        if (signal.type === 'offer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.emit('webrtc-signal', {
+            targetSocketId: senderSocketId,
+            signal: { type: 'answer', sdp: answer.sdp }
+          });
+        } else if (signal.type === 'answer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+        } else if (signal.type === 'candidate' && signal.candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        }
+      } catch (err) {
+        console.error('Error processing remote WebRTC signal:', err);
+      }
+    });
+
+    socket.on('game-webrtc-state-updated', (data) => {
+      const { playerSlot, userId, isCamOn, isMicOn, socketId } = data;
+      if (!activeGame) return;
+
+      const slotNum = playerSlot === 'p1' ? '1' : '2';
+
+      if (playerSlot === 'p1') {
+        activeGame.player1.isCamOn = isCamOn;
+        activeGame.player1.isMicOn = isMicOn;
+        activeGame.player1.socketId = socketId;
+      } else {
+        if (activeGame.player2) {
+          activeGame.player2.isCamOn = isCamOn;
+          activeGame.player2.isMicOn = isMicOn;
+          activeGame.player2.socketId = socketId;
+        }
+      }
+
+      const videoEl = document.getElementById(`gamePlayer${slotNum}Video`);
+      const avatarEl = document.getElementById(`gamePlayer${slotNum}Avatar`);
+
+      if (!isCamOn) {
+        if (videoEl) {
+          videoEl.srcObject = null;
+          videoEl.style.display = 'none';
+        }
+        if (avatarEl) avatarEl.style.display = 'block';
+
+        const isPlayer = Number(activeGame.player1.id) === Number(window.currentUserId) ||
+                         (activeGame.player2 && Number(activeGame.player2.id) === Number(window.currentUserId));
+        if (!isPlayer && socketId) {
+          if (window.gamePeerConnections[socketId]) {
+            try { window.gamePeerConnections[socketId].close(); } catch (e) {}
+            delete window.gamePeerConnections[socketId];
+          }
+        }
+
+        // Live refresh zoom modal if active
+        if (window.activeZoomPlayerSlot === slotNum) {
+          const zoomedVideo = document.getElementById('zoomedPlayerVideo');
+          const zoomedPlaceholder = document.getElementById('zoomedPlayerPlaceholder');
+          if (zoomedVideo) {
+            zoomedVideo.srcObject = null;
+            zoomedVideo.style.display = 'none';
+            if (zoomedPlaceholder) zoomedPlaceholder.style.display = 'flex';
+          }
+        }
+      } else {
+        if (Number(userId) !== Number(window.currentUserId)) {
+          initiateConnection(socketId, slotNum);
+        }
+      }
+    });
+  }
+
+  // Camera Zoom Modal triggers for Spectators
+  const openCameraZoomModal = (playerSlot) => {
+    if (!activeGame) return;
+    window.activeZoomPlayerSlot = playerSlot;
+    
+    const nameEl = document.getElementById(`gamePlayer${playerSlot}Name`);
+    const zoomTitle = document.getElementById('cameraZoomTitle');
+    if (zoomTitle && nameEl) {
+      zoomTitle.textContent = `Caméra de ${nameEl.textContent}`;
+    }
+
+    const sourceVideo = document.getElementById(`gamePlayer${playerSlot}Video`);
+    const zoomedVideo = document.getElementById('zoomedPlayerVideo');
+    const zoomedPlaceholder = document.getElementById('zoomedPlayerPlaceholder');
+
+    if (zoomedVideo && sourceVideo) {
+      if (sourceVideo.srcObject && sourceVideo.style.display !== 'none') {
+        zoomedVideo.srcObject = sourceVideo.srcObject;
+        zoomedVideo.style.display = 'block';
+        if (zoomedPlaceholder) zoomedPlaceholder.style.display = 'none';
+      } else {
+        zoomedVideo.srcObject = null;
+        zoomedVideo.style.display = 'none';
+        if (zoomedPlaceholder) zoomedPlaceholder.style.display = 'flex';
+      }
+    }
+
+    const modal = document.getElementById('gameCameraZoomModal');
+    if (modal) modal.style.display = 'flex';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  document.addEventListener('click', (e) => {
+    // Zoom modal trigger on avatar wrapper click
+    const wrap = e.target.closest('.player-avatar-wrap');
+    if (wrap && wrap.closest('.game-scoreboard')) {
+      const playerBlock = wrap.closest('.scoreboard-player');
+      if (playerBlock) {
+        const isP1 = playerBlock.classList.contains('p1');
+        openCameraZoomModal(isP1 ? '1' : '2');
+      }
+    }
+  });
+
+  // Switch camera zoom stream button click listener
+  document.getElementById('switchZoomPlayerBtn')?.addEventListener('click', () => {
+    const nextSlot = window.activeZoomPlayerSlot === '1' ? '2' : '1';
+    openCameraZoomModal(nextSlot);
+  });
+
+  // Close zoom modal click listener
+  document.getElementById('closeCameraZoomModal')?.addEventListener('click', () => {
+    const zoomModal = document.getElementById('gameCameraZoomModal');
+    if (zoomModal) zoomModal.style.display = 'none';
+    const zoomedVideo = document.getElementById('zoomedPlayerVideo');
+    if (zoomedVideo) zoomedVideo.srcObject = null;
   });
 });
