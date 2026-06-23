@@ -77,12 +77,29 @@
           </a>
         </nav>
 
-        <!-- PWA Install Button -->
-        <div class="pwa-install-wrapper" id="pwaInstallWrapper" style="display: none; padding: 0 15px; margin: 15px 0 10px;">
-          <button id="btnPwaInstall" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 14px; padding: 12px; border-radius: 12px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; color: white; cursor: pointer; font-weight: 600; box-shadow: 0 4px 15px rgba(99, 102, 241, 0.25); transition: all 0.2s ease;">
-            <i data-lucide="download"></i>
-            <span>Installer l'App</span>
-          </button>
+        <!-- Sidebar Ad Slot (especially visible on mobile/sidebar) -->
+        <div class="sidebar-ad-wrapper" style="padding: 0 15px; margin: 15px 0 10px;">
+          <% if (typeof activeAds !== 'undefined' && activeAds.length > 0) { %>
+            <% const sidebarAd = activeAds[0]; %>
+            <a href="<%= sidebarAd.ad_url %>" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit; display: block; background: var(--bg-card); border: 1px solid rgba(24, 119, 242, 0.2); border-radius: 12px; padding: 12px; box-shadow: var(--shadow-sm); overflow: hidden; transition: transform var(--transition-fast);">
+              <span style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 6px;">Sponsorisé</span>
+              <% if (sidebarAd.image_url) { %>
+                <div style="width: 100%; height: 90px; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 8px;">
+                  <img src="<%= sidebarAd.image_url %>" alt="<%= sidebarAd.title %>" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+              <% } %>
+              <h4 style="margin: 0; font-size: 12px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><%= sidebarAd.title %></h4>
+              <p style="margin: 2px 0 0 0; font-size: 11px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3;"><%= sidebarAd.description %></p>
+            </a>
+          <% } else { %>
+            <a href="#" class="sidebar-ad-placeholder-btn" style="text-decoration: none; color: inherit; display: block; background: var(--bg-card); border: 1px dashed rgba(24, 119, 242, 0.3); border-radius: 12px; padding: 12px; box-shadow: var(--shadow-sm); overflow: hidden; transition: transform var(--transition-fast); text-align: center;">
+              <div style="width: 100%; height: 80px; border-radius: 8px; overflow: hidden; background: linear-gradient(135deg, #1877f2 0%, #38bdf8 100%); display: flex; align-items: center; justify-content: center; color: white; margin-bottom: 8px;">
+                <i data-lucide="megaphone" style="width: 22px; height: 22px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));"></i>
+              </div>
+              <h4 style="margin: 0; font-size: 12px; font-weight: 700; color: var(--text-primary);"><%= typeof tText === 'function' ? tText("Create your self-serve Ad") : "Créer votre publicité" %></h4>
+              <p style="margin: 2px 0 0 0; font-size: 10px; color: var(--text-secondary); line-height: 1.3;"><%= typeof tText === 'function' ? tText("Get visibility and direct traffic to your website.") : "Gagnez en visibilité et attirez du trafic." %></p>
+            </a>
+          <% } %>
         </div>
 
         <!-- Sidebar Footer -->

@@ -224,6 +224,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     bindOnce(openAdModalBtn, 'adOpenBound', 'click', openModal);
     bindOnce(adPlaceholderBtn, 'adOpenBound', 'click', openModal);
+    document.querySelectorAll('.sidebar-ad-placeholder-btn').forEach((btn) => {
+      bindOnce(btn, 'adOpenBound', 'click', openModal);
+    });
     bindOnce(closeAdModalBtn, 'adCloseBound', 'click', closeModal);
     bindOnce(createAdModal, 'adBackdropBound', 'click', (event) => {
       if (event.target === createAdModal) closeModal();
@@ -13906,26 +13909,246 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // --- Header Search Bar Client-Side Filter ---
-  const headerSearchInput = document.querySelector('.search-bar input');
-  if (headerSearchInput) {
-    headerSearchInput.addEventListener('input', () => {
-      const query = headerSearchInput.value.trim().toLowerCase();
-      const postCards = document.querySelectorAll('#postsContainer .post-card');
-      postCards.forEach(card => {
-        const postContent = card.querySelector('.post-content');
-        const authorName = card.querySelector('.author-name');
-        const contentText = postContent ? postContent.textContent.toLowerCase() : '';
-        const authorText = authorName ? authorName.textContent.toLowerCase() : '';
+  // ── Database-Backed Global Search (Desktop & Mobile) ──
+  const performGlobalSearch = async (query, container, isDesktop = false) => {
+    if (!container) return;
+    container.innerHTML = `
+      <div style="padding: 24px; text-align: center; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;">
+        <div style="width: 28px; height: 28px; border: 2px solid var(--border-color); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <span style="font-size: 13px;">Recherche en cours...</span>
+      </div>
+    `;
+    if (isDesktop) container.style.display = 'block';
 
-        if (contentText.includes(query) || authorText.includes(query)) {
-          card.style.display = '';
-        } else {
-          card.style.display = 'none';
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      if (!res.ok) throw new Error('Search request failed');
+      const data = await res.json();
+
+      let html = '';
+
+      if ((!data.users || data.users.length === 0) && (!data.posts || data.posts.length === 0)) {
+        html = `<div class="search-results-empty" style="padding: 20px 16px; text-align: center; color: var(--text-muted); font-size: 13px;">Aucun résultat pour "${escapeHtml(query)}"</div>`;
+      } else {
+        // Users section
+        if (data.users && data.users.length > 0) {
+          html += `
+            <div class="search-results-section" style="padding: 6px 0; border-bottom: ${data.posts && data.posts.length > 0 ? '1px solid var(--border-color)' : 'none'};">
+              <div class="search-results-section-header" style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 16px 8px 16px;">Utilisateurs</div>
+          `;
+          data.users.forEach(user => {
+            const verifiedBadge = user.certType && user.certType !== 'None' 
+              ? `<span class="verified-badge" title="${escapeHtml(user.certType)}" data-type="${escapeHtml(user.certType)}" style="display: inline-flex; align-items: center; margin-left: 4px; color: var(--primary);"><i data-lucide="badge-check" style="width: 14px; height: 14px;"></i></span>` 
+              : '';
+            html += `
+              <a href="/profile/u/${escapeHtml(user.username)}" class="search-result-item" style="display: flex; align-items: center; gap: 12px; padding: 8px 16px; color: var(--text-primary); text-decoration: none; transition: background 0.15s ease;">
+                <img src="${escapeHtml(user.avatar)}" alt="${escapeHtml(user.name)}" class="search-result-avatar" style="width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+                <div class="search-result-info" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                  <div class="search-result-title" style="font-size: 14px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center;">
+                    ${escapeHtml(user.name)} ${verifiedBadge}
+                  </div>
+                  <div class="search-result-subtitle" style="font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@${escapeHtml(user.username)}</div>
+                </div>
+              </a>
+            `;
+          });
+          html += `</div>`;
         }
+
+        // Posts section
+        if (data.posts && data.posts.length > 0) {
+          html += `
+            <div class="search-results-section" style="padding: 6px 0;">
+              <div class="search-results-section-header" style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 16px 8px 16px;">Publications</div>
+          `;
+          data.posts.forEach(post => {
+            const mediaIndicator = post.mediaUrl 
+              ? `<div style="margin-left: auto; width: 44px; height: 44px; border-radius: 6px; overflow: hidden; background: #000; flex-shrink: 0;"><img src="${escapeHtml(post.mediaUrl)}" style="width: 100%; height: 100%; object-fit: cover;"></div>` 
+              : '';
+            const dateStr = new Date(post.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+            html += `
+              <a href="/#post-${escapeHtml(post.id)}" class="search-result-item" style="display: flex; align-items: flex-start; gap: 12px; padding: 10px 16px; color: var(--text-primary); text-decoration: none; transition: background 0.15s ease;">
+                <img src="${escapeHtml(post.author.avatar)}" alt="${escapeHtml(post.author.name)}" class="search-result-avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+                <div class="search-result-info" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                  <div class="search-result-title" style="font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(post.author.name)}</div>
+                  <div class="search-result-subtitle" style="font-size: 12px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.45; white-space: normal;">
+                    ${escapeHtml(post.content)}
+                  </div>
+                  <div class="search-result-meta" style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">${dateStr} · ${post.likesCount} J'aime · ${post.commentsCount} Comms</div>
+                </div>
+                ${mediaIndicator}
+              </a>
+            `;
+          });
+          html += `</div>`;
+        }
+      }
+
+      container.innerHTML = html;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+
+      // For desktop, add hover background transitions
+      container.querySelectorAll('.search-result-item').forEach(item => {
+        item.addEventListener('mouseenter', () => item.style.backgroundColor = 'var(--bg-hover)');
+        item.addEventListener('mouseleave', () => item.style.backgroundColor = 'transparent');
       });
+
+    } catch (err) {
+      console.error('[Global Search] Error:', err);
+      container.innerHTML = `<div class="search-results-empty" style="padding: 20px 16px; text-align: center; color: var(--danger); font-size: 13px;">Une erreur est survenue lors de la recherche.</div>`;
+    }
+  };
+
+  const showMobileSearchPlaceholder = () => {
+    const resultsContainer = document.getElementById('mobileSearchResults');
+    if (resultsContainer) {
+      resultsContainer.innerHTML = `
+        <div class="mobile-search-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--text-muted); text-align: center; padding-top: 60px;">
+          <i data-lucide="search" style="width: 40px; height: 40px; opacity: 0.3;"></i>
+          <p style="font-size: 14px;">Rechercher des utilisateurs ou des publications</p>
+        </div>
+      `;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+  };
+
+  // 1. Desktop Search Dropdown & live API query
+  const headerSearchInput = document.querySelector('.search-bar input');
+  const searchBar = document.querySelector('.search-bar');
+  if (headerSearchInput && searchBar) {
+    searchBar.style.position = 'relative';
+
+    let dropdown = searchBar.querySelector('.search-dropdown-results');
+    if (!dropdown) {
+      dropdown = document.createElement('div');
+      dropdown.className = 'search-dropdown-results';
+      dropdown.style.cssText = `
+        position: absolute;
+        top: 48px;
+        left: 0;
+        right: 0;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius-item);
+        box-shadow: var(--shadow-lg);
+        z-index: 1001;
+        max-height: 420px;
+        overflow-y: auto;
+        padding: 8px 0;
+        display: none;
+      `;
+      searchBar.appendChild(dropdown);
+    }
+
+    let debounceTimer;
+    headerSearchInput.addEventListener('input', () => {
+      const query = headerSearchInput.value.trim();
+      clearTimeout(debounceTimer);
+      if (!query) {
+        dropdown.style.display = 'none';
+        dropdown.innerHTML = '';
+        return;
+      }
+      if (query.length < 2) {
+        dropdown.style.display = 'none';
+        return;
+      }
+      debounceTimer = setTimeout(() => {
+        performGlobalSearch(query, dropdown, true);
+      }, 300);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!searchBar.contains(e.target)) {
+        dropdown.style.display = 'none';
+      }
+    });
+
+    headerSearchInput.addEventListener('focus', () => {
+      if (headerSearchInput.value.trim().length >= 2) {
+        dropdown.style.display = 'block';
+      }
     });
   }
+
+  // 2. Mobile Search Overlay
+  const mobileSearchBtn = document.getElementById('mobileSearchBtn');
+  const mobileSearchOverlay = document.getElementById('mobileSearchOverlay');
+  const mobileSearchCancel = document.getElementById('mobileSearchCancel');
+  const mobileSearchInput = document.getElementById('mobileSearchInput');
+  const mobileSearchClear = document.getElementById('mobileSearchClear');
+  const mobileSearchResults = document.getElementById('mobileSearchResults');
+
+  if (mobileSearchBtn && mobileSearchOverlay) {
+    mobileSearchBtn.addEventListener('click', () => {
+      mobileSearchOverlay.style.display = 'flex';
+      mobileSearchInput?.focus();
+      showMobileSearchPlaceholder();
+    });
+  }
+
+  if (mobileSearchCancel && mobileSearchOverlay) {
+    mobileSearchCancel.addEventListener('click', () => {
+      mobileSearchOverlay.style.display = 'none';
+      if (mobileSearchInput) mobileSearchInput.value = '';
+      if (mobileSearchClear) mobileSearchClear.style.display = 'none';
+    });
+  }
+
+  if (mobileSearchClear && mobileSearchInput) {
+    mobileSearchClear.addEventListener('click', () => {
+      mobileSearchInput.value = '';
+      mobileSearchInput.focus();
+      mobileSearchClear.style.display = 'none';
+      showMobileSearchPlaceholder();
+    });
+  }
+
+  if (mobileSearchInput && mobileSearchResults) {
+    let mobileDebounceTimer;
+    mobileSearchInput.addEventListener('input', () => {
+      const query = mobileSearchInput.value.trim();
+      if (mobileSearchClear) {
+        mobileSearchClear.style.display = query ? 'block' : 'none';
+      }
+      clearTimeout(mobileDebounceTimer);
+      if (!query) {
+        showMobileSearchPlaceholder();
+        return;
+      }
+      if (query.length < 2) return;
+      mobileDebounceTimer = setTimeout(() => {
+        performGlobalSearch(query, mobileSearchResults, false);
+      }, 300);
+    });
+  }
+
+  // 3. iOS PWA Install Banner Logic
+  const isIos = () => {
+    const ua = window.navigator.userAgent.toLowerCase();
+    return /iphone|ipad|ipod/.test(ua);
+  };
+  const isStandalone = () => ('standalone' in window.navigator) && (window.navigator.standalone);
+
+  if (isIos() && !isStandalone()) {
+    // Show iOS install banner after 30 seconds
+    setTimeout(() => {
+      const iosBanner = document.getElementById('iosPwaBanner');
+      if (iosBanner) {
+        iosBanner.style.display = 'block';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    }, 30000);
+  }
+
+  const iosBannerCloseBtn = document.getElementById('iosPwaBannerClose');
+  if (iosBannerCloseBtn) {
+    iosBannerCloseBtn.addEventListener('click', () => {
+      const iosBanner = document.getElementById('iosPwaBanner');
+      if (iosBanner) iosBanner.style.display = 'none';
+    });
+  }
+
 
   // --- Shorts Desktop Wheel Navigation ---
   let isScrollingReels = false;

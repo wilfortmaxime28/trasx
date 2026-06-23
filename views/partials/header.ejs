@@ -9,6 +9,9 @@
       <span>TrasX</span>
     </div>
     <div class="mobile-header-actions" style="display: flex; align-items: center; gap: 12px;">
+      <button class="icon-btn mobile-search-btn" id="mobileSearchBtn" aria-label="<%= tText("Search") %>" style="width: 36px; height: 36px;">
+        <i data-lucide="search" style="width: 18px; height: 18px;"></i>
+      </button>
       <button class="icon-btn mobile-notification-btn" aria-label="<%= t('header.notifications', 'Notifications') %>" data-notification-toggle>
         <i data-lucide="bell"></i>
         <span class="badge red notification-badge" style="<%= unreadCount > 0 ? '' : 'display:none;' %>"><%= unreadCount > 99 ? '99+' : unreadCount %></span>
@@ -22,6 +25,40 @@
       </button>
     </div>
   </header>
+
+  <!-- iOS PWA Install Banner -->
+  <div id="iosPwaBanner" class="ios-pwa-banner" style="display: none;">
+    <div class="ios-pwa-banner-content">
+      <div class="ios-pwa-logo"><div class="logo-icon" style="width:36px;height:36px;"></div></div>
+      <div class="ios-pwa-text">
+        <strong>Installer TrasX</strong>
+        <span>Appuyez sur <i data-lucide="share" style="width:13px;height:13px;display:inline-block;vertical-align:middle;"></i> puis "Sur l'écran d'accueil"</span>
+      </div>
+      <button id="iosPwaBannerClose" class="ios-pwa-close" aria-label="Fermer">
+        <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile Search Overlay -->
+  <div id="mobileSearchOverlay" class="mobile-search-overlay" role="dialog" aria-label="<%= tText("Search") %>" aria-modal="true">
+    <div class="mobile-search-header">
+      <div class="mobile-search-input-wrapper">
+        <i data-lucide="search" class="mobile-search-icon"></i>
+        <input type="text" id="mobileSearchInput" class="mobile-search-input" placeholder="<%= tText("Search users, posts...") %>" autocomplete="off" autocorrect="off" spellcheck="false">
+        <button id="mobileSearchClear" class="mobile-search-clear" style="display:none;" aria-label="Effacer">
+          <i data-lucide="x" style="width:16px;height:16px;"></i>
+        </button>
+      </div>
+      <button id="mobileSearchCancel" class="mobile-search-cancel"><%= tText("Cancel") %></button>
+    </div>
+    <div id="mobileSearchResults" class="mobile-search-results">
+      <div class="mobile-search-placeholder">
+        <i data-lucide="search" style="width: 40px; height: 40px; opacity: 0.3;"></i>
+        <p><%= tText("Search for people or posts") %></p>
+      </div>
+    </div>
+  </div>
 
   <!-- Top Navigation Bar -->
   <header class="app-header">

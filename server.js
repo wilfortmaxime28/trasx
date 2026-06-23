@@ -2022,7 +2022,85 @@ app.get('/api/backgrounds', requireAuth, async (req, res) => {
   }
 });
 
+// ── Route API Recherche Globale (utilisateurs + posts depuis la DB) ──
+app.get('/api/search', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = req.session.userId;
+    const rawQ = String(req.query.q || '').trim();
+    if (!rawQ || rawQ.length < 2) {
+      return res.json({ users: [], posts: [] });
+    }
+    const q = `%${rawQ}%`;
+
+    // Search users
+    const [userRows] = await db.query(
+      `SELECT id, first_name, last_name, username, avatar, certification_type
+       FROM users
+       WHERE id != ? AND (
+         first_name LIKE ? OR last_name LIKE ? OR username LIKE ?
+         OR CONCAT(first_name, ' ', last_name) LIKE ?
+       )
+       ORDER BY
+         CASE WHEN username LIKE ? THEN 0 ELSE 1 END,
+         first_name ASC
+       LIMIT 8`,
+      [currentUserId, q, q, q, q, q]
+    );
+
+    // Search posts
+    const [postRows] = await db.query(
+      `SELECT p.id, p.content, p.media_urls, p.created_at,
+              u.id AS author_id, u.first_name, u.last_name, u.username, u.avatar, u.certification_type,
+              (SELECT COUNT(*) FROM post_likes WHERE post_id = p.id) AS likes_count,
+              (SELECT COUNT(*) FROM comments WHERE post_id = p.id) AS comments_count
+       FROM posts p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.content LIKE ?
+       ORDER BY p.created_at DESC
+       LIMIT 10`,
+      [q]
+    );
+
+    const users = userRows.map(u => ({
+      id: u.id,
+      name: `${u.first_name} ${u.last_name}`.trim(),
+      username: u.username,
+      avatar: u.avatar || '/assets/avatar_placeholder.jpg',
+      certType: u.certification_type || null
+    }));
+
+    const posts = postRows.map(p => {
+      let mediaUrl = null;
+      try {
+        const parsed = JSON.parse(p.media_urls || '[]');
+        mediaUrl = Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : null;
+      } catch (_) {}
+      return {
+        id: p.id,
+        content: String(p.content || '').substring(0, 160),
+        mediaUrl,
+        createdAt: p.created_at,
+        likesCount: Number(p.likes_count || 0),
+        commentsCount: Number(p.comments_count || 0),
+        author: {
+          id: p.author_id,
+          name: `${p.first_name} ${p.last_name}`.trim(),
+          username: p.username,
+          avatar: p.avatar || '/assets/avatar_placeholder.jpg',
+          certType: p.certification_type || null
+        }
+      };
+    });
+
+    res.json({ users, posts });
+  } catch (err) {
+    console.error('[API /search] Error:', err);
+    res.status(500).json({ error: 'Search failed', users: [], posts: [] });
+  }
+});
+
 // Routes API Users (Search for mentions or online opponents)
+
 app.get('/api/users/search', requireAuth, async (req, res) => {
   try {
     let query = req.query.q || '';

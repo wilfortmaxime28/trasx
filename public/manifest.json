@@ -3,10 +3,13 @@
   "short_name": "TrasX",
   "description": "Premium Social Dashboard with Sleek Glassmorphism Design",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#090d16",
   "theme_color": "#090d16",
   "orientation": "any",
+  "lang": "fr",
+  "categories": ["social", "entertainment"],
   "icons": [
     {
       "src": "/assets/trasx-logo-mark.png",
@@ -18,7 +21,22 @@
       "src": "/assets/trasx-logo-mark.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/trasx-logo-mark.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/assets/trasx-logo-mark.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "TrasX Feed"
     }
   ]
 }
