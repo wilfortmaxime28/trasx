@@ -8177,28 +8177,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (mobileShortsBtn) {
     mobileShortsBtn.addEventListener('click', (e) => {
-      if (window.innerWidth <= 768) {
-        e.preventDefault();
-        window.location.href = mobileShortsBtn.getAttribute('href') || '/?view=shorts';
-      } else if (feedMainContent) {
+      if (feedMainContent) {
         e.preventDefault();
         showShortsView();
-      } else {
-        window.location.href = mobileShortsBtn.getAttribute('href') || '/?view=shorts';
       }
     });
   }
 
   if (mobileMessagesBtn) {
     mobileMessagesBtn.addEventListener('click', (e) => {
-      if (window.innerWidth <= 768) {
-        e.preventDefault();
-        window.location.href = mobileMessagesBtn.getAttribute('href') || '/?view=messages';
-      } else if (feedMainContent) {
+      if (feedMainContent) {
         e.preventDefault();
         showMessagesView();
-      } else {
-        window.location.href = mobileMessagesBtn.getAttribute('href') || '/?view=messages';
       }
     });
   }
@@ -8250,6 +8240,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const shortsSearchCloseBtn = document.getElementById('shortsSearchCloseBtn');
   const shortsSearchInput = document.getElementById('shortsSearchInput');
   const shortsSearchResults = document.getElementById('shortsSearchResults');
+
+  const updateUrlView = (view) => {
+    try {
+      const url = new URL(window.location.href);
+      if (view && view !== 'feed') {
+        url.searchParams.set('view', view);
+      } else {
+        url.searchParams.delete('view');
+      }
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const updateNavActiveStates = (view) => {
     // Desktop Nav
@@ -8308,10 +8312,11 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.classList.remove('viewing-games');
       window.currentView = 'shorts';
       updateNavActiveStates('shorts');
+      updateUrlView('shorts');
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
-      window.location.href = '/';
+      window.location.href = '/?view=shorts';
     }
   };
 
@@ -8420,6 +8425,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.classList.remove('viewing-games');
       window.currentView = 'bookmarks';
       updateNavActiveStates('bookmarks');
+      updateUrlView('bookmarks');
 
       // Hide stories and post creator
       const storiesWrapper = document.querySelector('.stories-wrapper');
@@ -8469,6 +8475,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.classList.remove('viewing-games');
       window.currentView = 'feed';
       updateNavActiveStates('feed');
+      updateUrlView('feed');
 
       // Restore stories and post creator
       const storiesWrapper = document.querySelector('.stories-wrapper');
@@ -8517,11 +8524,13 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.classList.add('viewing-messages');
       document.body.classList.remove('viewing-market');
       document.body.classList.remove('viewing-games');
+      window.currentView = 'messages';
       updateNavActiveStates('messages');
+      updateUrlView('messages');
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
-      window.location.href = '/';
+      window.location.href = '/?view=messages';
     }
   };
 
@@ -8546,6 +8555,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.classList.add('viewing-market');
       window.currentView = 'market';
       updateNavActiveStates('market');
+      updateUrlView('market');
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -13441,16 +13451,35 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast("Error: " + data.error);
   });
 
-  // URL parameters check to auto-load views (like bookmarks or games)
+  // Sync JS view state with server-rendered initial view (sections already visible via server HTML)
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('view') === 'bookmarks') {
-    setTimeout(() => {
-      showBookmarksView();
-    }, 100);
-  } else if (urlParams.get('view') === 'games') {
-    setTimeout(() => {
-      showGamesView();
-    }, 100);
+  const _initialView = document.body.getAttribute('data-initial-view') || urlParams.get('view') || 'feed';
+  if (_initialView && _initialView !== 'feed') {
+    window.currentView = _initialView;
+    // Set body viewing class if not already set
+    if (_initialView === 'shorts')   document.body.classList.add('viewing-shorts');
+    if (_initialView === 'messages') document.body.classList.add('viewing-messages');
+    if (_initialView === 'market')   document.body.classList.add('viewing-market');
+    if (_initialView === 'games')    document.body.classList.add('viewing-games');
+    // Sync active nav item
+    if (typeof updateNavActiveStates === 'function') updateNavActiveStates(_initialView);
+    // For bookmarks: filter posts client-side (server hides them, but JS needs state)
+    if (_initialView === 'bookmarks') {
+      setTimeout(() => {
+        const posts = document.querySelectorAll('.post-card');
+        let bookmarkedCount = 0;
+        posts.forEach(post => {
+          const bookmarkBtn = post.querySelector('.post-bookmark-btn');
+          if (bookmarkBtn && bookmarkBtn.classList.contains('bookmarked')) bookmarkedCount++;
+        });
+        const emptyState = document.getElementById('bookmarksEmptyState');
+        if (emptyState && bookmarkedCount === 0) emptyState.style.display = 'flex';
+      }, 200);
+    }
+    // For games: trigger lobby load
+    if (_initialView === 'games' && typeof loadGamesLobby === 'function') {
+      setTimeout(() => loadGamesLobby(), 200);
+    }
   }
 
   const kycCameraVideo = document.getElementById('kycCameraVideo');
@@ -19826,6 +19855,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.classList.add('viewing-games');
       window.currentView = 'games';
       updateNavActiveStates('games');
+      updateUrlView('games');
 
       // Keep the actual play room open when a game is active.
       if (activeGame) {

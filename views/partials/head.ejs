@@ -136,4 +136,12 @@
   <!-- Socket.io client -->
   <script src="/socket.io/socket.io.js"></script>
 </head>
-<body>
+<%
+  const _headView = typeof activeView !== 'undefined' ? activeView : 'feed';
+  const _bodyClass = (_headView === 'shorts') ? 'viewing-shorts'
+    : (_headView === 'messages') ? 'viewing-messages'
+    : (_headView === 'market') ? 'viewing-market'
+    : (_headView === 'games') ? 'viewing-games'
+    : '';
+%>
+<body class="<%= _bodyClass %>" data-initial-view="<%= _headView %>">

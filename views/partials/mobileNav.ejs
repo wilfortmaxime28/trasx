@@ -1,13 +1,18 @@
-<% const mobileMessageBadgeCount=(typeof messageInbox !=='undefined' && messageInbox && messageInbox.counts) ?
-  messageInbox.counts.requests : 0; %>
+<% 
+  const mobileMessageBadgeCount = (typeof messageInbox !== 'undefined' && messageInbox && messageInbox.counts)
+    ? messageInbox.counts.requests : 0;
+  const _navView = typeof activeView !== 'undefined' ? activeView : (typeof activeTab !== 'undefined' ? activeTab : 'feed');
+%>
   <!-- Mobile Bottom Navigation (Sticky on Mobile) -->
   <nav class="mobile-nav">
     <a href="/"
-      class="mobile-nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'feed' ? 'active' : (typeof activeTab === 'undefined' ? 'active' : '') %>"
+      class="mobile-nav-item <%= _navView === 'feed' || _navView === 'bookmarks' ? 'active' : '' %>"
       id="mobileHomeBtn" data-nav-action="feed">
       <i data-lucide="home"></i>
     </a>
-    <a href="/?view=shorts" class="mobile-nav-item" id="mobileShortsBtn" data-nav-action="shorts">
+    <a href="/?view=shorts"
+      class="mobile-nav-item <%= _navView === 'shorts' ? 'active' : '' %>"
+      id="mobileShortsBtn" data-nav-action="shorts">
       <i data-lucide="clapperboard"></i>
     </a>
     <a href="/" class="mobile-nav-item tiktok-btn-container" id="mobileCreatePostBtn" data-nav-action="create-post">
@@ -19,16 +24,18 @@
         </div>
       </div>
     </a>
-    <a href="/?view=messages" class="mobile-nav-item" id="mobileMessagesBtn" data-nav-action="messages">
+    <a href="/?view=messages"
+      class="mobile-nav-item <%= _navView === 'messages' ? 'active' : '' %>"
+      id="mobileMessagesBtn" data-nav-action="messages">
       <i data-lucide="message-square"></i>
-      <% if (mobileMessageBadgeCount> 0) { %>
+      <% if (mobileMessageBadgeCount > 0) { %>
         <span class="nav-badge red">
           <%= mobileMessageBadgeCount %>
         </span>
-        <% } %>
+      <% } %>
     </a>
     <a href="/profile"
-      class="mobile-nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'profile' ? 'active' : '' %>"
+      class="mobile-nav-item <%= _navView === 'profile' ? 'active' : '' %>"
       id="mobileProfileBtn" data-nav-action="profile">
       <i data-lucide="user"></i>
     </a>

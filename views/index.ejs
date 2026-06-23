@@ -1,5 +1,9 @@
 <%- include('partials/head') %>
 <%
+const currentView = (typeof activeView !== 'undefined' ? activeView : 'feed');
+const safePosts = Array.isArray(posts) ? posts : [];
+const bookmarkedPostsCount = safePosts.filter(p => p.is_bookmarked).length;
+
 function getYouTubeId(url) {
   if (!url) return null;
   const cleaned = url.trim();
@@ -28,11 +32,11 @@ function getYouTubeId(url) {
 
             <!-- Middle Feed Column -->
             <main class="feed-column">
-              <div id="feedMainContent" style="display: flex; flex-direction: column; gap: 24px; width: 100%;">
+              <div id="feedMainContent" style="display: <%= (currentView === 'feed' || currentView === 'bookmarks') ? 'flex' : 'none' %>; flex-direction: column; gap: 24px; width: 100%;">
                 <!-- Stories Horizontal Container -->
-                <div class="stories-wrapper stories-loading" id="storiesWrapper">
+                <div class="stories-wrapper stories-loading" id="storiesWrapper" style="<%= currentView !== 'feed' ? 'display: none;' : '' %>">
                   <!-- Stories skeleton -->
-                  <div id="skeletonStories" class="sk-section skeleton-stories-row" aria-hidden="true">
+                  <div id="skeletonStories" class="sk-section skeleton-stories-row" aria-hidden="true" style="<%= currentView !== 'feed' ? 'display: none;' : '' %>">
                     <% for(let _ss = 0; _ss < 7; _ss++) { %>
                     <div class="skeleton-story-card">
                       <div class="skeleton-story-avatar skeleton-base"></div>
@@ -174,7 +178,7 @@ function getYouTubeId(url) {
 
                               <% if (!isPartiallyBlocked && !isPaused) { %>
                                 <!-- Create Post Card -->
-                                <div class="create-post-card">
+                                <div class="create-post-card" style="<%= currentView !== 'feed' ? 'display: none;' : '' %>">
                                   <div class="create-post-upper">
                                     <div class="create-post-upper-row">
                                       <div class="avatar post-creator-avatar">
@@ -634,7 +638,7 @@ function getYouTubeId(url) {
                                 <% } %>
 
                                   <!-- Bookmarks Empty State -->
-                                  <div id="bookmarksEmptyState" class="bookmarks-empty-state">
+                                  <div id="bookmarksEmptyState" class="bookmarks-empty-state" style="<%= currentView === 'bookmarks' && bookmarkedPostsCount === 0 ? 'display: flex;' : '' %>">
                                     <div class="empty-icon-container">
                                       <i data-lucide="bookmark"></i>
                                     </div>
@@ -644,7 +648,7 @@ function getYouTubeId(url) {
                                   </div>
 
                                   <!-- Skeleton Feed (shown while content loads) -->
-                                  <div id="skeletonFeed" aria-hidden="true">
+                                  <div id="skeletonFeed" aria-hidden="true" style="<%= currentView !== 'feed' ? 'display: none;' : '' %>">
                                     <% for(let _sk = 0; _sk < 4; _sk++) { %>
                                     <div class="skeleton-post-card">
                                       <div class="skeleton-header">
@@ -806,7 +810,8 @@ function getYouTubeId(url) {
                                                     data-progressive-index="<%= postIndex %>"
                                                     data-created-at="<%= post.created_at ? (post.created_at instanceof Date ? post.created_at.toISOString() : String(post.created_at)) : '' %>"
                                                     data-post-user-id="<%= post.user_id %>"
-                                                    data-challenge-type="<%= post.challenge_type || '' %>">
+                                                    data-challenge-type="<%= post.challenge_type || '' %>"
+                                                    style="<%= currentView === 'bookmarks' && !post.is_bookmarked ? 'display: none;' : '' %>">
                                                     <header class="post-header">
                                                       <div class="post-author-info">
                                                         <a href="/profile/u/<%= post.author_username %>"
@@ -1851,7 +1856,7 @@ function getYouTubeId(url) {
               </div>
 
               <div class="market-container-section" id="marketSection"
-                style="display: none; flex-direction: column; gap: 22px; width: 100%;">
+                style="display: <%= currentView === 'market' ? 'flex' : 'none' %>; flex-direction: column; gap: 22px; width: 100%;">
                 <% const safeMarketDefaultCurrencyCode = typeof marketDefaultCurrencyCode !== 'undefined' && marketDefaultCurrencyCode ? marketDefaultCurrencyCode : 'USD'; %>
                 <% const safeMarketCurrencyOptions = typeof marketCurrencyOptions !== 'undefined' && Array.isArray(marketCurrencyOptions) && marketCurrencyOptions.length
                   ? marketCurrencyOptions
@@ -2557,7 +2562,7 @@ function getYouTubeId(url) {
 
               <!-- Shorts Column View (Hidden by default) -->
               <div class="shorts-container-section" id="shortsSection"
-                style="display: none; flex-direction: column; gap: 20px; width: 100%;">
+                style="display: <%= currentView === 'shorts' ? 'flex' : 'none' %>; flex-direction: column; gap: 20px; width: 100%;">
                 <button type="button" class="shorts-mobile-search-btn" id="shortsMobileSearchBtn" aria-label="<%= tText("Rechercher dans les shorts") %>">
                   <i data-lucide="search" style="width: 18px; height: 18px;"></i>
                 </button>
@@ -2893,7 +2898,7 @@ function getYouTubeId(url) {
               </div>
 
               <!-- Games Section (Real-Time Catalog & Multiplayer Lounge) -->
-              <div class="games-container-section" id="gamesSection" style="display: none;">
+              <div class="games-container-section" id="gamesSection" style="display: <%= currentView === 'games' ? 'block' : 'none' %>;">
                 
                 <!-- 1. Games Lobby (Catalog + Live Games List) -->
                 <div id="gamesLobby" class="games-lobby">
@@ -3332,7 +3337,7 @@ function getYouTubeId(url) {
 
               <!-- Messages Column View (Hidden by default, for mobile/tablet page view) -->
               <div class="mobile-messages-section" id="mobileMessagesSection"
-                style="display: none; flex-direction: column; gap: 20px; width: 100%;">
+                style="display: <%= currentView === 'messages' ? 'flex' : 'none' %>; flex-direction: column; gap: 20px; width: 100%;">
                 <!-- Messages Header -->
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0;">
                   <h2

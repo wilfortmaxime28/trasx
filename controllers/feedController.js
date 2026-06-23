@@ -475,7 +475,8 @@ class FeedController {
         dashboard,
         statusStatus: req.query.success || null,
         statusError: req.query.error || null,
-        activeTab: 'feed'
+        activeTab: 'feed',
+        activeView: req.query.view || 'feed'
       });
     } catch (err) {
       console.error(err);
