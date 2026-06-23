@@ -270,9 +270,11 @@ function getYouTubeId(url) {
                     data-user-avatar="<%= profileUser.avatar %>"
                     data-user-online="<%= profileIsOnline ? '1' : '0' %>"
                     data-user-presence="<%= profilePresenceText || 'Offline' %>"
+                    data-user-username="<%= profileUser.username %>"
                     title="<%= tText("Demander de jouer") %>"
-                    style="background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.2s;"
-                    onmouseover="this.style.transform='scale(1.15)'"
+                    style="background: none; border: none; padding: 0; cursor: <%= profileIsOnline ? 'pointer' : 'not-allowed' %>; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.2s, opacity 0.2s, filter 0.2s; <%= profileIsOnline ? '' : 'opacity: 0.5; filter: grayscale(100%);' %>"
+                    <%= profileIsOnline ? '' : 'disabled' %>
+                    onmouseover="if(!this.disabled) this.style.transform='scale(1.15)'"
                     onmouseout="this.style.transform='scale(1)'">
                     <i data-lucide="gamepad-2" style="width: 22px; height: 22px; color: var(--primary); flex-shrink: 0;"></i>
                   </button>

@@ -440,7 +440,7 @@ class FeedController {
       const followersCount = await User.getFollowersCount(currentUserId);
       const postLikes = await Post.getTotalLikesForUser(currentUserId);
       const reelLikes = await Reel.getTotalLikesForUser(currentUserId);
-      const totalLikesCount = postLikes + reelLikes;
+      const totalLikesCount = Number(postLikes) + Number(reelLikes);
 
       await Promise.all([
         Post.recordDailyViews(initiallyVisiblePostIds, currentUserId),

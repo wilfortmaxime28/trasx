@@ -4022,6 +4022,26 @@ document.addEventListener('DOMContentLoaded', () => {
   socket.on('presence-updated', (data) => {
     if (!data || typeof data.userId === 'undefined') return;
     syncChatPresenceInLists(Number(data.userId), !!data.isOnline, data.presenceText || '');
+
+    // Dynamically update profile gamepad request button state
+    const profileBtn = document.querySelector(`.profile-game-request-btn[data-user-id="${data.userId}"]`);
+    if (profileBtn) {
+      const isOnline = !!data.isOnline;
+      profileBtn.dataset.userOnline = isOnline ? '1' : '0';
+      profileBtn.dataset.userPresence = data.presenceText || 'Offline';
+      if (isOnline) {
+        profileBtn.removeAttribute('disabled');
+        profileBtn.style.cursor = 'pointer';
+        profileBtn.style.opacity = '1';
+        profileBtn.style.filter = 'none';
+      } else {
+        profileBtn.setAttribute('disabled', 'true');
+        profileBtn.style.cursor = 'not-allowed';
+        profileBtn.style.opacity = '0.5';
+        profileBtn.style.filter = 'grayscale(100%)';
+        profileBtn.style.transform = 'scale(1)';
+      }
+    }
   });
 
   socket.on('chat-message-status', (data) => {
@@ -10008,6 +10028,8 @@ document.addEventListener('DOMContentLoaded', () => {
       showMessagesView();
     } else if (requestedView === 'market') {
       showMarketView();
+    } else if (requestedView === 'games') {
+      showGamesView();
     } else if (requestedView === 'events') {
       window.location.href = '/events';
     }
@@ -16930,11 +16952,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const contactId = profileBtn.dataset.userId;
       const contactName = profileBtn.dataset.userName || 'Conversation';
       const avatarUrl = profileBtn.dataset.userAvatar || '/assets/avatar_placeholder.jpg';
-      const isOnline = profileBtn.dataset.userOnline === '1';
-      const presenceText = profileBtn.dataset.userPresence || '';
+      const username = profileBtn.dataset.userUsername || '';
 
-      openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText);
-      openGameRequestModal(contactId, contactName, avatarUrl, isOnline, presenceText);
+      window.location.href = `/?view=games&opponentId=${contactId}&opponentName=${encodeURIComponent(contactName)}&opponentAvatar=${encodeURIComponent(avatarUrl)}&opponentUsername=${encodeURIComponent(username)}`;
       return;
     }
 
@@ -17382,7 +17402,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (socket) {
-    socket.on('presence-updated', async () => {
+    socket.on('presence-updated', async (data) => {
       const playerRadio = document.querySelector('input[name="setupOpponent"]:checked');
       const playerSearchVisible = setupPlayerChoiceWrapper && setupPlayerChoiceWrapper.style.display !== 'none';
       if (playerRadio && playerRadio.value === 'player' && playerSearchVisible) {
@@ -17394,6 +17414,53 @@ document.addEventListener('DOMContentLoaded', () => {
   const initialOpponentRadio = document.querySelector('input[name="setupOpponent"]:checked');
   if (initialOpponentRadio && initialOpponentRadio.value === 'player') {
     loadOnlineOpponentUsers({ keepOpen: true });
+  }
+
+  // Handle pre-selected game opponent from query parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const opponentId = urlParams.get('opponentId');
+  if (opponentId) {
+    const opponentName = urlParams.get('opponentName') || '';
+    const opponentAvatar = urlParams.get('opponentAvatar') || '/assets/avatar_placeholder.jpg';
+    const opponentUsername = urlParams.get('opponentUsername') || '';
+
+    // 1. Select the "player" option
+    const playerRadio = document.querySelector('input[name="setupOpponent"][value="player"]');
+    if (playerRadio) {
+      playerRadio.checked = true;
+      playerRadio.dispatchEvent(new Event('change'));
+    }
+
+    // 2. Disable opponent radios so the user cannot toggle back to Bot
+    document.querySelectorAll('input[name="setupOpponent"]').forEach(radio => {
+      radio.disabled = true;
+      const parentLabel = radio.closest('.sub-choice-option');
+      if (parentLabel) {
+        parentLabel.style.pointerEvents = 'none';
+        if (radio.value === 'bot') {
+          parentLabel.style.opacity = '0.5';
+        }
+      }
+    });
+
+    // 3. Set the selected opponent details
+    selectedOpponentPlayerId = opponentId;
+    if (selectedGameOpponentAvatar) selectedGameOpponentAvatar.src = opponentAvatar;
+    if (selectedGameOpponentName) selectedGameOpponentName.textContent = opponentName;
+    if (selectedGameOpponentUsername) selectedGameOpponentUsername.textContent = `@${opponentUsername} • En ligne`;
+    if (selectedGameOpponentWrapper) selectedGameOpponentWrapper.style.display = 'flex';
+
+    // 4. Hide search input and its label so they cannot search for another player
+    if (gamePlayerSearchInput) {
+      gamePlayerSearchInput.style.display = 'none';
+      const searchLabel = gamePlayerSearchInput.closest('.setup-option-group')?.querySelector('.setup-group-label');
+      if (searchLabel) searchLabel.style.display = 'none';
+    }
+
+    // 5. Hide the remove button so they cannot clear the pre-selected player
+    if (clearSelectedGameOpponentBtn) {
+      clearSelectedGameOpponentBtn.style.display = 'none';
+    }
   }
 
   // Start game emitter
