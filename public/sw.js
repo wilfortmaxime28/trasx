@@ -1,11 +1,20 @@
-// TrasX Service Worker v3 — Network-first with offline fallback
-const CACHE_NAME = 'trasx-v3';
+// TrasX Service Worker v4 — Network-first with offline fallback
+const CACHE_NAME = 'trasx-v4';
 const OFFLINE_URL = '/';
 const STATIC_ASSETS = [
+  '/',
   '/css/styles.css',
   '/js/client.js',
   '/assets/trasx-logo-mark.png',
-  '/assets/avatar_placeholder.jpg'
+  '/assets/trasx-logo.png',
+  '/assets/trasx-logo-mark-v2.png',
+  '/assets/trasx-logo-mark-v3.png',
+  '/assets/trasx-logo-mark-v4.png',
+  '/assets/trasx-logo-mark-v5.png',
+  '/assets/avatar_placeholder.jpg',
+  '/assets/avatar_placeholder.svg',
+  '/manifest.json',
+  'https://unpkg.com/lucide@latest'
 ];
 
 // ── Install ──────────────────────────────────────────────────
@@ -38,18 +47,24 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
-  // Only handle GET requests on our origin
-  if (request.method !== 'GET' || !request.url.startsWith(self.location.origin)) return;
+  // Only handle GET requests
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  const isSameOrigin = request.url.startsWith(self.location.origin);
+  const isAllowedCdn = url.hostname.includes('unpkg.com') || url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com');
+
+  if (!isSameOrigin && !isAllowedCdn) return;
 
   // Skip socket.io and API calls — always network
-  const url = new URL(request.url);
   if (url.pathname.startsWith('/socket.io') || url.pathname.startsWith('/api/')) return;
 
   event.respondWith(
     fetch(request)
       .then((response) => {
-        // Cache successful responses for static assets
-        if (response && response.status === 200 && response.type === 'basic') {
+        // Cache successful responses for static assets and allowed CDNs
+        const isAllowedType = response.type === 'basic' || response.type === 'cors';
+        if (response && response.status === 200 && isAllowedType) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(request, clone).catch(() => {});
