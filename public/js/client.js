@@ -8016,6 +8016,21 @@ document.addEventListener('DOMContentLoaded', () => {
     notificationItemsList.addEventListener('click', (e) => {
       const item = e.target.closest('.notification-item');
       if (item) {
+        if (item.classList.contains('is-unread')) {
+          const notificationId = item.getAttribute('data-notification-id');
+          if (notificationId) {
+            item.classList.remove('is-unread');
+            item.style.background = 'transparent';
+            if (socket && socket.connected) {
+              socket.emit('notification-mark-single-read', { notificationId }, (res) => {
+                if (res && typeof res.unreadCount !== 'undefined') {
+                  setNotificationBadgeCount(res.unreadCount);
+                }
+              });
+            }
+          }
+        }
+
         const adUrl = item.getAttribute('data-ad-url');
         if (adUrl) {
           window.open(adUrl, '_blank');
@@ -14072,8 +14087,52 @@ document.addEventListener('DOMContentLoaded', () => {
       container.innerHTML = html;
       if (typeof lucide !== 'undefined') lucide.createIcons();
 
-      // For desktop, add hover background transitions
+      // Click on search result item handler
       container.querySelectorAll('.search-result-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          const href = item.getAttribute('href');
+          if (href && href.includes('#post-')) {
+            e.preventDefault();
+            const postId = href.split('#post-')[1];
+            const targetEl = document.getElementById(`post-${postId}`);
+
+            // Hide search result dropdowns
+            const searchDropdowns = document.querySelectorAll('.search-dropdown-results');
+            searchDropdowns.forEach(drop => drop.style.display = 'none');
+
+            // Hide mobile search overlay if active
+            const mobOverlay = document.getElementById('mobileSearchOverlay');
+            if (mobOverlay) {
+              mobOverlay.style.display = 'none';
+              const mobileSearchInput = document.getElementById('mobileSearchInput');
+              const mobileSearchClear = document.getElementById('mobileSearchClear');
+              if (mobileSearchInput) mobileSearchInput.value = '';
+              if (mobileSearchClear) mobileSearchClear.style.display = 'none';
+            }
+
+            if (targetEl) {
+              // Scroll to feed view if it was hidden
+              if (typeof showFeedView === 'function') {
+                showFeedView();
+              }
+              
+              // Smooth scroll to target post
+              setTimeout(() => {
+                targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                // Flash highlight effect
+                targetEl.style.transition = 'outline 0.3s ease, box-shadow 0.3s ease';
+                targetEl.style.outline = '2px solid var(--primary)';
+                targetEl.style.boxShadow = '0 0 16px var(--primary)';
+                setTimeout(() => {
+                  targetEl.style.outline = '';
+                  targetEl.style.boxShadow = '';
+                }, 2000);
+              }, 100);
+            }
+          }
+        });
+
         item.addEventListener('mouseenter', () => item.style.backgroundColor = 'var(--bg-hover)');
         item.addEventListener('mouseleave', () => item.style.backgroundColor = 'transparent');
       });

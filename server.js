@@ -5044,6 +5044,31 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('notification-mark-single-read', async (data, ack) => {
+    try {
+      const currentUserId = session.userId;
+      if (!currentUserId) return;
+      const notificationId = data?.notificationId;
+      if (!notificationId) {
+        throw new Error('ID de notification manquant');
+      }
+
+      await Notification.markSingleRead(notificationId, currentUserId);
+      
+      const unreadCount = await Notification.getUnreadCount(currentUserId);
+      io.to(`user:${currentUserId}`).emit('notification-count-updated', { unreadCount });
+
+      if (typeof ack === 'function') {
+        ack({ success: true, unreadCount });
+      }
+    } catch (err) {
+      console.error('Notification mark-single-read error:', err);
+      if (typeof ack === 'function') {
+        ack({ error: 'Unable to mark notification as read.' });
+      }
+    }
+  });
+
   // --- REAL-TIME GAMES SOCKET EVENTS ---
   socket.on('games-list-get', (ack) => {
     try {

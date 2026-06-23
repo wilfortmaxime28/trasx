@@ -128,6 +128,19 @@ class Notification {
     );
     return result.affectedRows;
   }
+
+  static async markSingleRead(notificationId, userId) {
+    const [result] = await db.query(
+      `
+        UPDATE notifications
+        SET is_read = 1,
+            read_at = NOW()
+        WHERE id = ? AND recipient_id = ? AND is_read = 0
+      `,
+      [notificationId, userId]
+    );
+    return result.affectedRows;
+  }
 }
 
 module.exports = Notification;
