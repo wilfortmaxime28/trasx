@@ -55,6 +55,9 @@ class GamesManager {
     if (gameType === 'puissance4') {
       gameType = 'connect4';
     }
+    if (gameType === 'morpion') {
+      gameType = 'gomoku';
+    }
     if (gameType === 'echecs' || gameType === 'mathduel') {
       throw new Error('Ce jeu n est plus disponible.');
     }

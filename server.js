@@ -1461,25 +1461,6 @@ app.post('/api/wallet/address', requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Format d\'adresse BEP-20 invalide.' });
     }
 
-    // Check if this is the user's first withdrawal and if they have passed KYC
-    const [withdrawalCountRows] = await db.query(
-      "SELECT COUNT(*) AS count FROM bsc_withdrawals WHERE user_id = ? AND status != 'failed'",
-      [userId]
-    );
-    const isFirstWithdrawal = (withdrawalCountRows[0]?.count || 0) === 0;
-
-    const [kycRows] = await db.query(
-      "SELECT id FROM kyc_requests WHERE user_id = ? AND request_type = 'withdrawal' AND status = 'approved' LIMIT 1",
-      [userId]
-    );
-    const hasPassedKyc = kycRows.length > 0;
-
-    if (isFirstWithdrawal && !hasPassedKyc) {
-      return res.status(400).json({
-        success: false,
-        error: "Veuillez d'abord passer votre KYC de retrait avant de configurer votre adresse de portefeuille."
-      });
-    }
 
     // Check if already updated in the last 7 days
     const user = await User.getById(userId);
@@ -1535,21 +1516,15 @@ app.get('/api/wallet/deposit-info', requireAuth, async (req, res) => {
     );
     const hasPassedKyc = kycRows.length > 0;
     
-    const isKycRestricted = isFirstWithdrawal && !hasPassedKyc;
-
-    if (!isKycRestricted) {
-      // Generate QR code data URL
-      qrDataUrl = await QRCode.toDataURL(platformWallet, {
-        width: 200,
-        margin: 2,
-        color: {
-          dark: '#0f172a',
-          light: '#ffffff'
-        }
-      });
-    } else {
-      platformWallet = null;
-    }
+    // Generate QR code data URL
+    qrDataUrl = await QRCode.toDataURL(platformWallet, {
+      width: 200,
+      margin: 2,
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff'
+      }
+    });
 
     res.json({
       success: true,
@@ -4652,6 +4627,9 @@ io.on('connection', (socket) => {
           if (gameType === 'puissance4') {
             gameType = 'connect4';
           }
+          if (gameType === 'morpion') {
+            gameType = 'gomoku';
+          }
 
           try {
             // Create game session
@@ -4670,6 +4648,9 @@ io.on('connection', (socket) => {
 
             // Store game ID in gameData
             gameData.gameId = game.id;
+
+            // Broadcast the updated live games list to all connected clients
+            io.emit('game-list-updated', gamesManager.getLiveGames());
           } catch (gameErr) {
             console.error('Error creating/joining game session on invitation accept:', gameErr);
             gameData.status = 'error';

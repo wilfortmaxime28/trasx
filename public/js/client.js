@@ -15775,14 +15775,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
           }
 
-          if (data.isFirstWithdrawal && !data.hasPassedKyc) {
-            showToast("Veuillez d'abord passer votre KYC de retrait.");
-            closeModal('depositModal');
-            setTimeout(() => {
-              if (withdrawBtn) withdrawBtn.click();
-            }, 300);
-            return;
-          }
+
           
           if (!data.userWallet) {
             // Step 1: needs config
@@ -16810,7 +16803,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div style="display: flex; flex-direction: column; gap: 6px;">
             <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">Sélectionnez le jeu</label>
             <select name="game" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 14px; outline: none;">
-              <option value="morpion">🎮 Morpion (Tic-Tac-Toe)</option>
+              <option value="gomoku">🎮 Morpion / Gomoku</option>
               <option value="connect4">🔴 Puissance 4</option>
               <option value="tablefootball">⚽ Football Table</option>
             </select>
@@ -17768,7 +17761,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const canShowReplayButton = () => {
     if (!activeGame || window.isSpectatingActiveGame) return false;
     const isPlayer = activeGame.player1.id === window.currentUserId || (activeGame.player2 && activeGame.player2.id === window.currentUserId);
-    return isPlayer && Number(activeGame.rounds || 1) <= 1;
+    return isPlayer && Number(activeGame.rounds || 1) > 1;
   };
 
   const updateActiveGameSubtitle = () => {

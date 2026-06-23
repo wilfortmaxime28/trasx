@@ -7792,6 +7792,7 @@ body[data-theme="dark"] .chat-icon-btn:hover {
 .chat-input {
   flex: 1 1 auto;
   min-width: 0;
+  width: 0;
   height: 36px;
   border: 1px solid var(--border-color);
   border-radius: 18px;
@@ -7810,6 +7811,7 @@ body[data-theme="dark"] .chat-icon-btn:hover {
 .chat-send-btn {
   width: 36px;
   height: 36px;
+  flex: 0 0 36px;
   border-radius: 50%;
   border: none;
   background-color: var(--primary);
@@ -7928,7 +7930,7 @@ body[data-theme="dark"] .chat-icon-btn:hover {
   }
 
   .chat-header {
-    height: 56px;
+    height: calc(60px + env(safe-area-inset-top));
     padding-top: env(safe-area-inset-top);
   }
 
