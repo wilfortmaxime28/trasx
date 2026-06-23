@@ -153,7 +153,20 @@ function getYouTubeId(url) {
         border-right: 1px solid var(--border-color);
       }
 
-      .stat-box:last-child {
+      button.stat-box {
+        background: none;
+        border: none;
+        border-right: 1px solid var(--border-color);
+        padding: 0;
+        margin: 0;
+        width: 100%;
+        font-family: inherit;
+        cursor: pointer;
+        outline: none;
+        display: block;
+      }
+
+      .stat-box:last-child, button.stat-box:last-child {
         border-right: none;
       }
 
@@ -600,18 +613,18 @@ function getYouTubeId(url) {
 
               <!-- TIKTOK STYLE STATS -->
               <div class="profile-stats-container">
-                <div class="stat-box">
+                <button type="button" class="stat-box" data-follow-trigger="following">
                   <div class="stat-number" data-follow-stat="following">
                     <%= formatNumber(followingCount) %>
                   </div>
                   <div class="stat-label">Following</div>
-                </div>
-                <div class="stat-box">
+                </button>
+                <button type="button" class="stat-box" data-follow-trigger="followers">
                   <div class="stat-number" data-follow-stat="followers">
                     <%= formatNumber(followersCount) %>
                   </div>
                   <div class="stat-label">Followers</div>
-                </div>
+                </button>
                 <div class="stat-box">
                   <div class="stat-number">
                     <%= formatNumber(totalLikesCount) %>
@@ -622,10 +635,10 @@ function getYouTubeId(url) {
 
               <% const followersPreview=(followersList || []).slice(0, 5); const followingPreview=(followingList ||
                 []).slice(0, 5); %>
-                <div class="profile-social-grid"
-                  style="padding: 0 16px 20px 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
-                  <section
-                    style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; min-width: 0;">
+                <div class="profile-social-grid" id="profileSocialGrid"
+                  style="padding: 0 16px 20px 16px; display: none; grid-template-columns: 1fr; gap: 12px;">
+                  <section id="followersSection"
+                    style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; min-width: 0; display: none;">
                     <div
                       style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px;">
                       <div style="min-width: 0;">
@@ -673,8 +686,8 @@ function getYouTubeId(url) {
                     </div>
                   </section>
 
-                  <section
-                    style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; min-width: 0;">
+                  <section id="followingSection"
+                    style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; min-width: 0; display: none;">
                     <div
                       style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px;">
                       <div style="min-width: 0;">

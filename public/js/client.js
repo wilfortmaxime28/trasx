@@ -8048,7 +8048,7 @@ document.addEventListener('DOMContentLoaded', () => {
           // Check if we are on the feed page
           const postsContainer = document.getElementById('postsContainer');
           if (postsContainer) {
-            showFeedView();
+            showFeedView(false);
             setTimeout(() => {
               const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
               if (postCard) {
@@ -8487,7 +8487,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const showFeedView = () => {
+  const showFeedView = (scrollToTop = true) => {
     if (feedMainContent && shortsSection && mobileMessagesSection) {
       shortsSection.style.display = 'none';
       feedMainContent.style.display = 'flex';
@@ -8526,7 +8526,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       refreshBirthdayFeedCards(true);
 
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (scrollToTop) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } else {
       window.location.href = '/';
     }
@@ -14113,7 +14115,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (targetEl) {
               // Scroll to feed view if it was hidden
               if (typeof showFeedView === 'function') {
-                showFeedView();
+                showFeedView(false);
               }
               
               // Smooth scroll to target post
@@ -14129,6 +14131,8 @@ document.addEventListener('DOMContentLoaded', () => {
                   targetEl.style.boxShadow = '';
                 }, 2000);
               }, 100);
+            } else {
+              window.location.href = href;
             }
           }
         });
@@ -22275,6 +22279,72 @@ document.addEventListener('DOMContentLoaded', () => {
             showGamesView();
           }
         });
+      }
+    }
+  });
+
+  // Handle post redirection on page load via URL hash
+  const handleUrlHashScroll = () => {
+    const hash = window.location.hash;
+    if (hash && hash.startsWith('#post-')) {
+      const postId = hash.split('#post-')[1];
+      setTimeout(() => {
+        const targetEl = document.getElementById(`post-${postId}`);
+        if (targetEl) {
+          // If in dynamic feed and showFeedView exists, make sure feed is active
+          if (typeof showFeedView === 'function') {
+            showFeedView(false);
+          }
+          
+          targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          
+          // Flash highlight effect
+          targetEl.style.transition = 'outline 0.3s ease, box-shadow 0.3s ease';
+          targetEl.style.outline = '2px solid var(--primary)';
+          targetEl.style.boxShadow = '0 0 16px var(--primary)';
+          setTimeout(() => {
+            targetEl.style.outline = '';
+            targetEl.style.boxShadow = '';
+          }, 2000);
+        }
+      }, 500); // Give feed a moment to load / populate
+    }
+  };
+
+  // Run on initial load and when hash changes
+  handleUrlHashScroll();
+  window.addEventListener('hashchange', handleUrlHashScroll);
+
+  // Handle profile follow stat triggers
+  document.addEventListener('click', (e) => {
+    const triggerBtn = e.target.closest('[data-follow-trigger]');
+    if (triggerBtn) {
+      const type = triggerBtn.getAttribute('data-follow-trigger');
+      const grid = document.getElementById('profileSocialGrid');
+      const followersSec = document.getElementById('followersSection');
+      const followingSec = document.getElementById('followingSection');
+      
+      if (grid && followersSec && followingSec) {
+        const isCurrentlyVisible = grid.style.display === 'grid' || window.getComputedStyle(grid).display === 'grid';
+        const isTargetSectionVisible = (type === 'followers' && followersSec.style.display !== 'none') ||
+                                       (type === 'following' && followingSec.style.display !== 'none');
+        
+        if (isCurrentlyVisible && isTargetSectionVisible) {
+          grid.style.display = 'none';
+          followersSec.style.display = 'none';
+          followingSec.style.display = 'none';
+        } else {
+          grid.style.display = 'grid';
+          grid.style.gridTemplateColumns = '1fr';
+          
+          if (type === 'followers') {
+            followersSec.style.display = 'block';
+            followingSec.style.display = 'none';
+          } else {
+            followersSec.style.display = 'none';
+            followingSec.style.display = 'block';
+          }
+        }
       }
     }
   });
