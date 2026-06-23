@@ -17417,12 +17417,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Handle pre-selected game opponent from query parameters
-  const urlParams = new URLSearchParams(window.location.search);
-  const opponentId = urlParams.get('opponentId');
+  const lobbyUrlParams = new URLSearchParams(window.location.search);
+  const opponentId = lobbyUrlParams.get('opponentId');
   if (opponentId) {
-    const opponentName = urlParams.get('opponentName') || '';
-    const opponentAvatar = urlParams.get('opponentAvatar') || '/assets/avatar_placeholder.jpg';
-    const opponentUsername = urlParams.get('opponentUsername') || '';
+    const opponentName = lobbyUrlParams.get('opponentName') || '';
+    const opponentAvatar = lobbyUrlParams.get('opponentAvatar') || '/assets/avatar_placeholder.jpg';
+    const opponentUsername = lobbyUrlParams.get('opponentUsername') || '';
 
     // 1. Select the "player" option
     const playerRadio = document.querySelector('input[name="setupOpponent"][value="player"]');
