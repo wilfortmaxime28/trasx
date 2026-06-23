@@ -2458,7 +2458,7 @@ const uploadPostMediaHandler = uploadPostMedia.fields([
 ]);
 
 app.post('/api/posts/upload-media', requireAuth, (req, res) => {
-  uploadPostMediaHandler(req, res, (err) => {
+  uploadPostMediaHandler(req, res, async (err) => {
     if (err) {
       console.error('Post media upload error:', err);
       if (err.code === 'LIMIT_FILE_SIZE') {
@@ -2490,41 +2490,92 @@ app.post('/api/posts/upload-media', requireAuth, (req, res) => {
       }
     }
 
+    // Import optimizer helper
+    const mediaOptimizer = require('./utils/mediaOptimizer');
+
     const uploadedUrls = [];
-    for (const file of mediaFiles) {
-      const mimetype = file.mimetype;
-      const isVideo = mimetype.startsWith('video/');
-      const isImage = mimetype.startsWith('image/');
+    let computedThumbnailUrl = null;
 
-      if (!isVideo && !isImage) {
-        for (const f of mediaFiles) {
-          try { fs.unlinkSync(f.path); } catch (e) {}
+    try {
+      // Optimize the main media files
+      for (const file of mediaFiles) {
+        const mimetype = file.mimetype;
+        const isVideo = mimetype.startsWith('video/');
+        const isImage = mimetype.startsWith('image/');
+
+        if (!isVideo && !isImage) {
+          throw new Error('Unsupported file type. Only images or videos are allowed.');
         }
-        if (thumbnailFile) { try { fs.unlinkSync(thumbnailFile.path); } catch (e) {} }
-        return res.status(400).json({ error: 'Unsupported file type. Only images or videos are allowed.' });
+
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        
+        if (isImage) {
+          const optFilename = 'opt-post-' + uniqueSuffix + '.webp';
+          const optPath = path.join(postUploadDir, optFilename);
+          
+          // 1. Optimize image to WebP
+          await mediaOptimizer.optimizeImage(file.path, optPath);
+
+          // 2. Generate a WebP thumbnail if not already computed
+          if (!computedThumbnailUrl) {
+            const thumbFilename = 'thumb-post-' + uniqueSuffix + '.webp';
+            const thumbPath = path.join(postUploadDir, thumbFilename);
+            await mediaOptimizer.generateImageThumbnail(file.path, thumbPath);
+            computedThumbnailUrl = '/uploads/posts/' + thumbFilename;
+          }
+
+          uploadedUrls.push('/uploads/posts/' + optFilename);
+
+          // Delete original uploaded file
+          try { fs.unlinkSync(file.path); } catch (e) {}
+        } else if (isVideo) {
+          const optFilename = 'opt-post-' + uniqueSuffix + '.mp4';
+          const optPath = path.join(postUploadDir, optFilename);
+
+          // 1. Compress and optimize video
+          await mediaOptimizer.optimizeVideo(file.path, optPath);
+
+          // 2. Generate a video thumbnail if no user thumbnail was uploaded
+          if (!thumbnailFile) {
+            const thumbFilename = 'thumb-post-' + uniqueSuffix + '.webp';
+            const thumbPath = path.join(postUploadDir, thumbFilename);
+            await mediaOptimizer.generateVideoThumbnail(optPath, thumbPath);
+            computedThumbnailUrl = '/uploads/posts/' + thumbFilename;
+          }
+
+          uploadedUrls.push('/uploads/posts/' + optFilename);
+
+          // Delete original uploaded file
+          try { fs.unlinkSync(file.path); } catch (e) {}
+        }
       }
 
-      if (isVideo && file.size > 150 * 1024 * 1024) {
-        for (const f of mediaFiles) {
-          try { fs.unlinkSync(f.path); } catch (e) {}
-        }
-        if (thumbnailFile) { try { fs.unlinkSync(thumbnailFile.path); } catch (e) {} }
-        return res.status(400).json({ error: 'The video exceeds the 150 MB limit.' });
+      // If user uploaded a custom thumbnail, optimize it to WebP
+      if (thumbnailFile) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const optThumbFilename = 'opt-thumb-' + uniqueSuffix + '.webp';
+        const optThumbPath = path.join(postUploadDir, optThumbFilename);
+        
+        await mediaOptimizer.generateImageThumbnail(thumbnailFile.path, optThumbPath);
+        computedThumbnailUrl = '/uploads/posts/' + optThumbFilename;
+
+        // Delete user's original uploaded thumbnail file
+        try { fs.unlinkSync(thumbnailFile.path); } catch (e) {}
       }
 
-      if (isImage && file.size > 10 * 1024 * 1024) {
-        for (const f of mediaFiles) {
-          try { fs.unlinkSync(f.path); } catch (e) {}
-        }
-        if (thumbnailFile) { try { fs.unlinkSync(thumbnailFile.path); } catch (e) {} }
-        return res.status(400).json({ error: 'The image exceeds the 10 MB limit.' });
+      return res.json({ mediaUrls: uploadedUrls, mediaType, thumbnailUrl: computedThumbnailUrl });
+    } catch (optErr) {
+      console.error('Media optimization failed:', optErr);
+      
+      // Cleanup files on error
+      for (const file of mediaFiles) {
+        try { fs.unlinkSync(file.path); } catch (e) {}
       }
-
-      uploadedUrls.push('/uploads/posts/' + file.filename);
+      if (thumbnailFile) {
+        try { fs.unlinkSync(thumbnailFile.path); } catch (e) {}
+      }
+      return res.status(500).json({ error: 'Failed to process and optimize the uploaded files.' });
     }
-
-    const thumbnailUrl = thumbnailFile ? '/uploads/posts/' + thumbnailFile.filename : null;
-    return res.json({ mediaUrls: uploadedUrls, mediaType, thumbnailUrl });
   });
 });
 

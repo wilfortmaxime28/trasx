@@ -2810,8 +2810,165 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
   };
+  /* =====================================================
+   * Custom Facebook-style video fullscreen overlay
+   * ===================================================== */
+  const openVideoFullscreen = (sourceVideo) => {
+    // Don't open two at once
+    if (document.querySelector('.video-fs-overlay')) return;
+
+    const wasPaused = sourceVideo.paused;
+
+    // Build overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'video-fs-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Video fullscreen player');
+
+    // Create a mirrored video element that shares the same src
+    const fsVideo = document.createElement('video');
+    fsVideo.className = 'video-fs-video';
+    fsVideo.src = sourceVideo.src || sourceVideo.currentSrc;
+    fsVideo.muted = sourceVideo.muted;
+    fsVideo.volume = sourceVideo.volume;
+    fsVideo.currentTime = sourceVideo.currentTime;
+    fsVideo.setAttribute('playsinline', '');
+    fsVideo.setAttribute('oncontextmenu', 'return false;');
+
+    // Sync inner container
+    const inner = document.createElement('div');
+    inner.className = 'video-fs-inner';
+
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'video-fs-close';
+    closeBtn.setAttribute('aria-label', 'Close fullscreen');
+    closeBtn.innerHTML = '<i data-lucide="x"></i>';
+
+    // Controls bar
+    const controls = document.createElement('div');
+    controls.className = 'video-fs-controls';
+
+    const playBtn = document.createElement('button');
+    playBtn.className = 'video-fs-btn';
+    playBtn.setAttribute('aria-label', 'Play/Pause');
+    playBtn.innerHTML = '<i data-lucide="pause"></i>';
+
+    const currentTimeEl = document.createElement('span');
+    currentTimeEl.className = 'video-fs-time';
+    currentTimeEl.textContent = formatVideoTime(sourceVideo.currentTime);
+
+    const progressSlider = document.createElement('input');
+    progressSlider.type = 'range';
+    progressSlider.className = 'video-progress-slider';
+    progressSlider.min = '0';
+    progressSlider.max = '100';
+    progressSlider.value = '0';
+    progressSlider.step = '0.1';
+
+    const durationEl = document.createElement('span');
+    durationEl.className = 'video-fs-time';
+    durationEl.textContent = formatVideoTime(sourceVideo.duration);
+
+    const muteBtn = document.createElement('button');
+    muteBtn.className = 'video-fs-btn';
+    muteBtn.setAttribute('aria-label', 'Mute/Unmute');
+    muteBtn.innerHTML = fsVideo.muted ? '<i data-lucide="volume-x"></i>' : '<i data-lucide="volume-2"></i>';
+
+    controls.append(playBtn, currentTimeEl, progressSlider, durationEl, muteBtn);
+    inner.append(closeBtn, fsVideo, controls);
+    overlay.append(inner);
+    document.body.append(overlay);
+
+    // Init Lucide icons on the new overlay
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    // Pause original, play fullscreen copy
+    sourceVideo.pause();
+    fsVideo.play().catch(() => {});
+
+    const updatePlayIcon = () => {
+      const icon = fsVideo.paused ? 'play' : 'pause';
+      updateVideoButtonIcon(playBtn, icon);
+    };
+
+    fsVideo.addEventListener('play', updatePlayIcon);
+    fsVideo.addEventListener('pause', updatePlayIcon);
+
+    fsVideo.addEventListener('timeupdate', () => {
+      currentTimeEl.textContent = formatVideoTime(fsVideo.currentTime);
+      if (Number.isFinite(fsVideo.duration) && fsVideo.duration > 0) {
+        progressSlider.value = String((fsVideo.currentTime / fsVideo.duration) * 100);
+      }
+    });
+
+    fsVideo.addEventListener('loadedmetadata', () => {
+      durationEl.textContent = formatVideoTime(fsVideo.duration);
+    });
+
+    progressSlider.addEventListener('input', () => {
+      if (Number.isFinite(fsVideo.duration) && fsVideo.duration > 0) {
+        fsVideo.currentTime = (Number(progressSlider.value) / 100) * fsVideo.duration;
+      }
+    });
+
+    playBtn.addEventListener('click', () => {
+      if (fsVideo.paused) {
+        if (fsVideo.ended) fsVideo.currentTime = 0;
+        fsVideo.play().catch(() => {});
+      } else {
+        fsVideo.pause();
+      }
+    });
+
+    fsVideo.addEventListener('click', () => {
+      if (fsVideo.paused) {
+        if (fsVideo.ended) fsVideo.currentTime = 0;
+        fsVideo.play().catch(() => {});
+      } else {
+        fsVideo.pause();
+      }
+    });
+
+    muteBtn.addEventListener('click', () => {
+      fsVideo.muted = !fsVideo.muted;
+      updateVideoButtonIcon(muteBtn, fsVideo.muted ? 'volume-x' : 'volume-2');
+    });
+
+    const closeOverlay = () => {
+      // Sync position back to original video
+      sourceVideo.currentTime = fsVideo.currentTime;
+      sourceVideo.muted = fsVideo.muted;
+      if (!wasPaused && !fsVideo.paused) {
+        sourceVideo.play().catch(() => {});
+      }
+      fsVideo.pause();
+
+      overlay.classList.add('is-closing');
+      setTimeout(() => overlay.remove(), 200);
+    };
+
+    closeBtn.addEventListener('click', closeOverlay);
+
+    // Click on backdrop (outside video) to close
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay || e.target === inner) closeOverlay();
+    });
+
+    // Escape key to close
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        document.removeEventListener('keydown', onKeyDown);
+        closeOverlay();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    overlay.addEventListener('remove', () => document.removeEventListener('keydown', onKeyDown));
+  };
 
   const initCustomVideoPlayers = (root = document) => {
+
     root.querySelectorAll('.post-video-shell:not([data-video-ready])').forEach(shell => {
       const video = shell.querySelector('.post-video');
       if (!video) return;
@@ -2927,11 +3084,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       fullscreenBtn?.addEventListener('click', () => {
-        if (document.fullscreenElement) {
-          document.exitFullscreen?.();
-        } else {
-          shell.requestFullscreen?.();
-        }
+        openVideoFullscreen(video);
       });
 
       downloadBtn?.addEventListener('click', () => createWatermarkedVideoDownload(downloadBtn));
