@@ -192,7 +192,7 @@ function getYouTubeId(url) {
                                     <button class="share-post-btn" id="sharePostBtn"><%= tText("Send") %></button>
                                   </div>
 
-                                  <!-- Media Visual Preview Container -->=
+                                  <!-- Media Visual Preview Container -->
                                   <div id="postMediaVisualPreview" class="post-media-preview-container"></div>
 
                                   <div class="create-post-lower">
@@ -3368,7 +3368,9 @@ function getYouTubeId(url) {
                       style="display: flex; flex-direction: column; gap: 8px;">
                       <% inbox.sections.general.forEach(contact=> { %>
                         <div class="message-item <%= contact.is_online ? 'online' : '' %>"
-                          data-contact-id="<%= contact.id %>" data-message-category="<%= contact.category %>"
+                          data-contact-id="<%= contact.id %>"
+                          data-contact-username="<%= contact.username || '' %>"
+                          data-message-category="<%= contact.category %>"
                           data-message-request-status="<%= contact.request_status || '' %>"
                           data-can-manage-request="<%= contact.can_manage_request ? '1' : '0' %>"
                           data-follow-target-id="<%= contact.id %>"
@@ -3427,7 +3429,9 @@ function getYouTubeId(url) {
                       style="display: none; flex-direction: column; gap: 8px;">
                       <% inbox.sections.requests.forEach(contact=> { %>
                         <div class="message-item <%= contact.is_online ? 'online' : '' %>"
-                          data-contact-id="<%= contact.id %>" data-message-category="<%= contact.category %>"
+                          data-contact-id="<%= contact.id %>"
+                          data-contact-username="<%= contact.username || '' %>"
+                          data-message-category="<%= contact.category %>"
                           data-message-request-status="<%= contact.request_status || '' %>"
                           data-can-manage-request="<%= contact.can_manage_request ? '1' : '0' %>"
                           data-follow-target-id="<%= contact.id %>"

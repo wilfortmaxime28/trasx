@@ -3558,7 +3558,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Messagerie active en Temps Réel (Facebook-style) ---
   const chatBoxesContainer = document.getElementById('chatBoxesContainer');
 
-  function openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText = '', isPendingRequest = false) {
+  function openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText = '', isPendingRequest = false, contactUsername = '') {
     if (!chatBoxesContainer) return;
     const currentUserId = getCurrentUserId();
     const numericContactId = Number(contactId);
@@ -3599,6 +3599,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const formStyle = isPendingRequest ? 'style="display:none;"' : '';
     const overlayStyle = isPendingRequest ? 'style="display:flex; padding: 10px 12px; background: var(--bg-card); align-items: center; justify-content: center; gap: 10px; border-top: 1px solid var(--border-color);"' : 'style="display:none;"';
 
+    const isOnlineBool = (isOnline === true || isOnline === 'true' || isOnline === 1 || isOnline === '1');
+    const initialCursor = isOnlineBool ? 'pointer' : 'not-allowed';
+    const initialFilterOpacity = isOnlineBool ? '' : 'opacity: 0.5; filter: grayscale(100%);';
+    const disabledAttr = isOnlineBool ? '' : 'disabled';
+
     chatBox.innerHTML = `
       <div class="chat-header">
         <div class="chat-header-info">
@@ -3615,11 +3620,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 data-contact-id="${numericContactId}"
                 data-contact-name="${contactName}"
                 data-contact-avatar="${avatarUrl}"
-                data-contact-online="${isOnline ? '1' : '0'}"
+                data-contact-online="${isOnlineBool ? '1' : '0'}"
                 data-contact-presence="${presenceText || ''}"
+                data-contact-username="${contactUsername || ''}"
                 title="Demander de jouer"
-                style="background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.2s;"
-                onmouseover="this.style.transform='scale(1.2)'"
+                style="background: none; border: none; padding: 0; cursor: ${initialCursor}; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.2s, opacity 0.2s, filter 0.2s; ${initialFilterOpacity}"
+                ${disabledAttr}
+                onmouseover="if(!this.disabled) this.style.transform='scale(1.2)'"
                 onmouseout="this.style.transform='scale(1)'">
                 <i data-lucide="gamepad-2" style="width: 14px; height: 14px; color: var(--primary); flex-shrink: 0;"></i>
               </button>
@@ -4006,7 +4013,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       // Si la boîte de chat n'est pas ouverte et que c'est un message entrant, on l'ouvre automatiquement sur desktop
       if (!isOutgoing && window.innerWidth > 768 && conversation?.category !== 'requests') {
-        openChatBox(partnerId, conversation?.contactName || sender_name, conversation?.contactAvatar || sender_avatar, !!conversation?.isOnline, conversation?.presenceText || '');
+        openChatBox(partnerId, conversation?.contactName || sender_name, conversation?.contactAvatar || sender_avatar, !!conversation?.isOnline, conversation?.presenceText || '', false, conversation?.contactUsername || '');
       }
     }
     showToast(isOutgoing ? 'Message sent' : `New message from ${sender_name}: "${previewText}"`);
@@ -4042,6 +4049,26 @@ document.addEventListener('DOMContentLoaded', () => {
         profileBtn.style.transform = 'scale(1)';
       }
     }
+
+    // Dynamically update chat gamepad request button state
+    const chatBtns = document.querySelectorAll(`.chat-game-request-btn[data-contact-id="${data.userId}"]`);
+    chatBtns.forEach((chatBtn) => {
+      const isOnline = !!data.isOnline;
+      chatBtn.dataset.contactOnline = isOnline ? '1' : '0';
+      chatBtn.dataset.contactPresence = data.presenceText || 'Offline';
+      if (isOnline) {
+        chatBtn.removeAttribute('disabled');
+        chatBtn.style.cursor = 'pointer';
+        chatBtn.style.opacity = '1';
+        chatBtn.style.filter = 'none';
+      } else {
+        chatBtn.setAttribute('disabled', 'true');
+        chatBtn.style.cursor = 'not-allowed';
+        chatBtn.style.opacity = '0.5';
+        chatBtn.style.filter = 'grayscale(100%)';
+        chatBtn.style.transform = 'scale(1)';
+      }
+    });
   });
 
   socket.on('chat-message-status', (data) => {
@@ -6767,7 +6794,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const isOnline = messageItem.dataset.isOnline === '1' || messageItem.classList.contains('online');
         const presenceText = messageItem.dataset.lastSeenText || '';
         const isPendingRequest = messageItem.dataset.messageCategory === 'requests' && messageItem.dataset.messageRequestStatus === 'pending';
-        openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText, isPendingRequest);
+        const contactUsername = messageItem.getAttribute('data-contact-username') || '';
+        openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText, isPendingRequest, contactUsername);
       }
     });
 
@@ -6781,7 +6809,9 @@ document.addEventListener('DOMContentLoaded', () => {
         button.dataset.profileMessageName || 'Conversation',
         button.dataset.profileMessageAvatar || '/assets/avatar_placeholder.jpg',
         button.dataset.profileMessageOnline === '1',
-        button.dataset.profileMessagePresence || ''
+        button.dataset.profileMessagePresence || '',
+        false,
+        button.dataset.profileMessageUsername || ''
       );
     });
   });
@@ -6847,9 +6877,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const avatarUrl = contactItem.getAttribute('data-compose-contact-avatar') || '/assets/avatar_placeholder.jpg';
       const isOnline = contactItem.getAttribute('data-compose-contact-online') === '1';
       const presenceText = contactItem.getAttribute('data-compose-contact-presence') || '';
+      const contactUsername = contactItem.getAttribute('data-compose-contact-username') || '';
 
       setComposeMessageModalState(false);
-      openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText);
+      openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText, false, contactUsername);
     });
 
     composeMessageSearch?.addEventListener('input', () => {
@@ -16961,13 +16992,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatBtn = e.target.closest('.chat-game-request-btn');
     if (chatBtn) {
       e.preventDefault();
+      if (chatBtn.disabled || chatBtn.hasAttribute('disabled')) return;
+
       const contactId = chatBtn.dataset.contactId;
       const contactName = chatBtn.dataset.contactName || 'Conversation';
       const avatarUrl = chatBtn.dataset.contactAvatar || '/assets/avatar_placeholder.jpg';
-      const isOnline = chatBtn.dataset.contactOnline === '1';
-      const presenceText = chatBtn.dataset.contactPresence || '';
+      const username = chatBtn.dataset.contactUsername || '';
 
-      openGameRequestModal(contactId, contactName, avatarUrl, isOnline, presenceText);
+      window.location.href = `/?view=games&opponentId=${contactId}&opponentName=${encodeURIComponent(contactName)}&opponentAvatar=${encodeURIComponent(avatarUrl)}&opponentUsername=${encodeURIComponent(username)}`;
       return;
     }
 

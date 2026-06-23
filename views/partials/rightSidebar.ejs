@@ -54,6 +54,7 @@
         data-compose-contact-avatar="${escapeHtml(contact.avatar)}"
         data-compose-contact-online="${contact.is_online ? '1' : '0'}"
         data-compose-contact-presence="${escapeHtml(contact.presence_text || '')}"
+        data-compose-contact-username="${escapeHtml(contact.username || '')}"
         data-compose-contact-following="${contact.is_following ? '1' : '0'}"
         data-compose-contact-followed-by="${contact.is_followed_by ? '1' : '0'}"
         data-compose-contact-mutual="${contact.is_mutual ? '1' : '0'}"
@@ -84,7 +85,7 @@
   };
   const renderMessageItem = (contact) => {
 %>
-  <div class="message-item <%= contact.is_online ? 'online' : '' %>" data-contact-id="<%= contact.id %>" data-message-category="<%= contact.category %>" data-message-request-status="<%= contact.request_status || '' %>" data-can-manage-request="<%= contact.can_manage_request ? '1' : '0' %>" data-follow-target-id="<%= contact.id %>" data-following="<%= contact.is_following ? '1' : '0' %>" data-followed-by="<%= contact.is_followed_by ? '1' : '0' %>" data-mutual="<%= contact.is_mutual ? '1' : '0' %>" data-is-online="<%= contact.is_online ? '1' : '0' %>" data-last-seen-text="<%= contact.presence_text || '' %>" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
+  <div class="message-item <%= contact.is_online ? 'online' : '' %>" data-contact-id="<%= contact.id %>" data-contact-username="<%= contact.username || '' %>" data-message-category="<%= contact.category %>" data-message-request-status="<%= contact.request_status || '' %>" data-can-manage-request="<%= contact.can_manage_request ? '1' : '0' %>" data-follow-target-id="<%= contact.id %>" data-following="<%= contact.is_following ? '1' : '0' %>" data-followed-by="<%= contact.is_followed_by ? '1' : '0' %>" data-mutual="<%= contact.is_mutual ? '1' : '0' %>" data-is-online="<%= contact.is_online ? '1' : '0' %>" data-last-seen-text="<%= contact.presence_text || '' %>" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;">
     <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
       <div class="msg-avatar-wrapper <%= contact.is_online ? 'online' : '' %>">
         <div class="avatar" style="width: 36px; height: 36px;">
