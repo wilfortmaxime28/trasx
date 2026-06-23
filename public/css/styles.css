@@ -127,6 +127,52 @@ body[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
   height: 12px;
   pointer-events: none;
 }
+/* ─── Infinite Scroll Loader ─────────────────────────────────────────────── */
+.infinite-scroll-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 28px 0;
+  gap: 12px;
+}
+
+.infinite-scroll-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: infiniteSpinnerAnim 0.7s linear infinite;
+}
+
+@keyframes infiniteSpinnerAnim {
+  to { transform: rotate(360deg); }
+}
+
+.infinite-scroll-end {
+  text-align: center;
+  padding: 28px 0;
+}
+
+/* ─── Lazy Loading Image Fade-in ─────────────────────────────────────────── */
+img[data-lazy-src] {
+  opacity: 0;
+  background: var(--bg-card, #1e2130);
+  min-height: 2px;
+  transition: opacity 0.3s ease;
+}
+
+img.lazy-loaded {
+  opacity: 1;
+}
+
+/* Placeholder aspect-ratio boxes for images before they load */
+.post-img-container img[data-lazy-src] {
+  aspect-ratio: 16/9;
+}
+
+
 
 /* Theme Toggle Button Icon Switching */
 body[data-theme="dark"] .theme-icon-moon {

@@ -4398,6 +4398,93 @@ document.addEventListener('DOMContentLoaded', () => {
   bindProgressiveReveal(feedPaginationSentinel, 'post', progressiveFeedBatchSize);
   bindProgressiveReveal(shortsPaginationSentinel, 'reel', progressiveShortBatchSize);
 
+  // ── Infinite Scroll — loads next feed batch via /api/feed/posts ──────────
+  (function initInfiniteScroll() {
+    const sentinel = document.getElementById('feedPaginationSentinel');
+    const loader   = document.getElementById('infiniteScrollLoader');
+    const endMsg   = document.getElementById('infiniteScrollEnd');
+    const postsContainer = document.getElementById('postsContainer');
+    if (!sentinel || !postsContainer) return;
+
+    let isLoading = false;
+    let hasMore   = Boolean(window.feedHasMore);
+    let nextOffset = Number(window.feedNextOffset || 20);
+    const batchSize = 20;
+
+    // Track seen IDs to avoid duplicates (initialize with IDs already in DOM)
+    const seenIds = new Set(
+      Array.from(postsContainer.querySelectorAll('[data-post-id]'))
+        .map(el => Number(el.getAttribute('data-post-id')))
+        .filter(Boolean)
+    );
+
+    if (!hasMore) {
+      if (endMsg) { endMsg.style.display = 'block'; }
+      return;
+    }
+
+    const loadNextBatch = async () => {
+      if (isLoading || !hasMore) return;
+      isLoading = true;
+      if (loader) { loader.style.display = 'flex'; }
+
+      try {
+        const seenParam = Array.from(seenIds).slice(-150).join(',');
+        const url = `/api/feed/posts?offset=${nextOffset}&limit=${batchSize}${seenParam ? '&seen=' + encodeURIComponent(seenParam) : ''}`;
+        const response = await fetch(url, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Feed load failed');
+
+        const newPosts = (data.posts || []).filter(p => !seenIds.has(Number(p.id)));
+
+        if (newPosts.length > 0) {
+          const fragment = document.createDocumentFragment();
+          newPosts.forEach(post => {
+            seenIds.add(Number(post.id));
+            const el = createPostCardElement(post);
+            if (el) {
+              el.setAttribute('data-progressive-item', 'post');
+              el.setAttribute('data-created-at', post.created_at || '');
+              fragment.appendChild(el);
+            }
+          });
+          postsContainer.appendChild(fragment);
+
+          // Init lazy media on newly inserted posts
+          if (typeof window.initLazyMedia === 'function') {
+            window.initLazyMedia(postsContainer);
+          }
+          // Re-init lucide icons
+          if (typeof lucide !== 'undefined') {
+            try { lucide.createIcons(); } catch (_) {}
+          }
+        }
+
+        hasMore = Boolean(data.hasMore);
+        nextOffset = Number(data.nextOffset) || (nextOffset + batchSize);
+
+        if (!hasMore) {
+          if (endMsg) { endMsg.style.display = 'block'; }
+        }
+      } catch (err) {
+        console.warn('[InfiniteScroll] Error loading posts:', err);
+      } finally {
+        isLoading = false;
+        if (loader) { loader.style.display = 'none'; }
+      }
+    };
+
+    // Observe sentinel to trigger loading
+    const scrollObserver = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore && !isLoading) {
+        loadNextBatch();
+      }
+    }, { rootMargin: '400px 0px', threshold: 0 });
+
+    scrollObserver.observe(sentinel);
+  })();
+
   let birthdayFeedSignature = '';
 
   const renderBirthdayFeedCardHtml = (celebrant) => {

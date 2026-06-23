@@ -511,6 +511,60 @@ app.use(requireAuth);
 app.get('/', feedController.getFeed);
 app.get('/api/feed/birthdays', feedController.getBirthdayCards);
 
+// ─── API Infinite Scroll Feed ────────────────────────────────────────────────
+// GET /api/feed/posts?offset=20&limit=20
+// Retourne le prochain lot de posts avec le même algorithme SQL que la page initiale.
+app.get('/api/feed/posts', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const currentUser = res.locals.currentUser || await User.getById(currentUserId);
+    if (!currentUser) return res.status(401).json({ success: false, error: 'Non authentifié.' });
+
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const limit  = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+
+    // Seed stable par session (généré lors du premier chargement du feed)
+    if (!req.session.feedSeed) req.session.feedSeed = Math.floor(Math.random() * 999999) + 1;
+    const feedSeed = req.session.feedSeed;
+
+    // IDs déjà vus côté client (anti-doublon)
+    let excludedIds = [];
+    try {
+      const raw = req.query.seen;
+      if (raw) excludedIds = String(raw).split(',').map(Number).filter(n => Number.isFinite(n) && n > 0);
+    } catch (_) { /* ignore */ }
+
+    const feedResult = await Post.getFeedPaginated(currentUserId, {
+      offset, limit, userCountry: currentUser.country, feedSeed, excludedIds
+    });
+
+    // Charger les commentaires pour ce lot de posts
+    const Comment = require('./models/Comment');
+    const commentRows = await Comment.getByPostIds(feedResult.posts.map(p => p.id));
+    const commentsByPostId = new Map();
+    for (const c of commentRows) {
+      const arr = commentsByPostId.get(c.post_id) || [];
+      arr.push(c);
+      commentsByPostId.set(c.post_id, arr);
+    }
+    feedResult.posts.forEach(p => { p.comments = commentsByPostId.get(p.id) || []; });
+
+    // Enregistrer les vues du lot
+    const postIds = feedResult.posts.map(p => Number(p.id)).filter(Boolean);
+    if (postIds.length) await Post.recordDailyViews(postIds, currentUserId);
+
+    return res.json({
+      success: true,
+      posts: feedResult.posts,
+      hasMore: feedResult.hasMore,
+      nextOffset: feedResult.nextOffset
+    });
+  } catch (err) {
+    console.error('[/api/feed/posts]', err);
+    return res.status(500).json({ success: false, error: 'Erreur lors du chargement du feed.' });
+  }
+});
+
 // Route Profile
 app.use('/profile', profileRoutes);
 app.use('/settings', settingsRoutes);

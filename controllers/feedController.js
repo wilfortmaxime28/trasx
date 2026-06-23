@@ -360,24 +360,30 @@ class FeedController {
         return res.redirect('/auth/login');
       }
 
-      const promoWindowDays = await getNumberSetting('new_user_promo_days', 30);
-      const initialFeedBatchSize = 10;
-      const feedRevealBatchSize = 6;
+      const initialFeedBatchSize = 20; // Nombre de posts chargés côté serveur pour le premier rendu
+      const feedRevealBatchSize = 20;   // Taille des lots pour l'infinite scroll
       const initialShortBatchSize = 4;
       const shortRevealBatchSize = 2;
       const feedMemory = getFeedMemory(req.session);
       const followingCount = await User.getFollowingCount(currentUserId);
-      const noFollowingMode = Number(followingCount || 0) === 0;
 
-      // Récupérer tous les posts puis charger leurs commentaires en un seul lot
-      let posts = await Post.getAll(currentUserId);
-      const postViewCounts = await Post.getTodayUniqueViewCounts(posts.map((post) => post.id));
-      posts = sortForDiscovery(posts, postViewCounts, promoWindowDays, {
-        includeBackgroundPremium: true,
-        recentIds: feedMemory.posts,
-        currentUserCountry: currentUser.country,
-        noFollowingMode
+      // Générer un seed stable pour la session (variété entre sessions, stabilité pendant le scroll)
+      if (!req.session.feedSeed) {
+        req.session.feedSeed = Math.floor(Math.random() * 999999) + 1;
+      }
+      const feedSeed = req.session.feedSeed;
+
+      // ── Nouveau : chargement paginé avec tri SQL (plus de JS-side sort) ──────
+      const feedResult = await Post.getFeedPaginated(currentUserId, {
+        offset: 0,
+        limit: initialFeedBatchSize,
+        userCountry: currentUser.country,
+        feedSeed,
+        excludedIds: [] // Première page : pas d'exclusion
       });
+      let posts = feedResult.posts;
+
+      // Charger les commentaires uniquement pour les posts du premier lot
       const commentRows = await Comment.getByPostIds(posts.map((post) => post.id));
       const commentsByPostId = new Map();
 
@@ -424,7 +430,6 @@ class FeedController {
       const marketDefaultPaymentMethods = getDefaultPaymentMethodsForCountry(currentUser.country);
 
       const initiallyVisiblePostIds = posts
-        .slice(0, initialFeedBatchSize)
         .map((post) => Number(post.id))
         .filter((id) => Number.isFinite(id) && id > 0);
       const initiallyVisibleReelIds = reels
@@ -468,6 +473,9 @@ class FeedController {
         marketDefaultPaymentMethods,
         initialFeedBatchSize,
         feedRevealBatchSize,
+        feedHasMore: feedResult.hasMore,
+        feedNextOffset: feedResult.nextOffset || initialFeedBatchSize,
+        feedSeed,
         initialShortBatchSize,
         shortRevealBatchSize,
         followersCount,

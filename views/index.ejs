@@ -1390,19 +1390,19 @@ function getYouTubeId(url) {
                                                                           data-images="<%= postImages.join(',') %>"
                                                                           style="cursor: pointer;">
                                                                           <div class="grid-image-wrapper">
-                                                                            <img src="<%= post.image_url %>"
+                                                                            <img src="<%= post.image_url % loading="lazy">"
                                                                               class="post-img" alt="<%= tText("Post attachment 1") %>">
                                                                           </div>
                                                                           <div class="grid-image-wrapper">
-                                                                            <img src="<%= post.image_url_2 %>"
+                                                                            <img src="<%= post.image_url_2 % loading="lazy">"
                                                                               class="post-img" alt="<%= tText("Post attachment 2") %>">
                                                                           </div>
                                                                           <div class="grid-image-wrapper">
-                                                                            <img src="<%= post.image_url_3 %>"
+                                                                            <img src="<%= post.image_url_3 % loading="lazy">"
                                                                               class="post-img" alt="<%= tText("Post attachment 3") %>">
                                                                           </div>
                                                                           <div class="grid-image-wrapper">
-                                                                            <img src="<%= post.image_url_4 %>"
+                                                                            <img src="<%= post.image_url_4 % loading="lazy">"
                                                                               class="post-img" alt="<%= tText("Post attachment 4") %>">
                                                                           </div>
                                                                         </div>
@@ -1411,13 +1411,13 @@ function getYouTubeId(url) {
                                                                             data-images="<%= postImages.join(',') %>"
                                                                             style="cursor: pointer;">
                                                                             <div class="grid-image-wrapper">
-                                                                              <img src="<%= post.image_url %>"
+                                                                              <img src="<%= post.image_url % loading="lazy">"
                                                                                 class="post-img"
                                                                                 alt="<%= tText("Post attachment 1") %>">
                                                                             </div>
                                                                             <div class="grid-image-wrapper"
                                                                               style="position: relative;">
-                                                                              <img src="<%= post.image_url_2 %>"
+                                                                              <img src="<%= post.image_url_2 % loading="lazy">"
                                                                                 class="post-img"
                                                                                 alt="<%= tText("Post attachment 2") %>">
                                                                               <div class="more-images-overlay"
@@ -1431,12 +1431,12 @@ function getYouTubeId(url) {
                                                                               data-images="<%= postImages.join(',') %>"
                                                                               style="cursor: pointer;">
                                                                               <div class="grid-image-wrapper">
-                                                                                <img src="<%= post.image_url %>"
+                                                                                <img src="<%= post.image_url % loading="lazy">"
                                                                                   class="post-img"
                                                                                   alt="<%= tText("Post attachment 1") %>">
                                                                               </div>
                                                                               <div class="grid-image-wrapper">
-                                                                                <img src="<%= post.image_url_2 %>"
+                                                                                <img src="<%= post.image_url_2 % loading="lazy">"
                                                                                   class="post-img"
                                                                                   alt="<%= tText("Post attachment 2") %>">
                                                                               </div>
@@ -1445,7 +1445,7 @@ function getYouTubeId(url) {
                                                                               <div class="post-single-image"
                                                                                 data-images="<%= postImages.join(',') %>"
                                                                                 style="cursor: pointer;">
-                                                                                <img src="<%= post.image_url %>"
+                                                                                <img src="<%= post.image_url % loading="lazy">"
                                                                                   class="post-img"
                                                                                   alt="<%= tText("Post attachment") %>">
                                                                               </div>
@@ -1943,6 +1943,14 @@ function getYouTubeId(url) {
                                                         <% } %>
                                   </div>
                                   <div id="feedPaginationSentinel" class="progressive-feed-sentinel" aria-hidden="true"></div>
+                                  <!-- Infinite Scroll Loader -->
+                                  <div id="infiniteScrollLoader" class="infinite-scroll-loader" style="display:none; align-items:center; justify-content:center; padding:24px 0; gap:12px; flex-direction:column;">
+                                    <div class="infinite-scroll-spinner"></div>
+                                    <span style="font-size:13px; color:var(--text-muted);">Chargement...</span>
+                                  </div>
+                                  <div id="infiniteScrollEnd" class="infinite-scroll-end" style="display:none; text-align:center; padding:28px 0;">
+                                    <span style="font-size:13px; color:var(--text-muted); background:var(--bg-card); padding:8px 20px; border-radius:20px; border:1px solid var(--border-color);">🎉 Vous avez tout vu !</span>
+                                  </div>
               </div>
 
               <div class="market-container-section" id="marketSection"
@@ -5043,6 +5051,8 @@ function getYouTubeId(url) {
           window.shareFriendTargets = <%- JSON.stringify(friendShareTargets || []).replace(/</g, '\\u003c') %>;
           window.initialBirthdayCelebrants = <%- JSON.stringify(birthdayCelebrants || []).replace(/</g, '\\u003c') %>;
           window.feedRevealBatchSize = <%= Number(typeof feedRevealBatchSize !== 'undefined' ? feedRevealBatchSize : 6) %>;
+          window.feedHasMore = <%= typeof feedHasMore !== 'undefined' ? (feedHasMore ? 'true' : 'false') : 'false' %>;
+          window.feedNextOffset = <%= Number(typeof feedNextOffset !== 'undefined' ? feedNextOffset : 20) %>;
           window.shortRevealBatchSize = <%= Number(typeof shortRevealBatchSize !== 'undefined' ? shortRevealBatchSize : 2) %>;
         </script>
         <!-- Floating Alert for New Posts -->
