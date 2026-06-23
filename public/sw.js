@@ -50,8 +50,10 @@ self.addEventListener('fetch', (event) => {
         });
       }
       return response;
-    }).catch(() => {
-      return caches.match(event.request);
+    }).catch(async (err) => {
+      const cached = await caches.match(event.request);
+      if (cached) return cached;
+      throw err;
     })
   );
 });
