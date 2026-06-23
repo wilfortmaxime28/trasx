@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   window.currentView = 'feed';
+  window.feedVideosMuted = true;
   let wasReelDragging = false;
 
   // Initialize Lucide Icons
@@ -2707,7 +2708,7 @@ document.addEventListener('DOMContentLoaded', () => {
     entries.forEach(entry => {
       const video = entry.target;
       if (entry.isIntersecting) {
-        video.muted = true;
+        video.muted = (typeof window.feedVideosMuted !== 'undefined' ? window.feedVideosMuted : true);
         video.play().catch(err => {
           // Silently catch autoplay blocks (e.g. browser restriction)
         });
@@ -2899,12 +2900,30 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       muteBtn?.addEventListener('click', () => {
-        video.muted = !video.muted;
+        const nextMuted = !video.muted;
+        video.muted = nextMuted;
+        window.feedVideosMuted = nextMuted;
+
+        document.querySelectorAll('.post-video').forEach((otherVid) => {
+          if (otherVid !== video) {
+            otherVid.muted = nextMuted;
+          }
+        });
       });
 
       volume?.addEventListener('input', () => {
-        video.volume = Number(volume.value);
-        video.muted = video.volume === 0;
+        const nextVal = Number(volume.value);
+        video.volume = nextVal;
+        const nextMuted = nextVal === 0;
+        video.muted = nextMuted;
+        window.feedVideosMuted = nextMuted;
+
+        document.querySelectorAll('.post-video').forEach((otherVid) => {
+          if (otherVid !== video) {
+            otherVid.volume = nextVal;
+            otherVid.muted = nextMuted;
+          }
+        });
       });
 
       fullscreenBtn?.addEventListener('click', () => {
@@ -6438,11 +6457,38 @@ document.addEventListener('DOMContentLoaded', () => {
         newPost.style.display = 'none';
         showToast("New post added! (See the feed)");
       } else {
-        newPost.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (window.scrollY < 100) {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+          const alertBtn = document.getElementById('newPostScrollAlert');
+          if (alertBtn) {
+            alertBtn.classList.add('show');
+          }
+        }
         showToast("New post added!");
       }
     }
   });
+
+  // Bind click & scroll events for new post scroll-up alert
+  const setupNewPostScrollAlert = () => {
+    const alertBtn = document.getElementById('newPostScrollAlert');
+    if (!alertBtn) return;
+    
+    alertBtn.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      alertBtn.classList.remove('show');
+    });
+
+    window.addEventListener('scroll', () => {
+      if (window.scrollY < 100) {
+        if (alertBtn.classList.contains('show')) {
+          alertBtn.classList.remove('show');
+        }
+      }
+    });
+  };
+  setupNewPostScrollAlert();
 
   socket.on('challenge-updated', ({ postId, post, participants }) => {
     document.querySelectorAll(`.challenge-post-card[data-challenge-post-id="${String(postId)}"]`).forEach((card) => {
@@ -8962,6 +9008,11 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+      showToast("Votre navigateur ne supporte pas l'enregistrement requis pour le filigrane.");
+      return;
+    }
+
     // TikTok style top progress bar
     const topProgressBar = document.getElementById('globalDownloadProgressBar');
     if (topProgressBar) {
@@ -8969,29 +9020,196 @@ document.addEventListener('DOMContentLoaded', () => {
       topProgressBar.style.opacity = '1';
     }
 
+    showToast("Préparation de la vidéo avec filigrane...");
+
     try {
-      showToast("Téléchargement du short démarré...");
+      const video = document.createElement('video');
+      video.src = fileUrl;
+      video.preload = 'auto';
+      video.playsInline = true;
+      video.muted = false;
+      video.crossOrigin = 'anonymous';
 
-      const response = await fetch(fileUrl);
-      if (!response.ok) throw new Error("Erreur de téléchargement");
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = resolve;
+        video.onerror = () => reject(new Error('Erreur de chargement du média.'));
+      });
 
-      const reader = response.body.getReader();
-      const contentLength = +response.headers.get('Content-Length');
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 540;
+      canvas.height = video.videoHeight || 960;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+      }
+      const canvasStream = canvas.captureStream(30);
+      let audioContext = null;
 
-      let receivedLength = 0;
-      const chunks = [];
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        receivedLength += value.length;
-
-        if (contentLength && topProgressBar) {
-          const pct = Math.round((receivedLength / contentLength) * 100);
-          topProgressBar.style.width = `${pct}%`;
+      try {
+        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextCtor) {
+          audioContext = new AudioContextCtor();
+          const mediaSource = audioContext.createMediaElementSource(video);
+          const audioDestination = audioContext.createMediaStreamDestination();
+          mediaSource.connect(audioDestination);
+          audioDestination.stream.getAudioTracks().forEach(track => canvasStream.addTrack(track));
+          await audioContext.resume();
         }
+      } catch (err) {
+        audioContext = null;
       }
 
+      const recordingFormats = [
+        { mime: 'video/mp4;codecs="avc1.42E01E,mp4a.40.2"', ext: 'mp4' },
+        { mime: 'video/mp4', ext: 'mp4' },
+        { mime: 'video/webm;codecs=vp9,opus', ext: 'webm' },
+        { mime: 'video/webm;codecs=vp8,opus', ext: 'webm' },
+        { mime: 'video/webm', ext: 'webm' }
+      ];
+      const recordingFormat = recordingFormats.find(format => MediaRecorder.isTypeSupported(format.mime));
+      if (!recordingFormat) throw new Error('Format non supporté.');
+
+      const recorder = new MediaRecorder(canvasStream, {
+        mimeType: recordingFormat.mime,
+        videoBitsPerSecond: 16000000
+      });
+      const chunks = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size) chunks.push(event.data);
+      };
+
+      const finished = new Promise((resolve, reject) => {
+        recorder.onstop = resolve;
+        recorder.onerror = () => reject(new Error('Erreur lors de la génération.'));
+      });
+
+      const scaleFactor = canvas.width / 540;
+      const authorUsername = card.getAttribute('data-author-username') || window.currentUsername || 'user';
+      const cleanUsername = String(authorUsername).trim().replace(/^@+/, '') || 'user';
+      const authorNameText = `@${cleanUsername.toLowerCase()}`;
+
+      const brandFontSize = Math.round(14 * scaleFactor);
+      const userFontSize = Math.round(11 * scaleFactor);
+
+      ctx.font = `bold ${brandFontSize}px 'Outfit', sans-serif`;
+      const brandTextWidth = ctx.measureText("TrasX").width;
+      const brandTotalWidth = brandTextWidth + Math.round(8 * scaleFactor);
+
+      ctx.font = `${userFontSize}px 'Outfit', sans-serif`;
+      const userTextWidth = ctx.measureText(authorNameText).width;
+
+      const maxContentWidth = Math.max(brandTotalWidth, userTextWidth);
+      const padding = Math.round(12 * scaleFactor);
+
+      const wWidth = maxContentWidth + (padding * 2);
+      const wHeight = Math.round(48 * scaleFactor);
+      let wx = Math.round(30 * scaleFactor);
+      let wy = Math.round(60 * scaleFactor);
+      let vx = 1.0 * scaleFactor;
+      let vy = 0.7 * scaleFactor;
+
+      let transitionStartCoords = null;
+      const totalDuration = video.duration || 30;
+
+      const drawFrame = () => {
+        if (video.ended || video.paused) return;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        let drawX = wx;
+        let drawY = wy;
+        const elapsed = video.currentTime;
+        const stopBouncingTime = 4.0;
+        const transitionDuration = 1.5;
+
+        if (elapsed >= stopBouncingTime) {
+          const targetX = Math.round(30 * scaleFactor);
+          const targetY = canvas.height - wHeight - Math.round(140 * scaleFactor);
+          const t = Math.min(1, (elapsed - stopBouncingTime) / transitionDuration);
+          const easeT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+          if (!transitionStartCoords) {
+            transitionStartCoords = { x: wx, y: wy };
+          }
+
+          drawX = transitionStartCoords.x + (targetX - transitionStartCoords.x) * easeT;
+          drawY = transitionStartCoords.y + (targetY - transitionStartCoords.y) * easeT;
+        } else {
+          transitionStartCoords = null;
+          wx += vx;
+          wy += vy;
+          if (wx < 15 || wx + wWidth > canvas.width - 15) vx = -vx;
+          if (wy < 15 || wy + wHeight > canvas.height - 15) vy = -vy;
+          drawX = wx;
+          drawY = wy;
+        }
+
+        drawX = Math.round(drawX);
+        drawY = Math.round(drawY);
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+        ctx.shadowBlur = 8 * scaleFactor;
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+        ctx.lineWidth = 1.2 * scaleFactor;
+
+        ctx.beginPath();
+        ctx.roundRect(drawX, drawY, wWidth, wHeight, 10 * scaleFactor);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${brandFontSize}px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText("TrasX", Math.round(drawX + padding), Math.round(drawY + 16 * scaleFactor));
+
+        ctx.fillStyle = '#06b6d4';
+        ctx.shadowColor = '#06b6d4';
+        ctx.shadowBlur = 4 * scaleFactor;
+        ctx.beginPath();
+        ctx.arc(Math.round(drawX + padding + brandTextWidth + 5 * scaleFactor), Math.round(drawY + 16 * scaleFactor), Math.round(2.2 * scaleFactor), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+        ctx.font = `${userFontSize}px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+        ctx.fillText(authorNameText, Math.round(drawX + padding), Math.round(drawY + 32 * scaleFactor));
+        ctx.restore();
+
+        if (topProgressBar && totalDuration) {
+          const pct = Math.round((video.currentTime / totalDuration) * 100);
+          topProgressBar.style.width = `${pct}%`;
+        }
+
+        requestAnimationFrame(drawFrame);
+      };
+
+      video.onended = () => {
+        if (recorder.state !== 'inactive') recorder.stop();
+      };
+
+      recorder.start(1000);
+      await video.play();
+      drawFrame();
+      await finished;
+      if (audioContext) audioContext.close();
+
+      const blob = new Blob(chunks, { type: recordingFormat.mime });
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `trasx-short-watermarked-${reelId}.${recordingFormat.ext}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+
+      showToast("Short téléchargé avec succès !");
       if (topProgressBar) {
         topProgressBar.style.width = '100%';
         setTimeout(() => {
@@ -9001,22 +9219,9 @@ document.addEventListener('DOMContentLoaded', () => {
           }, 300);
         }, 800);
       }
-
-      const blob = new Blob(chunks, { type: response.headers.get('Content-Type') || 'video/webm' });
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      const extension = fileUrl.split('.').pop().split('?')[0] || 'webm';
-      link.download = `trasx-short-${reelId}.${extension}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
-
-      showToast("Short téléchargé avec succès !");
     } catch (err) {
-      console.error("Download error:", err);
-      showToast("Erreur lors du téléchargement en arrière-plan.");
+      console.error("Reel download error:", err);
+      showToast("Erreur lors de la génération de la vidéo avec filigrane.");
       if (topProgressBar) {
         topProgressBar.style.opacity = '0';
       }
@@ -14963,80 +15168,12 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.fillText("MUSIC SHORT", width / 2, height / 2 + 100);
           }
 
-          // Render Watermark
-          let drawX = wx;
-          let drawY = wy;
+          // Render Watermark (Disabled during initial compilation/upload - watermark will be added on download)
           const currentMedia = (type === 'video') ? tempVideo : tempAudio;
           const startOffset = (type === 'video') ? (files.videoOffset || 0) : (files.audioOffset || 0);
           const elapsed = currentMedia
             ? Math.max(0, currentMedia.currentTime - startOffset)
             : (Date.now() - startTime) / 1000;
-          const stopBouncingTime = 4.0;
-          const transitionDuration = 1.5;
-
-          if (elapsed >= stopBouncingTime) {
-            const targetX = Math.round(30 * scaleFactor); // Left aligned, same height
-            const targetY = height - wHeight - Math.round(140 * scaleFactor);
-            const t = Math.min(1, (elapsed - stopBouncingTime) / transitionDuration);
-            const easeT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-
-            if (!transitionStartCoords) {
-              transitionStartCoords = { x: wx, y: wy };
-            }
-
-            drawX = transitionStartCoords.x + (targetX - transitionStartCoords.x) * easeT;
-            drawY = transitionStartCoords.y + (targetY - transitionStartCoords.y) * easeT;
-          } else {
-            transitionStartCoords = null;
-            wx += vx;
-            wy += vy;
-            if (wx < 15 || wx + wWidth > width - 15) vx = -vx;
-            if (wy < 15 || wy + wHeight > height - 15) vy = -vy;
-            drawX = wx;
-            drawY = wy;
-          }
-
-          drawX = Math.round(drawX);
-          drawY = Math.round(drawY);
-
-          ctx.save();
-          // Glow and subtle shadow
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-          ctx.shadowBlur = 8 * scaleFactor;
-
-          // Semitransparent card
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-          ctx.lineWidth = 1.2 * scaleFactor;
-
-          ctx.beginPath();
-          ctx.roundRect(drawX, drawY, wWidth, wHeight, 10 * scaleFactor);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.shadowBlur = 0; // Disable shadow for text
-
-          // Draw TrasX brand text
-          ctx.fillStyle = '#ffffff';
-          ctx.font = `bold ${brandFontSize}px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillText("TrasX", Math.round(drawX + padding), Math.round(drawY + 16 * scaleFactor));
-
-          // Little glowing dot next to TrasX
-          ctx.fillStyle = '#06b6d4'; // Glowing cyan tone
-          ctx.shadowColor = '#06b6d4';
-          ctx.shadowBlur = 4 * scaleFactor;
-          ctx.beginPath();
-          ctx.arc(Math.round(drawX + padding + brandTextWidth + 5 * scaleFactor), Math.round(drawY + 16 * scaleFactor), Math.round(2.2 * scaleFactor), 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0; // Reset shadow
-
-          // Username below brand text
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-          ctx.font = `${userFontSize}px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
-          ctx.fillText(authorNameText, Math.round(drawX + padding), Math.round(drawY + 32 * scaleFactor));
-          ctx.restore();
 
           // Update progress bar
           const progressPct = Math.min(100, Math.floor((elapsed / totalDuration) * 100));

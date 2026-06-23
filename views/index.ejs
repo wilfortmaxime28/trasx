@@ -5045,6 +5045,12 @@ function getYouTubeId(url) {
           window.feedRevealBatchSize = <%= Number(typeof feedRevealBatchSize !== 'undefined' ? feedRevealBatchSize : 6) %>;
           window.shortRevealBatchSize = <%= Number(typeof shortRevealBatchSize !== 'undefined' ? shortRevealBatchSize : 2) %>;
         </script>
+        <!-- Floating Alert for New Posts -->
+        <div id="newPostScrollAlert" class="new-post-scroll-alert">
+          <i data-lucide="arrow-up" style="width: 16px; height: 16px;"></i>
+          <span><%= typeof tText === 'function' ? tText("Nouveaux posts") : "Nouveaux posts" %></span>
+        </div>
+
         <script src="/js/client.js?v=202"></script>
         </body>
 
