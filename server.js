@@ -2022,7 +2022,7 @@ app.get('/api/backgrounds', requireAuth, async (req, res) => {
   }
 });
 
-// ── Route API Recherche Globale (utilisateurs + posts depuis la DB) ──
+// ── Route API Recherche Globale (posts depuis la DB) ──
 app.get('/api/search', requireAuth, async (req, res) => {
   try {
     const currentUserId = req.session.userId;
@@ -2031,21 +2031,6 @@ app.get('/api/search', requireAuth, async (req, res) => {
       return res.json({ users: [], posts: [] });
     }
     const q = `%${rawQ}%`;
-
-    // Search users
-    const [userRows] = await db.query(
-      `SELECT id, first_name, last_name, username, avatar, certification_type
-       FROM users
-       WHERE id != ? AND (
-         first_name LIKE ? OR last_name LIKE ? OR username LIKE ?
-         OR CONCAT(first_name, ' ', last_name) LIKE ?
-       )
-       ORDER BY
-         CASE WHEN username LIKE ? THEN 0 ELSE 1 END,
-         first_name ASC
-       LIMIT 8`,
-      [currentUserId, q, q, q, q, q]
-    );
 
     // Search posts
     const [postRows] = await db.query(
@@ -2061,14 +2046,6 @@ app.get('/api/search', requireAuth, async (req, res) => {
        LIMIT 10`,
       [q]
     );
-
-    const users = userRows.map(u => ({
-      id: u.id,
-      name: `${u.first_name} ${u.last_name}`.trim(),
-      username: u.username,
-      avatar: u.avatar || '/assets/avatar_placeholder.jpg',
-      certType: u.certification_type || null
-    }));
 
     const posts = postRows.map(p => {
       const mediaUrl = p.image_url || p.image_url_2 || p.image_url_3 || p.image_url_4 || null;
@@ -2130,7 +2107,7 @@ app.get('/api/search', requireAuth, async (req, res) => {
       };
     });
 
-    res.json({ users, posts });
+    res.json({ users: [], posts });
   } catch (err) {
     console.error('[API /search] Error:', err);
     res.status(500).json({ error: 'Search failed', users: [], posts: [] });

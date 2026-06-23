@@ -14090,7 +14090,7 @@ document.addEventListener('DOMContentLoaded', () => {
       resultsContainer.innerHTML = `
         <div class="mobile-search-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--text-muted); text-align: center; padding-top: 60px;">
           <i data-lucide="search" style="width: 40px; height: 40px; opacity: 0.3;"></i>
-          <p style="font-size: 14px;">Rechercher des utilisateurs ou des publications</p>
+          <p style="font-size: 14px;">Rechercher des publications</p>
         </div>
       `;
       if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -19933,6 +19933,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (window.currentView === 'games' && gamesLobby && gamesLobby.style.display !== 'none') {
         renderLobbyLists(games);
       }
+      renderFeedMatchCards(games);
     });
 
     socket.on('game-started', (game) => {
@@ -22030,5 +22031,192 @@ document.addEventListener('DOMContentLoaded', () => {
       pwaInstallWrapper.style.display = 'none';
     }
     showToast("Application installée avec succès !");
+  });
+
+  // Live games elapsed timers inside feed post cards
+  const updateMatchElapsedTimers = () => {
+    document.querySelectorAll('.match-elapsed-timer').forEach(el => {
+      const startedAt = parseInt(el.getAttribute('data-started-at') || '0', 10);
+      if (!startedAt) return;
+      const diff = Date.now() - startedAt;
+      if (diff < 0) {
+        el.textContent = "00:00";
+        return;
+      }
+      const totalSeconds = Math.floor(diff / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      
+      const pad = (n) => String(n).padStart(2, '0');
+      if (hours > 0) {
+        el.textContent = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+      } else {
+        el.textContent = `${pad(minutes)}:${pad(seconds)}`;
+      }
+    });
+  };
+  updateMatchElapsedTimers();
+  setInterval(updateMatchElapsedTimers, 1000);
+
+  // Dynamic WebSocket rendering of active match cards in the feed
+  const renderFeedMatchCards = (games = []) => {
+    if (!postsContainer) return;
+    
+    // Remove existing match cards
+    postsContainer.querySelectorAll('.active-match-card').forEach(el => el.remove());
+    
+    // Filter games currently being played
+    const playingGames = games.filter(g => g.status === 'playing');
+    if (playingGames.length === 0) return;
+    
+    const gameNamesMap = {
+      domino: 'Domino',
+      connect4: 'Puissance 4',
+      gomoku: 'Gomoku',
+      tablefootball: 'Football Table'
+    };
+
+    // Prepend active games in reverse so the first game ends up at the top
+    [...playingGames].reverse().forEach(game => {
+      const gameName = gameNamesMap[game.gameType] || 'Jeu';
+      const isPaid = game.liveMode === 'paid';
+      const livePriceLabel = isPaid ? `Payant (${parseFloat(game.livePrice || 0.50).toFixed(2)} $)` : 'Gratuit';
+      const badgeClass = isPaid ? 'live-paywall-badge-paid' : 'live-paywall-badge-free';
+      const badgeStyle = isPaid 
+        ? 'display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; background-color: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); font-size: 10.5px; font-weight: 800; color: #d97706;'
+        : 'display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; background-color: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); font-size: 10.5px; font-weight: 800; color: #059669;';
+      const badgeIcon = isPaid ? 'ticket' : 'sparkles';
+
+      const p1Avatar = game.player1.avatar || '/assets/avatar_placeholder.jpg';
+      const p1Name = escapeHtml(game.player1.name);
+      const p1Username = escapeHtml(game.player1.username);
+
+      let p2Html = '';
+      if (game.player2) {
+        const p2Avatar = game.player2.avatar || '/assets/avatar_placeholder.jpg';
+        const p2Name = escapeHtml(game.player2.name);
+        const p2Username = escapeHtml(game.player2.username);
+        p2Html = `
+          <div class="match-player-profile" style="flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0;">
+            <div style="position: relative; width: 62px; height: 62px; margin-bottom: 8px;">
+              <img src="${p2Avatar}" alt="${p2Name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary); box-shadow: var(--shadow-sm);" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+            </div>
+            <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">${p2Name}</span>
+            <span style="font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">@${p2Username}</span>
+          </div>
+        `;
+      } else {
+        p2Html = `
+          <div class="match-player-profile" style="flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0;">
+            <div style="position: relative; width: 62px; height: 62px; margin-bottom: 8px;">
+              <img src="/assets/avatar_placeholder.jpg" alt="Bot" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid var(--border-color); opacity: 0.6;">
+            </div>
+            <span style="font-size: 13px; font-weight: 700; color: var(--text-muted);">En attente...</span>
+            <span style="font-size: 11.5px; color: var(--text-muted);">--</span>
+          </div>
+        `;
+      }
+
+      const card = document.createElement('article');
+      card.className = 'post-card active-match-card';
+      card.id = `match-${game.id}`;
+      card.setAttribute('data-feed-item-type', 'match');
+      card.setAttribute('data-game-id', game.id);
+      card.setAttribute('data-started-at', game.startedAt);
+      card.innerHTML = `
+        <div class="match-card-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 8px 20px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="match-live-pulse-ring" style="display: inline-flex; align-items: center; justify-content: center; width: 8px; height: 8px; border-radius: 50%; background-color: #ef4444; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); animation: matchPulse 1.5s infinite;"></span>
+            <span style="font-size: 11px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.5px;">Match en Direct</span>
+          </div>
+          <div class="match-game-badge" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; background-color: var(--bg-input); border: 1px solid var(--border-color); font-size: 11px; font-weight: 700; color: var(--text-primary);">
+            <i data-lucide="gamepad-2" style="width: 13px; height: 13px; color: var(--primary);"></i>
+            <span>${gameName}</span>
+          </div>
+        </div>
+
+        <div class="match-vs-container" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; gap: 12px;">
+          <!-- Player 1 -->
+          <div class="match-player-profile" style="flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0;">
+            <div style="position: relative; width: 62px; height: 62px; margin-bottom: 8px;">
+              <img src="${p1Avatar}" alt="${p1Name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary); box-shadow: var(--shadow-sm);" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+            </div>
+            <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">${p1Name}</span>
+            <span style="font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">@${p1Username}</span>
+          </div>
+
+          <!-- VS Separation & Live Timer -->
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; min-width: 60px;">
+            <div style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 900; text-transform: uppercase; color: var(--text-muted); background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-xs);">VS</div>
+            <div class="match-elapsed-timer" style="font-size: 12px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums;" data-started-at="${game.startedAt}">
+              --:--
+            </div>
+          </div>
+
+          <!-- Player 2 -->
+          ${p2Html}
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-top: 1px solid var(--border-color); background: var(--bg-hover); gap: 12px;">
+          <!-- Live Mode Info -->
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="${badgeClass}" style="${badgeStyle}">
+              <i data-lucide="${badgeIcon}" style="width: 13px; height: 13px;"></i>
+              <span>${livePriceLabel}</span>
+            </span>
+          </div>
+
+          <!-- Action button -->
+          <button class="spectate-game-action-btn settings-primary-btn" 
+                  data-game-id="${game.id}"
+                  data-live-mode="${game.liveMode}"
+                  data-live-price="${game.livePrice}"
+                  style="height: 32px; font-size: 12px; padding: 0 16px; border-radius: 8px; font-weight: 700; background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%); color: white; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: var(--shadow-sm); transition: transform 0.15s ease;">
+            <i data-lucide="eye" style="width: 14px; height: 14px;"></i>
+            <span>Regarder le live</span>
+          </button>
+        </div>
+      `;
+      postsContainer.prepend(card);
+    });
+
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  };
+
+  // Global click handler for feed active match spectating
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.spectate-game-action-btn');
+    if (btn) {
+      // Ignore if inside lobby lists, since those have their own specific event handlers
+      if (btn.closest('.game-list-item')) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      const gameId = btn.getAttribute('data-game-id');
+      const liveMode = btn.getAttribute('data-live-mode') || 'free';
+      const livePrice = parseFloat(btn.getAttribute('data-live-price') || '0');
+      
+      // Clear rematch flags to ensure clean state
+      window.lastActiveGameInfo = null;
+      window.isRematchGame = false;
+
+      if (liveMode === 'paid') {
+        showSpectatorPaymentModal({ id: gameId, livePrice, liveMode });
+      } else {
+        socket.emit('game-spectate-join', { gameId }, (res) => {
+          if (res && res.error) {
+            showToast(res.error);
+          } else if (res && res.game) {
+            initActiveGame(res.game, true);
+            showToast("Vous regardez la partie en direct !");
+            showGamesView();
+          }
+        });
+      }
+    }
   });
 });

@@ -798,6 +798,96 @@ function getYouTubeId(url) {
                                             </article>
                                           <% }) %>
 
+                                                <%
+                                                  const activeMatches = (typeof liveGames !== 'undefined' && Array.isArray(liveGames)) ? liveGames : [];
+                                                  activeMatches.forEach((game) => {
+                                                    const gameNamesMap = {
+                                                      domino: 'Domino',
+                                                      connect4: 'Puissance 4',
+                                                      gomoku: 'Gomoku',
+                                                      tablefootball: 'Football Table'
+                                                    };
+                                                    const gameName = gameNamesMap[game.gameType] || 'Jeu';
+                                                %>
+                                                <article class="post-card active-match-card" data-feed-item-type="match" data-game-id="<%= game.id %>" data-started-at="<%= game.startedAt %>">
+                                                  <div class="match-card-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 8px 20px;">
+                                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                                      <span class="match-live-pulse-ring" style="display: inline-flex; align-items: center; justify-content: center; width: 8px; height: 8px; border-radius: 50%; background-color: #ef4444; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); animation: matchPulse 1.5s infinite;"></span>
+                                                      <span style="font-size: 11px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.5px;"><%= tText("Match en direct") %></span>
+                                                    </div>
+                                                    <div class="match-game-badge" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; background-color: var(--bg-input); border: 1px solid var(--border-color); font-size: 11px; font-weight: 700; color: var(--text-primary);">
+                                                      <i data-lucide="gamepad-2" style="width: 13px; height: 13px; color: var(--primary);"></i>
+                                                      <span><%= gameName %></span>
+                                                    </div>
+                                                  </div>
+
+                                                  <div class="match-vs-container" style="display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; gap: 12px;">
+                                                    <!-- Player 1 -->
+                                                    <div class="match-player-profile" style="flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0;">
+                                                      <div style="position: relative; width: 62px; height: 62px; margin-bottom: 8px;">
+                                                        <img src="<%= game.player1.avatar %>" alt="<%= game.player1.name %>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary); box-shadow: var(--shadow-sm);" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+                                                      </div>
+                                                      <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;"><%= game.player1.name %></span>
+                                                      <span style="font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">@<%= game.player1.username %></span>
+                                                    </div>
+
+                                                    <!-- VS Separation & Live Timer -->
+                                                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; min-width: 60px;">
+                                                      <div style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 900; text-transform: uppercase; color: var(--text-muted); background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-xs);">VS</div>
+                                                      <div class="match-elapsed-timer" style="font-size: 12px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums;" data-started-at="<%= game.startedAt %>">
+                                                        --:--
+                                                      </div>
+                                                    </div>
+
+                                                    <!-- Player 2 -->
+                                                    <div class="match-player-profile" style="flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0;">
+                                                      <% if (game.player2) { %>
+                                                        <div style="position: relative; width: 62px; height: 62px; margin-bottom: 8px;">
+                                                          <img src="<%= game.player2.avatar %>" alt="<%= game.player2.name %>" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary); box-shadow: var(--shadow-sm);" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+                                                        </div>
+                                                        <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;"><%= game.player2.name %></span>
+                                                        <span style="font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">@<%= game.player2.username %></span>
+                                                      <% } else { %>
+                                                        <div style="position: relative; width: 62px; height: 62px; margin-bottom: 8px;">
+                                                          <img src="/assets/avatar_placeholder.jpg" alt="Bot" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid var(--border-color); opacity: 0.6;">
+                                                        </div>
+                                                        <span style="font-size: 13px; font-weight: 700; color: var(--text-muted);"><%= tText("En attente...") %></span>
+                                                        <span style="font-size: 11.5px; color: var(--text-muted);">--</span>
+                                                      <% } %>
+                                                    </div>
+                                                  </div>
+
+                                                  <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-top: 1px solid var(--border-color); background: var(--bg-hover); gap: 12px;">
+                                                    <!-- Live Mode Info -->
+                                                    <div style="display: flex; align-items: center; gap: 6px;">
+                                                      <% if (game.liveMode === 'paid') { %>
+                                                        <span class="live-paywall-badge-paid" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; background-color: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); font-size: 10.5px; font-weight: 800; color: #d97706;">
+                                                          <i data-lucide="ticket" style="width: 13px; height: 13px;"></i>
+                                                          <span><%= tText("Payant") %> (<%= parseFloat(game.livePrice || 0.50).toFixed(2) %> $)</span>
+                                                        </span>
+                                                      <% } else { %>
+                                                        <span class="live-paywall-badge-free" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; background-color: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); font-size: 10.5px; font-weight: 800; color: #059669;">
+                                                          <i data-lucide="sparkles" style="width: 13px; height: 13px;"></i>
+                                                          <span><%= tText("Gratuit") %></span>
+                                                        </span>
+                                                      <% } %>
+                                                    </div>
+
+                                                    <!-- Action button -->
+                                                    <button class="spectate-game-action-btn settings-primary-btn" 
+                                                            data-game-id="<%= game.id %>"
+                                                            data-live-mode="<%= game.liveMode %>"
+                                                            data-live-price="<%= game.livePrice %>"
+                                                            style="height: 32px; font-size: 12px; padding: 0 16px; border-radius: 8px; font-weight: 700; background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%); color: white; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: var(--shadow-sm); transition: transform 0.15s ease;">
+                                                      <i data-lucide="eye" style="width: 14px; height: 14px;"></i>
+                                                      <span><%= tText("Regarder le live") %></span>
+                                                    </button>
+                                                  </div>
+                                                </article>
+                                                <%
+                                                  });
+                                                %>
+
                                                 <% sortedPosts.forEach((post, postIndex)=> { %>
                                             <% while (feedAdCursor < feedAds.length &&
                                               feedDateValue(feedAds[feedAdCursor].created_at)>=

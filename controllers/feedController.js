@@ -8,6 +8,7 @@ const Status = require('../models/Status');
 const Ad = require('../models/Ad');
 const Challenge = require('../models/Challenge');
 const P2PMarket = require('../models/P2PMarket');
+const gamesManager = require('../utils/gamesManager');
 const { buildMessageInboxSections } = require('../utils/messageInbox');
 const { getNumberSetting } = require('../utils/appSettings');
 const { getSupportedCurrencyOptions, getPreferredCurrencyForCountry, getDefaultPaymentMethodsForCountry } = require('../utils/p2pCurrencies');
@@ -447,6 +448,8 @@ class FeedController {
         Reel.recordDailyViews(initiallyVisibleReelIds, currentUserId)
       ]);
 
+      const liveGames = gamesManager.getLiveGames().filter(g => g.status === 'playing');
+
       // Effectuer le rendu de index.ejs avec toutes les données
       res.render('index', {
         currentUser,
@@ -473,6 +476,7 @@ class FeedController {
         followingShareTargets,
         friendShareTargets,
         dashboard,
+        liveGames,
         statusStatus: req.query.success || null,
         statusError: req.query.error || null,
         activeTab: 'feed',

@@ -45,7 +45,7 @@
     <div class="mobile-search-header">
       <div class="mobile-search-input-wrapper">
         <i data-lucide="search" class="mobile-search-icon"></i>
-        <input type="text" id="mobileSearchInput" class="mobile-search-input" placeholder="<%= tText("Search users, posts...") %>" autocomplete="off" autocorrect="off" spellcheck="false">
+        <input type="text" id="mobileSearchInput" class="mobile-search-input" placeholder="<%= tText("Search posts...") %>" autocomplete="off" autocorrect="off" spellcheck="false">
         <button id="mobileSearchClear" class="mobile-search-clear" style="display:none;" aria-label="Effacer">
           <i data-lucide="x" style="width:16px;height:16px;"></i>
         </button>
@@ -55,7 +55,7 @@
     <div id="mobileSearchResults" class="mobile-search-results">
       <div class="mobile-search-placeholder">
         <i data-lucide="search" style="width: 40px; height: 40px; opacity: 0.3;"></i>
-        <p><%= tText("Search for people or posts") %></p>
+        <p><%= tText("Search for posts") %></p>
       </div>
     </div>
   </div>
@@ -69,7 +69,7 @@
       </div>
       <div class="search-bar">
         <i data-lucide="search" class="search-icon"></i>
-        <input type="text" placeholder="<%= t('header.searchPlaceholder', 'Search') %>" aria-label="<%= tText("Search posts, people, and groups") %>">
+        <input type="text" placeholder="<%= t('header.searchPlaceholder', 'Search') %>" aria-label="<%= tText("Search posts") %>">
         <button type="button" class="header-search-emoji-btn emoji-trigger-btn" title="<%= tText("Add emoji") %>">😊</button>
       </div>
     </div>
