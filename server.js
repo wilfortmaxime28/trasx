@@ -24,6 +24,7 @@ const Challenge = require('./models/Challenge');
 const P2PMarket = require('./models/P2PMarket');
 const PlatformRevenue = require('./models/PlatformRevenue');
 const db = require('./config/db');
+const ActivityLog = require('./models/ActivityLog');
 const installController = require('./controllers/installController');
 const presence = require('./utils/presence');
 const { createTranslator, createSourceTextTranslator, normalizeLocale, SUPPORTED_LOCALES, flattenTranslations, flattenSourceTextTranslations } = require('./utils/i18n');
@@ -322,6 +323,60 @@ app.use('/vendor/tesseract', express.static(path.join(__dirname, 'node_modules/t
 app.use('/vendor/tesseract-core', express.static(path.join(__dirname, 'node_modules/tesseract.js-core')));
 app.use('/vendor/tesseract-lang-eng', express.static(path.join(__dirname, 'node_modules/@tesseract.js-data/eng/4.0.0')));
 app.use('/models/face-api', express.static(path.join(__dirname, 'public/models/face-api')));
+
+// CUSTOM RATE LIMITER STORE
+const rateLimitStore = new Map();
+function customRateLimiter(options = {}) {
+  const windowMs = options.windowMs || 60 * 1000;
+  const max = options.max || 100;
+  const message = options.message || { error: "Trop de requêtes, veuillez réessayer plus tard." };
+
+  return (req, res, next) => {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const now = Date.now();
+
+    if (!rateLimitStore.has(ip)) {
+      rateLimitStore.set(ip, []);
+    }
+
+    let timestamps = rateLimitStore.get(ip);
+    timestamps = timestamps.filter(time => now - time < windowMs);
+    timestamps.push(now);
+    rateLimitStore.set(ip, timestamps);
+
+    if (timestamps.length > max) {
+      return res.status(429).json(message);
+    }
+    next();
+  };
+}
+
+// ANTI-BOT & ANTI-SCRAPING MIDDLEWARE
+function antiScrapingMiddleware(req, res, next) {
+  const userAgent = req.headers['user-agent'] || '';
+  const blockedBots = [
+    /curl/i, /wget/i, /python/i, /scrap/i, /crawl/i, /spider/i, /bot/i, 
+    /headless/i, /puppeteer/i, /selenium/i, /axios/i, /postman/i, /http/i
+  ];
+  
+  if (blockedBots.some(regex => regex.test(userAgent))) {
+    return res.status(403).send("Access denied. Web scraping is strictly prohibited on this platform.");
+  }
+  
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  next();
+}
+
+app.use(antiScrapingMiddleware);
+app.use('/api', customRateLimiter({ windowMs: 60 * 1000, max: 200 }));
+app.use('/auth/login', customRateLimiter({ windowMs: 60 * 1000, max: 15 }));
+app.use('/auth/register', customRateLimiter({ windowMs: 60 * 1000, max: 10 }));
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.send("User-agent: *\nDisallow: /");
+});
 
 // Parser pour le contenu JSON et formulaires
 app.use(express.json());
@@ -2197,6 +2252,27 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/user/update-display-name', requireAuth, async (req, res) => {
+  try {
+    const { display_name } = req.body;
+    const cleanName = await User.updateDisplayName(req.session.userId, display_name);
+    
+    // Log the action
+    await ActivityLog.log(req.session.userId, 'user', 'update_display_name', 'user', req.session.userId, { display_name: cleanName }, req);
+    
+    // Emit socket event to update the UI in real-time
+    io.emit('display-name-updated', {
+      userId: req.session.userId,
+      displayName: cleanName
+    });
+    
+    res.json({ success: true, displayName: cleanName });
+  } catch (err) {
+    console.error('Error updating display name:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Route to get the current user's balance in real-time
 app.get('/api/users/balance', requireAuth, async (req, res) => {
   try {
@@ -3467,6 +3543,8 @@ io.on('connection', (socket) => {
         post.challenge_participants = await Challenge.getParticipants(postId);
       }
 
+      await ActivityLog.log(currentUserId, 'user', 'create_post', 'post', postId, { challenge_type: post?.challenge_type || null });
+
       // Diffuser le nouveau post à tous les clients
       io.emit('post-created', post);
       if (typeof callback === 'function') {
@@ -4606,7 +4684,8 @@ io.on('connection', (socket) => {
       io.emit('comment-created', {
         id: commentId,
         postId,
-        user_name: user.first_name + ' ' + user.last_name,
+        user_id: user.id,
+        user_name: user.name,
         user_avatar: user.avatar,
         user_username: user.username,
         certification_type: user.certification_type || 'None',
@@ -5314,6 +5393,9 @@ io.on('connection', (socket) => {
       } else {
         // Broadcast list updates for public/waiting/bot games
         io.emit('game-list-updated', gamesManager.getLiveGames());
+        if (opponentType === 'bot' && entryMode === 'paid') {
+          await emitRealtimeBalanceUpdate(currentUserId, "Votre mise en tokens a été déduite.");
+        }
       }
 
       if (typeof ack === 'function') {
@@ -5788,7 +5870,8 @@ io.on('connection', (socket) => {
         io.emit('comment-created', {
           id: commentId,
           postId,
-          user_name: senderName,
+          user_id: sender.id,
+          user_name: sender.name,
           user_avatar: sender.avatar || '/assets/avatar_placeholder.jpg',
           user_username: sender.username,
           certification_type: sender.certification_type || 'None',
@@ -6009,6 +6092,9 @@ io.on('connection', (socket) => {
             isForfeit: result.isForfeit || false
           });
           io.emit('game-list-updated', gamesManager.getLiveGames());
+          if (result.game && result.game.mode === 'paid' && result.game.player2 && result.game.player2.isBot) {
+            await emitRealtimeBalanceUpdate(result.game.player1.id, "Votre solde de tokens a été mis à jour.");
+          }
         } else {
           if (result.roundWinnerId) {
             io.to(`game:${gameId}`).emit('game-round-over', {
@@ -6038,6 +6124,9 @@ io.on('connection', (socket) => {
                       isForfeit: botResult.isForfeit || false
                     });
                     io.emit('game-list-updated', gamesManager.getLiveGames());
+                    if (botResult.game && botResult.game.mode === 'paid' && botResult.game.player2 && botResult.game.player2.isBot) {
+                      await emitRealtimeBalanceUpdate(botResult.game.player1.id, "Votre solde de tokens a été mis à jour.");
+                    }
                   } else {
                     if (botResult.roundWinnerId) {
                       io.to(`game:${gameId}`).emit('game-round-over', {
@@ -6264,6 +6353,9 @@ io.on('connection', (socket) => {
           isForfeit: true
         });
         io.emit('game-list-updated', gamesManager.getLiveGames());
+        if (result.game && result.game.mode === 'paid' && result.game.player2 && result.game.player2.isBot) {
+          await emitRealtimeBalanceUpdate(result.game.player1.id, "Votre solde de tokens a été mis à jour.");
+        }
       }
     } catch (err) {
       console.error('Error on game-forfeit:', err);

@@ -75,7 +75,7 @@ class Reel {
         r.promo_daily_target,
         r.promo_paid_hashtag_count,
         r.user_id,
-        CONCAT(u.first_name, ' ', u.last_name) AS author_name,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS author_name,
         u.avatar AS author_avatar,
         u.username AS author_username,
         u.country AS author_country,

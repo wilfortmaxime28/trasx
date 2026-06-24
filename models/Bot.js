@@ -24,6 +24,12 @@ async function ensureBotsTable() {
         // Ignored if the column already exists
       }
 
+      try {
+        await db.query('ALTER TABLE bots ADD COLUMN level INT DEFAULT 1');
+      } catch (err) {
+        // Ignored if the column already exists
+      }
+
       // Check if table is empty
       const [rows] = await db.query('SELECT COUNT(*) as count FROM bots');
       if (rows[0].count === 0) {

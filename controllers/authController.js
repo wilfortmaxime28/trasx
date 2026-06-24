@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const db = require('../config/db');
+const ActivityLog = require('../models/ActivityLog');
 const mailer = require('../utils/mailer');
 const { getNumberSetting } = require('../utils/appSettings');
 
@@ -25,7 +26,14 @@ exports.getRegister = (req, res) => {
 
 exports.postRegister = async (req, res) => {
   try {
-    const { username, email, password, first_name, last_name, dob, phone, country, terms } = req.body;
+    let { username, email, password, first_name, last_name, dob, phone, country, terms } = req.body;
+
+    if (username) username = username.replace(/\s+/g, '').trim();
+    if (email) email = email.trim();
+    if (first_name) first_name = first_name.trim().replace(/<[^>]*>/g, '');
+    if (last_name) last_name = last_name.trim().replace(/<[^>]*>/g, '');
+    if (phone) phone = phone.trim().replace(/[^0-9+\s-]/g, '');
+    if (country) country = country.trim().replace(/<[^>]*>/g, '');
 
     if(!username || !email || !password || !first_name || !last_name || !dob || !phone) {
       return res.render('register', { error: 'Please provide all required real data.' });
@@ -84,6 +92,8 @@ exports.postRegister = async (req, res) => {
       promo_post_daily_base: baseDailyViews,
       promo_reel_daily_base: baseDailyViews
     });
+
+    await ActivityLog.log(userId, 'user', 'register', 'user', userId, { username, email }, req);
 
     const emailSent = await mailer.sendVerificationEmail(email, verification_code);
 
@@ -245,6 +255,8 @@ exports.postLogin = async (req, res) => {
     }
 
     req.session.userId = user.id;
+    await ActivityLog.log(user.id, 'user', 'login', 'user', user.id, { username: user.username }, req);
+
     req.session.rememberMe = remember_me === 'on';
     if (remember_me === 'on') {
       req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30;
@@ -258,7 +270,10 @@ exports.postLogin = async (req, res) => {
   }
 };
 
-exports.logout = (req, res) => {
+exports.logout = async (req, res) => {
+  if (req.session && req.session.userId) {
+    await ActivityLog.log(req.session.userId, 'user', 'logout', 'user', req.session.userId, null, req);
+  }
   req.session.destroy();
   res.redirect('/auth/login');
 };

@@ -116,7 +116,7 @@ class Status {
   static async getById(id) {
     await ensureStatusTable();
     const [rows] = await db.query(
-      `SELECT s.*, CONCAT(u.first_name, ' ', u.last_name) AS user_name, u.username, u.avatar 
+      `SELECT s.*, COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS user_name, u.username, u.avatar 
        FROM statuses s 
        JOIN users u ON s.user_id = u.id 
        WHERE s.id = ?`,
@@ -144,7 +144,7 @@ class Status {
           s.trim_start,
           s.trim_end,
           s.bg_color,
-          CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+          COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS user_name,
           u.username,
           u.avatar,
           EXISTS(

@@ -71,8 +71,26 @@ class GamesManager {
     const betAmount = isPaid ? Math.max(0.10, parseFloat(customBetAmount || 1.00)) : 0;
     
     if (isPaid) {
-      if (isP2PInvite) {
-        // Direct invite: check BOTH players' balances, but do NOT deduct yet
+      if (opponentType === 'bot') {
+        const [creatorRows] = await db.query('SELECT token_balance FROM users WHERE id = ?', [creatorId]);
+        const creatorBalance = creatorRows.length > 0 ? parseFloat(creatorRows[0].token_balance || 0) : 0;
+        if (creatorBalance < betAmount) {
+          throw new Error(`Votre solde en tokens est insuffisant pour jouer avec le robot (${betAmount.toFixed(4)} tokens requis).`);
+        }
+
+        const [botBankRows] = await db.query("SELECT id, token_balance FROM users WHERE username = 'botbank' LIMIT 1");
+        if (!botBankRows || botBankRows.length === 0) {
+          throw new Error("Le compte Bot Bank est introuvable. Impossible de jouer avec le robot.");
+        }
+        const botBankUser = botBankRows[0];
+        const botBankBalance = parseFloat(botBankUser.token_balance || 0);
+        if (botBankBalance < betAmount) {
+          throw new Error("Le robot refuse de jouer car la banque de robots (Bot Bank) n'a pas assez de tokens.");
+        }
+
+        await db.execute('UPDATE users SET token_balance = token_balance - ? WHERE id = ?', [betAmount, creatorId]);
+        await db.execute('UPDATE users SET token_balance = token_balance - ? WHERE id = ?', [betAmount, botBankUser.id]);
+      } else if (isP2PInvite) {
         const [creatorRows] = await db.query('SELECT deposit_account_balance FROM users WHERE id = ?', [creatorId]);
         const creatorBalance = creatorRows.length > 0 ? parseFloat(creatorRows[0].deposit_account_balance || 0) : 0;
         if (creatorBalance < betAmount) {
@@ -85,13 +103,11 @@ class GamesManager {
           throw new Error(`Le solde de l'adversaire est insuffisant pour miser ce montant (${betAmount.toFixed(2)} $).`);
         }
       } else {
-        // Check user balance
         const [rows] = await db.query('SELECT deposit_account_balance FROM users WHERE id = ?', [creatorId]);
         const balance = rows.length > 0 ? parseFloat(rows[0].deposit_account_balance || 0) : 0;
         if (balance < betAmount) {
           throw new Error(`Solde insuffisant pour créer une partie payante (${betAmount.toFixed(2)} $ requis).`);
         }
-        // Deduct entry fee
         await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance - ? WHERE id = ?', [betAmount, creatorId]);
       }
     }
@@ -222,6 +238,8 @@ class GamesManager {
       if (!bot) {
         bot = await Bot.getRandomBot();
       }
+      const rawLevel = bot.level || 1;
+      const finalLevel = isPaid ? (rawLevel * 100) : rawLevel;
       game.player2 = {
         id: 'bot_' + bot.id,
         username: bot.username,
@@ -229,7 +247,8 @@ class GamesManager {
         avatar: bot.avatar,
         symbol: 2,
         isBot: true,
-        wins: bot.wins || 0
+        wins: bot.wins || 0,
+        level: finalLevel
       };
     }
 
@@ -965,17 +984,44 @@ class GamesManager {
         if (isPaid) {
           const betAmount = parseFloat(game.betAmount || 0);
           const totalPayout = betAmount * 2;
-          if (matchWinnerId === 'draw') {
-            if (game.player1 && !game.player1.isBot) {
-              await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [betAmount, game.player1.id]);
+          const isBotGame = (game.player2 && game.player2.isBot);
+          
+          if (isBotGame) {
+            let botBankId = null;
+            const [botBankRows] = await db.query("SELECT id FROM users WHERE username = 'botbank' LIMIT 1");
+            if (botBankRows && botBankRows.length > 0) {
+              botBankId = botBankRows[0].id;
             }
-            if (game.player2 && !game.player2.isBot) {
-              await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [betAmount, game.player2.id]);
+            if (matchWinnerId === 'draw') {
+              if (game.player1) {
+                await db.execute('UPDATE users SET token_balance = token_balance + ? WHERE id = ?', [betAmount, game.player1.id]);
+              }
+              if (botBankId) {
+                await db.execute('UPDATE users SET token_balance = token_balance + ? WHERE id = ?', [betAmount, botBankId]);
+              }
+            } else {
+              const winner = player1WonMatch ? game.player1 : game.player2;
+              if (winner) {
+                if (!winner.isBot) {
+                  await db.execute('UPDATE users SET token_balance = token_balance + ? WHERE id = ?', [totalPayout, winner.id]);
+                } else if (botBankId) {
+                  await db.execute('UPDATE users SET token_balance = token_balance + ? WHERE id = ?', [totalPayout, botBankId]);
+                }
+              }
             }
           } else {
-            const winner = player1WonMatch ? game.player1 : game.player2;
-            if (winner && !winner.isBot) {
-              await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [totalPayout, winner.id]);
+            if (matchWinnerId === 'draw') {
+              if (game.player1 && !game.player1.isBot) {
+                await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [betAmount, game.player1.id]);
+              }
+              if (game.player2 && !game.player2.isBot) {
+                await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [betAmount, game.player2.id]);
+              }
+            } else {
+              const winner = player1WonMatch ? game.player1 : game.player2;
+              if (winner && !winner.isBot) {
+                await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [totalPayout, winner.id]);
+              }
             }
           }
         }
@@ -1026,19 +1072,48 @@ class GamesManager {
       if (isPaid) {
         const betAmount = parseFloat(game.betAmount || 0);
         const totalPayout = betAmount * 2;
-        if (winnerId === 'draw') {
-          if (game.player1 && !game.player1.isBot) {
-            await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [betAmount, game.player1.id]);
+        const isBotGame = (game.player2 && game.player2.isBot);
+        
+        if (isBotGame) {
+          let botBankId = null;
+          const [botBankRows] = await db.query("SELECT id FROM users WHERE username = 'botbank' LIMIT 1");
+          if (botBankRows && botBankRows.length > 0) {
+            botBankId = botBankRows[0].id;
           }
-          if (game.player2 && !game.player2.isBot) {
-            await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [betAmount, game.player2.id]);
+          if (winnerId === 'draw') {
+            if (game.player1) {
+              await db.execute('UPDATE users SET token_balance = token_balance + ? WHERE id = ?', [betAmount, game.player1.id]);
+            }
+            if (botBankId) {
+              await db.execute('UPDATE users SET token_balance = token_balance + ? WHERE id = ?', [betAmount, botBankId]);
+            }
+          } else {
+            const isPlayer1Winner = game.player1.id === winnerId;
+            const winner = isPlayer1Winner ? game.player1 : game.player2;
+            
+            if (winner) {
+              if (!winner.isBot) {
+                await db.execute('UPDATE users SET token_balance = token_balance + ? WHERE id = ?', [totalPayout, winner.id]);
+              } else if (botBankId) {
+                await db.execute('UPDATE users SET token_balance = token_balance + ? WHERE id = ?', [totalPayout, botBankId]);
+              }
+            }
           }
         } else {
-          const isPlayer1Winner = game.player1.id === winnerId;
-          const winner = isPlayer1Winner ? game.player1 : game.player2;
-          
-          if (winner && !winner.isBot) {
-            await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [totalPayout, winner.id]);
+          if (winnerId === 'draw') {
+            if (game.player1 && !game.player1.isBot) {
+              await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [betAmount, game.player1.id]);
+            }
+            if (game.player2 && !game.player2.isBot) {
+              await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [betAmount, game.player2.id]);
+            }
+          } else {
+            const isPlayer1Winner = game.player1.id === winnerId;
+            const winner = isPlayer1Winner ? game.player1 : game.player2;
+            
+            if (winner && !winner.isBot) {
+              await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [totalPayout, winner.id]);
+            }
           }
         }
       }

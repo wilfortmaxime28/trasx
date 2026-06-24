@@ -6242,7 +6242,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 3. Comment append in real time
   socket.on('comment-created', (data) => {
-    const { id, postId, user_name, user_avatar, certification_type, content, parent_id, voice_url, voice_duration_seconds, created_at, user_username } = data;
+    const { id, postId, user_id, user_name, user_avatar, certification_type, content, parent_id, voice_url, voice_duration_seconds, created_at, user_username } = data;
     const certificationBadgeHtml = renderCertificationBadgeHtml(certification_type);
     const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
     if (postCard) {
@@ -6272,6 +6272,7 @@ document.addEventListener('DOMContentLoaded', () => {
             replyEl.className = 'reply-item';
             replyEl.setAttribute('data-reply-id', id);
             replyEl.setAttribute('data-comment-id', id);
+            replyEl.setAttribute('data-comment-user-id', user_id);
             replyEl.setAttribute('data-depth', String(depth));
             replyEl.setAttribute('data-comment-type', voice_url ? 'voice' : 'text');
             replyEl.setAttribute('data-comment-author', user_name);
@@ -6411,6 +6412,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const commentContainer = document.createElement('div');
           commentContainer.className = 'comment-item-container';
           commentContainer.setAttribute('data-comment-id', id);
+          commentContainer.setAttribute('data-comment-user-id', user_id);
           commentContainer.setAttribute('data-comment-type', voice_url ? 'voice' : 'text');
           commentContainer.setAttribute('data-comment-author', user_name);
           commentContainer.style.display = 'flex';
@@ -6554,6 +6556,58 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     e.stopPropagation();
     handleFollowToggleClick(followBtn);
+  });
+
+  socket.on('display-name-updated', ({ userId, displayName }) => {
+    if (!userId || !displayName) return;
+    
+    // 1. Update own profile display if active
+    if (typeof window.viewedProfileId !== 'undefined' && Number(window.viewedProfileId) === Number(userId)) {
+      const headerDisplayName = document.getElementById('profileDisplayName');
+      if (headerDisplayName) {
+        headerDisplayName.textContent = displayName;
+      }
+    }
+    
+    // 2. Update public profile header display if active
+    const publicProfileDisplayName = document.getElementById(`profileDisplayName-${userId}`);
+    if (publicProfileDisplayName) {
+      publicProfileDisplayName.textContent = displayName;
+    }
+    
+    // 3. Update public profile page request/message button attributes if active
+    const gameReqBtn = document.querySelector(`.profile-game-request-btn[data-user-id="${userId}"]`);
+    if (gameReqBtn) {
+      gameReqBtn.setAttribute('data-user-name', displayName);
+    }
+    const msgBtn = document.querySelector(`.profile-message-btn[data-profile-message-id="${userId}"]`);
+    if (msgBtn) {
+      msgBtn.setAttribute('data-profile-message-name', displayName);
+    }
+
+    // 4. Update display names on active post cards
+    document.querySelectorAll(`article[data-post-user-id="${userId}"]`).forEach(postEl => {
+      const authorNameEl = postEl.querySelector('.author-name');
+      if (authorNameEl) {
+        const badge = authorNameEl.querySelector('.verified-badge-small');
+        authorNameEl.textContent = displayName + ' ';
+        if (badge) {
+          authorNameEl.appendChild(badge);
+        }
+      }
+    });
+
+    // 5. Update display names on comment cards & replies
+    document.querySelectorAll(`[data-comment-user-id="${userId}"]`).forEach(commentEl => {
+      const authorNameEl = commentEl.querySelector('strong');
+      if (authorNameEl) {
+        const badge = authorNameEl.querySelector('.verified-badge-small');
+        authorNameEl.textContent = displayName + ' ';
+        if (badge) {
+          authorNameEl.appendChild(badge);
+        }
+      }
+    });
   });
 
   socket.on('balance-updated', (payload) => {
@@ -6753,14 +6807,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Background rendering supporting bg_image_url
     let postContentHtml = '';
     if (post.bg_image_url) {
-      const alignMap = { 'left': 'flex-start', 'right': 'flex-end', 'center': 'center' };
+      const alignMap = { 'left': 'flex-start', 'right': 'flex-end', 'center': 'center', 'justify': 'stretch' };
       const posMap = { 'top': 'flex-start', 'center': 'center', 'bottom': 'flex-end' };
       const alignVal = alignMap[post.text_alignment] || 'center';
       const posVal = posMap[post.text_position] || 'center';
 
       postContentHtml = `
         <div class="post-bg-container" style="background-image: url('${post.bg_image_url}'); color: ${post.text_color || '#ffffff'}; text-align: ${post.text_alignment || 'center'}; font-family: ${post.text_font || "'Outfit', sans-serif"}; align-items: ${alignVal}; justify-content: ${posVal}; font-size: ${post.text_size || '20px'}; --bg-text-size: ${post.text_size || '20px'};">
-          <p class="formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="width: 100%; text-align: inherit; margin: 0; padding: 0; white-space: pre-wrap;">${renderHashtagRichText(post.content || '')}</p>
+          <p class="formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="width: 100%; text-align: ${post.text_alignment === 'justify' ? 'justify' : 'inherit'}; margin: 0; padding: 0;">${renderHashtagRichText(post.content || '')}</p>
         </div>
       `;
       if (post.challenge_type) {
@@ -14542,14 +14596,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('alignLeftBtn')?.classList.remove('active');
     document.getElementById('alignCenterBtn')?.classList.remove('active');
     document.getElementById('alignRightBtn')?.classList.remove('active');
+    document.getElementById('alignJustifyBtn')?.classList.remove('active');
 
     const alignLeft = document.getElementById('alignLeftBtn');
     const alignCenter = document.getElementById('alignCenterBtn');
     const alignRight = document.getElementById('alignRightBtn');
+    const alignJustify = document.getElementById('alignJustifyBtn');
 
     if (alignLeft) { alignLeft.style.color = ''; alignLeft.style.background = ''; }
     if (alignCenter) { alignCenter.style.color = ''; alignCenter.style.background = ''; }
     if (alignRight) { alignRight.style.color = ''; alignRight.style.background = ''; }
+    if (alignJustify) { alignJustify.style.color = ''; alignJustify.style.background = ''; }
 
     const activeBtn = document.getElementById(`align${align.charAt(0).toUpperCase() + align.slice(1)}Btn`);
     if (activeBtn) {
@@ -14572,6 +14629,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('alignRightBtn')?.addEventListener('click', () => {
     selectedTextAlignment = 'right';
     setAlignActive('right');
+    updatePostInputPreview();
+  });
+  document.getElementById('alignJustifyBtn')?.addEventListener('click', () => {
+    selectedTextAlignment = 'justify';
+    setAlignActive('justify');
     updatePostInputPreview();
   });
 

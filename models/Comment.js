@@ -39,7 +39,7 @@ class Comment {
         c.voice_duration_seconds,
         c.created_at,
         u.username AS user_username,
-        CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS user_name,
         u.avatar AS user_avatar,
         u.certification_type AS user_certification_type
       FROM comments c
@@ -77,7 +77,7 @@ class Comment {
         c.voice_duration_seconds,
         c.created_at,
         u.username AS user_username,
-        CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS user_name,
         u.avatar AS user_avatar,
         u.certification_type AS user_certification_type
       FROM comments c
@@ -102,7 +102,7 @@ class Comment {
         c.voice_duration_seconds,
         c.created_at,
         u.username AS user_username,
-        CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS user_name,
         u.avatar AS user_avatar,
         u.certification_type AS user_certification_type
       FROM comments c

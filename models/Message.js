@@ -58,7 +58,7 @@ class Message {
         mr.status AS request_status,
         mr.requester_id AS request_requester_id,
         mr.recipient_id AS request_recipient_id,
-        CONCAT(u.first_name, ' ', u.last_name) AS sender_name,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS sender_name,
         u.avatar AS sender_avatar,
         u.username AS sender_username
       FROM messages m
@@ -135,7 +135,7 @@ class Message {
         m.deleted_by_sender,
         m.deleted_by_receiver,
         m.deleted_for_everyone,
-        CONCAT(u.first_name, ' ', u.last_name) AS sender_name,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS sender_name,
         u.avatar AS sender_avatar,
         u.username AS sender_username,
         pm.content AS parent_content,

@@ -94,7 +94,7 @@ class Notification {
           n.is_read,
           n.read_at,
           n.created_at,
-          COALESCE(CONCAT(u.first_name, ' ', u.last_name), 'TrasX') AS actor_name,
+          COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name), 'TrasX') AS actor_name,
           COALESCE(u.username, 'trasx') AS actor_username,
           COALESCE(u.avatar, '/assets/avatar_placeholder.jpg') AS actor_avatar
         FROM notifications n

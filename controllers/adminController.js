@@ -10,6 +10,7 @@ const AdminModerationNotice = require('../models/AdminModerationNotice');
 const Message = require('../models/Message');
 const Comment = require('../models/Comment');
 const PostReport = require('../models/PostReport');
+const ActivityLog = require('../models/ActivityLog');
 const db = require('../config/db');
 const { getNumberSetting, setSetting } = require('../utils/appSettings');
 const { createTranslator, normalizeLocale } = require('../utils/i18n');
@@ -1013,11 +1014,13 @@ exports.freezeUserAccount = async (req, res) => {
 
     if (action === 'freeze') {
       await User.updateStatus(userId, 'Frozen');
+      await ActivityLog.log(req.session.adminId, 'admin', 'freeze_user', 'user', userId, null, req);
       return adminRedirect(req, res, { success: 'Compte gelé avec succès.', fallbackPage: 'users' });
     }
 
     if (action === 'unfreeze') {
       await User.updateStatus(userId, 'Active');
+      await ActivityLog.log(req.session.adminId, 'admin', 'unfreeze_user', 'user', userId, null, req);
       return adminRedirect(req, res, { success: 'Compte dégelé et réactivé avec succès.', fallbackPage: 'users' });
     }
 
@@ -1034,11 +1037,13 @@ exports.freezeAllAccounts = async (req, res) => {
 
     if (action === 'freeze') {
       await db.query("UPDATE users SET account_status = 'Frozen' WHERE account_status = 'Active'");
+      await ActivityLog.log(req.session.adminId, 'admin', 'freeze_all_users', null, null, null, req);
       return adminRedirect(req, res, { success: 'Tous les comptes actifs ont été gelés.', fallbackPage: 'users' });
     }
 
     if (action === 'unfreeze') {
       await db.query("UPDATE users SET account_status = 'Active' WHERE account_status = 'Frozen'");
+      await ActivityLog.log(req.session.adminId, 'admin', 'unfreeze_all_users', null, null, null, req);
       return adminRedirect(req, res, { success: 'Tous les comptes gelés ont été réactivés.', fallbackPage: 'users' });
     }
 
@@ -1542,6 +1547,7 @@ exports.deleteUser = async (req, res) => {
   try {
     const { userId } = req.body;
     await User.delete(userId);
+    await ActivityLog.log(req.session.adminId, 'admin', 'delete_user', 'user', userId, null, req);
     adminRedirect(req, res, { success: 'User deleted successfully', fallbackPage: 'users' });
   } catch (error) {
     console.error(error);
@@ -2047,6 +2053,7 @@ exports.dismissReport = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Report ID invalide.' });
     }
     await PostReport.updateStatus(reportId, 'dismissed');
+    await ActivityLog.log(req.session.adminId, 'admin', 'dismiss_report', 'report', reportId, null, req);
     return res.json({ success: true, message: 'Signalement ignoré.' });
   } catch (error) {
     console.error(error);
@@ -2062,6 +2069,7 @@ exports.deleteReportedPost = async (req, res) => {
     }
     await Post.deleteByAdmin(postId);
     await PostReport.updateStatusByPost(postId, 'actioned');
+    await ActivityLog.log(req.session.adminId, 'admin', 'delete_reported_post', 'post', postId, null, req);
     return res.json({ success: true, message: 'Publication supprimée.' });
   } catch (error) {
     console.error(error);
@@ -2077,6 +2085,7 @@ exports.blockReportedUser = async (req, res) => {
     }
     await User.updateStatus(userId, 'Blocked');
     await PostReport.updateStatusByUser(userId, 'actioned');
+    await ActivityLog.log(req.session.adminId, 'admin', 'block_reported_user', 'user', userId, null, req);
     return res.json({ success: true, message: 'Utilisateur bloqué.' });
   } catch (error) {
     console.error(error);

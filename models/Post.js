@@ -125,7 +125,7 @@ class Post {
           FROM post_shares ps
           WHERE ps.post_id = p.id AND ps.clicked_at IS NOT NULL
         ) AS shares_count,
-        CONCAT(u.first_name, ' ', u.last_name) AS author_name,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS author_name,
         u.avatar AS author_avatar,
         u.username AS author_username,
         u.country AS author_country,
@@ -203,7 +203,7 @@ class Post {
         p.challenge_creator_share_percent, p.challenge_participant_share_percent, p.challenge_end_date,
         p.created_at, p.thumbnail_url, p.allow_download,
         p.is_live, p.live_url, p.live_price, p.live_status,
-        CONCAT(u.first_name, ' ', u.last_name) AS author_name,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS author_name,
         u.avatar       AS author_avatar,
         u.username     AS author_username,
         u.country      AS author_country,
@@ -375,7 +375,7 @@ class Post {
           FROM post_shares ps
           WHERE ps.post_id = p.id AND ps.clicked_at IS NOT NULL
         ) AS shares_count,
-        CONCAT(u.first_name, ' ', u.last_name) AS author_name,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS author_name,
         u.avatar AS author_avatar,
         u.username AS author_username,
         u.certification_type AS author_certification_type,
@@ -442,7 +442,7 @@ class Post {
           p.live_url,
           p.live_price,
           p.live_status,
-          CONCAT(u.first_name, ' ', u.last_name) AS author_name,
+          COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS author_name,
           u.avatar AS author_avatar,
           u.username AS author_username,
           u.certification_type AS author_certification_type,
@@ -584,7 +584,7 @@ class Post {
         p.live_url,
         p.live_price,
         p.live_status,
-        CONCAT(u.first_name, ' ', u.last_name) AS author_name,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS author_name,
         u.avatar AS author_avatar,
         u.username AS author_username,
         u.certification_type AS author_certification_type,

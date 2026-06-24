@@ -622,6 +622,9 @@ function getYouTubeId(url) {
                                               <button type="button" id="alignRightBtn" class="text-format-btn"
                                                 style="flex: 1; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-secondary);"><i
                                                   data-lucide="align-right" style="width:14px;"></i></button>
+                                              <button type="button" id="alignJustifyBtn" class="text-format-btn"
+                                                style="flex: 1; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-secondary);"><i
+                                                  data-lucide="align-justify" style="width:14px;"></i></button>
                                             </div>
                                           </div>
                                           <!-- Vertical position -->
@@ -1004,14 +1007,14 @@ function getYouTubeId(url) {
                                                       <% if (post.bg_image_url) { %>
                                                         <!-- Custom Image Background post style -->
                                                         <% const alignMap={ 'left' : 'flex-start' , 'right' : 'flex-end'
-                                                          , 'center' : 'center' }; const posMap={ 'top' : 'flex-start'
+                                                          , 'center' : 'center', 'justify': 'stretch' }; const posMap={ 'top' : 'flex-start'
                                                           , 'center' : 'center' , 'bottom' : 'flex-end' }; const
                                                           alignVal=alignMap[post.text_alignment] || 'center' ; const
                                                           posVal=posMap[post.text_position] || 'center' ; %>
                                                           <div class="post-bg-container"
                                                             style="background-image: url('<%= post.bg_image_url %>'); color: <%= post.text_color || '#ffffff' %>; text-align: <%= post.text_alignment || 'center' %>; font-family: <%= post.text_font || '\'Outfit\', sans-serif' %>; align-items: <%= alignVal %>; justify-content: <%= posVal %>; font-size: <%= post.text_size || '20px' %>; --bg-text-size: <%= post.text_size || '20px' %>;">
                                                             <p class="formatted-hashtag-text"
-                                                              style="width: 100%; text-align: inherit; margin: 0; padding: 0; white-space: pre-wrap;">
+                                                              style="width: 100%; text-align: <%= post.text_alignment === 'justify' ? 'justify' : 'inherit' %>; margin: 0; padding: 0; white-space: pre-wrap;">
                                                               <%= post.content %>
                                                             </p>
                                                           </div>
@@ -1605,6 +1608,7 @@ function getYouTubeId(url) {
                                                           <% rootComments.forEach((comment, index)=> { %>
                                                             <div class="comment-item-container"
                                                               data-comment-id="<%= comment.id %>"
+                                                              data-comment-user-id="<%= comment.user_id %>"
                                                               data-comment-type="<%= comment.voice_url ? 'voice' : 'text' %>"
                                                               data-comment-author="<%= comment.user_name %>"
                                                               style="display: <%= index >= 2 ? 'none' : 'flex' %>; flex-direction: column; gap: 8px;">
@@ -1707,6 +1711,7 @@ function getYouTubeId(url) {
                                                                       <div class="reply-item"
                                                                         data-reply-id="<%= reply.id %>"
                                                                         data-comment-id="<%= reply.id %>"
+                                                                        data-comment-user-id="<%= reply.user_id %>"
                                                                         data-comment-type="<%= reply.voice_url ? 'voice' : 'text' %>"
                                                                         data-comment-author="<%= reply.user_name %>"
                                                                         data-depth="<%= depth %>"

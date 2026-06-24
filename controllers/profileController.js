@@ -2,6 +2,7 @@
 const Message = require('../models/Message');
 const Post = require('../models/Post');
 const Reel = require('../models/Reel');
+const ActivityLog = require('../models/ActivityLog');
 const Event = require('../models/Event');
 const Ad = require('../models/Ad');
 const PlatformRevenue = require('../models/PlatformRevenue');
@@ -209,6 +210,7 @@ class ProfileController {
       const currentUserId = req.session.userId;
       const postId = req.params.id;
       await Post.delete(postId, currentUserId);
+      await ActivityLog.log(currentUserId, 'user', 'delete_post', 'post', postId, null, req);
       res.redirect('/profile?success=Post deleted.');
     } catch (err) {
       console.error(err);
@@ -221,6 +223,7 @@ class ProfileController {
       const currentUserId = req.session.userId;
       const reelId = req.params.id;
       await Reel.delete(reelId, currentUserId);
+      await ActivityLog.log(currentUserId, 'user', 'delete_reel', 'reel', reelId, null, req);
       res.redirect('/profile?success=Reel deleted.');
     } catch (err) {
       console.error(err);

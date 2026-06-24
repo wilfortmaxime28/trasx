@@ -11098,12 +11098,32 @@ body[data-theme="dark"] .compose-contact-chip {
   min-height: 200px;
   border-radius: 8px;
   margin: 0 20px;
+  padding: 30px 24px;
   font-weight: 600;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: break-word;
   white-space: pre-wrap;
   box-shadow: var(--shadow-sm);
   box-sizing: border-box;
+  text-justify: inter-word;
+  hyphens: auto;
+}
+
+.post-bg-container p {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: inherit;
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  text-justify: inter-word;
+}
+
+.post-bg-container[style*="justify"] {
+  text-align-last: left;
 }
 
 @media screen and (max-width: 768px) {
@@ -11113,6 +11133,13 @@ body[data-theme="dark"] .compose-contact-chip {
     min-height: 160px !important;
     font-size: clamp(14px, calc(var(--bg-text-size, 20px) * 0.75), 24px) !important;
   }
+  .post-bg-container[style*="justify"] p {
+    text-align: justify;
+    text-justify: inter-word;
+    word-spacing: -0.03em;
+    letter-spacing: -0.01em;
+  }
+}
 
   .btn-text-label {
     display: none !important;

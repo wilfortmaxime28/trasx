@@ -571,7 +571,14 @@ function getYouTubeId(url) {
               <div style="text-align: center; margin-top: 16px; padding: 0 16px;">
                 <h1
                   style="font-size: 24px; font-weight: 600; margin: 0; color: var(--text-main); font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                  <%= currentUser.first_name %> <%= currentUser.last_name %>
+                  <span id="profileDisplayName"><%= currentUser.name %></span>
+                  <button type="button" onclick="openModal('displayNameModal')"
+                    title="<%= tText("Modifier le nom d'affichage") %>"
+                    style="background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); transition: color 0.2s;"
+                    onmouseover="this.style.color='var(--primary)'"
+                    onmouseout="this.style.color='var(--text-muted)'">
+                    <i data-lucide="edit-3" style="width: 18px; height: 18px;"></i>
+                  </button>
                   <% if ((currentUser.certification_type || 'None') !== 'None') { %>
                     <span class="verified-badge-small" title="<%= currentUser.certification_type %>" data-type="<%= currentUser.certification_type %>" style="display: inline-flex; margin-left: 8px;">
                       <i data-lucide="badge-check"></i>
@@ -1102,6 +1109,26 @@ function getYouTubeId(url) {
         </div>
       </div>
 
+      <!-- Display Name Modal -->
+      <div class="modal-overlay" id="displayNameModal">
+        <div class="modal-content" style="max-width: 400px;">
+          <button type="button" class="modal-close" onclick="closeModal('displayNameModal')"><i data-lucide="x"></i></button>
+          <h2 class="modal-title"><i data-lucide="edit-3"></i> <%= tText("Modifier le nom d'affichage") %></h2>
+          
+          <form id="displayNameForm" onsubmit="handleDisplayNameSubmit(event)">
+            <div style="margin-bottom: 20px; text-align: left;">
+              <label for="newDisplayNameInput" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 8px; color: var(--text-secondary);"><%= tText("Nouveau nom d'affichage") %></label>
+              <input type="text" id="newDisplayNameInput" name="display_name" value="<%= currentUser.name %>" required minlength="2" maxlength="50" class="chat-search-input" style="width: 100%; box-sizing: border-box; background: var(--bg-body); border: 1px solid var(--border-color); color: var(--text-main); padding: 10px 12px; border-radius: 8px; font-size: 14px;" placeholder="Nom d'affichage">
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.4;"><%= tText("Attention : vous ne pouvez modifier ce nom qu'une fois tous les 30 jours.") %></p>
+            </div>
+            
+            <div id="displayNameError" style="display: none; color: #ef4444; font-size: 12px; margin-bottom: 16px; font-weight: 500; text-align: left;"></div>
+            
+            <button type="submit" class="profile-follow-btn" style="width: 100%;"><%= tText("Enregistrer") %></button>
+          </form>
+        </div>
+      </div>
+
       <script>
         // Modal Logic
         function openModal(id) {
@@ -1109,6 +1136,41 @@ function getYouTubeId(url) {
         }
         function closeModal(id) {
           document.getElementById(id).classList.remove('active');
+        }
+
+        async function handleDisplayNameSubmit(event) {
+          event.preventDefault();
+          const errorEl = document.getElementById('displayNameError');
+          const inputEl = document.getElementById('newDisplayNameInput');
+          const displayName = inputEl.value;
+
+          errorEl.style.display = 'none';
+          errorEl.textContent = '';
+
+          try {
+            const response = await fetch('/api/user/update-display-name', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ display_name: displayName })
+            });
+
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+              throw new Error(data.error || 'Erreur lors de la modification.');
+            }
+
+            // Successfully updated
+            const headerDisplayName = document.getElementById('profileDisplayName');
+            if (headerDisplayName) {
+              headerDisplayName.textContent = data.displayName;
+            }
+            closeModal('displayNameModal');
+          } catch (err) {
+            errorEl.textContent = err.message;
+            errorEl.style.display = 'block';
+          }
         }
         // Close modal when clicking outside content
         document.querySelectorAll('.modal-overlay').forEach(overlay => {

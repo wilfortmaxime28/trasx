@@ -20,7 +20,9 @@ async function ensureEventAccessColumns() {
         ['promo_post_daily_base', 'INT DEFAULT 1000'],
         ['promo_reel_daily_base', 'INT DEFAULT 1000'],
         ['allow_dispute', 'TINYINT(1) DEFAULT 0'],
-        ['token_balance', 'DECIMAL(15,4) DEFAULT 0.0000']
+        ['token_balance', 'DECIMAL(15,4) DEFAULT 0.0000'],
+        ['display_name', 'VARCHAR(100) DEFAULT NULL'],
+        ['display_name_updated_at', 'TIMESTAMP NULL DEFAULT NULL']
       ];
 
       for (const [columnName, columnDefinition] of requiredColumns) {
@@ -46,6 +48,36 @@ async function ensureEventAccessColumns() {
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
+
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS activity_logs (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          user_id INT NULL,
+          actor_type ENUM('user','admin') DEFAULT 'user',
+          action VARCHAR(100) NOT NULL,
+          target_type VARCHAR(50) NULL,
+          target_id INT NULL,
+          metadata JSON NULL,
+          ip_address VARCHAR(45) NULL,
+          user_agent TEXT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_user_id (user_id),
+          INDEX idx_action (action),
+          INDEX idx_created_at (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      const [botBankRows] = await db.query("SELECT id FROM users WHERE username = 'botbank' LIMIT 1");
+      if (!botBankRows || botBankRows.length === 0) {
+        const bcrypt = require('bcryptjs');
+        const dummyHash = await bcrypt.hash('botbank_secure_pass_123_system', 10);
+        await db.query(
+          `INSERT INTO users (username, email, password_hash, first_name, last_name, preferred_language, account_status, token_balance)
+           VALUES ('botbank', 'botbank@trasx.app', ?, 'Bot', 'Bank', 'fr', 'Active', 100000.0000)`,
+          [dummyHash]
+        );
+        console.log("System account 'botbank' created with 100,000.00 tokens.");
+      }
     })().catch((error) => {
       eventAccessSchemaPromise = null;
       throw error;
@@ -63,7 +95,7 @@ class User {
   static async getById(id) {
     await ensureEventAccessColumns();
     const [rows] = await db.query(
-      `SELECT *, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE id = ?`,
+      `SELECT *, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name FROM users WHERE id = ?`,
       [id]
     );
     return rows[0];
@@ -72,7 +104,7 @@ class User {
   static async getByEmail(email) {
     await ensureEventAccessColumns();
     const [rows] = await db.query(
-      `SELECT *, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE email = ?`,
+      `SELECT *, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name FROM users WHERE email = ?`,
       [email]
     );
     return rows[0];
@@ -81,7 +113,7 @@ class User {
   static async getByUsername(username) {
     await ensureEventAccessColumns();
     const [rows] = await db.query(
-      `SELECT *, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE username = ?`,
+      `SELECT *, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name FROM users WHERE username = ?`,
       [username]
     );
     return rows[0];
@@ -90,7 +122,7 @@ class User {
   static async getByIdentifier(identifier) {
     await ensureEventAccessColumns();
     const [rows] = await db.query(
-      `SELECT *, CONCAT(first_name, ' ', last_name) AS name FROM users WHERE email = ? OR username = ? OR phone = ?`,
+      `SELECT *, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name FROM users WHERE email = ? OR username = ? OR phone = ?`,
       [identifier, identifier, identifier]
     );
     return rows[0];
@@ -98,7 +130,7 @@ class User {
 
   static async getAll() {
     await ensureEventAccessColumns();
-    const [rows] = await db.query(`SELECT *, CONCAT(first_name, ' ', last_name) AS name FROM users`);
+    const [rows] = await db.query(`SELECT *, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name FROM users`);
     return rows;
   }
 
@@ -112,7 +144,7 @@ class User {
           u.username,
           u.first_name,
           u.last_name,
-          CONCAT(u.first_name, ' ', u.last_name) AS name,
+          COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS name,
           u.avatar,
           u.country,
           u.dob,
@@ -145,7 +177,7 @@ class User {
           u.username,
           u.first_name,
           u.last_name,
-          CONCAT(u.first_name, ' ', u.last_name) AS name,
+          COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS name,
           u.avatar,
           u.country,
           u.dob,
@@ -673,7 +705,7 @@ class User {
   static async search(query) {
     const searchQuery = `%${query}%`;
     const [rows] = await db.query(
-      `SELECT id, username, first_name, last_name, CONCAT(first_name, ' ', last_name) AS name, avatar 
+      `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar 
        FROM users 
        WHERE username LIKE ? OR first_name LIKE ? OR last_name LIKE ? 
        LIMIT 10`,
@@ -685,7 +717,7 @@ class User {
   static async listForOpponentSearch(limit = 50) {
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 50));
     const [rows] = await db.query(
-      `SELECT id, username, first_name, last_name, CONCAT(first_name, ' ', last_name) AS name, avatar
+      `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar
        FROM users
        ORDER BY first_name ASC, last_name ASC
        LIMIT ${safeLimit}`
@@ -701,7 +733,7 @@ class User {
           u.username,
           u.first_name,
           u.last_name,
-          CONCAT(u.first_name, ' ', u.last_name) AS name,
+          COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS name,
           u.avatar,
           u.certification_type
         FROM follows f
@@ -723,7 +755,7 @@ class User {
           u.username,
           u.first_name,
           u.last_name,
-          CONCAT(u.first_name, ' ', u.last_name) AS name,
+          COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS name,
           u.avatar,
           u.certification_type
         FROM follows f1
@@ -746,7 +778,7 @@ class User {
           u.username,
           u.first_name,
           u.last_name,
-          CONCAT(u.first_name, ' ', u.last_name) AS name,
+          COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS name,
           u.avatar,
           u.certification_type,
           EXISTS(
@@ -781,7 +813,7 @@ class User {
           u.username,
           u.first_name,
           u.last_name,
-          CONCAT(u.first_name, ' ', u.last_name) AS name,
+          COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS name,
           u.avatar,
           u.certification_type,
           EXISTS(
@@ -806,6 +838,48 @@ class User {
       is_following: Number(row.is_following) === 1,
       is_mutual: Number(row.is_mutual) === 1
     }));
+  }
+
+  static async updateDisplayName(userId, displayName) {
+    await ensureEventAccessColumns();
+    
+    // 1. Fetch user to check last update
+    const user = await this.getById(userId);
+    if (!user) {
+      throw new Error("Utilisateur introuvable.");
+    }
+    
+    // 2. Cooldown check (30 days)
+    if (user.display_name_updated_at) {
+      const lastUpdate = new Date(user.display_name_updated_at);
+      const now = new Date();
+      const diffTime = Math.abs(now - lastUpdate);
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+      if (diffDays < 30) {
+        const remaining = Math.ceil(30 - diffDays);
+        throw new Error(`Vous ne pouvez modifier votre nom d'affichage que tous les 30 jours. Temps restant : ${remaining} jour(s).`);
+      }
+    }
+    
+    // 3. Validation
+    if (!displayName || displayName.trim().length < 2 || displayName.trim().length > 50) {
+      throw new Error("Le nom d'affichage doit contenir entre 2 et 50 caractères.");
+    }
+    
+    // Anti-scraping & injection check
+    const cleanName = displayName.trim();
+    const nameRegex = /^[a-zA-Z0-9\sÀ-ÿ\u00C0-\u017F'-]+$/;
+    if (!nameRegex.test(cleanName)) {
+      throw new Error("Le nom d'affichage contient des caractères non autorisés.");
+    }
+    
+    // 4. Update
+    await db.query(
+      "UPDATE users SET display_name = ?, display_name_updated_at = NOW() WHERE id = ?",
+      [cleanName, userId]
+    );
+    
+    return cleanName;
   }
 }
 

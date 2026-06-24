@@ -271,7 +271,7 @@ function getYouTubeId(url) {
               <div style="text-align: center; margin-top: 16px; padding: 0 16px;">
                 <h1
                   style="font-size: 24px; font-weight: 600; margin: 0; color: var(--text-main); font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                  <%= profileUser.first_name %> <%= profileUser.last_name %>
+                  <span id="profileDisplayName-<%= profileUser.id %>"><%= profileUser.name %></span>
                   <% if ((profileUser.certification_type || 'None') !== 'None') { %>
                     <span class="verified-badge-small" title="<%= profileUser.certification_type %>" data-type="<%= profileUser.certification_type %>" style="display: inline-flex; margin-left: 8px;">
                       <i data-lucide="badge-check"></i>
@@ -279,7 +279,7 @@ function getYouTubeId(url) {
                   <% } %>
                   <button type="button" class="profile-game-request-btn"
                     data-user-id="<%= profileUser.id %>"
-                    data-user-name="<%= profileUser.first_name %> <%= profileUser.last_name %>"
+                    data-user-name="<%= profileUser.name %>"
                     data-user-avatar="<%= profileUser.avatar %>"
                     data-user-online="<%= profileIsOnline ? '1' : '0' %>"
                     data-user-presence="<%= profilePresenceText || 'Offline' %>"
@@ -322,7 +322,7 @@ function getYouTubeId(url) {
                   </button>
                   <button type="button" class="profile-follow-btn profile-message-btn"
                     data-profile-message-id="<%= profileUser.id %>"
-                    data-profile-message-name="<%= profileUser.first_name %> <%= profileUser.last_name %>"
+                    data-profile-message-name="<%= profileUser.name %>"
                     data-profile-message-avatar="<%= profileUser.avatar %>"
                     data-profile-message-online="<%= profileIsOnline ? '1' : '0' %>"
                     data-profile-message-presence="<%= profilePresenceText || 'Offline' %>"
