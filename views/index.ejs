@@ -3257,6 +3257,41 @@ function getYouTubeId(url) {
                           </select>
                         </div>
 
+                        <!-- Table Football Specific Options (Flags) -->
+                        <div id="tableFootballSetupOptions" style="display: none; margin-top: 15px; margin-bottom: 15px;">
+                          <div class="setup-option-group">
+                            <span class="setup-group-label">Votre Équipe (Drapeau)</span>
+                            <select id="setupTfTeam1" style="width: 100%; height: 48px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: #fff; font-size: 1rem; padding: 0 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--accent-color, #7c4dff)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'">
+                              <option value="FR" style="background: var(--bg-card); color: #fff;">🇫🇷 France</option>
+                              <option value="BR" style="background: var(--bg-card); color: #fff;" selected>🇧🇷 Brésil</option>
+                              <option value="AR" style="background: var(--bg-card); color: #fff;">🇦🇷 Argentine</option>
+                              <option value="DE" style="background: var(--bg-card); color: #fff;">🇩🇪 Allemagne</option>
+                              <option value="ES" style="background: var(--bg-card); color: #fff;">🇪🇸 Espagne</option>
+                              <option value="IT" style="background: var(--bg-card); color: #fff;">🇮🇹 Italie</option>
+                              <option value="PT" style="background: var(--bg-card); color: #fff;">🇵🇹 Portugal</option>
+                              <option value="GB" style="background: var(--bg-card); color: #fff;">🇬🇧 Angleterre</option>
+                              <option value="MA" style="background: var(--bg-card); color: #fff;">🇲🇦 Maroc</option>
+                              <option value="SN" style="background: var(--bg-card); color: #fff;">🇸🇳 Sénégal</option>
+                            </select>
+                          </div>
+
+                          <div class="setup-option-group" id="setupTfTeam2Wrapper" style="margin-top: 15px;">
+                            <span class="setup-group-label">Équipe Adverse (Drapeau)</span>
+                            <select id="setupTfTeam2" style="width: 100%; height: 48px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: #fff; font-size: 1rem; padding: 0 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--accent-color, #7c4dff)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'">
+                              <option value="FR" style="background: var(--bg-card); color: #fff;" selected>🇫🇷 France</option>
+                              <option value="BR" style="background: var(--bg-card); color: #fff;">🇧🇷 Brésil</option>
+                              <option value="AR" style="background: var(--bg-card); color: #fff;">🇦🇷 Argentine</option>
+                              <option value="DE" style="background: var(--bg-card); color: #fff;">🇩🇪 Allemagne</option>
+                              <option value="ES" style="background: var(--bg-card); color: #fff;">🇪🇸 Espagne</option>
+                              <option value="IT" style="background: var(--bg-card); color: #fff;">🇮🇹 Italie</option>
+                              <option value="PT" style="background: var(--bg-card); color: #fff;">🇵🇹 Portugal</option>
+                              <option value="GB" style="background: var(--bg-card); color: #fff;">🇬🇧 Angleterre</option>
+                              <option value="MA" style="background: var(--bg-card); color: #fff;">🇲🇦 Maroc</option>
+                              <option value="SN" style="background: var(--bg-card); color: #fff;">🇸🇳 Sénégal</option>
+                            </select>
+                          </div>
+                        </div>
+
                         <!-- Live Spectating Options (Free vs Paid) -->
                         <div class="setup-option-group" style="margin-top: 15px; margin-bottom: 15px;">
                           <span class="setup-group-label"><%= tText("Spectateurs (Live de la partie)") %></span>

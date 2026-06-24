@@ -47,7 +47,7 @@ class GamesManager {
   }
 
   // Create a game session
-  async createGame(creatorId, creatorInfo, gameType, opponentType, entryMode, opponentId = null, customBetAmount = 1.00, rounds = 1, liveMode = 'free', livePrice = 0.50) {
+  async createGame(creatorId, creatorInfo, gameType, opponentType, entryMode, opponentId = null, customBetAmount = 1.00, rounds = 1, liveMode = 'free', livePrice = 0.50, team1 = 'FR', team2 = 'BR') {
     if (this.isUserBusy(creatorId)) {
       throw new Error("Vous êtes déjà dans une partie ou avez une invitation en attente.");
     }
@@ -163,18 +163,20 @@ class GamesManager {
         targetScore: 5,
         positions: {
           p1: [
-            { x: 180, y: 80 },
-            { x: 100, y: 150 },
-            { x: 260, y: 150 },
-            { x: 130, y: 240 },
-            { x: 230, y: 240 }
+            { x: 180, y: 55 },  // Goalkeeper
+            { x: 100, y: 120 }, // Defenders
+            { x: 260, y: 120 },
+            { x: 180, y: 200 }, // Midfielder
+            { x: 110, y: 260 }, // Attackers
+            { x: 250, y: 260 }
           ],
           p2: [
-            { x: 180, y: 520 },
-            { x: 100, y: 450 },
-            { x: 260, y: 450 },
-            { x: 130, y: 360 },
-            { x: 230, y: 360 }
+            { x: 180, y: 545 }, // Goalkeeper
+            { x: 100, y: 480 }, // Defenders
+            { x: 260, y: 480 },
+            { x: 180, y: 400 }, // Midfielder
+            { x: 110, y: 340 }, // Attackers
+            { x: 250, y: 340 }
           ],
           ball: { x: 180, y: 300 }
         },
@@ -237,7 +239,9 @@ class GamesManager {
       winner: null,
       spectators: [],
       createdAt: Date.now(),
-      startedAt: (opponentType === 'bot') ? Date.now() : null
+      startedAt: (opponentType === 'bot') ? Date.now() : null,
+      team1: team1 || 'FR',
+      team2: team2 || 'BR'
     };
 
     if (opponentType === 'bot') {
@@ -554,7 +558,7 @@ class GamesManager {
         const vx = Number(extraMove?.toR) / 1000;
         const vy = Number(extraMove?.toC) / 1000;
 
-        if (!Number.isInteger(puckIndex) || puckIndex < 0 || puckIndex > 4) {
+        if (!Number.isInteger(puckIndex) || puckIndex < 0 || puckIndex > 5) {
           throw new Error('Puck invalide.');
         }
         if (isNaN(vx) || isNaN(vy)) {

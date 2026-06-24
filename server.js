@@ -5392,12 +5392,12 @@ io.on('connection', (socket) => {
       const user = await User.getById(currentUserId);
       if (!user) throw new Error('Utilisateur introuvable.');
 
-      const { gameType, opponentType, entryMode, opponentId, betAmount, rounds, liveMode, livePrice } = data || {};
+      const { gameType, opponentType, entryMode, opponentId, betAmount, rounds, liveMode, livePrice, team1, team2 } = data || {};
       
       const isP2PInvite = opponentType === 'player' && opponentId && !String(opponentId).startsWith('bot_');
 
       const game = await gamesManager.createGame(
-        currentUserId, user, gameType, opponentType, entryMode, opponentId, betAmount, rounds, liveMode, livePrice
+        currentUserId, user, gameType, opponentType, entryMode, opponentId, betAmount, rounds, liveMode, livePrice, team1, team2
       );
       
       socket.join(`game:${game.id}`);
@@ -5455,7 +5455,7 @@ io.on('connection', (socket) => {
       const currentUserId = session.userId;
       if (!currentUserId) throw new Error('Non authentifié.');
 
-      const { gameId } = data || {};
+      const { gameId, team } = data || {};
       const game = gamesManager.games[gameId];
       if (!game) throw new Error('Invitation introuvable ou expirée.');
       if (game.status !== 'invited') throw new Error('Cette invitation n\'est plus active.');
@@ -5509,6 +5509,15 @@ io.on('connection', (socket) => {
       }
       game.status = 'playing';
       game.startedAt = Date.now();
+
+      if (game.gameType === 'tablefootball') {
+        let selectedTeam2 = team;
+        if (!selectedTeam2) {
+          const availableCodes = ['FR', 'BR', 'AR', 'DE', 'ES', 'IT', 'PT', 'GB', 'MA', 'SN'];
+          selectedTeam2 = availableCodes.find(c => c !== game.team1) || 'BR';
+        }
+        game.team2 = selectedTeam2;
+      }
 
       // Join BOTH players' sockets to the game room
       const socketsP1 = await io.in(`user:${game.player1.id}`).fetchSockets();

@@ -19969,6 +19969,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const TEAMS = {
+    FR: { name: 'France', flag: '🇫🇷' },
+    BR: { name: 'Brésil', flag: '🇧🇷' },
+    AR: { name: 'Argentine', flag: '🇦🇷' },
+    DE: { name: 'Allemagne', flag: '🇩🇪' },
+    ES: { name: 'Espagne', flag: '🇪🇸' },
+    IT: { name: 'Italie', flag: '🇮🇹' },
+    PT: { name: 'Portugal', flag: '🇵🇹' },
+    GB: { name: 'Angleterre', flag: '🇬🇧' },
+    MA: { name: 'Maroc', flag: '🇲🇦' },
+    SN: { name: 'Sénégal', flag: '🇸🇳' }
+  };
+
   // --- REAL-TIME GAMES CLIENT ENGINE ---
   let activeGame = null;
   let selectedGameType = null;
@@ -20183,6 +20196,35 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
+
+  // Toggle Table Football team choices visibility based on active game type and opponent type
+  const tableFootballSetupOptions = document.getElementById('tableFootballSetupOptions');
+  const setupTfTeam2Wrapper = document.getElementById('setupTfTeam2Wrapper');
+  const setupGameTypeRadios = document.querySelectorAll('input[name="setupGameType"]');
+
+  const updateTableFootballSetupVisibility = () => {
+    const activeGameTypeRadio = document.querySelector('input[name="setupGameType"]:checked');
+    const isTF = activeGameTypeRadio && activeGameTypeRadio.value === 'tablefootball';
+    if (tableFootballSetupOptions) {
+      tableFootballSetupOptions.style.display = isTF ? 'block' : 'none';
+    }
+
+    const activeOpponentRadio = document.querySelector('input[name="setupOpponent"]:checked');
+    const isBot = activeOpponentRadio && activeOpponentRadio.value === 'bot';
+    if (setupTfTeam2Wrapper) {
+      setupTfTeam2Wrapper.style.display = isBot ? 'block' : 'none';
+    }
+  };
+
+  setupGameTypeRadios.forEach(radio => {
+    radio.addEventListener('change', updateTableFootballSetupVisibility);
+  });
+  setupOpponentRadios.forEach(radio => {
+    radio.addEventListener('change', updateTableFootballSetupVisibility);
+  });
+
+  // Run initially
+  setTimeout(updateTableFootballSetupVisibility, 50);
 
   // Player search autocomplete logic
   let selectedOpponentPlayerId = null;
@@ -20435,7 +20477,9 @@ document.addEventListener('DOMContentLoaded', () => {
         opponentId,
         rounds,
         liveMode,
-        livePrice
+        livePrice,
+        team1: document.getElementById('setupTfTeam1')?.value || 'FR',
+        team2: document.getElementById('setupTfTeam2')?.value || 'BR'
       }, (res) => {
         if (res && res.error) {
           showToast(res.error);
@@ -21258,8 +21302,12 @@ document.addEventListener('DOMContentLoaded', () => {
         p1Badge.style.display = 'inline-block';
         p2Badge.style.display = 'inline-block';
       } else if (game.gameType === 'tablefootball') {
-        p1Badge.textContent = 'Attaque / Défense';
-        p2Badge.textContent = 'Attaque / Défense';
+        const team1 = game.team1 || 'FR';
+        const team2 = game.team2 || 'BR';
+        const t1Data = TEAMS[team1] || { flag: '🇫🇷', name: 'France' };
+        const t2Data = TEAMS[team2] || { flag: '🇧🇷', name: 'Brésil' };
+        p1Badge.textContent = `${t1Data.flag} ${t1Data.name}`;
+        p2Badge.textContent = `${t2Data.flag} ${t2Data.name}`;
         p1Badge.style.display = 'inline-block';
         p2Badge.style.display = 'inline-block';
       } else {
@@ -21341,7 +21389,9 @@ document.addEventListener('DOMContentLoaded', () => {
       opponentType,
       entryMode,
       betAmount,
-      opponentId: activeGame.player2 ? activeGame.player2.id : null
+      opponentId: activeGame.player2 ? activeGame.player2.id : null,
+      team1: gameType === 'tablefootball' ? (activeGame.team2 || 'BR') : undefined,
+      team2: gameType === 'tablefootball' ? (activeGame.team1 || 'FR') : undefined
     }, (res) => {
       if (res && res.error) {
         showToast(res.error);
@@ -22695,8 +22745,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // 7. Draw France Flag Pucks (Player 1)
-      const drawFrancePuck = (p) => {
+      // 7. Draw Team Flag Pucks (Dynamic Flags & Goalkeeper Border)
+      const drawTeamPuck = (p, code, isGoalkeeper) => {
         // Shadow
         ctx.beginPath();
         ctx.arc(p.x, p.y + 2, PUCK_RADIUS, 0, Math.PI * 2);
@@ -22708,78 +22758,155 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
         ctx.clip();
 
-        // 3 Vertical stripes: Blue, White, Red
-        const third = (PUCK_RADIUS * 2) / 3;
-        ctx.fillStyle = '#00209F'; // France Blue
-        ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, third, PUCK_RADIUS * 2);
-
-        ctx.fillStyle = '#FFFFFF'; // France White
-        ctx.fillRect(p.x - PUCK_RADIUS + third, p.y - PUCK_RADIUS, third, PUCK_RADIUS * 2);
-
-        ctx.fillStyle = '#E70020'; // France Red
-        ctx.fillRect(p.x - PUCK_RADIUS + third * 2, p.y - PUCK_RADIUS, third, PUCK_RADIUS * 2);
+        // Draw simple flags
+        if (code === 'FR') {
+          // France: Vertical Blue, White, Red
+          const w = (PUCK_RADIUS * 2) / 3;
+          ctx.fillStyle = '#00209F';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(p.x - PUCK_RADIUS + w, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillStyle = '#E70020';
+          ctx.fillRect(p.x - PUCK_RADIUS + w * 2, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+        } else if (code === 'BR') {
+          // Brazil: Green + Yellow diamond + Blue circle
+          ctx.fillStyle = '#009B3A';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
+          ctx.fillStyle = '#FEDF00';
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y - 11);
+          ctx.lineTo(p.x + 13, p.y);
+          ctx.lineTo(p.x, p.y + 11);
+          ctx.lineTo(p.x - 13, p.y);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = '#002780';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (code === 'AR') {
+          // Argentina: Light Blue, White, Light Blue horizontal
+          const h = (PUCK_RADIUS * 2) / 3;
+          ctx.fillStyle = '#75AADB';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, h);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h, PUCK_RADIUS * 2, h);
+          ctx.fillStyle = '#75AADB';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h * 2, PUCK_RADIUS * 2, h);
+          // Yellow Sun in center
+          ctx.fillStyle = '#F9A825';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (code === 'DE') {
+          // Germany: Black, Red, Gold horizontal
+          const h = (PUCK_RADIUS * 2) / 3;
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, h);
+          ctx.fillStyle = '#FF0000';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h, PUCK_RADIUS * 2, h);
+          ctx.fillStyle = '#FFCC00';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h * 2, PUCK_RADIUS * 2, h);
+        } else if (code === 'ES') {
+          // Spain: Red (1/4), Yellow (1/2), Red (1/4) horizontal
+          const h1 = (PUCK_RADIUS * 2) / 4;
+          const h2 = (PUCK_RADIUS * 2) / 2;
+          ctx.fillStyle = '#C60B1E';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, h1);
+          ctx.fillStyle = '#FBE122';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h1, PUCK_RADIUS * 2, h2);
+          ctx.fillStyle = '#C60B1E';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h1 + h2, PUCK_RADIUS * 2, h1);
+        } else if (code === 'IT') {
+          // Italy: Green, White, Red vertical
+          const w = (PUCK_RADIUS * 2) / 3;
+          ctx.fillStyle = '#008C45';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillStyle = '#F4F5F0';
+          ctx.fillRect(p.x - PUCK_RADIUS + w, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillStyle = '#CD212A';
+          ctx.fillRect(p.x - PUCK_RADIUS + w * 2, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+        } else if (code === 'PT') {
+          // Portugal: Green (2/5), Red (3/5) vertical
+          const w1 = (PUCK_RADIUS * 2) * 0.4;
+          const w2 = (PUCK_RADIUS * 2) * 0.6;
+          ctx.fillStyle = '#006600';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, w1, PUCK_RADIUS * 2);
+          ctx.fillStyle = '#FF0000';
+          ctx.fillRect(p.x - PUCK_RADIUS + w1, p.y - PUCK_RADIUS, w2, PUCK_RADIUS * 2);
+          // Yellow shield in center
+          ctx.fillStyle = '#FFFF00';
+          ctx.beginPath();
+          ctx.arc(p.x - PUCK_RADIUS + w1, p.y, 4, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (code === 'GB') {
+          // England: White + Red Cross
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
+          ctx.fillStyle = '#CF081F';
+          ctx.fillRect(p.x - 3, p.y - PUCK_RADIUS, 6, PUCK_RADIUS * 2);
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - 3, PUCK_RADIUS * 2, 6);
+        } else if (code === 'MA') {
+          // Morocco: Red + Green star outline
+          ctx.fillStyle = '#C1272D';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
+          // Simple green star center
+          ctx.fillStyle = '#006233';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (code === 'SN') {
+          // Senegal: Green, Yellow, Red vertical + Green star in yellow center
+          const w = (PUCK_RADIUS * 2) / 3;
+          ctx.fillStyle = '#00853F';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillStyle = '#FDEF42';
+          ctx.fillRect(p.x - PUCK_RADIUS + w, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillStyle = '#E31B23';
+          ctx.fillRect(p.x - PUCK_RADIUS + w * 2, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          // Green star in middle
+          ctx.fillStyle = '#00853F';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Fallback blue
+          ctx.fillStyle = '#3b82f6';
+          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
+        }
 
         ctx.restore();
 
-        // Outer white ring border
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        // Goalkeeper special thick gold border vs normal white border
+        if (isGoalkeeper) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
+          ctx.strokeStyle = '#fbbf24'; // Gold
+          ctx.lineWidth = 3;
+          ctx.stroke();
 
-        // Highlight/Reflection effect
-        const grad = ctx.createRadialGradient(p.x - 4, p.y - 4, 1, p.x, p.y, PUCK_RADIUS);
-        grad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
-        grad.addColorStop(0.3, 'rgba(255, 255, 255, 0.08)');
-        grad.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
-        ctx.fill();
-      };
+          // Draw small white circle with GK text
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.fill();
+          ctx.strokeStyle = '#1e293b';
+          ctx.lineWidth = 1;
+          ctx.stroke();
 
-      // 8. Draw Brazil Flag Pucks (Player 2)
-      const drawBrazilPuck = (p) => {
-        // Shadow
-        ctx.beginPath();
-        ctx.arc(p.x, p.y + 2, PUCK_RADIUS, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-        ctx.fill();
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
-        ctx.clip();
-
-        // Green background
-        ctx.fillStyle = '#009B3A'; // Brazil Green
-        ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
-
-        // Yellow diamond
-        ctx.fillStyle = '#FEDF00'; // Brazil Yellow
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y - 11);
-        ctx.lineTo(p.x + 13, p.y);
-        ctx.lineTo(p.x, p.y + 11);
-        ctx.lineTo(p.x - 13, p.y);
-        ctx.closePath();
-        ctx.fill();
-
-        // Blue circle in center
-        ctx.fillStyle = '#002780'; // Brazil Blue
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
-
-        // Outer white ring border
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+          ctx.fillStyle = '#1e293b';
+          ctx.font = 'bold 7px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('GK', p.x, p.y + 0.5);
+        } else {
+          // Normal outer white ring border
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
 
         // Highlight/Reflection effect
         const grad = ctx.createRadialGradient(p.x - 4, p.y - 4, 1, p.x, p.y, PUCK_RADIUS);
@@ -22793,8 +22920,10 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       // Draw all pucks
-      state.positions.p1.forEach(p => drawFrancePuck(p));
-      state.positions.p2.forEach(p => drawBrazilPuck(p));
+      const team1 = activeGame.team1 || 'FR';
+      const team2 = activeGame.team2 || 'BR';
+      state.positions.p1.forEach((p, idx) => drawTeamPuck(p, team1, idx === 0));
+      state.positions.p2.forEach((p, idx) => drawTeamPuck(p, team2, idx === 0));
 
       // 9. Draw Soccer Ball
       const ball = state.positions.ball;
@@ -23243,7 +23372,26 @@ document.addEventListener('DOMContentLoaded', () => {
       ? `${parseFloat(invite.betAmount).toFixed(2)} $ chacun`
       : 'Gratuit';
     const roundsLabel = `${invite.rounds} manche${invite.rounds > 1 ? 's' : ''}`;
-    const totalMs = invite.timeoutMs || 30000;
+    let teamSelectHtml = '';
+    if (invite.gameType === 'tablefootball') {
+      teamSelectHtml = `
+        <div style="margin-top: 15px; width: 100%; text-align: left;">
+          <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px;">Votre Équipe (Drapeau)</span>
+          <select id="inviteTfTeam2" style="width: 100%; height: 42px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: #fff; font-size: 0.95rem; padding: 0 10px; outline: none; box-sizing: border-box;">
+            <option value="FR" style="background: var(--bg-card); color: #fff;">🇫🇷 France</option>
+            <option value="BR" style="background: var(--bg-card); color: #fff;" selected>🇧🇷 Brésil</option>
+            <option value="AR" style="background: var(--bg-card); color: #fff;">🇦🇷 Argentine</option>
+            <option value="DE" style="background: var(--bg-card); color: #fff;">🇩🇪 Allemagne</option>
+            <option value="ES" style="background: var(--bg-card); color: #fff;">🇪🇸 Espagne</option>
+            <option value="IT" style="background: var(--bg-card); color: #fff;">🇮🇹 Italie</option>
+            <option value="PT" style="background: var(--bg-card); color: #fff;">🇵🇹 Portugal</option>
+            <option value="GB" style="background: var(--bg-card); color: #fff;">🇬🇧 Angleterre</option>
+            <option value="MA" style="background: var(--bg-card); color: #fff;">🇲🇦 Maroc</option>
+            <option value="SN" style="background: var(--bg-card); color: #fff;">🇸🇳 Sénégal</option>
+          </select>
+        </div>
+      `;
+    }
 
     const modal = document.createElement('div');
     modal.id = 'gameInviteReceivedModal';
@@ -23289,6 +23437,8 @@ document.addEventListener('DOMContentLoaded', () => {
               <span class="gir-info-pill-value ${isPaid ? 'paid' : 'free'}">${betLabel}</span>
             </div>
           </div>
+
+          ${teamSelectHtml}
 
           <!-- Timer -->
           <div class="gir-timer-wrap">
@@ -23354,7 +23504,9 @@ document.addEventListener('DOMContentLoaded', () => {
       declineBtn.disabled = true;
       acceptBtn.textContent = 'Connexion…';
 
-      socket.emit('game-invite-accept', { gameId: invite.gameId }, (res) => {
+      const selectedTeam = document.getElementById('inviteTfTeam2')?.value || 'BR';
+
+      socket.emit('game-invite-accept', { gameId: invite.gameId, team: selectedTeam }, (res) => {
         if (res && res.error) {
           showToast(res.error);
           modal.remove();
