@@ -43,6 +43,36 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Helper to handle Range requests for offline videos/audios (206 partial content)
+async function handleRangeRequest(request, cachedResponse) {
+  try {
+    const rangeHeader = request.headers.get('range');
+    if (!rangeHeader) return cachedResponse;
+
+    const arrayBuffer = await cachedResponse.arrayBuffer();
+    const bytes = /^bytes=(\d+)-(\d+)?$/g.exec(rangeHeader);
+    if (bytes) {
+      const start = parseInt(bytes[1], 10);
+      const end = bytes[2] ? parseInt(bytes[2], 10) : arrayBuffer.byteLength - 1;
+      const chunk = arrayBuffer.slice(start, end + 1);
+
+      return new Response(chunk, {
+        status: 206,
+        statusText: 'Partial Content',
+        headers: {
+          'Content-Range': `bytes ${start}-${end}/${arrayBuffer.byteLength}`,
+          'Content-Length': chunk.byteLength,
+          'Content-Type': cachedResponse.headers.get('Content-Type') || 'video/mp4',
+          'Accept-Ranges': 'bytes'
+        }
+      });
+    }
+  } catch (err) {
+    console.error('[SW] Range request handler failed:', err);
+  }
+  return cachedResponse;
+}
+
 // ── Fetch — Network first, cache fallback ────────────────────
 self.addEventListener('fetch', (event) => {
   const { request } = event;
@@ -59,6 +89,8 @@ self.addEventListener('fetch', (event) => {
   // Skip socket.io and API calls — always network
   if (url.pathname.startsWith('/socket.io') || url.pathname.startsWith('/api/')) return;
 
+  const isVideo = request.destination === 'video' || request.destination === 'audio' || url.pathname.endsWith('.mp4') || url.pathname.endsWith('.webm') || url.pathname.endsWith('.mp3');
+
   event.respondWith(
     fetch(request)
       .then((response) => {
@@ -74,8 +106,14 @@ self.addEventListener('fetch', (event) => {
       })
       .catch(async () => {
         // Try cache first
-        const cached = await caches.match(request);
-        if (cached) return cached;
+        const cached = await caches.match(request, { ignoreSearch: true });
+        if (cached) {
+          if (request.headers.has('range')) {
+            return handleRangeRequest(request, cached);
+          }
+          return cached;
+        }
+
         // Fallback to root for navigation requests
         if (request.mode === 'navigate') {
           const offlinePage = await caches.match(OFFLINE_URL);
@@ -84,6 +122,23 @@ self.addEventListener('fetch', (event) => {
         return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
       })
   );
+
+  // If it is a video/audio request and we are online, make a background fetch of the full resource without range headers to cache it
+  if (isVideo && self.navigator.onLine) {
+    caches.match(request.url).then((cached) => {
+      if (!cached) {
+        fetch(new Request(request.url, { headers: {} }))
+          .then((res) => {
+            if (res.status === 200) {
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(request.url, res).catch(() => {});
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    });
+  }
 });
 
 // ── Listen for skip-waiting message from client ──────────────
