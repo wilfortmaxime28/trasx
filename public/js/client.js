@@ -24611,7 +24611,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=5')
+      navigator.serviceWorker.register('/sw.js?v=7')
         .then((reg) => {
           console.log('Service Worker registered successfully:', reg.scope);
           if ('Notification' in window && Notification.permission === 'granted') {
