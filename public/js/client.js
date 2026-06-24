@@ -1253,11 +1253,11 @@ document.addEventListener('DOMContentLoaded', () => {
         pContent = 'Message';
       }
       parentHtml = `
-        <div class="chat-message-quote-preview" data-parent-id="${escapeHtml(message?.parent_id ?? '')}" style="background: rgba(0,0,0,0.06); border-left: 3.2px solid var(--primary); padding: 6px 10px; border-radius: 6px; margin-bottom: 6px; font-size: 11px; cursor: pointer; display: block; max-width: 100%; box-sizing: border-box; transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.1)'" onmouseout="this.style.background='rgba(0,0,0,0.06)'">
-          <strong style="color: var(--primary); display: flex; align-items: center; gap: 4px; font-size: 10px; margin-bottom: 2px;">
-            <i data-lucide="reply" style="width: 10px; height: 10px;"></i> @${pUsername}
+        <div class="chat-message-quote-preview" data-parent-id="${escapeHtml(message?.parent_id ?? '')}">
+          <strong style="display: flex; align-items: center; gap: 4px; font-size: 10px; margin-bottom: 2px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-reply" style="display: inline-block; vertical-align: middle;"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg> @${pUsername}
           </strong>
-          <span style="color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; display: block;">${pContent}</span>
+          <span style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; display: block;">${pContent}</span>
         </div>
       `;
     }
@@ -1282,22 +1282,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const isDeletable = isOutgoing && !isDeleted;
     const actionsTriggerHtml = isDeleted ? '' : `
       <div class="message-actions-trigger" title="Options" style="display: flex;">
-        <i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down"><path d="m6 9 6 6 6-6"/></svg>
       </div>
       <div class="message-actions-dropdown" style="padding: 6px; border-radius: 12px; background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15); min-width: 170px;">
         <button type="button" class="reply-msg-action" data-message-id="${escapeHtml(message?.id ?? '')}" data-username="${escapeHtml(message?.sender_username || (isOutgoing ? 'Moi' : 'Auteur'))}" data-content="${escapeHtml(message?.content || '')}" style="display: flex; align-items: center; gap: 8px; font-weight: 500; padding: 8px 12px; transition: background 0.15s ease; border-radius: 6px;">
-          <i data-lucide="reply" style="width: 14px; height: 14px; opacity: 0.8;"></i>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-reply" style="opacity: 0.8;"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
           Répondre
         </button>
         <div style="height: 1px; background: var(--border-color); opacity: 0.5; margin: 4px 0;"></div>
         <button type="button" class="delete-msg-me-action" data-message-id="${escapeHtml(message?.id ?? '')}" style="display: flex; align-items: center; gap: 8px; font-weight: 500; padding: 8px 12px; transition: background 0.15s ease; border-radius: 6px;">
-          <i data-lucide="trash-2" style="width: 14px; height: 14px; opacity: 0.8;"></i>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-2" style="opacity: 0.8;"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
           Supprimer pour moi
         </button>
         ${isDeletable ? `
           <div style="height: 1px; background: var(--border-color); opacity: 0.5; margin: 4px 0;"></div>
           <button type="button" class="delete-msg-everyone-action delete-danger" data-message-id="${escapeHtml(message?.id ?? '')}" style="display: flex; align-items: center; gap: 8px; font-weight: 500; padding: 8px 12px; transition: background 0.15s ease; color: var(--danger); border-radius: 6px;">
-            <i data-lucide="trash" style="width: 14px; height: 14px; color: var(--danger);"></i>
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
             Supprimer pour tous
           </button>
         ` : ''}

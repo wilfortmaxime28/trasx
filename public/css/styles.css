@@ -19901,5 +19901,51 @@ body.dark-mode .skeleton-base {
   -webkit-text-fill-color: #ffffff !important;
 }
 
+/* Quoted message preview styles inside chat bubbles with high contrast */
+.chat-msg-bubble .chat-message-quote-preview {
+  display: block;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  max-width: 100%;
+  box-sizing: border-box;
+  transition: background-color 0.2s ease;
+}
 
+/* For outgoing messages (blue bubble background) */
+.chat-msg-wrapper.outgoing .chat-message-quote-preview {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-left: 3.5px solid #ffffff !important;
+}
+.chat-msg-wrapper.outgoing .chat-message-quote-preview:hover {
+  background: rgba(255, 255, 255, 0.25) !important;
+}
+.chat-msg-wrapper.outgoing .chat-message-quote-preview strong {
+  color: #ffffff !important;
+}
+.chat-msg-wrapper.outgoing .chat-message-quote-preview span {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+.chat-msg-wrapper.outgoing .chat-message-quote-preview svg {
+  stroke: #ffffff !important;
+}
 
+/* For incoming messages (light gray bubble background) */
+.chat-msg-wrapper.incoming .chat-message-quote-preview {
+  background: rgba(0, 0, 0, 0.05) !important;
+  border-left: 3.5px solid var(--primary) !important;
+}
+.chat-msg-wrapper.incoming .chat-message-quote-preview:hover {
+  background: rgba(0, 0, 0, 0.1) !important;
+}
+.chat-msg-wrapper.incoming .chat-message-quote-preview strong {
+  color: var(--primary) !important;
+}
+.chat-msg-wrapper.incoming .chat-message-quote-preview span {
+  color: var(--text-secondary) !important;
+}
+.chat-msg-wrapper.incoming .chat-message-quote-preview svg {
+  stroke: var(--primary) !important;
+}
