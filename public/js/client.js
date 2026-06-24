@@ -699,23 +699,17 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       document.querySelectorAll(`.message-item[data-contact-id="${requesterId}"]`).forEach((item) => {
-        if (data.status === 'accepted') {
-          item.dataset.messageCategory = 'general';
-          item.dataset.messageRequestStatus = 'accepted';
-          item.dataset.canManageRequest = '0';
-          item.querySelector('.message-request-actions')?.remove();
-          const card = item.closest('.messages-card');
-          const targetList = card?.querySelector('.messages-list[data-message-tab-list="general"]');
-          if (targetList && item.parentElement !== targetList) {
-            item.remove();
-            targetList.prepend(item);
-          }
-          if (card) syncMessageTabCounts(card);
-        } else {
-          const card = item.closest('.messages-card');
+        item.dataset.messageCategory = 'general';
+        item.dataset.messageRequestStatus = data.status || 'general';
+        item.dataset.canManageRequest = '0';
+        item.querySelector('.message-request-actions')?.remove();
+        const card = item.closest('.messages-card');
+        const targetList = card?.querySelector('.messages-list[data-message-tab-list="general"]');
+        if (targetList && item.parentElement !== targetList) {
           item.remove();
-          if (card) syncMessageTabCounts(card);
+          targetList.prepend(item);
         }
+        if (card) syncMessageTabCounts(card);
       });
 
       showToast(data.status === 'accepted' ? 'Demande de message acceptée.' : 'Demande de message refusée.');
@@ -1187,21 +1181,59 @@ document.addEventListener('DOMContentLoaded', () => {
       isGameInvitation = true;
     }
     
+    const isDeleted = Number(message?.deleted_for_everyone || 0) === 1;
+
+    let parentHtml = '';
+    if (message?.parent_id && !isDeleted) {
+      const pUsername = escapeHtml(message.parent_sender_username || 'Utilisateur');
+      let pContent = '';
+      if (message.parent_content) {
+        pContent = escapeHtml(message.parent_content);
+      } else if (message.parent_attachment_type) {
+        pContent = `[${escapeHtml(message.parent_attachment_type)}]`;
+      } else {
+        pContent = 'Message';
+      }
+      parentHtml = `
+        <div class="chat-message-quote-preview" style="background: rgba(0,0,0,0.06); border-left: 3px solid var(--primary); padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; font-size: 11px; cursor: pointer; display: block; max-width: 100%; box-sizing: border-box;">
+          <strong style="color: var(--primary); display: block; font-size: 10px;">@${pUsername}</strong>
+          <span style="color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; display: block;">${pContent}</span>
+        </div>
+      `;
+    }
+
     let bubbleContentHtml = '';
-    if (isGameInvitation && gameData) {
+    if (isDeleted) {
+      bubbleContentHtml = `<div class="chat-msg-bubble deleted">Ce message a été supprimé.</div>`;
+    } else if (isGameInvitation && gameData) {
       bubbleContentHtml = renderGameInvitationBubble(gameData, msgType, message.id);
-    } else if (structuredContent && (structuredContent.type === 'shared_post' || structuredContent.type === 'shared_reel')) {
+    } else if (isSharedSnapshot) {
       bubbleContentHtml = renderSharedContentBubble(structuredContent);
     } else {
       const text = escapeHtml(message?.content || '').trim();
-      bubbleContentHtml = text ? `<div class="chat-msg-bubble">${text}</div>` : '';
+      bubbleContentHtml = text || parentHtml ? `<div class="chat-msg-bubble">${parentHtml}${text}</div>` : '';
     }
 
     const timestamp = new Date(message?.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const attachmentHtml = getMessageBubbleAttachmentHtml(message);
+    const attachmentHtml = isDeleted ? '' : getMessageBubbleAttachmentHtml(message);
     const status = getMessageDeliveryStatus(message, msgType);
+
+    const isOutgoing = msgType === 'outgoing';
+    const isDeletable = isOutgoing && !isDeleted;
+    const actionsTriggerHtml = isDeleted ? '' : `
+      <div class="message-actions-trigger" title="Options" style="display: flex;">
+        <i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i>
+      </div>
+      <div class="message-actions-dropdown">
+        <button type="button" class="reply-msg-action" data-message-id="${escapeHtml(message?.id ?? '')}" data-username="${escapeHtml(message?.sender_username || (isOutgoing ? 'Moi' : 'Auteur'))}" data-content="${escapeHtml(message?.content || '')}">Répondre</button>
+        <button type="button" class="delete-msg-me-action" data-message-id="${escapeHtml(message?.id ?? '')}">Supprimer pour moi</button>
+        ${isDeletable ? `<button type="button" class="delete-msg-everyone-action delete-danger" data-message-id="${escapeHtml(message?.id ?? '')}">Supprimer pour tous</button>` : ''}
+      </div>
+    `;
+
     return `
-      <div class="chat-msg-wrapper ${msgType}${isSharedSnapshot ? ' chat-msg-wrapper-shared' : ''}" data-message-id="${escapeHtml(message?.id ?? '')}" data-message-status="${escapeHtml(status || '')}">
+      <div class="chat-msg-wrapper ${msgType}${isSharedSnapshot ? ' chat-msg-wrapper-shared' : ''}" data-message-id="${escapeHtml(message?.id ?? '')}" data-message-status="${escapeHtml(status || '')}" style="position: relative;">
+        ${actionsTriggerHtml}
         ${bubbleContentHtml}
         ${attachmentHtml}
         <div class="chat-msg-footer">
@@ -2983,6 +3015,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const currentTime = shell.querySelector('.video-current-time');
       const duration = shell.querySelector('.video-duration');
       const downloadBtn = shell.querySelector('[data-video-download]');
+      const pulseOverlay = shell.querySelector('.video-pulse-overlay');
       const endOverlay = ensureMediaEndOverlay(shell, 'post-video-end-overlay', 'post-video-end-logo');
       setMediaEndOverlayUsername(
         endOverlay,
@@ -2991,6 +3024,23 @@ document.addEventListener('DOMContentLoaded', () => {
           || 'user'
       );
       const videoEndOverlayController = createMediaEndOverlayController(endOverlay);
+
+      // Pulse overlay helper – shows a brief play/pause icon animation
+      const triggerPulseOverlay = (isPaused) => {
+        if (!pulseOverlay) return;
+        const iconEl = pulseOverlay.querySelector('i');
+        if (iconEl) {
+          iconEl.setAttribute('data-lucide', isPaused ? 'pause' : 'play');
+          if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [iconEl] });
+        }
+        pulseOverlay.classList.remove('pulse-active');
+        // Force reflow so animation restarts cleanly
+        void pulseOverlay.offsetWidth;
+        pulseOverlay.classList.add('pulse-active');
+        pulseOverlay.addEventListener('animationend', () => {
+          pulseOverlay.classList.remove('pulse-active');
+        }, { once: true });
+      };
 
       const refreshPlayState = () => {
         updateVideoButtonIcon(playBtn, video.paused ? 'play' : 'pause');
@@ -3034,8 +3084,10 @@ document.addEventListener('DOMContentLoaded', () => {
             video.currentTime = 0;
           }
           video.play().catch(() => showToast("Unable to play the video."));
+          triggerPulseOverlay(true); // 'true' = was paused → now playing
         } else {
           video.pause();
+          triggerPulseOverlay(false); // 'false' = was playing → now paused
         }
       });
 
@@ -3045,8 +3097,10 @@ document.addEventListener('DOMContentLoaded', () => {
             video.currentTime = 0;
           }
           video.play().catch(() => showToast("Unable to play the video."));
+          triggerPulseOverlay(true);
         } else {
           video.pause();
+          triggerPulseOverlay(false);
         }
       });
 
@@ -3817,6 +3871,16 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="chat-messages" id="chat-messages-${numericContactId}">
         <div style="text-align: center; color: var(--text-muted); font-size: 11px; padding: 12px 0;">Loading messages...</div>
       </div>
+      <div class="chat-reply-banner" id="chat-reply-banner-${numericContactId}" style="display:none; margin: 0 8px 4px; padding: 6px 10px; border-left: 3px solid var(--primary); background: rgba(24,119,242,0.08); border-radius: 6px; align-items: center; justify-content: space-between; gap: 8px;">
+        <div class="chat-reply-content" style="flex:1; min-width:0;">
+          <span class="reply-username" style="font-size:10px; font-weight:700; color:var(--primary); display:block;"></span>
+          <p class="reply-text" style="margin:2px 0 0 0; font-size:11px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></p>
+        </div>
+        <button type="button" class="cancel-reply-btn" style="background:none; border:none; color:var(--text-muted); cursor:pointer; padding:4px; display:flex; align-items:center;"><i data-lucide="x" style="width:12px; height:12px;"></i></button>
+        <input type="hidden" class="chat-reply-parent-id" value="">
+        <input type="hidden" class="chat-reply-parent-username" value="">
+        <input type="hidden" class="chat-reply-parent-content" value="">
+      </div>
       <form class="chat-input-wrapper input-wrapper" id="chat-form-${numericContactId}" ${formStyle}>
         <input type="file" class="chat-attachment-input" id="chat-attachment-input-${numericContactId}" accept="image/*,video/*,application/pdf,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z" style="display:none;">
         <input type="text" placeholder="Aa" class="chat-input" id="chat-input-${numericContactId}" autocomplete="off">
@@ -3915,13 +3979,39 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
+    const clearReplyBanner = () => {
+      const banner = document.getElementById(`chat-reply-banner-${numericContactId}`);
+      if (!banner) return;
+      banner.style.display = 'none';
+      const pidEl = banner.querySelector('.chat-reply-parent-id');
+      const punEl = banner.querySelector('.chat-reply-parent-username');
+      const pcoEl = banner.querySelector('.chat-reply-parent-content');
+      if (pidEl) pidEl.value = '';
+      if (punEl) punEl.value = '';
+      if (pcoEl) pcoEl.value = '';
+    };
+
+    // Wire cancel-reply button
+    const replyBanner = document.getElementById(`chat-reply-banner-${numericContactId}`);
+    if (replyBanner) {
+      replyBanner.querySelector('.cancel-reply-btn')?.addEventListener('click', clearReplyBanner);
+      if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [replyBanner] });
+    }
+
     const sendChatMessage = async ({ content = '', attachment = null, voiceDurationSeconds = null } = {}) => {
       const trimmedContent = String(content || '').trim();
       if (!trimmedContent && !attachment) return;
 
+      // Read parent reply data from banner
+      const bannerEl = document.getElementById(`chat-reply-banner-${numericContactId}`);
+      const parentId = bannerEl?.querySelector('.chat-reply-parent-id')?.value || null;
+      const parentUsername = bannerEl?.querySelector('.chat-reply-parent-username')?.value || null;
+      const parentContent = bannerEl?.querySelector('.chat-reply-parent-content')?.value || null;
+
       let payload = {
         receiverId: numericContactId,
-        content: trimmedContent
+        content: trimmedContent,
+        parentId: parentId ? parseInt(parentId, 10) : null
       };
 
       if (attachment) {
@@ -3935,6 +4025,7 @@ document.addEventListener('DOMContentLoaded', () => {
       socket.emit('chat-message', payload);
       if (input) input.value = '';
       clearAttachmentPreview();
+      clearReplyBanner();
     };
 
     const openAttachmentPreview = (file) => {
@@ -4201,6 +4292,122 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // -------------------------------------------------------------------
+  // Main Chat: message deletion socket listener
+  // -------------------------------------------------------------------
+  socket.on('chat-message-deleted', ({ messageId, deleteType }) => {
+    // Find the bubble across all open chat boxes
+    const wrapper = document.querySelector(`.chat-msg-wrapper[data-message-id="${messageId}"]`);
+    if (!wrapper) return;
+    if (deleteType === 'everyone') {
+      // Replace bubble content with deleted placeholder; remove actions trigger
+      wrapper.querySelector('.message-actions-trigger')?.remove();
+      wrapper.querySelector('.message-actions-dropdown')?.remove();
+      const bubble = wrapper.querySelector('.chat-msg-bubble');
+      if (bubble) {
+        bubble.className = 'chat-msg-bubble deleted';
+        bubble.textContent = 'Ce message a été supprimé.';
+      } else {
+        // May have attachment only — insert deleted notice
+        const notice = document.createElement('div');
+        notice.className = 'chat-msg-bubble deleted';
+        notice.textContent = 'Ce message a été supprimé.';
+        wrapper.prepend(notice);
+      }
+      // Remove attachment previews
+      wrapper.querySelectorAll('.chat-bubble-attachment').forEach(el => el.remove());
+    } else {
+      // Delete for me: remove the entire wrapper
+      wrapper.remove();
+    }
+  });
+
+  // -------------------------------------------------------------------
+  // Main Chat: message actions – dropdown toggle, reply, delete
+  // -------------------------------------------------------------------
+  document.addEventListener('click', (e) => {
+    // Toggle dropdown
+    const trigger = e.target.closest('.message-actions-trigger');
+    if (trigger) {
+      e.stopPropagation();
+      const wrapper = trigger.closest('.chat-msg-wrapper');
+      if (!wrapper) return;
+      const dropdown = wrapper.querySelector('.message-actions-dropdown');
+      if (!dropdown) return;
+      // Close any other open dropdowns
+      document.querySelectorAll('.message-actions-dropdown.show').forEach(d => {
+        if (d !== dropdown) d.classList.remove('show');
+      });
+      dropdown.classList.toggle('show');
+      // Position dropdown relative to direction
+      if (dropdown.classList.contains('show')) {
+        const isOutgoing = wrapper.classList.contains('outgoing');
+        dropdown.style.top = '100%';
+        dropdown.style.right = isOutgoing ? '0' : 'auto';
+        dropdown.style.left = isOutgoing ? 'auto' : '0';
+      }
+      return;
+    }
+
+    // Close dropdowns when clicking outside
+    if (!e.target.closest('.message-actions-dropdown')) {
+      document.querySelectorAll('.message-actions-dropdown.show').forEach(d => d.classList.remove('show'));
+    }
+
+    // Reply action
+    const replyAction = e.target.closest('.reply-msg-action');
+    if (replyAction) {
+      e.stopPropagation();
+      const messageId = replyAction.dataset.messageId;
+      const username = replyAction.dataset.username || 'Utilisateur';
+      const content = replyAction.dataset.content || '';
+      // Find which chat box this belongs to
+      const chatBox = replyAction.closest('.chat-box');
+      if (!chatBox) return;
+      const contactId = chatBox.dataset.contactId;
+      if (!contactId) return;
+      const banner = document.getElementById(`chat-reply-banner-${contactId}`);
+      if (!banner) return;
+      banner.style.display = 'flex';
+      const usernameEl = banner.querySelector('.reply-username');
+      const textEl = banner.querySelector('.reply-text');
+      const pidEl = banner.querySelector('.chat-reply-parent-id');
+      const punEl = banner.querySelector('.chat-reply-parent-username');
+      const pcoEl = banner.querySelector('.chat-reply-parent-content');
+      if (usernameEl) usernameEl.textContent = `@${username}`;
+      if (textEl) textEl.textContent = content || '[Pièce jointe]';
+      if (pidEl) pidEl.value = messageId;
+      if (punEl) punEl.value = username;
+      if (pcoEl) pcoEl.value = content;
+      // Close dropdown & focus input
+      replyAction.closest('.message-actions-dropdown')?.classList.remove('show');
+      document.getElementById(`chat-input-${contactId}`)?.focus();
+      return;
+    }
+
+    // Delete for me
+    const deleteMeAction = e.target.closest('.delete-msg-me-action');
+    if (deleteMeAction) {
+      e.stopPropagation();
+      const messageId = deleteMeAction.dataset.messageId;
+      if (!messageId) return;
+      deleteMeAction.closest('.message-actions-dropdown')?.classList.remove('show');
+      socket.emit('chat-message-delete', { messageId: parseInt(messageId, 10), deleteType: 'me' });
+      return;
+    }
+
+    // Delete for everyone
+    const deleteEveryoneAction = e.target.closest('.delete-msg-everyone-action');
+    if (deleteEveryoneAction) {
+      e.stopPropagation();
+      const messageId = deleteEveryoneAction.dataset.messageId;
+      if (!messageId) return;
+      deleteEveryoneAction.closest('.message-actions-dropdown')?.classList.remove('show');
+      socket.emit('chat-message-delete', { messageId: parseInt(messageId, 10), deleteType: 'everyone' });
+      return;
+    }
+  });
+
   socket.on('presence-updated', (data) => {
     if (!data || typeof data.userId === 'undefined') return;
     syncChatPresenceInLists(Number(data.userId), !!data.isOnline, data.presenceText || '');
@@ -4264,18 +4471,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelectorAll(`.message-item[data-contact-id="${requesterId}"]`).forEach((item) => {
       const card = item.closest('.messages-card');
-      if (status === 'accepted') {
-        item.dataset.messageCategory = 'general';
-        item.dataset.messageRequestStatus = 'accepted';
-        item.dataset.canManageRequest = '0';
-        item.querySelector('.message-request-actions')?.remove();
-        const targetList = card?.querySelector('.messages-list[data-message-tab-list="general"]');
-        if (targetList && item.parentElement !== targetList) {
-          item.remove();
-          targetList.prepend(item);
-        }
-      } else if (Number(data.recipientId) === getCurrentUserId()) {
+      item.dataset.messageCategory = 'general';
+      item.dataset.messageRequestStatus = status;
+      item.dataset.canManageRequest = '0';
+      item.querySelector('.message-request-actions')?.remove();
+      const targetList = card?.querySelector('.messages-list[data-message-tab-list="general"]');
+      if (targetList && item.parentElement !== targetList) {
         item.remove();
+        targetList.prepend(item);
       }
       if (card) syncMessageTabCounts(card);
     });
@@ -4398,6 +4601,134 @@ document.addEventListener('DOMContentLoaded', () => {
   bindProgressiveReveal(feedPaginationSentinel, 'post', progressiveFeedBatchSize);
   bindProgressiveReveal(shortsPaginationSentinel, 'reel', progressiveShortBatchSize);
 
+  // ── Offline Cache Manager ──────────────────────────────────────────────────
+  const TrasxOfflineCache = {
+    maxPosts: 100,
+    maxReels: 30,
+    prefetchedUrls: new Set(),
+
+    init() {
+      // Store initial posts from window
+      if (Array.isArray(window.initialFeedPosts)) {
+        this.savePosts(window.initialFeedPosts);
+      }
+      // Store initial reels from window
+      if (Array.isArray(window.initialReels)) {
+        this.saveReels(window.initialReels);
+      }
+
+      // Trigger initial media prefetching after DOM load
+      setTimeout(() => {
+        this.runPrefetchQueue();
+      }, 4000);
+
+      window.addEventListener('online', () => {
+        this.runPrefetchQueue();
+      });
+    },
+
+    savePosts(newPosts) {
+      if (!Array.isArray(newPosts) || !newPosts.length) return;
+      try {
+        let cached = JSON.parse(localStorage.getItem('offline_posts_cache') || '[]');
+        const map = new Map(cached.map(p => [Number(p.id), p]));
+        newPosts.forEach(p => map.set(Number(p.id), p));
+        let merged = Array.from(map.values()).sort((a, b) => Number(b.id) - Number(a.id));
+        if (merged.length > this.maxPosts) {
+          merged = merged.slice(0, this.maxPosts);
+        }
+        localStorage.setItem('offline_posts_cache', JSON.stringify(merged));
+      } catch (err) {
+        console.warn('[OfflineCache] Failed to save posts:', err);
+      }
+    },
+
+    saveReels(newReels) {
+      if (!Array.isArray(newReels) || !newReels.length) return;
+      try {
+        let cached = JSON.parse(localStorage.getItem('offline_reels_cache') || '[]');
+        const map = new Map(cached.map(r => [Number(r.id), r]));
+        newReels.forEach(r => map.set(Number(r.id), r));
+        let merged = Array.from(map.values()).sort((a, b) => Number(b.id) - Number(a.id));
+        if (merged.length > this.maxReels) {
+          merged = merged.slice(0, this.maxReels);
+        }
+        localStorage.setItem('offline_reels_cache', JSON.stringify(merged));
+      } catch (err) {
+        console.warn('[OfflineCache] Failed to save reels:', err);
+      }
+    },
+
+    getOfflinePosts(seenIds, limit = 20) {
+      try {
+        const cached = JSON.parse(localStorage.getItem('offline_posts_cache') || '[]');
+        const filtered = cached.filter(p => !seenIds.has(Number(p.id)));
+        return filtered.slice(0, limit);
+      } catch (err) {
+        console.warn('[OfflineCache] Failed to load offline posts:', err);
+        return [];
+      }
+    },
+
+    async runPrefetchQueue() {
+      if (!navigator.onLine) return;
+      try {
+        const posts = JSON.parse(localStorage.getItem('offline_posts_cache') || '[]');
+        const reels = JSON.parse(localStorage.getItem('offline_reels_cache') || '[]');
+        const urls = new Set();
+
+        // Gather post media
+        posts.forEach(p => {
+          [p.image_url, p.image_url_2, p.image_url_3, p.image_url_4].forEach(url => {
+            if (url && typeof url === 'string') urls.add(url);
+          });
+          if (p.author_avatar && typeof p.author_avatar === 'string') urls.add(p.author_avatar);
+        });
+
+        // Gather reels media
+        reels.forEach(r => {
+          if (r.video_url && typeof r.video_url === 'string') {
+            let resolvedUrl = r.video_url;
+            if (resolvedUrl.includes('unsplash.com')) {
+              const videoUrls = [
+                'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+                'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+                'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+                'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+                'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4'
+              ];
+              const videoIdx = (Number(r.id) - 1) % videoUrls.length;
+              resolvedUrl = videoUrls[videoIdx >= 0 ? videoIdx : 0];
+            }
+            urls.add(resolvedUrl);
+          }
+          if (r.audio_url && typeof r.audio_url === 'string') urls.add(r.audio_url);
+          if (r.author_avatar && typeof r.author_avatar === 'string') urls.add(r.author_avatar);
+        });
+
+        const urlList = Array.from(urls).filter(url => !this.prefetchedUrls.has(url));
+        if (!urlList.length) return;
+
+        console.log(`[OfflineCache] Prefetching ${urlList.length} media assets...`);
+        for (const url of urlList) {
+          if (!navigator.onLine) break;
+          await new Promise(resolve => setTimeout(resolve, 600));
+          try {
+            await fetch(url, { method: 'GET', credentials: 'same-origin', cache: 'force-cache' });
+            this.prefetchedUrls.add(url);
+          } catch (e) {
+            // silent fail
+          }
+        }
+      } catch (err) {
+        console.warn('[OfflineCache] Prefetch queue error:', err);
+      }
+    }
+  };
+
+  // Initialize Cache
+  TrasxOfflineCache.init();
+
   // ── Infinite Scroll — loads next feed batch via /api/feed/posts ──────────
   (function initInfiniteScroll() {
     const sentinel = document.getElementById('feedPaginationSentinel');
@@ -4451,6 +4782,10 @@ document.addEventListener('DOMContentLoaded', () => {
           });
           postsContainer.appendChild(fragment);
 
+          // Save newly loaded posts to cache and run prefetch
+          TrasxOfflineCache.savePosts(newPosts);
+          TrasxOfflineCache.runPrefetchQueue();
+
           // Init lazy media on newly inserted posts
           if (typeof window.initLazyMedia === 'function') {
             window.initLazyMedia(postsContainer);
@@ -4468,7 +4803,40 @@ document.addEventListener('DOMContentLoaded', () => {
           if (endMsg) { endMsg.style.display = 'block'; }
         }
       } catch (err) {
-        console.warn('[InfiniteScroll] Error loading posts:', err);
+        console.warn('[InfiniteScroll] Error loading posts, trying offline cache:', err);
+
+        const offlinePosts = TrasxOfflineCache.getOfflinePosts(seenIds, batchSize);
+        if (offlinePosts.length > 0) {
+          if (typeof showTikTokToast === 'function') {
+            showTikTokToast(tText("Affichage des posts enregistrés hors-ligne", "Affichage des posts enregistrés hors-ligne"), 'info');
+          }
+
+          const fragment = document.createDocumentFragment();
+          offlinePosts.forEach(post => {
+            seenIds.add(Number(post.id));
+            const el = createPostCardElement(post);
+            if (el) {
+              el.setAttribute('data-progressive-item', 'post');
+              el.setAttribute('data-created-at', post.created_at || '');
+              fragment.appendChild(el);
+            }
+          });
+          postsContainer.appendChild(fragment);
+
+          // Init lazy media on newly inserted posts
+          if (typeof window.initLazyMedia === 'function') {
+            window.initLazyMedia(postsContainer);
+          }
+          // Re-init lucide icons
+          if (typeof lucide !== 'undefined') {
+            try { lucide.createIcons(); } catch (_) {}
+          }
+
+          nextOffset = nextOffset + offlinePosts.length;
+        } else {
+          if (endMsg) { endMsg.style.display = 'block'; }
+          hasMore = false;
+        }
       } finally {
         isLoading = false;
         if (loader) { loader.style.display = 'none'; }
@@ -5288,6 +5656,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       saveSelection();
+      if (window.innerWidth <= 576) {
+        targetInput.blur();
+      }
       targetInput.addEventListener('keyup', saveSelection);
       targetInput.addEventListener('mouseup', saveSelection);
       targetInput.addEventListener('blur', saveSelection);
@@ -5366,7 +5737,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const isContentEditable = targetInput.isContentEditable || targetInput.getAttribute('contenteditable') === 'true';
             if (isContentEditable) {
-              targetInput.focus();
+              if (window.innerWidth > 576) {
+                targetInput.focus();
+              }
               const selection = window.getSelection();
               if (savedRange) {
                 selection.removeAllRanges();
@@ -5396,7 +5769,9 @@ document.addEventListener('DOMContentLoaded', () => {
               const value = targetInput.value;
               targetInput.value = value.slice(0, start) + emoji + value.slice(end);
               targetInput.selectionStart = targetInput.selectionEnd = start + emoji.length;
-              targetInput.focus();
+              if (window.innerWidth > 576) {
+                targetInput.focus();
+              }
               targetInput.dispatchEvent(new Event('input', { bubbles: true }));
             }
           });
@@ -7332,6 +7707,75 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
+    function initVideoTrimmer(vidEl, file) {
+      const trimmerContainer = document.getElementById('videoTrimmerContainer');
+      const trimStartInput = document.getElementById('trimStartInput');
+      const trimEndInput = document.getElementById('trimEndInput');
+      const trimRangeLabel = document.getElementById('trimRangeLabel');
+      const highlightTrack = document.getElementById('trimmerHighlightTrack');
+
+      if (!trimmerContainer || !trimStartInput || !trimEndInput || !trimRangeLabel || !highlightTrack) return;
+
+      trimmerContainer.style.display = 'flex';
+
+      const setupTrimmer = () => {
+        const duration = vidEl.duration;
+        if (!duration || isNaN(duration)) return;
+
+        trimStartInput.min = 0;
+        trimStartInput.max = duration;
+        trimStartInput.value = 0;
+
+        trimEndInput.min = 0;
+        trimEndInput.max = duration;
+        trimEndInput.value = duration;
+
+        updateTrimmerUI();
+
+        trimStartInput.oninput = () => {
+          if (parseFloat(trimStartInput.value) >= parseFloat(trimEndInput.value) - 0.2) {
+            trimStartInput.value = parseFloat(trimEndInput.value) - 0.2;
+          }
+          vidEl.currentTime = parseFloat(trimStartInput.value);
+          updateTrimmerUI();
+        };
+
+        trimEndInput.oninput = () => {
+          if (parseFloat(trimEndInput.value) <= parseFloat(trimStartInput.value) + 0.2) {
+            trimEndInput.value = parseFloat(trimStartInput.value) + 0.2;
+          }
+          vidEl.currentTime = parseFloat(trimEndInput.value);
+          updateTrimmerUI();
+        };
+      };
+
+      if (vidEl.readyState >= 1) {
+        setupTrimmer();
+      } else {
+        vidEl.onloadedmetadata = setupTrimmer;
+      }
+
+      function formatTime(sec) {
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+      }
+
+      function updateTrimmerUI() {
+        const start = parseFloat(trimStartInput.value);
+        const end = parseFloat(trimEndInput.value);
+        const duration = vidEl.duration || 100;
+
+        trimRangeLabel.textContent = `${formatTime(start)} - ${formatTime(end)}`;
+
+        const leftPercent = (start / duration) * 100;
+        const rightPercent = 100 - ((end / duration) * 100);
+
+        highlightTrack.style.left = `${leftPercent}%`;
+        highlightTrack.style.right = `${rightPercent}%`;
+      }
+    }
+
     const displayVisualPreview = (files, type) => {
       const previewContainer = document.getElementById('postMediaVisualPreview');
       if (!previewContainer) return;
@@ -7436,9 +7880,71 @@ document.addEventListener('DOMContentLoaded', () => {
         lucide.createIcons();
       }
 
-      // Automatically close the popover modal so user sees the preview
+      // Render copy inside the modal setup preview
+      const modalPreviewBox = document.getElementById('photoVideoMediaPreviewBox');
+      if (modalPreviewBox) {
+        modalPreviewBox.innerHTML = '';
+        if (type === 'image') {
+          const imgEl = document.createElement('img');
+          imgEl.src = URL.createObjectURL(files[0]);
+          imgEl.style.cssText = 'width: 100%; height: 100%; object-fit: cover; max-height: 150px; border-radius: 8px;';
+          imgEl.onload = () => URL.revokeObjectURL(imgEl.src);
+          modalPreviewBox.appendChild(imgEl);
+        } else {
+          const vidEl = document.createElement('video');
+          vidEl.src = URL.createObjectURL(files[0]);
+          vidEl.style.cssText = 'width: 100%; height: 100%; object-fit: contain; max-height: 150px; border-radius: 8px;';
+          vidEl.muted = true;
+          vidEl.controls = false;
+          vidEl.onloadeddata = () => URL.revokeObjectURL(vidEl.src);
+          modalPreviewBox.appendChild(vidEl);
+
+          // Initialize Video Trimmer
+          initVideoTrimmer(vidEl, files[0]);
+        }
+      }
+
+      // Show setup section, hide upload zone, expand modal width
+      const setupSection = document.getElementById('photoVideoMediaSetupSection');
+      const uploadZone = document.getElementById('mediaUploadZone');
       const photoVideoModal = document.getElementById('photoVideoModal');
-      if (photoVideoModal) photoVideoModal.style.display = 'none';
+      if (setupSection) setupSection.style.display = 'flex';
+      if (uploadZone) uploadZone.style.display = 'none';
+      if (photoVideoModal) {
+        photoVideoModal.classList.add('setup-active');
+        const triggerBtn = document.querySelector('.post-opt-btn.image-video');
+        if (triggerBtn && typeof positionPopover === 'function') {
+          positionPopover(photoVideoModal, triggerBtn);
+        }
+      }
+
+      // Toggle destination selector (only for video)
+      const destContainer = document.getElementById('photoVideoDestinationContainer');
+      if (destContainer) {
+        destContainer.style.display = type === 'video' ? 'flex' : 'none';
+      }
+    };
+
+    const resetPhotoVideoModalSetup = () => {
+      const setupSection = document.getElementById('photoVideoMediaSetupSection');
+      const uploadZone = document.getElementById('mediaUploadZone');
+      const photoVideoModal = document.getElementById('photoVideoModal');
+      const captionInput = document.getElementById('photoVideoCaption');
+      const previewBox = document.getElementById('photoVideoMediaPreviewBox');
+      const trimmerContainer = document.getElementById('videoTrimmerContainer');
+
+      if (setupSection) setupSection.style.display = 'none';
+      if (uploadZone) uploadZone.style.display = 'block';
+      if (captionInput) captionInput.value = '';
+      if (previewBox) previewBox.innerHTML = '';
+      if (trimmerContainer) trimmerContainer.style.display = 'none';
+      if (photoVideoModal) {
+        photoVideoModal.classList.remove('setup-active');
+        const triggerBtn = document.querySelector('.post-opt-btn.image-video');
+        if (triggerBtn && typeof positionPopover === 'function') {
+          positionPopover(photoVideoModal, triggerBtn);
+        }
+      }
     };
 
     const clearSelectedMedia = () => {
@@ -7455,7 +7961,74 @@ document.addEventListener('DOMContentLoaded', () => {
       if (photoVideoInput) photoVideoInput.value = '';
       const downloadSetting = document.getElementById('videoDownloadSetting');
       if (downloadSetting) downloadSetting.classList.remove('is-visible');
+      resetPhotoVideoModalSetup();
     };
+
+    // Custom media setup event listeners
+    const cancelBtn = document.getElementById('photoVideoCancelBtn');
+    const publishBtn = document.getElementById('photoVideoPublishBtn');
+    const destOptions = document.querySelectorAll('#photoVideoDestinationContainer .media-dest-option');
+
+    destOptions.forEach(opt => {
+      opt.addEventListener('click', () => {
+        destOptions.forEach(o => {
+          o.classList.remove('active');
+        });
+        opt.classList.add('active');
+        const radio = opt.querySelector('input[type="radio"]');
+        if (radio) radio.checked = true;
+      });
+    });
+
+    cancelBtn?.addEventListener('click', () => {
+      clearSelectedMedia();
+      const photoVideoModal = document.getElementById('photoVideoModal');
+      if (photoVideoModal) photoVideoModal.style.display = 'none';
+    });
+
+    publishBtn?.addEventListener('click', async () => {
+      const captionText = document.getElementById('photoVideoCaption')?.value.trim() || '';
+      const destChoice = document.querySelector('input[name="photoVideoDestRadio"]:checked')?.value || 'feed';
+
+      if (selectedMediaType === 'video' && destChoice === 'shorts') {
+        const shortVideoInput = document.getElementById('shortVideoInput');
+        const shortCaption = document.getElementById('shortCaption');
+        const shortCreateForm = document.getElementById('shortCreateForm');
+
+        if (shortVideoInput && shortCaption && shortCreateForm) {
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(selectedMediaFiles[0]);
+          shortVideoInput.files = dataTransfer.files;
+
+          shortCaption.value = captionText;
+
+          const photoVideoModal = document.getElementById('photoVideoModal');
+          if (photoVideoModal) photoVideoModal.style.display = 'none';
+
+          const submitEvent = new Event('submit', { cancelable: true, bubbles: true });
+          shortCreateForm.dispatchEvent(submitEvent);
+
+          clearSelectedMedia();
+        } else {
+          showToast("Shorts upload is not configured on this page.");
+        }
+      } else {
+        if (postInput) {
+          postInput.innerText = captionText;
+          postInput.dispatchEvent(new Event('input'));
+        }
+
+        const photoVideoModal = document.getElementById('photoVideoModal');
+        if (photoVideoModal) photoVideoModal.style.display = 'none';
+
+        const confirmShareBtn = document.getElementById('confirmShareBtn');
+        if (confirmShareBtn) {
+          confirmShareBtn.click();
+        } else {
+          sharePostBtn.click();
+        }
+      }
+    });
 
     const handleSharePost = () => {
       const text = postInput.innerText.trim();
@@ -7537,6 +8110,11 @@ document.addEventListener('DOMContentLoaded', () => {
           const allowDownload = document.getElementById('allowVideoDownloadToggle')?.checked !== false;
           const capturedFiles = [...selectedMediaFiles];
 
+          const trimStartVal = document.getElementById('trimStartInput')?.value;
+          const trimEndVal = document.getElementById('trimEndInput')?.value;
+          const capturedTrimStart = trimStartVal !== undefined ? parseFloat(trimStartVal) : 0;
+          const capturedTrimDuration = (trimStartVal !== undefined && trimEndVal !== undefined) ? (parseFloat(trimEndVal) - parseFloat(trimStartVal)) : 0;
+
           // Finalize post creation immediately (clears UI inputs and closes modal)
           finalizePostCreation();
 
@@ -7557,6 +8135,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             if (selectedVideoThumbnailBlob) {
               formData.append('thumbnail', selectedVideoThumbnailBlob, 'video-thumbnail.jpg');
+            }
+            if (capturedTrimDuration > 0) {
+              formData.append('trimStart', capturedTrimStart);
+              formData.append('trimDuration', capturedTrimDuration);
             }
 
             return uploadMediaWithProgress('/api/posts/upload-media', formData, (percent) => {
@@ -8469,6 +9051,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (privacyBtn && privacyMenu) {
     privacyBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      
+      // Dismiss soft keyboard
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
+
       const isHidden = privacyMenu.style.display === 'none';
       privacyMenu.style.display = isHidden ? 'flex' : 'none';
     });
@@ -11730,6 +12318,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (clickedPopoverInfo) {
       e.preventDefault();
       e.stopPropagation();
+
+      // Dismiss soft keyboard on mobile
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
 
       const modal = document.getElementById(clickedPopoverInfo.modalId);
       if (modal) {
@@ -20278,6 +20871,59 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Game Live Chat: Emoji Picker
+  const gameChatEmojiBtn = document.getElementById('gameChatEmojiBtn');
+  if (gameChatEmojiBtn && gameChatInput) {
+    gameChatEmojiBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.innerWidth <= 576 && document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
+      createEmojiPicker(gameChatInput, gameChatEmojiBtn);
+    });
+  }
+
+  // Game Live Chat: Cancel reply
+  const gameChatCancelReply = document.getElementById('gameChatCancelReply');
+  if (gameChatCancelReply) {
+    gameChatCancelReply.addEventListener('click', () => {
+      const banner = document.getElementById('gameChatReplyBanner');
+      if (banner) banner.style.display = 'none';
+      const pidEl = document.getElementById('gameChatParentId');
+      const punEl = document.getElementById('gameChatParentUsername');
+      const pcoEl = document.getElementById('gameChatParentContent');
+      if (pidEl) pidEl.value = '';
+      if (punEl) punEl.value = '';
+      if (pcoEl) pcoEl.value = '';
+    });
+  }
+
+  // Game Live Chat: Reply on message click
+  document.addEventListener('click', (e) => {
+    const replyBtn = e.target.closest('.game-chat-reply-btn');
+    if (replyBtn) {
+      e.stopPropagation();
+      const msgId = replyBtn.dataset.msgId || '';
+      const senderName = replyBtn.dataset.senderName || 'Utilisateur';
+      const content = replyBtn.dataset.content || '';
+      const banner = document.getElementById('gameChatReplyBanner');
+      const pidEl = document.getElementById('gameChatParentId');
+      const punEl = document.getElementById('gameChatParentUsername');
+      const pcoEl = document.getElementById('gameChatParentContent');
+      const userEl = document.getElementById('gameChatReplyUsername');
+      const textEl = document.getElementById('gameChatReplyText');
+      if (banner) {
+        banner.style.display = 'flex';
+        if (pidEl) pidEl.value = msgId;
+        if (punEl) punEl.value = senderName;
+        if (pcoEl) pcoEl.value = content;
+        if (userEl) userEl.textContent = senderName;
+        if (textEl) textEl.textContent = content;
+        gameChatInput?.focus();
+      }
+    }
+  });
+
   // Game Live Chat message submission
   if (gameChatForm) {
     gameChatForm.addEventListener('submit', (e) => {
@@ -20286,8 +20932,26 @@ document.addEventListener('DOMContentLoaded', () => {
       const content = gameChatInput.value.trim();
       if (!content) return;
 
-      socket.emit('game-chat-message', { gameId: activeGame.id, content });
+      // Read parent reply data
+      const parentId = document.getElementById('gameChatParentId')?.value || null;
+      const parentUsername = document.getElementById('gameChatParentUsername')?.value || null;
+      const parentContent = document.getElementById('gameChatParentContent')?.value || null;
+
+      socket.emit('game-chat-message', {
+        gameId: activeGame.id,
+        content,
+        parentId: parentId || null,
+        parentUsername: parentUsername || null,
+        parentContent: parentContent || null
+      });
       gameChatInput.value = '';
+
+      // Clear reply banner
+      const banner = document.getElementById('gameChatReplyBanner');
+      if (banner) banner.style.display = 'none';
+      if (document.getElementById('gameChatParentId')) document.getElementById('gameChatParentId').value = '';
+      if (document.getElementById('gameChatParentUsername')) document.getElementById('gameChatParentUsername').value = '';
+      if (document.getElementById('gameChatParentContent')) document.getElementById('gameChatParentContent').value = '';
     });
   }
 
@@ -20833,6 +21497,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const msgDiv = document.createElement('div');
       msgDiv.className = 'game-chat-msg-item';
+      if (msg.id) msgDiv.dataset.msgId = msg.id;
 
       const isMe = msg.senderId === window.currentUserId;
       const isSystem = msg.isSystem;
@@ -20844,13 +21509,24 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         `;
       } else {
+        const quotedHtml = msg.parentId && msg.parentContent ? `
+          <div style="background: rgba(0,0,0,0.07); border-left: 3px solid var(--primary); border-radius: 4px; padding: 3px 7px; margin-bottom: 5px; font-size: 10px; max-width: 100%; box-sizing: border-box;">
+            <strong style="color: var(--primary); display: block;">${escapeHtml(msg.parentUsername || 'Utilisateur')}</strong>
+            <span style="color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;">${escapeHtml(msg.parentContent)}</span>
+          </div>
+        ` : '';
+
+        const replyBtnHtml = `<button type="button" class="game-chat-reply-btn" data-msg-id="${escapeHtml(msg.id || '')}" data-sender-name="${escapeHtml(msg.senderName)}" data-content="${escapeHtml(msg.content)}" style="background:none; border:none; color:var(--text-muted); cursor:pointer; padding:2px 4px; font-size:10px; display:flex; align-items:center; gap:3px; opacity:0.7; margin-left:auto; margin-top:2px;" title="Répondre">↩ Répondre</button>`;
+
         msgDiv.innerHTML = `
           <div class="avatar" style="width: 26px; height: 26px; flex-shrink: 0;">
             <img src="${msg.avatar}" style="width: 100%; height: 100%; object-fit: cover;">
           </div>
-          <div class="game-chat-msg-bubble" style="background: ${isMe ? 'var(--primary-light)' : 'var(--bg-hover)'}; border-color: ${isMe ? 'rgba(24, 119, 242, 0.12)' : 'var(--border-color)'};">
+          <div class="game-chat-msg-bubble" style="background: ${isMe ? 'var(--primary-light)' : 'var(--bg-hover)'}; border-color: ${isMe ? 'rgba(24, 119, 242, 0.12)' : 'var(--border-color)'}; position: relative;">
             <strong style="color: ${isMe ? 'var(--primary)' : 'var(--text-primary)'}; font-size: 11px;">${escapeHtml(msg.senderName)}</strong>
-            <div style="color: var(--text-primary); margin-top: 2px; line-height: 1.35;">${escapeHtml(msg.content)}</div>
+            ${quotedHtml}
+            <div class="game-chat-msg-text" style="color: var(--text-primary); margin-top: 2px; line-height: 1.35;">${escapeHtml(msg.content)}</div>
+            ${replyBtnHtml}
           </div>
         `;
 
@@ -20865,6 +21541,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
       gameChatFeed.appendChild(msgDiv);
       gameChatFeed.scrollTop = gameChatFeed.scrollHeight;
+    });
+
+    // Game chat: handle deletions from server
+    socket.on('game-chat-deleted', ({ messageId, deleteType }) => {
+      if (!gameChatFeed) return;
+      const msgEl = gameChatFeed.querySelector(`.game-chat-msg-item[data-msg-id="${messageId}"]`);
+      if (!msgEl) return;
+      if (deleteType === 'everyone') {
+        const bubble = msgEl.querySelector('.game-chat-msg-bubble');
+        if (bubble) {
+          bubble.innerHTML = '<em style="font-size: 11px; color: var(--text-muted);">Ce message a été supprimé.</em>';
+        }
+      } else {
+        msgEl.remove();
+      }
     });
 
     socket.on('game-gift-received', (data) => {

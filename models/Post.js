@@ -623,6 +623,10 @@ class Post {
   static async delete(postId, userId) {
     await db.query('DELETE FROM posts WHERE id = ? AND user_id = ?', [postId, userId]);
   }
+
+  static async deleteByAdmin(postId) {
+    await db.query('DELETE FROM posts WHERE id = ?', [postId]);
+  }
 }
 
 module.exports = Post;

@@ -139,9 +139,8 @@ function buildMessageInboxSections(currentUserId, contacts = [], messages = []) 
     const requesterId = Number(lastMessage?.request_requester_id || 0);
     const recipientId = Number(lastMessage?.request_recipient_id || 0);
     const canManageRequest = requestStatus === 'pending' && recipientId === currentId && requesterId === Number(contact.id);
-    if (requestStatus === 'declined' && recipientId === currentId && requesterId === Number(contact.id)) {
-      return;
-    }
+
+
 
     const category = canManageRequest ? 'requests' : 'general';
     const preview = getMessagePreviewText(lastMessage);

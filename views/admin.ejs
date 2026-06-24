@@ -3499,6 +3499,72 @@
             <% } %>
           </div>
 
+          <!-- USER REPORTS DASHBOARD -->
+          <div style="margin-bottom: 24px;">
+            <div style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 600; margin-bottom: 12px;">Signalements des utilisateurs (<%= typeof postReports !== 'undefined' ? postReports.length : 0 %>)</div>
+            <% if (typeof postReports !== 'undefined' && postReports.length > 0) { %>
+              <div style="overflow-x: auto;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Auteur</th>
+                      <th>Rapporteur</th>
+                      <th>Raison</th>
+                      <th>Détails</th>
+                      <th>Contenu du Post</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% postReports.forEach((report) => { %>
+                      <tr id="report-row-<%= report.id %>">
+                        <td><%= new Date(report.created_at).toLocaleString() %></td>
+                        <td>
+                          <strong>@<%= report.author_username %></strong>
+                          <div style="font-size: 11px; color: var(--text-muted);">Total signalements : <%= report.author_report_count %></div>
+                        </td>
+                        <td>@<%= report.reporter_username %></td>
+                        <td>
+                          <span class="badge blocked" style="text-transform: capitalize;">
+                            <%= report.reason %>
+                          </span>
+                        </td>
+                        <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><%= report.details || 'Aucun' %></td>
+                        <td style="max-width: 200px; font-size: 12px;">
+                          <% if (report.post_image_url) { %>
+                            <% if (String(report.post_media_type || '').toLowerCase() === 'video') { %>
+                              <div style="display: flex; align-items: center; gap: 8px;">
+                                <video src="<%= report.post_image_url %>" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;" muted></video>
+                                <span style="font-size: 11px; color: var(--text-muted);"><%= report.post_content ? report.post_content.slice(0, 30) : 'Vidéo' %></span>
+                              </div>
+                            <% } else { %>
+                              <div style="display: flex; align-items: center; gap: 8px;">
+                                <img src="<%= report.post_image_url %>" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;">
+                                <span style="font-size: 11px; color: var(--text-muted);"><%= report.post_content ? report.post_content.slice(0, 30) : 'Image' %></span>
+                              </div>
+                            <% } %>
+                          <% } else { %>
+                            <%= report.post_content ? (report.post_content.length > 50 ? report.post_content.slice(0, 50) + '...' : report.post_content) : 'Aucun' %>
+                          <% } %>
+                        </td>
+                        <td>
+                          <div style="display: flex; gap: 6px;">
+                            <button onclick="handleReportAction(<%= report.id %>, 'dismiss', null)" class="btn" style="padding: 6px 12px; font-size: 12px; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main);">Ignorer</button>
+                            <button onclick="handleReportAction(<%= report.id %>, 'delete-post', <%= report.post_id %>)" class="btn" style="padding: 6px 12px; font-size: 12px; background: var(--warning); border: none; color: black;">Supprimer Post</button>
+                            <button onclick="handleReportAction(<%= report.id %>, 'block-user', <%= report.author_id %>)" class="btn" style="padding: 6px 12px; font-size: 12px; background: var(--danger); border: none; color: white;">Bloquer Auteur</button>
+                          </div>
+                        </td>
+                      </tr>
+                    <% }) %>
+                  </tbody>
+                </table>
+              </div>
+            <% } else { %>
+              <p style="margin: 0; color: var(--text-muted);">Aucun signalement d'utilisateur en attente.</p>
+            <% } %>
+          </div>
+
           <div style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 600; margin-bottom: 12px;">Tous les posts a analyser</div>
           <% if (postsForReviewList.length > 0) { %>
             <div class="post-review-grid">
@@ -4950,6 +5016,49 @@
           alert(error.message);
         }
       });
+    }
+
+    async function handleReportAction(reportId, action, targetId) {
+      let url = '';
+      let body = {};
+      let confirmMsg = '';
+
+      if (action === 'dismiss') {
+        url = '/admin/moderation/dismiss-report';
+        body = { reportId };
+        confirmMsg = 'Voulez-vous vraiment ignorer ce signalement ?';
+      } else if (action === 'delete-post') {
+        url = '/admin/moderation/delete-reported-post';
+        body = { postId: targetId };
+        confirmMsg = 'Voulez-vous vraiment supprimer définitivement ce post ?';
+      } else if (action === 'block-user') {
+        url = '/admin/moderation/block-reported-user';
+        body = { userId: targetId };
+        confirmMsg = 'Voulez-vous vraiment bloquer définitivement le compte de cet auteur ?';
+      }
+
+      if (!url || !confirm(confirmMsg)) return;
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(body)
+        });
+        const result = await response.json();
+        if (response.ok && result.success) {
+          alert(result.message);
+          window.location.reload();
+        } else {
+          alert(result.message || 'Une erreur est survenue.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Erreur réseau ou serveur.');
+      }
     }
 
     // Script pour le changement de mot de passe administrateur

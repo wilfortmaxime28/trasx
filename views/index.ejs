@@ -324,6 +324,55 @@ function getYouTubeId(url) {
                                         </span>
                                         <span><%= tText("Autoriser le téléchargement de la vidéo") %></span>
                                       </label>
+
+                                      <!-- Media Setup (Caption & Destination) Section (WhatsApp / Facebook style) -->
+                                      <div id="photoVideoMediaSetupSection" style="display: none; flex-direction: column; gap: 12px; margin-top: 12px;">
+                                        <div id="photoVideoMediaPreviewBox" style="width: 100%; border-radius: 8px; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; position: relative; max-height: 180px;">
+                                          <!-- Selected media (img or video) will be placed here dynamically -->
+                                        </div>
+
+                                        <!-- Video Trimmer Container -->
+                                        <div id="videoTrimmerContainer" style="display: none; flex-direction: column; gap: 8px; margin-top: 6px;">
+                                          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); font-weight: 600;">
+                                            <span>Trimmer la vidéo</span>
+                                            <span id="trimRangeLabel">0:00 - 0:00</span>
+                                          </div>
+                                          <div class="trimmer-track-container" style="position: relative; width: 100%; height: 28px; background: rgba(0,0,0,0.3); border-radius: 6px; overflow: visible;">
+                                            <div id="trimmerHighlightTrack" style="position: absolute; height: 100%; top: 0; left: 0%; right: 0%; background: rgba(24, 119, 242, 0.4); border-left: 3px solid var(--primary); border-right: 3px solid var(--primary); pointer-events: none; border-radius: 4px; box-sizing: border-box;"></div>
+                                            <input type="range" id="trimStartInput" min="0" max="100" value="0" step="0.1" style="position: absolute; width: 100%; top: 0; left: 0; height: 100%; -webkit-appearance: none; appearance: none; background: transparent; pointer-events: auto; margin: 0;">
+                                            <input type="range" id="trimEndInput" min="0" max="100" value="100" step="0.1" style="position: absolute; width: 100%; top: 0; left: 0; height: 100%; -webkit-appearance: none; appearance: none; background: transparent; pointer-events: auto; margin: 0;">
+                                          </div>
+                                          <div style="font-size: 10px; color: var(--text-muted); text-align: center;">Faites glisser les poignées pour définir le début et la fin de la vidéo.</div>
+                                        </div>
+                                        
+                                        <textarea id="photoVideoCaption" placeholder="<%= tText("Écrire une légende...") %>" style="width: 100%; min-height: 60px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-input); color: var(--text-primary); padding: 8px 12px; font-family: inherit; font-size: 13px; resize: none; box-sizing: border-box; outline: none; transition: border-color 0.2s;"></textarea>
+                                        
+                                        <!-- Destination Section Selector (visible only if video is selected) -->
+                                        <div id="photoVideoDestinationContainer" style="display: none; flex-direction: column; gap: 6px;">
+                                          <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 2px;">Publier dans :</label>
+                                          <div style="display: flex; gap: 10px;">
+                                            <label class="media-dest-option active" style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 10px; border: 1.5px solid var(--primary); border-radius: 8px; cursor: pointer; background: var(--bg-hover); transition: all 0.2s;">
+                                              <input type="radio" name="photoVideoDestRadio" value="feed" checked style="accent-color: var(--primary); pointer-events: none; display: none;">
+                                              <div style="display: flex; flex-direction: column;">
+                                                <span style="font-size: 13px; font-weight: 700; color: var(--text-primary);">Fil d'actualité</span>
+                                                <span style="font-size: 10px; color: var(--text-secondary);">Ajouter comme post</span>
+                                              </div>
+                                            </label>
+                                            <label class="media-dest-option" style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 10px; border: 1.5px solid var(--border-color); border-radius: 8px; cursor: pointer; background: var(--bg-card); transition: all 0.2s;">
+                                              <input type="radio" name="photoVideoDestRadio" value="shorts" style="accent-color: var(--primary); pointer-events: none; display: none;">
+                                              <div style="display: flex; flex-direction: column;">
+                                                <span style="font-size: 13px; font-weight: 700; color: var(--text-primary);">Shorts (Reel)</span>
+                                                <span style="font-size: 10px; color: var(--text-secondary);">Ajouter aux Shorts</span>
+                                              </div>
+                                            </label>
+                                          </div>
+                                        </div>
+
+                                        <div style="display: flex; gap: 10px; margin-top: 6px;">
+                                          <button type="button" id="photoVideoCancelBtn" style="flex: 1; background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 8px; padding: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: center;"><%= tText("Annuler") %></button>
+                                          <button type="button" id="photoVideoPublishBtn" style="flex: 1; background: linear-gradient(135deg, #1877f2 0%, #00c6ff 100%); border: none; color: white; border-radius: 8px; padding: 10px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; text-align: center; box-shadow: 0 4px 12px rgba(24, 119, 242, 0.2);"><%= tText("Publier") %></button>
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
 
@@ -1326,6 +1375,9 @@ function getYouTubeId(url) {
                                                                         playsinline
                                                                         poster="<%= post.thumbnail_url || '' %>"
                                                                         oncontextmenu="return false;"></video>
+                                                                      <div class="video-pulse-overlay" aria-hidden="true">
+                                                                        <i data-lucide="play"></i>
+                                                                      </div>
                                                                       <div class="custom-video-controls">
                                                                         <div class="video-controls-left">
                                                                           <button type="button"
@@ -1611,7 +1663,7 @@ function getYouTubeId(url) {
                                                                           </span>
                                                                           <audio class="voice-audio-element"
                                                                             src="<%= comment.voice_url %>"
-                                                                            preload="metadata"
+                                                                            preload="auto"
                                                                             style="display: none;"></audio>
                                                                         </div>
                                                                         <% } %>
@@ -1719,7 +1771,7 @@ function getYouTubeId(url) {
                                                                                       </span>
                                                                                       <audio class="voice-audio-element"
                                                                                         src="<%= reply.voice_url %>"
-                                                                                        preload="metadata"
+                                                                                        preload="auto"
                                                                                         style="display: none;"></audio>
                                                                                     </div>
                                                                                     <% } %>
@@ -3039,7 +3091,7 @@ function getYouTubeId(url) {
                               <input type="radio" name="setupGameType" value="gomoku">
                               <div class="choice-card-content">
                                 <i data-lucide="grid"></i>
-                                <span>Gomoku</span>
+                                <span><%= tText("Gomoku") %></span>
                               </div>
                             </label>
                             <label class="game-choice-option">
@@ -3416,11 +3468,24 @@ function getYouTubeId(url) {
                       <div id="gameChatFeed" class="game-chat-feed">
                         <div class="game-chat-empty"><%= tText("Le chat est ouvert ! Envoyez des encouragements en direct.") %></div>
                       </div>
-                      <!-- Input Form -->
-                      <form id="gameChatForm" class="game-chat-form">
-                        <input type="text" id="gameChatInput" placeholder="<%= tText("Tapez un message...") %>" autocomplete="off">
-                        <button type="submit"><i data-lucide="send"></i></button>
-                      </form>
+                       <form id="gameChatForm" class="game-chat-form" style="position: relative;">
+                         <!-- Quoted Reply Banner -->
+                         <div id="gameChatReplyBanner" class="chat-reply-banner" style="display: none; padding: 6px 10px; background: rgba(24, 119, 242, 0.08); border-left: 3px solid var(--primary); border-radius: 4px; margin-bottom: 8px; justify-content: space-between; align-items: center; gap: 8px; width: 100%; box-sizing: border-box;">
+                           <div class="chat-reply-content" style="min-width: 0; flex: 1;">
+                             <span class="reply-username" id="gameChatReplyUsername" style="font-size: 11px; font-weight: 700; color: var(--primary); display: block;"></span>
+                             <p class="reply-text" id="gameChatReplyText" style="margin: 2px 0 0 0; font-size: 11px; color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;"></p>
+                           </div>
+                           <button type="button" class="cancel-reply-btn" id="gameChatCancelReply" style="background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;"><i data-lucide="x" style="width: 12px; height: 12px;"></i></button>
+                           <input type="hidden" id="gameChatParentId" value="">
+                           <input type="hidden" id="gameChatParentUsername" value="">
+                           <input type="hidden" id="gameChatParentContent" value="">
+                         </div>
+                         <div class="game-chat-input-wrapper" style="display: flex; width: 100%; align-items: center; background: var(--bg-hover); border-radius: 8px; border: 1px solid var(--border-color); padding-right: 8px; box-sizing: border-box;">
+                           <button type="button" class="emoji-trigger-btn" id="gameChatEmojiBtn" style="background: none; border: none; padding: 8px; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="smile" style="width: 16px; height: 16px;"></i></button>
+                           <input type="text" id="gameChatInput" placeholder="<%= tText("Tapez un message...") %>" autocomplete="off" style="flex: 1; border: none; background: none; outline: none; padding: 10px; color: var(--text-primary); font-size: 12px; font-family: inherit;">
+                           <button type="submit" style="background: none; border: none; padding: 8px; color: var(--primary); cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="send" style="width: 16px; height: 16px;"></i></button>
+                         </div>
+                       </form>
                     </div>
 
                   </div>
@@ -5093,6 +5158,8 @@ function getYouTubeId(url) {
           window.feedHasMore = <%= typeof feedHasMore !== 'undefined' ? (feedHasMore ? 'true' : 'false') : 'false' %>;
           window.feedNextOffset = <%= Number(typeof feedNextOffset !== 'undefined' ? feedNextOffset : 20) %>;
           window.shortRevealBatchSize = <%= Number(typeof shortRevealBatchSize !== 'undefined' ? shortRevealBatchSize : 2) %>;
+          window.initialFeedPosts = <%- JSON.stringify(posts || []).replace(/</g, '\\u003c') %>;
+          window.initialReels = <%- JSON.stringify(reels || []).replace(/</g, '\\u003c') %>;
         </script>
         <!-- Floating Alert for New Posts -->
         <div id="newPostScrollAlert" class="new-post-scroll-alert">

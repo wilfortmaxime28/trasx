@@ -96,6 +96,38 @@ function optimizeVideo(inputPath, outputPath) {
 }
 
 /**
+ * Trims and optimizes an uploaded video using start time and duration.
+ * @param {string} inputPath - Original uploaded file path
+ * @param {string} outputPath - Desired destination path (MP4)
+ * @param {number} startTime - Start time in seconds
+ * @param {number} duration - Duration in seconds
+ * @returns {Promise<string>} - Resolves to the output path
+ */
+function optimizeAndTrimVideo(inputPath, outputPath, startTime, duration) {
+  return new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      .seekInput(startTime)
+      .duration(duration)
+      .outputOptions([
+        '-c:v libx264',
+        '-c:a aac',
+        '-crf 28',                  // Constant rate factor
+        '-preset fast',
+        '-vf scale=-2:min(720\\,ih)', // Downscale to 720p maximum, preserve aspect ratio
+        '-movflags +faststart'      // Web playability
+      ])
+      .on('end', () => {
+        resolve(outputPath);
+      })
+      .on('error', (err) => {
+        console.error('Error optimizing/trimming video:', err);
+        reject(err);
+      })
+      .save(outputPath);
+  });
+}
+
+/**
  * Extracts a frame from a video at 00:00:01 and saves it as a WebP thumbnail.
  * @param {string} videoPath - Source video path
  * @param {string} thumbnailPath - Destination path for the WebP thumbnail
@@ -147,5 +179,6 @@ module.exports = {
   optimizeImage,
   generateImageThumbnail,
   optimizeVideo,
+  optimizeAndTrimVideo,
   generateVideoThumbnail
 };

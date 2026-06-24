@@ -77,6 +77,9 @@ router.post('/balance-topup', requireAdminAction('manage_balances'), adminContro
 router.post('/balance-debit', requireAdminAction('manage_balances'), adminController.balanceDebit);
 router.post('/moderation/report-post', requireAdminAction('moderate_content'), adminController.reportPost);
 router.post('/moderation/report-profile', requireAdminAction('moderate_content'), adminController.reportProfile);
+router.post('/moderation/dismiss-report', requireAdminAction('moderate_content'), adminController.dismissReport);
+router.post('/moderation/delete-reported-post', requireAdminAction('moderate_content'), adminController.deleteReportedPost);
+router.post('/moderation/block-reported-user', requireAdminAction('moderate_content'), adminController.blockReportedUser);
 router.post('/kyc-review', requireAdminAction('manage_kyc'), adminController.reviewKycRequest);
 router.post('/user-delete', requireAdminAction('manage_users'), adminController.deleteUser);
 router.post('/user-freeze', requireAdminAction('manage_users'), adminController.freezeUserAccount);

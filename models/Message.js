@@ -2,7 +2,23 @@ const db = require('../config/db');
 const { getMessagePreviewText, parseStructuredMessageContent } = require('../utils/messageInbox');
 
 class Message {
+  static async ensureMessageColumns() {
+    try {
+      await db.query('ALTER TABLE messages ADD COLUMN parent_id INT DEFAULT NULL');
+    } catch (e) {}
+    try {
+      await db.query('ALTER TABLE messages ADD COLUMN deleted_by_sender TINYINT(1) DEFAULT 0');
+    } catch (e) {}
+    try {
+      await db.query('ALTER TABLE messages ADD COLUMN deleted_by_receiver TINYINT(1) DEFAULT 0');
+    } catch (e) {}
+    try {
+      await db.query('ALTER TABLE messages ADD COLUMN deleted_for_everyone TINYINT(1) DEFAULT 0');
+    } catch (e) {}
+  }
+
   static async ensureMessageRequestsTable() {
+    await Message.ensureMessageColumns();
     await db.query(`
       CREATE TABLE IF NOT EXISTS message_requests (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -59,7 +75,7 @@ class Message {
     return rows;
   }
 
-  static async create(senderId, receiverId, content, attachment = {}) {
+  static async create(senderId, receiverId, content, attachment = {}, parentId = null) {
     const normalizedContent = String(content ?? '');
     const {
       attachmentUrl = null,
@@ -70,6 +86,7 @@ class Message {
     } = attachment || {};
     const normalizedAttachmentSize = Message.normalizeNullableInt(attachmentSize);
     const normalizedVoiceDurationSeconds = Message.normalizeNullableInt(voiceDurationSeconds);
+    const normalizedParentId = Message.normalizeNullableInt(parentId);
     const [result] = await db.query(
       `
         INSERT INTO messages (
@@ -80,8 +97,9 @@ class Message {
           attachment_type,
           attachment_name,
           attachment_size,
-          voice_duration_seconds
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          voice_duration_seconds,
+          parent_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         senderId,
@@ -91,7 +109,8 @@ class Message {
         attachmentType,
         attachmentName,
         normalizedAttachmentSize,
-        normalizedVoiceDurationSeconds
+        normalizedVoiceDurationSeconds,
+        normalizedParentId
       ]
     );
     return result.insertId;
@@ -112,17 +131,91 @@ class Message {
         m.delivered_at,
         m.read_at,
         m.created_at,
+        m.parent_id,
+        m.deleted_by_sender,
+        m.deleted_by_receiver,
+        m.deleted_for_everyone,
         CONCAT(u.first_name, ' ', u.last_name) AS sender_name,
         u.avatar AS sender_avatar,
-        u.username AS sender_username
+        u.username AS sender_username,
+        pm.content AS parent_content,
+        pmu.username AS parent_sender_username,
+        pm.attachment_type AS parent_attachment_type
       FROM messages m
       JOIN users u ON m.sender_id = u.id
-      WHERE (m.sender_id = ? AND m.receiver_id = ?)
-         OR (m.sender_id = ? AND m.receiver_id = ?)
+      LEFT JOIN messages pm ON m.parent_id = pm.id
+      LEFT JOIN users pmu ON pm.sender_id = pmu.id
+      WHERE (
+        (m.sender_id = ? AND m.receiver_id = ?)
+        OR (m.sender_id = ? AND m.receiver_id = ?)
+      ) AND (
+        (m.sender_id = ? AND m.deleted_by_sender = 0)
+        OR (m.receiver_id = ? AND m.deleted_by_receiver = 0)
+      )
       ORDER BY m.created_at ASC
     `;
-    const [rows] = await db.query(query, [userId, contactId, contactId, userId]);
+    const [rows] = await db.query(query, [
+      userId, contactId, contactId, userId,
+      userId, userId
+    ]);
     return rows;
+  }
+
+  static async getById(messageId) {
+    const [rows] = await db.query(
+      `
+        SELECT 
+          m.id,
+          m.sender_id,
+          m.receiver_id,
+          m.content,
+          m.attachment_url,
+          m.attachment_type,
+          m.attachment_name,
+          m.parent_id,
+          u.username AS sender_username
+        FROM messages m
+        JOIN users u ON m.sender_id = u.id
+        WHERE m.id = ?
+      `,
+      [messageId]
+    );
+    return rows[0] || null;
+  }
+
+  static async deleteForMe(messageId, userId) {
+    const msg = await Message.getById(messageId);
+    if (!msg) return false;
+    
+    if (Number(msg.sender_id) === Number(userId)) {
+      await db.query('UPDATE messages SET deleted_by_sender = 1 WHERE id = ?', [messageId]);
+      return true;
+    } else if (Number(msg.receiver_id) === Number(userId)) {
+      await db.query('UPDATE messages SET deleted_by_receiver = 1 WHERE id = ?', [messageId]);
+      return true;
+    }
+    return false;
+  }
+
+  static async deleteForEveryone(messageId, userId) {
+    const msg = await Message.getById(messageId);
+    if (!msg) return false;
+    
+    if (Number(msg.sender_id) !== Number(userId)) return false;
+    
+    await db.query(`
+      UPDATE messages 
+      SET 
+        deleted_for_everyone = 1,
+        content = '',
+        attachment_url = NULL,
+        attachment_type = NULL,
+        attachment_name = NULL,
+        attachment_size = NULL,
+        voice_duration_seconds = NULL
+      WHERE id = ?
+    `, [messageId]);
+    return true;
   }
 
   static async getAllForAdmin() {

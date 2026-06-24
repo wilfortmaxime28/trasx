@@ -2586,8 +2586,15 @@ app.post('/api/posts/upload-media', requireAuth, (req, res) => {
           const optFilename = 'opt-post-' + uniqueSuffix + '.mp4';
           const optPath = path.join(postUploadDir, optFilename);
 
-          // 1. Compress and optimize video
-          await mediaOptimizer.optimizeVideo(file.path, optPath);
+          // 1. Compress and optimize video, with optional trimming
+          const trimStart = req.body.trimStart ? parseFloat(req.body.trimStart) : null;
+          const trimDuration = req.body.trimDuration ? parseFloat(req.body.trimDuration) : null;
+
+          if (trimStart !== null && trimDuration !== null && !isNaN(trimStart) && !isNaN(trimDuration) && trimDuration > 0) {
+            await mediaOptimizer.optimizeAndTrimVideo(file.path, optPath, trimStart, trimDuration);
+          } else {
+            await mediaOptimizer.optimizeVideo(file.path, optPath);
+          }
 
           // 2. Generate a video thumbnail if no user thumbnail was uploaded
           if (!thumbnailFile) {
@@ -4626,7 +4633,8 @@ io.on('connection', (socket) => {
         attachmentType = null,
         attachmentName = null,
         attachmentSize = null,
-        voiceDurationSeconds = null
+        voiceDurationSeconds = null,
+        parentId = null
       } = data || {};
 
       const numericReceiverId = parseInt(receiverId, 10);
@@ -4658,12 +4666,17 @@ io.on('connection', (socket) => {
         attachmentName: attachmentName || null,
         attachmentSize: normalizedAttachmentSize,
         voiceDurationSeconds: normalizedVoiceDuration
-      });
+      }, parentId);
 
       const [sender, receiver] = await Promise.all([
         User.getById(currentUserId),
         User.getById(numericReceiverId)
       ]);
+
+      let parentMessage = null;
+      if (parentId) {
+        parentMessage = await Message.getById(parentId);
+      }
 
       const messagePayload = {
         id: messageId,
@@ -4675,6 +4688,10 @@ io.on('connection', (socket) => {
         attachment_name: attachmentName || null,
         attachment_size: normalizedAttachmentSize,
         voice_duration_seconds: normalizedVoiceDuration,
+        parent_id: parentId || null,
+        parent_content: parentMessage ? parentMessage.content : null,
+        parent_sender_username: parentMessage ? parentMessage.sender_username : null,
+        parent_attachment_type: parentMessage ? parentMessage.attachment_type : null,
         delivered_at: null,
         read_at: null,
         created_at: new Date().toISOString(),
@@ -4698,6 +4715,10 @@ io.on('connection', (socket) => {
         attachmentName: messagePayload.attachment_name,
         attachmentSize: messagePayload.attachment_size,
         voiceDurationSeconds: messagePayload.voice_duration_seconds,
+        parent_id: messagePayload.parent_id,
+        parent_content: messagePayload.parent_content,
+        parent_sender_username: messagePayload.parent_sender_username,
+        parent_attachment_type: messagePayload.parent_attachment_type,
         delivered_at: deliveredAt,
         read_at: null,
         messageStatus: 'sent',
@@ -4720,6 +4741,10 @@ io.on('connection', (socket) => {
         attachmentName: messagePayload.attachment_name,
         attachmentSize: messagePayload.attachment_size,
         voiceDurationSeconds: messagePayload.voice_duration_seconds,
+        parent_id: messagePayload.parent_id,
+        parent_content: messagePayload.parent_content,
+        parent_sender_username: messagePayload.parent_sender_username,
+        parent_attachment_type: messagePayload.parent_attachment_type,
         delivered_at: deliveredAt,
         read_at: null,
         messageStatus: 'incoming',
@@ -4743,6 +4768,45 @@ io.on('connection', (socket) => {
       }
     } catch (err) {
       console.error('Chat message error:', err);
+    }
+  });
+
+  socket.on('chat-message-delete', async (data) => {
+    try {
+      const currentUserId = session.userId;
+      if (!currentUserId) return;
+
+      const { messageId, deleteType } = data || {};
+      const parsedMessageId = parseInt(messageId, 10);
+      if (!parsedMessageId) return;
+
+      const message = await Message.getById(parsedMessageId);
+      if (!message) return;
+
+      if (deleteType === 'everyone') {
+        if (Number(message.sender_id) !== Number(currentUserId)) return;
+        const success = await Message.deleteForEveryone(parsedMessageId, currentUserId);
+        if (success) {
+          io.to(`user:${message.sender_id}`).emit('chat-message-deleted', {
+            messageId: parsedMessageId,
+            deleteType: 'everyone'
+          });
+          io.to(`user:${message.receiver_id}`).emit('chat-message-deleted', {
+            messageId: parsedMessageId,
+            deleteType: 'everyone'
+          });
+        }
+      } else if (deleteType === 'me') {
+        const success = await Message.deleteForMe(parsedMessageId, currentUserId);
+        if (success) {
+          socket.emit('chat-message-deleted', {
+            messageId: parsedMessageId,
+            deleteType: 'me'
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Chat message delete error:', err);
     }
   });
 
@@ -6211,22 +6275,51 @@ io.on('connection', (socket) => {
       const currentUserId = session.userId;
       if (!currentUserId) return;
       
-      const { gameId, content } = data || {};
+      const { gameId, content, parentId = null, parentUsername = null, parentContent = null } = data || {};
       if (!content || !content.trim()) return;
 
       const user = await User.getById(currentUserId);
       if (!user) return;
 
+      const messageId = 'gmsg_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+
       io.to(`game:${gameId}`).emit('game-chat-received', {
+        id: messageId,
         senderId: currentUserId,
         senderName: `${user.first_name} ${user.last_name}`,
         senderUsername: user.username,
         avatar: user.avatar,
         content: content.trim(),
+        parentId,
+        parentUsername,
+        parentContent,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       });
     } catch (err) {
       console.error('Error on game-chat-message:', err);
+    }
+  });
+
+  socket.on('game-chat-delete', (data) => {
+    try {
+      const currentUserId = session.userId;
+      if (!currentUserId) return;
+      const { gameId, messageId, deleteType } = data || {};
+      if (!gameId || !messageId) return;
+
+      if (deleteType === 'everyone') {
+        io.to(`game:${gameId}`).emit('game-chat-deleted', {
+          messageId,
+          deleteType: 'everyone'
+        });
+      } else if (deleteType === 'me') {
+        socket.emit('game-chat-deleted', {
+          messageId,
+          deleteType: 'me'
+        });
+      }
+    } catch (err) {
+      console.error('Error on game-chat-delete:', err);
     }
   });
 

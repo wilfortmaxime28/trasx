@@ -292,6 +292,10 @@ CREATE TABLE messages (
   voice_duration_seconds INT DEFAULT NULL,
   delivered_at TIMESTAMP NULL DEFAULT NULL,
   read_at TIMESTAMP NULL DEFAULT NULL,
+  parent_id INT DEFAULT NULL,
+  deleted_by_sender TINYINT(1) DEFAULT 0,
+  deleted_by_receiver TINYINT(1) DEFAULT 0,
+  deleted_for_everyone TINYINT(1) DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE

@@ -9,6 +9,7 @@ const PlatformRevenue = require('../models/PlatformRevenue');
 const AdminModerationNotice = require('../models/AdminModerationNotice');
 const Message = require('../models/Message');
 const Comment = require('../models/Comment');
+const PostReport = require('../models/PostReport');
 const db = require('../config/db');
 const { getNumberSetting, setSetting } = require('../utils/appSettings');
 const { createTranslator, normalizeLocale } = require('../utils/i18n');
@@ -762,6 +763,7 @@ exports.getAdminDashboard = async (req, res) => {
     const platformRevenueSummary = await PlatformRevenue.getSummary();
     const platformRevenueEntries = await PlatformRevenue.getRecentEntries(25);
     const postsForReview = await Post.getAllForAdmin();
+    const postReports = await PostReport.getAllPending();
     const adminModerationNotices = await AdminModerationNotice.getRecent(40);
     const adminId = req.session.adminId;
     const currentAdmin = await Admin.getById(adminId);
@@ -961,6 +963,7 @@ exports.getAdminDashboard = async (req, res) => {
       platformRevenueSummary,
       platformRevenueEntries,
       postsForReview,
+      postReports,
       adminModerationNotices,
       currentAdmin,
       currentAdminPermissions,
@@ -2034,6 +2037,50 @@ exports.changeOwnPassword = async (req, res) => {
   } catch (error) {
     console.error('Error changing own admin password:', error);
     return res.status(500).json({ success: false, message: 'Une erreur interne est survenue.' });
+  }
+};
+
+exports.dismissReport = async (req, res) => {
+  try {
+    const reportId = Number.parseInt(req.body.reportId, 10);
+    if (!Number.isFinite(reportId)) {
+      return res.status(400).json({ success: false, message: 'Report ID invalide.' });
+    }
+    await PostReport.updateStatus(reportId, 'dismissed');
+    return res.json({ success: true, message: 'Signalement ignoré.' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: 'Erreur serveur.' });
+  }
+};
+
+exports.deleteReportedPost = async (req, res) => {
+  try {
+    const postId = Number.parseInt(req.body.postId, 10);
+    if (!Number.isFinite(postId)) {
+      return res.status(400).json({ success: false, message: 'Post ID invalide.' });
+    }
+    await Post.deleteByAdmin(postId);
+    await PostReport.updateStatusByPost(postId, 'actioned');
+    return res.json({ success: true, message: 'Publication supprimée.' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: 'Erreur serveur.' });
+  }
+};
+
+exports.blockReportedUser = async (req, res) => {
+  try {
+    const userId = Number.parseInt(req.body.userId, 10);
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ success: false, message: 'Utilisateur ID invalide.' });
+    }
+    await User.updateStatus(userId, 'Blocked');
+    await PostReport.updateStatusByUser(userId, 'actioned');
+    return res.json({ success: true, message: 'Utilisateur bloqué.' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: 'Erreur serveur.' });
   }
 };
 
