@@ -1199,18 +1199,29 @@ button {
 }
 
 .post-actions {
-  display: flex;
-  gap: 20px;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 20px !important;
 }
 
 .post-action-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
   transition: var(--transition-fast);
+}
+
+.post-text {
+  display: block !important;
+  color: var(--text-primary, #ffffff) !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  padding: 0 20px 16px 20px !important;
 }
 
 .post-action-btn i {

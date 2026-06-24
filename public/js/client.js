@@ -22,6 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
   window.currentView = 'feed';
   window.feedVideosMuted = true;
   let wasReelDragging = false;
+  const userTypingStates = {};
+  const userTypingTimers = {};
 
   // Initialize Lucide Icons
   if (typeof lucide !== 'undefined') {
@@ -860,16 +862,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (type === 'audio') {
       return `
-        <div class="voice-note-player chat-voice-note-player" data-voice-kind="chat" style="display:flex; align-items:center; gap:8px; background: rgba(0,0,0,0.05); padding: 6px 10px; border-radius: 18px; border: 1px solid var(--border-color); margin-top: 8px; max-width: 280px; user-select: none;">
-          <button type="button" class="voice-play-btn" style="width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-            <i data-lucide="play" style="width: 10px; height: 10px; fill: white;"></i>
+        <div class="voice-note-player chat-voice-note-player" data-voice-kind="chat" style="display:flex; align-items:center; gap:8px; background: var(--bg-card, rgba(0,0,0,0.05)); padding: 8px 12px; border-radius: 24px; border: 1px solid var(--border-color); margin-top: 8px; max-width: 280px; user-select: none; transition: border-color 0.2s;">
+          <button type="button" class="voice-play-btn" style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 8px rgba(139,92,246,0.35); transition: transform 0.2s, box-shadow 0.2s;">
+            <i data-lucide="play" style="width: 12px; height: 12px; fill: white;"></i>
           </button>
-          <div class="voice-timeline-wrap" style="flex: 1; display: flex; align-items: center; min-width: 0;">
-            <div class="voice-timeline" style="flex: 1; height: 3px; background: var(--border-color); border-radius: 1.5px; position: relative; cursor: pointer; min-width: 80px;">
-              <div class="voice-progress" style="width: 0%; height: 100%; background: var(--primary); border-radius: 1.5px; position: absolute; left: 0; top: 0;"></div>
+          <div style="flex:1; display:flex; flex-direction:column; gap:4px; min-width:0;">
+            <div class="voice-waveform" style="display:flex; align-items:center; gap:2px; height:20px;">
+              <span style="display:block; width:2.5px; height:6px; border-radius:1px; background:rgba(139,92,246,0.35); transform-origin:center;"></span>
+              <span style="display:block; width:2.5px; height:12px; border-radius:1px; background:rgba(139,92,246,0.35); transform-origin:center;"></span>
+              <span style="display:block; width:2.5px; height:8px; border-radius:1px; background:rgba(139,92,246,0.35); transform-origin:center;"></span>
+              <span style="display:block; width:2.5px; height:16px; border-radius:1px; background:rgba(139,92,246,0.35); transform-origin:center;"></span>
+              <span style="display:block; width:2.5px; height:10px; border-radius:1px; background:rgba(139,92,246,0.35); transform-origin:center;"></span>
+              <span style="display:block; width:2.5px; height:14px; border-radius:1px; background:rgba(139,92,246,0.35); transform-origin:center;"></span>
+              <span style="display:block; width:2.5px; height:8px; border-radius:1px; background:rgba(139,92,246,0.35); transform-origin:center;"></span>
+            </div>
+            <div class="voice-timeline-wrap" style="display:flex; align-items:center; gap:6px; min-width:0;">
+              <div class="voice-timeline" style="flex:1; height:3px; background:var(--border-color); border-radius:2px; position:relative; cursor:pointer; min-width:60px;">
+                <div class="voice-progress" style="width:0%; height:100%; background:var(--primary); border-radius:2px; position:absolute; left:0; top:0; transition: width 0.08s linear;"></div>
+              </div>
+              <span class="voice-duration" style="font-size:10px; color:var(--text-muted); font-family:'Outfit',monospace; min-width:36px; text-align:right; white-space:nowrap; flex-shrink:0;">${duration > 0 ? formatVoiceDuration(duration) : '0:00'}</span>
             </div>
           </div>
-          <span class="voice-duration" style="font-size: 10px; color: var(--text-muted); font-family: monospace; min-width: 52px; text-align: right; white-space: nowrap;">${duration > 0 ? formatVoiceDuration(duration) : ''}</span>
           <audio class="voice-audio-element" src="${url}" preload="auto" style="display:none;"></audio>
         </div>
       `;
@@ -1421,6 +1434,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const audio = messageEl.querySelector('.chat-voice-note-player .voice-audio-element');
     if (audio && audio.readyState === 0) {
       audio.load();
+    }
+    const voicePlayer = messageEl.querySelector('.voice-note-player');
+    if (voicePlayer && typeof setupVoiceNotePlayer === 'function') {
+      setupVoiceNotePlayer(voicePlayer);
     }
     if (typeof lucide !== 'undefined') lucide.createIcons();
     return messageEl;
@@ -4102,6 +4119,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       socket.emit('chat-message', payload);
+      if (userTypingStates[numericContactId]) {
+        clearTimeout(userTypingTimers[numericContactId]);
+        userTypingStates[numericContactId] = false;
+        if (socket) socket.emit('chat-typing', { receiverId: numericContactId, isTyping: false });
+      }
       if (input) input.value = '';
       clearAttachmentPreview();
       clearReplyBanner();
@@ -4284,6 +4306,89 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const playTypingSound = (type) => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const audioCtx = new AudioCtx();
+      if (type === 'start') {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+        osc.frequency.setValueAtTime(1046.50, audioCtx.currentTime + 0.08); // C6
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.2);
+        setTimeout(() => audioCtx.close(), 300);
+      } else if (type === 'pause') {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(783.99, audioCtx.currentTime); // G5
+        osc.frequency.exponentialRampToValueAtTime(523.25, audioCtx.currentTime + 0.15); // C5
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.06, audioCtx.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.25);
+        setTimeout(() => audioCtx.close(), 350);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  socket.on('chat-typing-status', (data) => {
+    const { senderId, isTyping } = data;
+    const chatMsgArea = document.getElementById(`chat-messages-${senderId}`);
+    if (!chatMsgArea) return;
+
+    let indicator = document.getElementById(`chat-typing-indicator-${senderId}`);
+
+    if (isTyping) {
+      if (!indicator) {
+        const chatBox = chatMsgArea.closest('.chat-box');
+        const partnerAvatar = chatBox ? chatBox.querySelector('.avatar img')?.getAttribute('src') : '/images/default-avatar.png';
+
+        indicator = document.createElement('div');
+        indicator.className = 'chat-msg-wrapper incoming typing-indicator-wrapper';
+        indicator.id = `chat-typing-indicator-${senderId}`;
+        indicator.style.cssText = 'margin-bottom: 8px; flex-direction: row !important; align-items: flex-end !important; gap: 8px !important; display: flex !important;';
+        indicator.innerHTML = `
+          <div class="avatar" style="width: 28px; height: 28px; border-radius: 50%; overflow: hidden; flex-shrink: 0; margin-bottom: 4px;">
+            <img src="${partnerAvatar}" style="width: 100%; height: 100%; object-fit: cover;">
+          </div>
+          <div class="chat-msg-bubble" style="background: var(--bg-card, rgba(0,0,0,0.05)); border: 1px solid var(--border-color); padding: 10px 16px; border-radius: 18px; border-bottom-left-radius: 4px; display: inline-flex; align-items: center; gap: 4px; height: 32px; box-sizing: border-box;">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+          </div>
+        `;
+        
+        const emptyText = chatMsgArea.querySelector('div');
+        if (emptyText && (emptyText.textContent.includes('No messages') || emptyText.textContent.includes('Loading'))) {
+          emptyText.style.display = 'none';
+        }
+
+        chatMsgArea.appendChild(indicator);
+        chatMsgArea.scrollTop = chatMsgArea.scrollHeight;
+        playTypingSound('start');
+      }
+    } else {
+      if (indicator) {
+        indicator.remove();
+        playTypingSound('pause');
+      }
+    }
+  });
+
   // Recevoir un message privé en temps réel
   socket.on('chat-message-received', (data) => {
     const {
@@ -4402,6 +4507,65 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // -------------------------------------------------------------------
+  // Main Chat: message actions – longpress + contextmenu support
+  // -------------------------------------------------------------------
+  let _msgLongPressTimer = null;
+
+  const openMsgDropdown = (wrapper) => {
+    if (!wrapper) return;
+    const dropdown = wrapper.querySelector('.message-actions-dropdown');
+    if (!dropdown) return;
+    document.querySelectorAll('.message-actions-dropdown.show').forEach(d => {
+      if (d !== dropdown) d.classList.remove('show');
+    });
+    document.querySelectorAll('.chat-msg-wrapper.action-open').forEach(w => {
+      if (w !== wrapper) w.classList.remove('action-open');
+    });
+    wrapper.classList.add('action-open');
+    dropdown.classList.add('show');
+    const isOutgoing = wrapper.classList.contains('outgoing');
+    dropdown.style.top = '100%';
+    dropdown.style.right = isOutgoing ? '0' : 'auto';
+    dropdown.style.left = isOutgoing ? 'auto' : '0';
+  };
+
+  // Right-click / contextmenu on bubble
+  document.addEventListener('contextmenu', (e) => {
+    const bubble = e.target.closest('.chat-msg-bubble, .chat-bubble-attachment, .voice-note-player');
+    if (!bubble) return;
+    const wrapper = bubble.closest('.chat-msg-wrapper');
+    if (!wrapper) return;
+    e.preventDefault();
+    openMsgDropdown(wrapper);
+  });
+
+  // Long press on touch devices (500ms)
+  document.addEventListener('pointerdown', (e) => {
+    const bubble = e.target.closest('.chat-msg-bubble, .chat-bubble-attachment, .voice-note-player');
+    if (!bubble) return;
+    const wrapper = bubble.closest('.chat-msg-wrapper');
+    if (!wrapper) return;
+    _msgLongPressTimer = setTimeout(() => {
+      _msgLongPressTimer = null;
+      openMsgDropdown(wrapper);
+    }, 500);
+  }, { passive: true });
+
+  document.addEventListener('pointerup', () => {
+    if (_msgLongPressTimer) {
+      clearTimeout(_msgLongPressTimer);
+      _msgLongPressTimer = null;
+    }
+  }, { passive: true });
+
+  document.addEventListener('pointermove', () => {
+    if (_msgLongPressTimer) {
+      clearTimeout(_msgLongPressTimer);
+      _msgLongPressTimer = null;
+    }
+  }, { passive: true });
+
+  // -------------------------------------------------------------------
   // Main Chat: message actions – dropdown toggle, reply, delete
   // -------------------------------------------------------------------
   document.addEventListener('click', (e) => {
@@ -4431,6 +4595,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close dropdowns when clicking outside
     if (!e.target.closest('.message-actions-dropdown')) {
       document.querySelectorAll('.message-actions-dropdown.show').forEach(d => d.classList.remove('show'));
+      document.querySelectorAll('.chat-msg-wrapper.action-open').forEach(w => w.classList.remove('action-open'));
     }
 
     // Reply action
@@ -6312,7 +6477,20 @@ document.addEventListener('DOMContentLoaded', () => {
               if (emptyState) {
                 emptyState.style.display = visibleBookmarks === 0 ? 'flex' : 'none';
               }
+              const countBadge = document.getElementById('bookmarksCountBadge');
+              if (countBadge) {
+                countBadge.textContent = visibleBookmarks + ' ' + (visibleBookmarks > 1 ? 'favoris' : 'favori');
+              }
             }, 400); // matches the css transition duration (400ms)
+          }
+        }
+
+        // If not in bookmarks view, but the badge is visible, update it by counting bookmarked buttons
+        if (window.currentView !== 'bookmarks') {
+          const countBadge = document.getElementById('bookmarksCountBadge');
+          if (countBadge) {
+            const allBookmarked = document.querySelectorAll('.post-bookmark-btn.bookmarked').length;
+            countBadge.textContent = allBookmarked + ' ' + (allBookmarked > 1 ? 'favoris' : 'favori');
           }
         }
       }
@@ -6902,7 +7080,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       postContentHtml = '';
       if (post.content && post.content.trim() && !post.challenge_type) {
-        postContentHtml += `<p class="post-text formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="padding: 0 20px 16px 20px;">${renderHashtagRichText(post.content || '')}</p>`;
+        postContentHtml += `<p class="post-text formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="display:block; padding: 0 20px 16px 20px; color: var(--text-primary); font-size:14px; line-height:1.6; white-space:pre-wrap; word-break:break-word;">${renderHashtagRichText(post.content || '')}</p>`;
       }
       if (post.challenge_type) {
         postContentHtml += renderChallengeCardHtml(post);
@@ -7107,8 +7285,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ${postContentHtml}
       </div>
       
-      <footer class="post-footer">
-        <div class="post-actions">
+      <footer class="post-footer" style="display:flex; flex-direction:row; justify-content:space-between; align-items:center; padding:12px 16px; border-top:1px solid var(--border-color);">
+        <div class="post-actions" style="display:flex; flex-direction:row; align-items:center; gap:16px;">
           <button class="post-action-btn like-btn" data-likes="${post.likes_count || 0}">
             <i data-lucide="heart"></i>
             <span class="action-label"><span class="like-count">${post.likes_count || 0}</span><span class="btn-text-label"> Like</span></span>
@@ -8133,7 +8311,38 @@ document.addEventListener('DOMContentLoaded', () => {
           dataTransfer.items.add(selectedMediaFiles[0]);
           shortVideoInput.files = dataTransfer.files;
 
+          // Dispatch change event to let short preview trigger & validate
+          shortVideoInput.dispatchEvent(new Event('change'));
+
+          // Copy caption
           shortCaption.value = captionText;
+
+          // Copy trimmer values from the photo/video trimmer inputs to shorts trimmer inputs
+          const trimStartInput = document.getElementById('trimStartInput');
+          const trimEndInput = document.getElementById('trimEndInput');
+          const shortTrimStartInput = document.getElementById('shortTrimStartInput');
+          const shortTrimEndInput = document.getElementById('shortTrimEndInput');
+          
+          if (trimStartInput && shortTrimStartInput) {
+            shortTrimStartInput.value = trimStartInput.value;
+          }
+          if (trimEndInput && shortTrimEndInput) {
+            shortTrimEndInput.value = trimEndInput.value;
+          } else if (shortTrimEndInput) {
+            // Fallback to video duration from the media preview video if trimmer end not set
+            const vidEl = document.querySelector('#photoVideoMediaPreviewBox video');
+            if (vidEl && vidEl.duration) {
+              shortTrimEndInput.value = vidEl.duration;
+            } else {
+              shortTrimEndInput.value = 15;
+            }
+          }
+
+          // Populate the short sound name input
+          const shortSoundName = document.getElementById('shortSoundName');
+          if (shortSoundName && selectedMediaFiles[0]) {
+            shortSoundName.value = selectedMediaFiles[0].name.replace(/\.[^/.]+$/, "");
+          }
 
           const photoVideoModal = document.getElementById('photoVideoModal');
           if (photoVideoModal) photoVideoModal.style.display = 'none';
@@ -8164,7 +8373,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const handleSharePost = () => {
-      const text = postInput.innerText.trim();
+      const photoVideoCaptionEl = document.getElementById('photoVideoCaption');
+      let text = '';
+      if (photoVideoCaptionEl && selectedMediaFiles.length > 0) {
+        text = photoVideoCaptionEl.value.trim();
+      }
+      if (!text) {
+        text = postInput.innerText.trim();
+      }
       if (!text && selectedMediaFiles.length === 0 && !selectedChallengeConfig && !selectedLiveConfig) return;
 
       if (selectedMediaType === 'image' && selectedMediaFiles.length !== 1 && selectedMediaFiles.length !== 2 && selectedMediaFiles.length !== 4) {
@@ -8440,6 +8656,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const finalizePostCreation = () => {
       postInput.innerHTML = '';
+      const photoVideoCaptionEl = document.getElementById('photoVideoCaption');
+      if (photoVideoCaptionEl) photoVideoCaptionEl.value = '';
       const placeholder = postInput.nextElementSibling;
       if (placeholder && placeholder.classList.contains('post-input-placeholder')) {
         placeholder.style.display = 'block';
@@ -9669,6 +9887,9 @@ document.addEventListener('DOMContentLoaded', () => {
       updateNavActiveStates('bookmarks');
       updateUrlView('bookmarks');
 
+      const bookmarksHeader = document.getElementById('bookmarksHeader');
+      if (bookmarksHeader) bookmarksHeader.style.display = 'flex';
+
       // Hide stories and post creator
       const storiesWrapper = document.querySelector('.stories-wrapper');
       if (storiesWrapper) storiesWrapper.style.display = 'none';
@@ -9690,6 +9911,12 @@ document.addEventListener('DOMContentLoaded', () => {
           post.style.display = 'none';
         }
       });
+
+      // Update badge dynamically
+      const countBadge = document.getElementById('bookmarksCountBadge');
+      if (countBadge) {
+        countBadge.textContent = bookmarkedCount + ' ' + (bookmarkedCount > 1 ? 'favoris' : 'favori');
+      }
 
       // Show/Hide empty state
       const emptyState = document.getElementById('bookmarksEmptyState');
@@ -9718,6 +9945,9 @@ document.addEventListener('DOMContentLoaded', () => {
       window.currentView = 'feed';
       updateNavActiveStates('feed');
       updateUrlView('feed');
+
+      const bookmarksHeader = document.getElementById('bookmarksHeader');
+      if (bookmarksHeader) bookmarksHeader.style.display = 'none';
 
       // Restore stories and post creator
       const storiesWrapper = document.querySelector('.stories-wrapper');
@@ -10223,6 +10453,16 @@ document.addEventListener('DOMContentLoaded', () => {
         video.onerror = () => reject(new Error('Erreur de chargement du média.'));
       });
 
+      // Append video element to document body to ensure it plays correctly and is not suspended/blocked
+      video.style.position = 'fixed';
+      video.style.left = '-9999px';
+      video.style.top = '-9999px';
+      video.style.width = '100px';
+      video.style.height = '100px';
+      video.style.opacity = '0';
+      video.style.pointerEvents = 'none';
+      document.body.appendChild(video);
+
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth || 540;
       canvas.height = video.videoHeight || 960;
@@ -10233,19 +10473,21 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const canvasStream = canvas.captureStream(30);
       let audioContext = null;
+      let audioDestination = null;
 
       try {
         const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
         if (AudioContextCtor) {
           audioContext = new AudioContextCtor();
           const mediaSource = audioContext.createMediaElementSource(video);
-          const audioDestination = audioContext.createMediaStreamDestination();
+          audioDestination = audioContext.createMediaStreamDestination();
           mediaSource.connect(audioDestination);
           audioDestination.stream.getAudioTracks().forEach(track => canvasStream.addTrack(track));
           await audioContext.resume();
         }
       } catch (err) {
         audioContext = null;
+        audioDestination = null;
       }
 
       const recordingFormats = [
@@ -10377,8 +10619,159 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(drawFrame);
       };
 
+      // Draw the branded outro splash screen
+      const drawOutroFrame = (elapsed, duration) => {
+        const t = Math.min(1, elapsed / duration);
+        // Fade in from black
+        const alpha = Math.min(1, elapsed / 0.3);
+        ctx.save();
+
+        // Background gradient
+        const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        grad.addColorStop(0, `rgba(15, 23, 42, ${alpha})`);
+        grad.addColorStop(1, `rgba(4, 7, 18, ${alpha})`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Accent glow circles
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.18;
+        const glowGrad = ctx.createRadialGradient(canvas.width / 2, canvas.height * 0.45, 0, canvas.width / 2, canvas.height * 0.45, canvas.width * 0.55);
+        glowGrad.addColorStop(0, '#8b5cf6');
+        glowGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = glowGrad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        // Scale up from center
+        const scale = 0.6 + 0.4 * (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+        const cx = canvas.width / 2;
+        const cy = canvas.height * 0.42;
+        ctx.globalAlpha = alpha;
+        ctx.translate(cx, cy);
+        ctx.scale(scale, scale);
+        ctx.translate(-cx, -cy);
+
+        // Logo circle background
+        const circleR = Math.round(62 * scaleFactor);
+        const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, circleR);
+        grd.addColorStop(0, 'rgba(139, 92, 246, 0.9)');
+        grd.addColorStop(1, 'rgba(6, 182, 212, 0.7)');
+        ctx.fillStyle = grd;
+        ctx.shadowColor = 'rgba(139, 92, 246, 0.6)';
+        ctx.shadowBlur = 30 * scaleFactor;
+        ctx.beginPath();
+        ctx.arc(cx, cy, circleR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Inner ring
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.lineWidth = 2 * scaleFactor;
+        ctx.beginPath();
+        ctx.arc(cx, cy, circleR - 5 * scaleFactor, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Logo text "T"
+        const logoSize = Math.round(52 * scaleFactor);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `900 ${logoSize}px 'Outfit', -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0,0,0,0.3)';
+        ctx.shadowBlur = 8 * scaleFactor;
+        ctx.fillText('T', cx, cy + 2 * scaleFactor);
+        ctx.shadowBlur = 0;
+
+        ctx.restore();
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        // Brand name
+        const brandOutroSize = Math.round(28 * scaleFactor);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `800 ${brandOutroSize}px 'Outfit', -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.letterSpacing = '0.02em';
+        ctx.fillText('TrasX', cx, canvas.height * 0.42 + Math.round(90 * scaleFactor));
+
+        // Tagline
+        const tagSize = Math.round(13 * scaleFactor);
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.font = `500 ${tagSize}px 'Outfit', -apple-system, sans-serif`;
+        ctx.fillText('Short video platform', cx, canvas.height * 0.42 + Math.round(118 * scaleFactor));
+
+        // Small decorative line
+        ctx.strokeStyle = 'rgba(139,92,246,0.5)';
+        ctx.lineWidth = 2 * scaleFactor;
+        ctx.beginPath();
+        ctx.moveTo(cx - 30 * scaleFactor, canvas.height * 0.42 + Math.round(132 * scaleFactor));
+        ctx.lineTo(cx + 30 * scaleFactor, canvas.height * 0.42 + Math.round(132 * scaleFactor));
+        ctx.stroke();
+
+        ctx.restore();
+      };
+
       video.onended = () => {
-        if (recorder.state !== 'inactive') recorder.stop();
+        // Play branded outro for 2 seconds then stop recording
+        const outroDuration = 2.0; // seconds
+        const outroFPS = 30;
+        const outroFrames = Math.round(outroDuration * outroFPS);
+        let outroFrame = 0;
+        const outroInterval = setInterval(() => {
+          drawOutroFrame(outroFrame / outroFPS, outroDuration);
+          outroFrame++;
+          if (topProgressBar && totalDuration) {
+            const pct = Math.min(100, Math.round(100 + (outroFrame / outroFrames) * 0));
+            topProgressBar.style.width = '100%';
+          }
+          if (outroFrame >= outroFrames) {
+            clearInterval(outroInterval);
+            if (recorder.state !== 'inactive') recorder.stop();
+          }
+        }, 1000 / outroFPS);
+
+        // Play a subtle outro notification sound
+        try {
+          if (audioContext && audioDestination) {
+            const notes = [523.25, 659.25, 783.99]; // C5, E5, G5 – pleasant chord
+            notes.forEach((freq, i) => {
+              const osc = audioContext.createOscillator();
+              const gain = audioContext.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(freq, audioContext.currentTime + i * 0.12);
+              gain.gain.setValueAtTime(0, audioContext.currentTime + i * 0.12);
+              gain.gain.linearRampToValueAtTime(0.18, audioContext.currentTime + i * 0.12 + 0.04);
+              gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + i * 0.12 + 0.5);
+              osc.connect(gain);
+              gain.connect(audioDestination);
+              gain.connect(audioContext.destination);
+              osc.start(audioContext.currentTime + i * 0.12);
+              osc.stop(audioContext.currentTime + i * 0.12 + 0.55);
+            });
+          } else {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              const outroAudio = new AudioCtx();
+              const notes = [523.25, 659.25, 783.99]; // C5, E5, G5 – pleasant chord
+              notes.forEach((freq, i) => {
+                const osc = outroAudio.createOscillator();
+                const gain = outroAudio.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, outroAudio.currentTime + i * 0.12);
+                gain.gain.setValueAtTime(0, outroAudio.currentTime + i * 0.12);
+                gain.gain.linearRampToValueAtTime(0.18, outroAudio.currentTime + i * 0.12 + 0.04);
+                gain.gain.exponentialRampToValueAtTime(0.001, outroAudio.currentTime + i * 0.12 + 0.5);
+                osc.connect(gain);
+                gain.connect(outroAudio.destination);
+                osc.start(outroAudio.currentTime + i * 0.12);
+                osc.stop(outroAudio.currentTime + i * 0.12 + 0.55);
+              });
+              setTimeout(() => outroAudio.close(), 2000);
+            }
+          }
+        } catch (_) {}
       };
 
       recorder.start(1000);
@@ -10387,15 +10780,25 @@ document.addEventListener('DOMContentLoaded', () => {
       await finished;
       if (audioContext) audioContext.close();
 
+      // Clean up video from DOM after recording completes
+      if (video && video.parentNode) {
+        video.parentNode.removeChild(video);
+      }
+
       const blob = new Blob(chunks, { type: recordingFormat.mime });
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
       link.download = `trasx-short-watermarked-${reelId}.${recordingFormat.ext}`;
+      // Use off-screen container to avoid body reflow / overflow flash
+      link.style.cssText = 'position:fixed;left:-9999px;top:-9999px;visibility:hidden;';
       document.body.appendChild(link);
       link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+      requestAnimationFrame(() => {
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+      });
+
 
       showToast("Short téléchargé avec succès !");
       if (topProgressBar) {
@@ -10409,6 +10812,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (err) {
       console.error("Reel download error:", err);
+      if (video && video.parentNode) {
+        video.parentNode.removeChild(video);
+      }
       showToast("Erreur lors de la génération de la vidéo avec filigrane.");
       if (topProgressBar) {
         topProgressBar.style.opacity = '0';
@@ -10635,13 +11041,43 @@ document.addEventListener('DOMContentLoaded', () => {
     if (contextText) contextText.textContent = `Replying to ${safeName}`;
   };
 
-  // Input listener on comment inputs to toggle Send button state
+  // Input listener on comment inputs to toggle Send button state and chat typing status detection
   document.addEventListener('input', (e) => {
-    const input = e.target.closest('.reel-comment-input');
-    if (!input) return;
+    const target = e.target;
 
-    const form = input.closest('.reel-comment-form');
-    setReelCommentSubmitState(form);
+    const reelInput = target.closest('.reel-comment-input');
+    if (reelInput) {
+      const form = reelInput.closest('.reel-comment-form');
+      setReelCommentSubmitState(form);
+      return;
+    }
+
+    const chatInput = target.closest('.chat-input');
+    if (chatInput) {
+      const chatBox = chatInput.closest('.chat-box');
+      if (!chatBox) return;
+      const partnerId = chatBox.getAttribute('data-contact-id');
+      if (!partnerId) return;
+
+      const hasText = chatInput.value.trim().length > 0;
+      if (hasText) {
+        if (!userTypingStates[partnerId]) {
+          userTypingStates[partnerId] = true;
+          sendTypingStatus(partnerId, true);
+        }
+        clearTimeout(userTypingTimers[partnerId]);
+        userTypingTimers[partnerId] = setTimeout(() => {
+          userTypingStates[partnerId] = false;
+          sendTypingStatus(partnerId, false);
+        }, 1800);
+      } else {
+        if (userTypingStates[partnerId]) {
+          clearTimeout(userTypingTimers[partnerId]);
+          userTypingStates[partnerId] = false;
+          sendTypingStatus(partnerId, false);
+        }
+      }
+    }
   });
 
   const initReelSeekbar = (card) => {
@@ -15453,7 +15889,11 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   document.addEventListener('click', (e) => {
-    const gridImg = e.target.closest('.post-images-grid img, .post-single-image img');
+    const target = e.target;
+    const gridImg = target.closest('.post-images-grid img, .post-single-image img');
+    const container = target.closest('.post-images-grid, .post-single-image');
+    const bgContainer = target.closest('.post-bg-container');
+
     if (gridImg) {
       const gridContainer = gridImg.closest('.post-images-grid, .post-single-image');
       if (gridContainer) {
@@ -15462,6 +15902,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const clickedSrc = gridImg.getAttribute('src');
         const clickedIdx = images.indexOf(clickedSrc);
         openLightbox(images, clickedIdx >= 0 ? clickedIdx : 0);
+      }
+      return;
+    } else if (container) {
+      const imagesStr = container.getAttribute('data-images');
+      if (imagesStr) {
+        const images = imagesStr.split(',');
+        openLightbox(images, 0);
+      }
+      return;
+    } else if (bgContainer) {
+      const bgImgUrlMatch = bgContainer.style.backgroundImage.match(/url\(['"]?(.*?)['"]?\)/);
+      if (bgImgUrlMatch && bgImgUrlMatch[1]) {
+        openLightbox([bgImgUrlMatch[1]], 0);
       }
       return;
     }
@@ -16231,6 +16684,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             tempVideo.onerror = () => rej(new Error("Erreur de chargement de la vidéo."));
           });
+
+          // Check if video is not trimmed (or trimmed very close to boundaries).
+          // If so, bypass canvas re-encoding completely to preserve 100% original beauty and fluidity.
+          const startOffset = files.videoOffset || 0;
+          const endOffset = files.videoEnd || tempVideo.duration;
+          const isTrimmed = (startOffset > 0.5) || (Math.abs(endOffset - tempVideo.duration) > 0.8);
+          if (!isTrimmed) {
+            console.log("Reel video is not trimmed. Bypassing canvas compilation to preserve original quality.");
+            cleanUp();
+            resolve({ blob: files.videoFile, ext: files.videoFile.name.split('.').pop().toLowerCase() || 'mp4' });
+            return;
+          }
         } else if (type === 'image_audio') {
           if (files.imageFile) {
             tempImage = new Image();
@@ -16319,8 +16784,8 @@ document.addEventListener('DOMContentLoaded', () => {
           origH = tempImage.height || 960;
         }
 
-        // Output canvas is always vertical 9:16, capped to 1280 height for a sharper watermark and cleaner export
-        const maxCompH = 1280;
+        // Output canvas is always vertical 9:16, capped to 1920 height for a sharper watermark and cleaner export
+        const maxCompH = 1920;
         const height = Math.round(Math.min(maxCompH, Math.max(origH, origW)) / 2) * 2;
         const width = Math.round((height * 9 / 16) / 2) * 2;
 
@@ -17430,7 +17895,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (titleInputVal && type === 'image_audio') {
           soundNameVal = titleInputVal;
         } else {
-          soundNameVal = document.getElementById('shortSoundName')?.value || 'Original Sound';
+          const inputVal = document.getElementById('shortSoundName')?.value?.trim();
+          const captionVal = document.getElementById('shortCaption')?.value?.trim();
+          
+          if (inputVal && inputVal !== 'Original Sound' && inputVal !== 'Original Audio') {
+            soundNameVal = inputVal;
+          } else if (captionVal) {
+            soundNameVal = captionVal.length > 60 ? captionVal.slice(0, 57) + '...' : captionVal;
+          } else if (type === 'video' && filesObj.videoFile) {
+            soundNameVal = filesObj.videoFile.name.replace(/\.[^/.]+$/, "");
+          } else {
+            soundNameVal = 'Original Sound';
+          }
         }
       }
       const capturedSoundName = soundNameVal;
@@ -17486,51 +17962,60 @@ document.addEventListener('DOMContentLoaded', () => {
       setShortUploadStatus('');
 
       // Show global video progress
-      showGlobalVideoProgress("Configuration du Short...", 0);
+      showGlobalVideoProgress("Téléchargement du Short...", 0);
 
       // Background compilation and upload
       (async () => {
-        let compiledRes = null;
-        try {
-          compiledRes = await compileShortBeforeUpload(capturedType, capturedFilesObj, capturedDuration, capturedFit);
-        } catch (compErr) {
-          hideGlobalVideoProgress();
-          console.error("Compilation error:", compErr);
-          showToast("Error: " + compErr.message);
-          return;
-        }
-
-        updateGlobalVideoProgress(50, "Téléchargement du Short...");
-
         const formData = new FormData();
-        formData.append('media_type', 'video'); // Force video type since it is compiled to video
         formData.append('caption', capturedCaption);
         formData.append('sound_name', capturedSoundName);
         formData.append('audio_start_time', '0');
         formData.append('audio_duration', capturedDuration);
         formData.append('media_fit', capturedFit);
         formData.append('is_trade', capturedIsTrade);
-        formData.append('trim_start', '0');
-        formData.append('trim_end', String(capturedDuration));
-        formData.append('reel_video', compiledRes.blob, `short-${Date.now()}.${compiledRes.ext}`);
+        formData.append('trim_start', capturedType === 'video' ? String(capturedFilesObj.videoOffset || 0) : '0');
+        formData.append('trim_end', capturedType === 'video' ? String(capturedFilesObj.videoEnd || capturedDuration) : String(capturedDuration));
 
-        if (capturedType === 'image_audio') {
-          const audioSource = document.getElementById('shortAudioSourceSelect')?.value || 'upload';
-          if (audioSource === 'upload' && capturedFilesObj.audioFile) {
-            formData.append('reel_audio', capturedFilesObj.audioFile);
+        if (capturedType === 'video') {
+          // Direct upload — no client-side compilation needed
+          formData.append('media_type', 'video');
+          const videoFile = capturedFilesObj.videoFile;
+          const ext = videoFile.name.split('.').pop() || 'mp4';
+          formData.append('reel_video', videoFile, `short-${Date.now()}.${ext}`);
+        } else {
+          // Composite types (image+audio, voice, audio) require client-side compilation
+          let compiledRes = null;
+          try {
+            compiledRes = await compileShortBeforeUpload(capturedType, capturedFilesObj, capturedDuration, capturedFit);
+          } catch (compErr) {
+            hideGlobalVideoProgress();
+            console.error("Compilation error:", compErr);
+            showToast("Error: " + compErr.message);
+            return;
+          }
+          formData.append('media_type', 'video');
+          formData.append('reel_video', compiledRes.blob, `short-${Date.now()}.${compiledRes.ext}`);
+
+          if (capturedType === 'image_audio') {
+            const audioSource = document.getElementById('shortAudioSourceSelect')?.value || 'upload';
+            if (audioSource === 'upload' && capturedFilesObj.audioFile) {
+              formData.append('reel_audio', capturedFilesObj.audioFile);
+            }
           }
         }
 
+        updateGlobalVideoProgress(5, "Téléchargement du Short...");
+
         try {
           const data = await uploadMediaWithProgress('/profile/reel/create', formData, (percent) => {
-            const mappedPercent = 50 + Math.round(percent * 0.5);
+            const mappedPercent = 5 + Math.round(percent * 0.95);
             updateGlobalVideoProgress(mappedPercent, "Téléchargement du Short (" + mappedPercent + "%)...");
           });
 
           hideGlobalVideoProgress();
           if (data && data.success && data.reelId) {
             showToast(getPageLocale() === 'fr' ? "Short publié avec succès !" : "Short uploaded successfully!");
-            window.location.href = `/?view=shorts#reel-${data.reelId}`;
+            window.location.href = `/?view=shorts&shared_reel=${data.reelId}#reel-${data.reelId}`;
           } else {
             if (Number.isFinite(Number(data.currentTokens))) {
               syncShortTradeBalanceInfo(data.currentTokens);
@@ -17786,7 +18271,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (postId) {
         window.location.href = `/#post-${postId}`;
       } else if (reelId) {
-        window.location.href = `/?view=shorts#reel-${reelId}`;
+        window.location.href = `/?view=shorts&shared_reel=${reelId}#reel-${reelId}`;
       }
     });
 

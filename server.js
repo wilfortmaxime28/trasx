@@ -4862,6 +4862,22 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('chat-typing', (data) => {
+    try {
+      const currentUserId = session.userId;
+      if (!currentUserId) return;
+      const { receiverId, isTyping } = data || {};
+      const numericReceiverId = parseInt(receiverId, 10);
+      if (!numericReceiverId) return;
+      io.to(`user:${numericReceiverId}`).emit('chat-typing-status', {
+        senderId: currentUserId,
+        isTyping: !!isTyping
+      });
+    } catch (err) {
+      console.error('Chat typing status error:', err);
+    }
+  });
+
   socket.on('chat-message-delete', async (data) => {
     try {
       const currentUserId = session.userId;

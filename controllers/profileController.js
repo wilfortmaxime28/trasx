@@ -262,7 +262,28 @@ class ProfileController {
       let reelBaseIncrement = 0;
 
       const files = req.files || {};
+
+      // Compute final sound name fallback to caption (title) or filename
+      const captionText = String(caption || '').trim();
+      let fallbackSoundName = 'Original Audio';
       
+      if (captionText) {
+        fallbackSoundName = captionText.length > 60 ? captionText.slice(0, 57) + '...' : captionText;
+      } else if (media_type === 'video' && files.reel_video && files.reel_video.length > 0) {
+        fallbackSoundName = files.reel_video[0].originalname 
+          ? files.reel_video[0].originalname.replace(/\.[^/.]+$/, "") 
+          : files.reel_video[0].filename.replace(/\.[^/.]+$/, "");
+      } else if (media_type === 'image_audio' && files.reel_image && files.reel_image.length > 0) {
+        fallbackSoundName = files.reel_image[0].originalname 
+          ? files.reel_image[0].originalname.replace(/\.[^/.]+$/, "") 
+          : files.reel_image[0].filename.replace(/\.[^/.]+$/, "");
+      }
+      
+      const providedSoundName = (sound_name || '').trim();
+      const finalSoundName = (providedSoundName && providedSoundName !== 'Original Sound' && providedSoundName !== 'Original Audio') 
+        ? providedSoundName 
+        : fallbackSoundName;
+
       if (media_type === 'video') {
         if (!files.reel_video || files.reel_video.length === 0) {
           return res.status(400).json({ error: 'Video file required.' });
@@ -282,8 +303,7 @@ class ProfileController {
           }
           audio_url = `/uploads/reels/${files.reel_audio[0].filename}`;
           // Save new audio to shared repository
-          const cleanSoundName = (sound_name || '').trim() || 'Original Audio';
-          await Reel.saveSharedAudio(cleanSoundName, audio_url);
+          await Reel.saveSharedAudio(finalSoundName, audio_url);
         }
       } else if (media_type === 'voice') {
         if (!files.reel_audio || files.reel_audio.length === 0) {
@@ -296,8 +316,7 @@ class ProfileController {
         }
         audio_url = `/uploads/reels/${files.reel_audio[0].filename}`;
         // Save new audio to shared repository
-        const cleanSoundName = (sound_name || '').trim() || 'Original Audio';
-        await Reel.saveSharedAudio(cleanSoundName, audio_url);
+        await Reel.saveSharedAudio(finalSoundName, audio_url);
       }
 
       if (isTradeShort) {
@@ -321,7 +340,6 @@ class ProfileController {
         finalLastPossessionUserId = currentUserId;
       }
 
-      const captionText = String(caption || '');
       const paidHashtagMatches = Array.from(new Set((captionText.match(/#(\w+)/g) || []).map((tag) => tag.slice(1).toLowerCase())));
       if (paidHashtagMatches.length > 0) {
         const placeholders = paidHashtagMatches.map(() => '?').join(', ');
@@ -398,7 +416,7 @@ class ProfileController {
       const reelId = await Reel.create({
         user_id: currentUserId,
         video_url,
-        sound_name: sound_name || 'Original Audio',
+        sound_name: finalSoundName,
         caption: caption || '',
         media_type,
         audio_url,
