@@ -17318,6 +17318,19 @@ document.addEventListener('DOMContentLoaded', () => {
       }, { passive: false });
     }
 
+    // Helper to scroll and highlight post
+    const scrollToAndHighlightPost = (el) => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'box-shadow 0.5s ease, border-color 0.5s ease';
+      el.style.boxShadow = '0 0 25px rgba(59, 130, 246, 0.6)';
+      el.style.borderColor = 'var(--primary, #3b82f6)';
+      setTimeout(() => {
+        el.style.boxShadow = '';
+        el.style.borderColor = '';
+      }, 3000);
+    };
+    window.scrollToAndHighlightPost = scrollToAndHighlightPost;
+
     // Hash navigation on feed/shorts page
     const handleHashNavigation = () => {
       const hash = window.location.hash;
@@ -17327,14 +17340,48 @@ document.addEventListener('DOMContentLoaded', () => {
         const postId = hash.replace('#post-', '');
         const postCard = document.getElementById(`post-${postId}`);
         if (postCard) {
-          postCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          postCard.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
-          postCard.style.boxShadow = '0 0 20px 4px var(--primary)';
-          postCard.style.borderColor = 'var(--primary)';
-          setTimeout(() => {
-            postCard.style.boxShadow = '';
-            postCard.style.borderColor = '';
-          }, 3000);
+          scrollToAndHighlightPost(postCard);
+          const video = postCard.querySelector('video');
+          if (video) {
+            video.muted = false;
+            video.play().catch(e => console.log('Autoplay blocked:', e));
+          }
+        } else {
+          fetch(`/api/posts/${postId}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data && data.success && data.post) {
+                const postsContainer = document.getElementById('postsContainer');
+                if (postsContainer) {
+                  const el = createPostCardElement(data.post);
+                  if (el) {
+                    el.setAttribute('data-progressive-item', 'post');
+                    el.setAttribute('data-created-at', data.post.created_at || '');
+                    postsContainer.insertBefore(el, postsContainer.firstChild);
+
+                    if (typeof window.initLazyMedia === 'function') {
+                      window.initLazyMedia(postsContainer);
+                    }
+                    if (typeof lucide !== 'undefined') {
+                      try { lucide.createIcons(); } catch (_) {}
+                    }
+
+                    setTimeout(() => {
+                      const newPostCard = document.getElementById(`post-${postId}`);
+                      if (newPostCard) {
+                        scrollToAndHighlightPost(newPostCard);
+                        const video = newPostCard.querySelector('video');
+                        if (video) {
+                          video.muted = false;
+                          video.play().catch(e => console.log('Autoplay blocked:', e));
+                        }
+                      }
+                    }, 200);
+                  }
+                }
+              }
+            })
+            .catch(err => console.error('Failed to load post for hash navigation:', err));
         }
       } else if (hash.startsWith('#reel-')) {
         const reelId = hash.replace('#reel-', '');
@@ -23494,15 +23541,49 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
       const postCard = document.querySelector(`.post-card[data-post-id="${scrollPostId}"]`);
       if (postCard) {
-        postCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        // Flash highlight effect
-        postCard.style.transition = 'box-shadow 0.5s ease, border-color 0.5s ease';
-        postCard.style.boxShadow = '0 0 25px rgba(59, 130, 246, 0.6)';
-        postCard.style.borderColor = 'var(--primary, #3b82f6)';
-        setTimeout(() => {
-          postCard.style.boxShadow = '';
-          postCard.style.borderColor = '';
-        }, 3000);
+        scrollToAndHighlightPost(postCard);
+        const video = postCard.querySelector('video');
+        if (video) {
+          video.muted = false;
+          video.play().catch(e => console.log('Autoplay blocked:', e));
+        }
+      } else {
+        // Fetch dynamically if not loaded in feed
+        fetch(`/api/posts/${scrollPostId}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.success && data.post) {
+              const postsContainer = document.getElementById('postsContainer');
+              if (postsContainer) {
+                const el = createPostCardElement(data.post);
+                if (el) {
+                  el.setAttribute('data-progressive-item', 'post');
+                  el.setAttribute('data-created-at', data.post.created_at || '');
+                  postsContainer.insertBefore(el, postsContainer.firstChild);
+
+                  if (typeof window.initLazyMedia === 'function') {
+                    window.initLazyMedia(postsContainer);
+                  }
+                  if (typeof lucide !== 'undefined') {
+                    try { lucide.createIcons(); } catch (_) {}
+                  }
+
+                  setTimeout(() => {
+                    const newPostCard = document.querySelector(`.post-card[data-post-id="${scrollPostId}"]`);
+                    if (newPostCard) {
+                      scrollToAndHighlightPost(newPostCard);
+                      const video = newPostCard.querySelector('video');
+                      if (video) {
+                        video.muted = false;
+                        video.play().catch(e => console.log('Autoplay blocked:', e));
+                      }
+                    }
+                  }, 200);
+                }
+              }
+            }
+          })
+          .catch(err => console.error('Failed to load post from query param:', err));
       }
     }, 600); // Small delay to let cards render completely
   } // end scrollPostId block
