@@ -2056,9 +2056,32 @@ document.addEventListener('DOMContentLoaded', () => {
     statusViewerModal.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
   };
+  const pauseAllOtherMedia = () => {
+    const statusVideo = document.getElementById('statusViewerVideo');
+    document.querySelectorAll('video').forEach(v => {
+      if (v !== statusVideo && !v.paused) {
+        v.pause();
+      }
+    });
+    document.querySelectorAll('audio').forEach(a => {
+      if (a !== activeStatusAudioPlayer && !a.paused) {
+        a.pause();
+        const playerCard = a.closest('.voice-note-player');
+        if (playerCard) {
+          playerCard.classList.remove('playing');
+          const playBtn = playerCard.querySelector('.voice-play-btn');
+          if (playBtn && typeof setVoicePlayButtonIcon === 'function') {
+            setVoicePlayButtonIcon(playBtn, 'play');
+          }
+        }
+      }
+    });
+  };
+
   const showStatusSegment = (index) => {
     if (index < 0 || index >= currentGroupStatuses.length) return;
     currentStatusIndex = index;
+    pauseAllOtherMedia();
 
     // Clear previous timers & players
     if (storyProgressTimer) {

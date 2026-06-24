@@ -4417,7 +4417,7 @@ function getYouTubeId(url) {
             <div class="modal-content status-viewer-content" role="dialog" aria-modal="true" aria-labelledby="statusViewerTitle">
               
               <!-- Floating Header Overlay (Progress bar + User info) -->
-              <div class="status-viewer-header-overlay" style="position: absolute; top: 0; left: 0; right: 0; padding: 2px 10px 24px 10px; background: transparent; z-index: 15; pointer-events: none; display: flex; flex-direction: column; gap: 4px;">
+              <div class="status-viewer-header-overlay" style="position: absolute; top: 0; left: 0; right: 0; padding: calc(6px + env(safe-area-inset-top, 0px)) 10px 24px 10px; background: transparent; z-index: 15; pointer-events: none; display: flex; flex-direction: column; gap: 4px;">
                 <!-- Segmented progress bars (WhatsApp / Instagram style) -->
                 <div class="status-viewer-progress-container" id="statusViewerProgressContainer"
                   style="display: flex; gap: 4px; width: 100%; margin-bottom: 2px; pointer-events: auto;"></div>
