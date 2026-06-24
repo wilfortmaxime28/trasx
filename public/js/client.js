@@ -12209,10 +12209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // WhatsApp Status Reply elements, reactions, & drawers logic
-  const statusViewerReplyInput = document.getElementById('statusViewerReplyInput');
-  const statusViewerSendBtn = document.getElementById('statusViewerSendBtn');
-
+  // WhatsApp Status Reply elements, reactions, & drawers logic via event delegation
   const sendStatusReaction = (reaction) => {
     if (!activeStatusCardElement) return;
     const receiverId = parseInt(activeStatusCardElement.dataset.userId, 10);
@@ -12240,32 +12237,44 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast(tText("Réaction envoyée !"));
   };
 
-  // Bind quick emoji reactions
-  document.querySelectorAll('.status-reaction-emoji-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+  // Bind all viewer controls with event delegation on the document
+  document.addEventListener('click', (e) => {
+    // 1. Emoji buttons
+    const emojiBtn = e.target.closest('.status-reaction-emoji-btn');
+    if (emojiBtn) {
       e.stopPropagation();
-      const emoji = btn.getAttribute('data-emoji');
+      const emoji = emojiBtn.getAttribute('data-emoji');
       if (emoji) sendStatusReaction(emoji);
-    });
-  });
+      return;
+    }
 
-  // Bind heart Like button
-  const statusViewerLikeBtn = document.getElementById('statusViewerLikeBtn');
-  const statusViewerLikeIcon = document.getElementById('statusViewerLikeIcon');
-  if (statusViewerLikeBtn && statusViewerLikeIcon) {
-    statusViewerLikeBtn.addEventListener('click', (e) => {
+    // 2. Send button
+    const sendBtn = e.target.closest('#statusViewerSendBtn');
+    if (sendBtn) {
       e.stopPropagation();
-      const isLiked = statusViewerLikeIcon.style.fill === 'red' || statusViewerLikeIcon.getAttribute('fill') === 'red';
-      if (!isLiked) {
-        statusViewerLikeIcon.style.fill = 'red';
-        statusViewerLikeIcon.style.color = 'red';
-        sendStatusReaction("❤️");
-      } else {
-        statusViewerLikeIcon.style.fill = 'none';
-        statusViewerLikeIcon.style.color = 'white';
+      sendStatusViewerReply();
+      return;
+    }
+
+    // 3. Heart/Like button
+    const likeBtn = e.target.closest('#statusViewerLikeBtn');
+    if (likeBtn) {
+      e.stopPropagation();
+      const likeIcon = document.getElementById('statusViewerLikeIcon');
+      if (likeIcon) {
+        const isLiked = likeIcon.style.fill === 'red' || likeIcon.getAttribute('fill') === 'red';
+        if (!isLiked) {
+          likeIcon.style.fill = 'red';
+          likeIcon.style.color = 'red';
+          sendStatusReaction("❤️");
+        } else {
+          likeIcon.style.fill = 'none';
+          likeIcon.style.color = 'white';
+        }
       }
-    });
-  }
+      return;
+    }
+  });
 
   // Drawer formatting and listing
   function formatViewerTime(dateString) {
@@ -12390,32 +12399,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  if (statusViewerReplyInput) {
-    statusViewerReplyInput.addEventListener('focus', () => {
+  // Focus, blur and keydown event delegation for the status reply input
+  document.addEventListener('focusin', (e) => {
+    if (e.target && e.target.id === 'statusViewerReplyInput') {
       pauseStory();
-    });
-    statusViewerReplyInput.addEventListener('blur', () => {
-      // Small timeout so Send button click event runs first
+    }
+  });
+
+  document.addEventListener('focusout', (e) => {
+    if (e.target && e.target.id === 'statusViewerReplyInput') {
       setTimeout(() => {
-        if (document.activeElement !== statusViewerReplyInput) {
+        const replyInput = document.getElementById('statusViewerReplyInput');
+        if (document.activeElement !== replyInput) {
           resumeStory();
         }
       }, 250);
-    });
-    statusViewerReplyInput.addEventListener('keydown', (e) => {
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target && e.target.id === 'statusViewerReplyInput') {
       if (e.key === 'Enter') {
         e.preventDefault();
         sendStatusViewerReply();
       }
-    });
-  }
-
-  if (statusViewerSendBtn) {
-    statusViewerSendBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      sendStatusViewerReply();
-    });
-  }
+    }
+  });
 
   const statusViewerShareBtn = document.getElementById('statusViewerShareBtn');
   if (statusViewerShareBtn) {
