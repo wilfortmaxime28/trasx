@@ -1,5 +1,5 @@
-// TrasX Service Worker v6 — Network-first with offline fallback & Web Push
-const CACHE_NAME = 'trasx-v6';
+// TrasX Service Worker v7 — Network-first with offline fallback & Web Push
+const CACHE_NAME = 'trasx-v7';
 const OFFLINE_URL = '/';
 const STATIC_ASSETS = [
   '/',
@@ -120,8 +120,9 @@ self.addEventListener('fetch', (event) => {
       caches.match(request, { ignoreSearch: true }).then((cached) => {
         const fetchPromise = fetch(request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone(); // Clone synchronously to prevent body-consumed error
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, networkResponse.clone());
+              cache.put(request, clone);
             });
           }
           return networkResponse;
