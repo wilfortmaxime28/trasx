@@ -1,6 +1,11 @@
 const path = require('path');
 const fs = require('fs');
-const sharp = require('sharp');
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (e) {
+  console.warn('Warning: "sharp" module could not be loaded. Running with image optimization bypass fallback.');
+}
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegStatic = require('ffmpeg-static');
 
@@ -15,6 +20,10 @@ ffmpeg.setFfmpegPath(ffmpegStatic);
  */
 async function optimizeImage(inputPath, outputPath) {
   try {
+    if (!sharp) {
+      fs.copyFileSync(inputPath, outputPath);
+      return outputPath;
+    }
     await sharp(inputPath)
       .resize({
         width: 1920,
@@ -39,6 +48,10 @@ async function optimizeImage(inputPath, outputPath) {
  */
 async function generateImageThumbnail(inputPath, outputPath) {
   try {
+    if (!sharp) {
+      fs.copyFileSync(inputPath, outputPath);
+      return outputPath;
+    }
     await sharp(inputPath)
       .resize({
         width: 360,
@@ -103,6 +116,11 @@ function generateVideoThumbnail(videoPath, thumbnailPath) {
       .on('end', async () => {
         try {
           if (fs.existsSync(tempJpgPath)) {
+            if (!sharp) {
+              fs.renameSync(tempJpgPath, thumbnailPath);
+              resolve(thumbnailPath);
+              return;
+            }
             // Compress the temporary screenshot to WebP and save it
             await sharp(tempJpgPath)
               .webp({ quality: 70 })
