@@ -365,9 +365,6 @@ class FeedController {
       const initialShortBatchSize = 4;
       const shortRevealBatchSize = 2;
       const feedMemory = getFeedMemory(req.session);
-      const followingCount = await User.getFollowingCount(currentUserId);
-      const noFollowingMode = Number(followingCount || 0) === 0;
-      const promoWindowDays = await getNumberSetting('new_user_promo_days', 30);
 
       // Générer un seed stable pour la session (variété entre sessions, stabilité pendant le scroll)
       if (!req.session.feedSeed) {
@@ -375,14 +372,50 @@ class FeedController {
       }
       const feedSeed = req.session.feedSeed;
 
-      // ── Nouveau : chargement paginé avec tri SQL (plus de JS-side sort) ──────
-      const feedResult = await Post.getFeedPaginated(currentUserId, {
-        offset: 0,
-        limit: initialFeedBatchSize,
-        userCountry: currentUser.country,
-        feedSeed,
-        excludedIds: [] // Première page : pas d'exclusion
-      });
+      // Parallelize all independent database queries for maximum performance
+      const [
+        followingCount,
+        feedResult,
+        allReels,
+        contacts,
+        followingShareTargets,
+        friendShareTargets,
+        dashboard,
+        messages,
+        statuses,
+        activeAds,
+        birthdayCelebrants,
+        marketData,
+        followersCount,
+        postLikes,
+        reelLikes,
+        promoWindowDays
+      ] = await Promise.all([
+        User.getFollowingCount(currentUserId),
+        Post.getFeedPaginated(currentUserId, {
+          offset: 0,
+          limit: initialFeedBatchSize,
+          userCountry: currentUser.country,
+          feedSeed,
+          excludedIds: [] // Première page : pas d'exclusion
+        }),
+        Reel.getAll(currentUserId),
+        User.getContactsWithFollowState(currentUserId),
+        User.getFollowingForShare(currentUserId),
+        User.getFriendsForShare(currentUserId),
+        Event.getDashboard(currentUserId),
+        Message.getRecentForUser(currentUserId),
+        Status.getFeedStatuses(currentUserId),
+        Ad.getActiveAds(),
+        loadBirthdayCelebrantsForFeed(currentUserId),
+        P2PMarket.getSnapshot(currentUserId),
+        User.getFollowersCount(currentUserId),
+        Post.getTotalLikesForUser(currentUserId),
+        Reel.getTotalLikesForUser(currentUserId),
+        getNumberSetting('new_user_promo_days', 30)
+      ]);
+
+      const noFollowingMode = Number(followingCount || 0) === 0;
       let posts = feedResult.posts;
 
       // Charger les commentaires uniquement pour les posts du premier lot
@@ -395,38 +428,24 @@ class FeedController {
         commentsByPostId.set(comment.post_id, postComments);
       }
 
-      for (const post of posts) {
+      // Parallelize participant checks for posts with challenges
+      await Promise.all(posts.map(async (post) => {
         post.comments = commentsByPostId.get(post.id) || [];
         if (post.challenge_type) {
-          const participants = await Challenge.getParticipants(post.id);
-          post.challenge_participants = participants;
+          post.challenge_participants = await Challenge.getParticipants(post.id);
         }
-      }
+      }));
 
-      // Récupérer les shorts/reels
-      let reels = await Reel.getAll(currentUserId);
-      const reelViewCounts = await Reel.getTodayUniqueViewCounts(reels.map((reel) => reel.id));
-      reels = sortForDiscovery(reels, reelViewCounts, promoWindowDays, {
+      // Récupérer les shorts/reels et leurs vues aujourd'hui
+      const reelViewCounts = await Reel.getTodayUniqueViewCounts(allReels.map((reel) => reel.id));
+      let reels = sortForDiscovery(allReels, reelViewCounts, promoWindowDays, {
         includeBackgroundPremium: false,
         recentIds: feedMemory.reels,
         currentUserCountry: currentUser.country,
         noFollowingMode
       });
 
-      // Récupérer les contacts (tous les autres utilisateurs)
-      const contacts = await User.getContactsWithFollowState(currentUserId);
-
-      const followingShareTargets = await User.getFollowingForShare(currentUserId);
-      const friendShareTargets = await User.getFriendsForShare(currentUserId);
-      const dashboard = await Event.getDashboard(currentUserId);
-
-      // Récupérer l'historique des messages récents
-      const messages = await Message.getRecentForUser(currentUserId);
       const messageInbox = buildMessageInboxSections(currentUserId, contacts, messages);
-      const statuses = await Status.getFeedStatuses(currentUserId);
-      const activeAds = await Ad.getActiveAds();
-      const birthdayCelebrants = await loadBirthdayCelebrantsForFeed(currentUserId);
-      const marketData = await P2PMarket.getSnapshot(currentUserId);
       const marketCurrencyOptions = getSupportedCurrencyOptions();
       const marketDefaultCurrencyCode = getPreferredCurrencyForCountry(currentUser.country);
       const marketDefaultPaymentMethods = getDefaultPaymentMethodsForCountry(currentUser.country);
@@ -444,10 +463,7 @@ class FeedController {
         visibleReelIds: initiallyVisibleReelIds
       });
 
-      // Récupérer les statistiques de l'utilisateur pour la sidebar
-      const followersCount = await User.getFollowersCount(currentUserId);
-      const postLikes = await Post.getTotalLikesForUser(currentUserId);
-      const reelLikes = await Reel.getTotalLikesForUser(currentUserId);
+      // Récupérer les statistiques de l'utilisateur pour la sidebar (chargées en parallèle ci-dessus)
       const totalLikesCount = Number(postLikes) + Number(reelLikes);
 
       await Promise.all([
