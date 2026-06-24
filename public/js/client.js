@@ -1240,6 +1240,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     const isDeleted = Number(message?.deleted_for_everyone || 0) === 1;
+    const isOutgoing = msgType === 'outgoing';
 
     let parentHtml = '';
     if (message?.parent_id && !isDeleted) {
@@ -1252,12 +1253,19 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         pContent = 'Message';
       }
+
+      const quoteBg = isOutgoing ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.05)';
+      const quoteBorder = isOutgoing ? '3.5px solid #ffffff' : '3.5px solid var(--primary)';
+      const quoteTitleColor = isOutgoing ? '#ffffff' : 'var(--primary)';
+      const quoteTextColor = isOutgoing ? 'rgba(255, 255, 255, 0.9)' : 'var(--text-secondary)';
+      const quoteIconColor = isOutgoing ? '#ffffff' : 'var(--primary)';
+
       parentHtml = `
-        <div class="chat-message-quote-preview" data-parent-id="${escapeHtml(message?.parent_id ?? '')}">
-          <strong style="display: flex; align-items: center; gap: 4px; font-size: 10px; margin-bottom: 2px;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-reply" style="display: inline-block; vertical-align: middle;"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg> @${pUsername}
+        <div class="chat-message-quote-preview" data-parent-id="${escapeHtml(message?.parent_id ?? '')}" style="display: block; padding: 6px 10px; border-radius: 6px; margin-bottom: 6px; font-size: 11px; cursor: pointer; max-width: 100%; box-sizing: border-box; background: ${quoteBg}; border-left: ${quoteBorder}; transition: background-color 0.2s ease;">
+          <strong style="display: flex; align-items: center; gap: 4px; font-size: 10px; margin-bottom: 2px; color: ${quoteTitleColor};">
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${quoteIconColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-reply" style="display: inline-block; vertical-align: middle;"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg> @${pUsername}
           </strong>
-          <span style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; display: block;">${pContent}</span>
+          <span style="color: ${quoteTextColor}; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; display: block;">${pContent}</span>
         </div>
       `;
     }
@@ -1277,8 +1285,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const timestamp = new Date(message?.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const attachmentHtml = isDeleted ? '' : getMessageBubbleAttachmentHtml(message);
     const status = getMessageDeliveryStatus(message, msgType);
-
-    const isOutgoing = msgType === 'outgoing';
     const isDeletable = isOutgoing && !isDeleted;
     const actionsTriggerHtml = isDeleted ? '' : `
       <div class="message-actions-trigger" title="Options" style="display: flex;">
