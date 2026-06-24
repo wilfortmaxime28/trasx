@@ -21115,6 +21115,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Switch to Play View & Initialize Game board
   const initActiveGame = (game, isSpectating = false) => {
+    console.log('[DEBUG] initActiveGame invoked', {
+      gameId: game?.id,
+      gameType: game?.gameType,
+      opponentType: game?.opponentType,
+      isSpectating,
+      tableFootballBoardContainerExists: !!tableFootballBoardContainer
+    });
     activeGame = game;
     window.isSpectatingActiveGame = isSpectating;
     // Reset scores for new game sessions (non-rematch)
@@ -21975,10 +21982,27 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const buildTableFootballBoard = () => {
-    if (!tableFootballBoardContainer || !activeGame?.tableFootballState) return;
+    console.log('[DEBUG] buildTableFootballBoard invoked', {
+      tableFootballBoardContainerExists: !!tableFootballBoardContainer,
+      activeGameExists: !!activeGame,
+      activeGameType: activeGame?.gameType,
+      activeGameStatus: activeGame?.status,
+      tableFootballStateExists: !!activeGame?.tableFootballState
+    });
+
+    if (!tableFootballBoardContainer || !activeGame?.tableFootballState) {
+      console.log('[DEBUG] buildTableFootballBoard early exit:', {
+        container: !tableFootballBoardContainer,
+        state: !activeGame?.tableFootballState
+      });
+      return;
+    }
 
     const canvas = document.getElementById('tableFootballCanvas');
-    if (!canvas) return;
+    if (!canvas) {
+      console.log('[DEBUG] buildTableFootballBoard canvas not found!');
+      return;
+    }
     const ctx = canvas.getContext('2d');
 
     const tfScoreText = document.getElementById('tfScoreText');
@@ -22203,8 +22227,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return; // Stop loop if active game changes
       }
 
-      updatePhysicsState();
-      drawField();
+      try {
+        updatePhysicsState();
+        drawField();
+      } catch (err) {
+        console.error('[DEBUG] Error in tablefootball loop:', err);
+      }
       
       state.animationFrameId = requestAnimationFrame(loop);
     }
