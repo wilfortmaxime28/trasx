@@ -1,7 +1,7 @@
 {
   "name": "trasx-mvc",
   "version": "1.0.0",
-  "description": "TrasX Social Dashboard in Node JS Express MySQL EJS Socket.io MVC",
+  "description": "TrasX",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
