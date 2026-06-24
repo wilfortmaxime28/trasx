@@ -239,7 +239,7 @@ class ProfileController {
       const currentUser = await User.getById(currentUserId);
       if (!currentUser) return res.status(401).json({ error: 'Unauthorized' });
 
-      const { caption, sound_name, media_type, audio_start_time, audio_duration, media_fit, is_trade } = req.body;
+      const { caption, sound_name, media_type, audio_start_time, audio_duration, media_fit, is_trade, trim_start, trim_end } = req.body;
       let video_url = null;
       let audio_url = null;
       const normalizedMediaFit = media_fit === 'contain' ? 'contain' : 'cover';
@@ -387,7 +387,9 @@ class ProfileController {
         trade_price: finalTradePrice,
         last_possession_user_id: finalLastPossessionUserId,
         promo_daily_target: promoDailyTarget,
-        promo_paid_hashtag_count: paidHashtagCountUsed
+        promo_paid_hashtag_count: paidHashtagCountUsed,
+        trim_start: trim_start ? parseFloat(trim_start) : null,
+        trim_end: trim_end ? parseFloat(trim_end) : null
       });
 
       res.json({ success: true, message: 'Short uploaded successfully!', reelId });

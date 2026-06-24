@@ -1948,6 +1948,7 @@
         <% if (hasPageAccess('backgrounds')) { %><a href="<%= adminPaths.backgrounds || '/admin/backgrounds' %>" class="nav-item <%= isPage('backgrounds') ? 'active' : '' %>"><i data-lucide="image"></i> Fonds des posts</a><% } %>
         <% if (hasPageAccess('rules')) { %><a href="<%= adminPaths.rules || '/admin/rules' %>" class="nav-item <%= isPage('rules') ? 'active' : '' %>"><i data-lucide="sliders-horizontal"></i> Regles globales</a><% } %>
         <% if (hasPageAccess('kyc')) { %><a href="<%= adminPaths.kyc || '/admin/kyc' %>" class="nav-item <%= isPage('kyc') ? 'active' : '' %>"><i data-lucide="badge-check"></i> Requetes KYC</a><% } %>
+        <% if (hasPageAccess('messaging')) { %><a href="<%= adminPaths.messaging || '/admin/messaging' %>" class="nav-item <%= isPage('messaging') ? 'active' : '' %>"><i data-lucide="send"></i> Messagerie admin</a><% } %>
         <% if (hasPageAccess('receipts')) { %><a href="<%= adminPaths.receipts || '/admin/receipts' %>" class="nav-item <%= isPage('receipts') ? 'active' : '' %>"><i data-lucide="scan"></i> Lecteur de reçus</a><% } %>
         <% if (hasPageAccess('smtp')) { %><a href="<%= adminPaths.smtp || '/admin/system-settings' %>" class="nav-item <%= isPage('smtp') ? 'active' : '' %>"><i data-lucide="settings"></i> SMTP</a><% } %>
         <% if (hasPageAccess('admins')) { %><a href="<%= adminPaths.admins || '/admin/admins' %>" class="nav-item <%= isPage('admins') ? 'active' : '' %>"><i data-lucide="user-cog"></i> Gestion des admins</a><% } %>
@@ -4451,6 +4452,131 @@
           </form>
         </div>
       </div>
+      <% } %>
+
+      <!-- Messagerie d'administration -->
+      <% if (isPage('messaging')) { %>
+      <div class="section-card" id="messaging-panel">
+        <div class="section-header">
+          <div>
+            <h3>Envoyer un message ou une notification</h3>
+            <p>Communiquez directement avec un utilisateur ciblé ou diffusez un message important à l'ensemble des membres de la communauté.</p>
+          </div>
+        </div>
+        <div class="settings-form" style="padding: 24px;">
+          <form id="adminMessagingForm" style="display: flex; flex-direction: column; gap: 18px;">
+            <div id="messagingAlert" style="display: none; padding: 12px 16px; border-radius: 8px; font-weight: 500; font-size: 14px;"></div>
+
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: var(--text-main);">Destinataire</label>
+              <div style="display: flex; gap: 16px; align-items: center; margin-top: 6px;">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; color: var(--text-main);">
+                  <input type="radio" name="target_type" value="all" checked style="accent-color: var(--primary);">
+                  Tous les utilisateurs
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; color: var(--text-main);">
+                  <input type="radio" name="target_type" value="single" style="accent-color: var(--primary);">
+                  Un utilisateur spécifique
+                </label>
+              </div>
+            </div>
+
+            <div class="form-group" id="singleUserSelectGroup" style="display: none;">
+              <label for="target_user_id" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: var(--text-main);">Sélectionner l'utilisateur</label>
+              <select id="target_user_id" name="target_user_id" style="width: 100%; height: 42px; border-radius: 8px; border: 1px solid var(--border); padding: 0 12px; background: var(--card-bg); color: var(--text-main); font-size: 14px; outline: none;">
+                <option value="">-- Choisir un utilisateur --</option>
+                <% users.forEach(user => { %>
+                  <option value="<%= user.id %>"><%= user.first_name %> <%= user.last_name %> (@<%= user.username %>)</option>
+                <% }) %>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="message_text" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: var(--text-main);">Message à envoyer</label>
+              <textarea id="message_text" name="message_text" rows="4" placeholder="Tapez votre message ici (max 255 caractères)..." maxlength="255" style="width: 100%; border-radius: 8px; border: 1px solid var(--border); padding: 12px; background: var(--card-bg); color: var(--text-main); font-size: 14px; outline: none; font-family: inherit; resize: vertical;" required></textarea>
+            </div>
+
+            <button type="submit" class="btn" id="messagingSubmitBtn" style="min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 8px; width: fit-content; padding: 0 24px; border: none; border-radius: 12px; background: var(--primary); color: #fff; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+              <i data-lucide="send" style="width: 16px; height: 16px; color: #fff;"></i>
+              <span>Envoyer le message</span>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <script>
+        document.addEventListener('DOMContentLoaded', () => {
+          const radioAll = document.querySelector('input[name="target_type"][value="all"]');
+          const radioSingle = document.querySelector('input[name="target_type"][value="single"]');
+          const singleGroup = document.getElementById('singleUserSelectGroup');
+          const form = document.getElementById('adminMessagingForm');
+          const alertBox = document.getElementById('messagingAlert');
+          const submitBtn = document.getElementById('messagingSubmitBtn');
+
+          function toggleGroup() {
+            if (radioSingle && radioSingle.checked) {
+              singleGroup.style.display = 'block';
+              document.getElementById('target_user_id').required = true;
+            } else {
+              singleGroup.style.display = 'none';
+              document.getElementById('target_user_id').required = false;
+            }
+          }
+
+          if (radioAll && radioSingle) {
+            radioAll.addEventListener('change', toggleGroup);
+            radioSingle.addEventListener('change', toggleGroup);
+          }
+
+          if (form) {
+            form.addEventListener('submit', async (e) => {
+              e.preventDefault();
+              alertBox.style.display = 'none';
+              submitBtn.disabled = true;
+              submitBtn.querySelector('span').textContent = 'Envoi en cours...';
+
+              const formData = {
+                target_type: form.elements['target_type'].value,
+                target_user_id: form.elements['target_user_id'].value,
+                message_text: form.elements['message_text'].value
+              };
+
+              try {
+                const res = await fetch('/admin/messaging/send', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify(formData)
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                  alertBox.style.background = 'rgba(34, 181, 115, 0.15)';
+                  alertBox.style.color = 'var(--success)';
+                  alertBox.textContent = data.message;
+                  alertBox.style.display = 'block';
+                  form.elements['message_text'].value = '';
+                } else {
+                  alertBox.style.background = 'rgba(239, 90, 90, 0.15)';
+                  alertBox.style.color = 'var(--danger)';
+                  alertBox.textContent = data.error || 'Une erreur est survenue.';
+                  alertBox.style.display = 'block';
+                }
+              } catch (err) {
+                console.error(err);
+                alertBox.style.background = 'rgba(239, 90, 90, 0.15)';
+                alertBox.style.color = 'var(--danger)';
+                alertBox.textContent = 'Erreur réseau ou serveur.';
+                alertBox.style.display = 'block';
+              } finally {
+                submitBtn.disabled = false;
+                submitBtn.querySelector('span').textContent = 'Envoyer le message';
+              }
+            });
+          }
+        });
+      </script>
       <% } %>
 
     </div>

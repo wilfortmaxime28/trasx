@@ -1,5 +1,5 @@
-// TrasX Service Worker v4 — Network-first with offline fallback
-const CACHE_NAME = 'trasx-v4';
+// TrasX Service Worker v5 — Network-first with offline fallback & Web Push
+const CACHE_NAME = 'trasx-v5';
 const OFFLINE_URL = '/';
 const STATIC_ASSETS = [
   '/',
@@ -13,6 +13,7 @@ const STATIC_ASSETS = [
   '/assets/trasx-logo-mark-v5.png',
   '/assets/avatar_placeholder.jpg',
   '/assets/avatar_placeholder.svg',
+  '/assets/platform-end-chime.mp3',
   '/manifest.json',
   'https://unpkg.com/lucide@latest'
 ];
@@ -43,7 +44,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Helper to handle Range requests for offline videos/audios (206 partial content)
+// Helper to handle Range requests for offline assets (206 partial content)
 async function handleRangeRequest(request, cachedResponse) {
   try {
     const rangeHeader = request.headers.get('range');
@@ -81,6 +82,16 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+
+  // Bypass service worker entirely for video and audio assets
+  // This allows the browser to perform native HTTP 206 Range requests and chunked buffering directly from the server/CDN.
+  const isVideoOrAudio = request.destination === 'video' || request.destination === 'audio' || 
+                         url.pathname.endsWith('.mp4') || url.pathname.endsWith('.webm') || 
+                         url.pathname.endsWith('.mp3') || url.pathname.endsWith('.wav');
+  if (isVideoOrAudio) {
+    return;
+  }
+
   const isSameOrigin = request.url.startsWith(self.location.origin);
   const isAllowedCdn = url.hostname.includes('unpkg.com') || url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com');
 
@@ -88,8 +99,6 @@ self.addEventListener('fetch', (event) => {
 
   // Skip socket.io and API calls — always network
   if (url.pathname.startsWith('/socket.io') || url.pathname.startsWith('/api/')) return;
-
-  const isVideo = request.destination === 'video' || request.destination === 'audio' || url.pathname.endsWith('.mp4') || url.pathname.endsWith('.webm') || url.pathname.endsWith('.mp3');
 
   event.respondWith(
     fetch(request)
@@ -122,23 +131,67 @@ self.addEventListener('fetch', (event) => {
         return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
       })
   );
+});
 
-  // If it is a video/audio request and we are online, make a background fetch of the full resource without range headers to cache it
-  if (isVideo && self.navigator.onLine) {
-    caches.match(request.url).then((cached) => {
-      if (!cached) {
-        fetch(new Request(request.url, { headers: {} }))
-          .then((res) => {
-            if (res.status === 200) {
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(request.url, res).catch(() => {});
-              });
-            }
-          })
-          .catch(() => {});
+// ── Push Notification Event ──────────────────────────────────
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  try {
+    const data = event.data.json();
+    const title = data.title || 'TrasX';
+    const options = {
+      body: data.body || '',
+      icon: '/assets/trasx-logo-mark-v5.png',
+      badge: '/assets/trasx-logo-mark-v5.png',
+      vibrate: [100, 50, 100],
+      sound: '/assets/platform-end-chime.mp3',
+      data: {
+        url: data.url || '/'
       }
-    });
+    };
+
+    event.waitUntil(
+      self.registration.showNotification(title, options)
+    );
+  } catch (err) {
+    console.error('[SW] Error parsing push event data:', err);
+    event.waitUntil(
+      self.registration.showNotification('TrasX', {
+        body: event.data.text() || 'Nouvelle notification',
+        icon: '/assets/trasx-logo-mark-v5.png',
+        badge: '/assets/trasx-logo-mark-v5.png',
+        vibrate: [100, 50, 100]
+      })
+    );
   }
+});
+
+// ── Notification Click Event ──────────────────────────────────
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const urlToOpen = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // Focus existing tab if open
+      for (let i = 0; i < windowClients.length; i++) {
+        const client = windowClients[i];
+        if (client.url && 'focus' in client) {
+          return client.focus().then((focusedClient) => {
+            if (focusedClient && 'navigate' in focusedClient) {
+              return focusedClient.navigate(urlToOpen);
+            }
+          });
+        }
+      }
+      // Open new tab
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(urlToOpen);
+      }
+    })
+  );
 });
 
 // ── Listen for skip-waiting message from client ──────────────

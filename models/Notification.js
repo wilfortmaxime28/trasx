@@ -73,7 +73,48 @@ class Notification {
       [recipientId, actorId, type, truncatedMessage, postId, shareId, commentId, adUrl, adImageUrl]
     );
 
-    return result.insertId;
+    const insertId = result.insertId;
+
+    // Trigger push notification asynchronously in the background
+    (async () => {
+      try {
+        const [subs] = await db.query(
+          'SELECT endpoint, keys_p256dh, keys_auth FROM push_subscriptions WHERE user_id = ?',
+          [recipientId]
+        );
+        if (subs && subs.length > 0) {
+          const webpush = require('web-push');
+          const payload = JSON.stringify({
+            title: 'TrasX',
+            body: truncatedMessage,
+            url: type === 'message' ? '/?view=messages' : (type === 'game' ? '/?view=games' : '/?view=notifications'),
+            type: type
+          });
+
+          for (const sub of subs) {
+            const pushSubscription = {
+              endpoint: sub.endpoint,
+              keys: {
+                p256dh: sub.keys_p256dh,
+                auth: sub.keys_auth
+              }
+            };
+
+            webpush.sendNotification(pushSubscription, payload).catch((pushErr) => {
+              console.error('Push notification sending failed for endpoint:', sub.endpoint, pushErr.statusCode);
+              if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
+                // Remove expired/invalid subscriptions from db
+                db.query('DELETE FROM push_subscriptions WHERE endpoint = ?', [sub.endpoint]).catch(() => {});
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error dispatching push notifications:', err);
+      }
+    })();
+
+    return insertId;
   }
 
   static async getRecentForUser(userId, limit = 12) {

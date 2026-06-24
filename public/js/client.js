@@ -8884,6 +8884,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (notification.post_id) {
       item.setAttribute('data-post-id', notification.post_id);
     }
+    if (notification.type) {
+      item.setAttribute('data-type', notification.type);
+    }
+    if (notification.actor_username) {
+      item.setAttribute('data-actor-username', notification.actor_username);
+    }
     item.style.display = 'flex';
     item.style.gap = '12px';
     item.style.padding = '12px 16px';
@@ -8933,7 +8939,7 @@ document.addEventListener('DOMContentLoaded', () => {
     notificationItemsList.innerHTML = notifications.map((notification) => {
       const unread = Number(notification.is_read) === 0;
       return `
-        <div class="notification-item ${unread ? 'is-unread' : ''}" data-notification-id="${notification.id}" data-ad-url="${notification.ad_url || ''}" data-post-id="${notification.post_id || ''}" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; ${unread ? 'background: rgba(59, 130, 246, 0.06);' : ''}">
+        <div class="notification-item ${unread ? 'is-unread' : ''}" data-notification-id="${notification.id}" data-ad-url="${notification.ad_url || ''}" data-post-id="${notification.post_id || ''}" data-type="${notification.type || ''}" data-actor-username="${notification.actor_username || ''}" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; ${unread ? 'background: rgba(59, 130, 246, 0.06);' : ''}">
           <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0; overflow: hidden;">
         <img src="${notification.actor_avatar || '/assets/avatar_placeholder.jpg'}" alt="${escapeHtml(notification.actor_name || '')}" style="width: 100%; height: 100%; object-fit: cover;">
           </div>
@@ -9049,14 +9055,52 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
+        const type = item.getAttribute('data-type');
+        const actorUsername = item.getAttribute('data-actor-username');
         const postId = item.getAttribute('data-post-id');
-        if (postId) {
-          // Close notifications dropdown
-          const notificationsDropdown = document.getElementById('notificationsDropdown');
-          if (notificationsDropdown) {
-            notificationsDropdown.style.display = 'none';
-          }
 
+        // Close notifications dropdown
+        const notificationsDropdown = document.getElementById('notificationsDropdown');
+        if (notificationsDropdown) {
+          notificationsDropdown.style.display = 'none';
+        }
+
+        if (type === 'follow' && actorUsername) {
+          window.location.href = `/profile/u/${actorUsername}`;
+          return;
+        }
+
+        if (type === 'message') {
+          const mobileMessagesSection = document.getElementById('mobileMessagesSection');
+          if (mobileMessagesSection || document.getElementById('postsContainer')) {
+            showMessagesView();
+          } else {
+            window.location.href = '/?view=messages';
+          }
+          return;
+        }
+
+        if (type === 'game') {
+          const gamesSection = document.getElementById('gamesSection');
+          if (gamesSection || document.getElementById('postsContainer')) {
+            showGamesView();
+          } else {
+            window.location.href = '/?view=games';
+          }
+          return;
+        }
+
+        if (type === 'market') {
+          const marketSection = document.getElementById('marketSection');
+          if (marketSection || document.getElementById('postsContainer')) {
+            showMarketView();
+          } else {
+            window.location.href = '/?view=market';
+          }
+          return;
+        }
+
+        if (postId) {
           // Check if we are on the feed page
           const postsContainer = document.getElementById('postsContainer');
           if (postsContainer) {
@@ -9645,24 +9689,31 @@ document.addEventListener('DOMContentLoaded', () => {
   const getMediaElements = (card) => {
     const video = card.querySelector('video.reel-video');
     if (video) {
+      const start = video.getAttribute('data-trim-start') !== null && video.getAttribute('data-trim-start') !== '' && video.getAttribute('data-trim-start') !== 'null' ? parseFloat(video.getAttribute('data-trim-start')) : parseFloat(video.getAttribute('data-audio-start') || 0);
+      const end = video.getAttribute('data-trim-end') !== null && video.getAttribute('data-trim-end') !== '' && video.getAttribute('data-trim-end') !== 'null' ? parseFloat(video.getAttribute('data-trim-end')) : null;
+      const duration = end !== null ? (end - start) : parseFloat(video.getAttribute('data-audio-duration') || 30);
       return {
         main: video,
         audio: null,
         type: 'video',
-        start: parseFloat(video.getAttribute('data-audio-start') || 0),
-        duration: parseFloat(video.getAttribute('data-audio-duration') || 30)
+        start: start,
+        end: end,
+        duration: duration
       };
     }
     const nonVideo = card.querySelector('.reel-video');
     if (nonVideo) {
       const type = nonVideo.getAttribute('data-media-type');
       const audio = card.querySelector('.reel-audio-track');
+      const start = parseFloat(nonVideo.getAttribute('data-audio-start') || 0);
+      const duration = parseFloat(nonVideo.getAttribute('data-audio-duration') || 30);
       return {
         main: nonVideo,
         audio: audio,
         type: type,
-        start: parseFloat(nonVideo.getAttribute('data-audio-start') || 0),
-        duration: parseFloat(nonVideo.getAttribute('data-audio-duration') || 30)
+        start: start,
+        end: start + duration,
+        duration: duration
       };
     }
     return null;
@@ -9733,9 +9784,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!media.main.dataset.hasTimeupdate) {
         media.main.dataset.hasTimeupdate = "true";
         media.main.addEventListener('timeupdate', () => {
-          const startVal = parseFloat(media.main.getAttribute('data-audio-start') || 0);
-          const durationVal = parseFloat(media.main.getAttribute('data-audio-duration') || 30);
-          const loopEndVal = startVal + durationVal;
+          const startVal = media.start;
+          const loopEndVal = media.end !== null ? media.end : (startVal + media.duration);
           if (media.main.currentTime <= startVal + 0.12) {
             media.main.dataset.loopEndCueActive = '0';
           }
@@ -9777,9 +9827,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!media.audio.dataset.hasTimeupdate) {
           media.audio.dataset.hasTimeupdate = "true";
           media.audio.addEventListener('timeupdate', () => {
-            const startVal = parseFloat(media.main.getAttribute('data-audio-start') || 0);
-            const durationVal = parseFloat(media.main.getAttribute('data-audio-duration') || 30);
-            const loopEndVal = startVal + durationVal;
+            const startVal = media.start;
+            const loopEndVal = media.end !== null ? media.end : (startVal + media.duration);
             if (media.audio.currentTime <= startVal + 0.12) {
               media.audio.dataset.loopEndCueActive = '0';
             }
@@ -9860,6 +9909,19 @@ document.addEventListener('DOMContentLoaded', () => {
           console.log('Autoplay blocked (waiting for user click):', err);
           if (playOverlay) playOverlay.style.opacity = '1';
         });
+
+        // Proactive preloading of the next reel's media elements
+        const nextCard = card.nextElementSibling;
+        if (nextCard && nextCard.classList.contains('reel-card')) {
+          const nextVideo = nextCard.querySelector('video.reel-video');
+          if (nextVideo && nextVideo.getAttribute('preload') !== 'auto') {
+            nextVideo.setAttribute('preload', 'auto');
+          }
+          const nextAudio = nextCard.querySelector('audio.reel-audio-track');
+          if (nextAudio && nextAudio.getAttribute('preload') !== 'auto') {
+            nextAudio.setAttribute('preload', 'auto');
+          }
+        }
       } else {
         card.classList.remove('active');
         // Pause out-of-viewport media
@@ -15891,9 +15953,13 @@ document.addEventListener('DOMContentLoaded', () => {
           await new Promise((res, rej) => {
             const onMetadata = () => {
               const startOffset = files.videoOffset || 0;
+              let endOffset = files.videoEnd;
               let dur = tempVideo.duration;
               if (!dur || isNaN(dur) || !isFinite(dur)) dur = durationLimit;
-              totalDuration = Math.min(Math.max(0.1, dur - startOffset), durationLimit);
+              if (endOffset === undefined || endOffset === null || isNaN(endOffset)) {
+                endOffset = dur;
+              }
+              totalDuration = Math.min(Math.max(0.1, endOffset - startOffset), durationLimit);
               res();
             };
             if (tempVideo.readyState >= 1) {
@@ -16469,6 +16535,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (videoPreview) {
+          videoPreview.muted = true;
+          videoPreview.playsInline = true;
           videoPreview.src = URL.createObjectURL(file);
           applyShortMediaFit();
           if (videoPreviewBox) videoPreviewBox.style.display = 'block';
@@ -16482,89 +16550,100 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  const shortVideoOffsetSlider = document.getElementById('shortVideoOffsetSlider');
-  const shortVideoOffsetLabel = document.getElementById('shortVideoOffsetLabel');
+  const shortTrimStartInput = document.getElementById('shortTrimStartInput');
+  const shortTrimEndInput = document.getElementById('shortTrimEndInput');
+  const shortTrimRangeLabel = document.getElementById('shortTrimRangeLabel');
+  const shortTrimmerHighlight = document.getElementById('shortTrimmerHighlightTrack');
+  const shortTrimStartInputHidden = document.getElementById('shortTrimStartInputHidden');
+  const shortTrimEndInputHidden = document.getElementById('shortTrimEndInputHidden');
+
+  const updateShortVideoTrimUI = () => {
+    if (!videoPreview || !shortTrimStartInput || !shortTrimEndInput || !shortTrimmerHighlight || !shortTrimRangeLabel) return;
+    const start = parseFloat(shortTrimStartInput.value);
+    const end = parseFloat(shortTrimEndInput.value);
+    const duration = videoPreview.duration || 100;
+
+    shortTrimRangeLabel.textContent = `${formatSeconds(start)} - ${formatSeconds(end)}`;
+
+    if (shortTrimStartInputHidden) shortTrimStartInputHidden.value = start;
+    if (shortTrimEndInputHidden) shortTrimEndInputHidden.value = end;
+
+    const leftPercent = (start / duration) * 100;
+    const rightPercent = 100 - ((end / duration) * 100);
+
+    shortTrimmerHighlight.style.left = `${leftPercent}%`;
+    shortTrimmerHighlight.style.right = `${rightPercent}%`;
+  };
 
   if (videoPreview) {
     videoPreview.addEventListener('loadedmetadata', () => {
       const trimSection = document.getElementById('shortVideoTrimSection');
-      const limit = getActiveLimitDuration();
-      const maxOffset = Math.max(0, videoPreview.duration - limit);
+      const duration = videoPreview.duration;
+      if (!duration || isNaN(duration)) return;
 
-      if (shortVideoOffsetSlider) {
-        shortVideoOffsetSlider.max = maxOffset;
-        shortVideoOffsetSlider.value = 0;
+      if (shortTrimStartInput && shortTrimEndInput) {
+        shortTrimStartInput.min = 0;
+        shortTrimStartInput.max = duration;
+        shortTrimStartInput.value = 0;
+
+        shortTrimEndInput.min = 0;
+        shortTrimEndInput.max = duration;
+        shortTrimEndInput.value = duration;
+
+        if (shortTrimStartInputHidden) shortTrimStartInputHidden.value = 0;
+        if (shortTrimEndInputHidden) shortTrimEndInputHidden.value = duration;
       }
-      if (shortVideoOffsetLabel) {
-        const endVal = Math.min(videoPreview.duration, limit);
-        shortVideoOffsetLabel.textContent = `0:00 - ${formatSeconds(endVal)}`;
-      }
+
       if (trimSection) {
         trimSection.style.display = 'flex';
       }
-      updateVideoTrimHighlight();
+      
+      // Mute and load first frame (seek to 0.1s to force rendering)
+      videoPreview.muted = true;
+      videoPreview.playsInline = true;
+      videoPreview.currentTime = 0.1;
+      
+      updateShortVideoTrimUI();
     });
 
-    // Constrain video preview playback bounds via timeupdate loop
+    // Constrain video preview playback bounds via timeupdate loop (only when active playback is running)
     videoPreview.addEventListener('timeupdate', () => {
-      const limit = getActiveLimitDuration();
-      const start = parseFloat(shortVideoOffsetSlider?.value || 0);
+      if (videoPreview.paused) return; // Allow free seeking/scrubbing while paused!
+      const start = parseFloat(shortTrimStartInput?.value || 0);
+      const end = parseFloat(shortTrimEndInput?.value || videoPreview.duration || 100);
       if (videoPreview.currentTime < start) {
         videoPreview.currentTime = start;
-      } else if (videoPreview.currentTime >= start + limit) {
+      } else if (videoPreview.currentTime >= end) {
         videoPreview.currentTime = start;
       }
     });
-  }
 
-  if (shortVideoOffsetSlider) {
-    shortVideoOffsetSlider.addEventListener('input', () => {
-      const val = parseFloat(shortVideoOffsetSlider.value);
-      const limit = getActiveLimitDuration();
-      if (videoPreview) {
-        const endVal = Math.min(videoPreview.duration, val + limit);
-        if (shortVideoOffsetLabel) {
-          shortVideoOffsetLabel.textContent = `${formatSeconds(val)} - ${formatSeconds(endVal)}`;
-        }
-        videoPreview.currentTime = val;
-      }
-      updateVideoTrimHighlight();
-    });
-  }
-
-  const shortVideoPreviewBtn = document.getElementById('shortVideoPreviewBtn');
-  if (shortVideoPreviewBtn) {
-    shortVideoPreviewBtn.addEventListener('click', () => {
-      if (!videoPreview) return;
-      if (videoPreview.paused) {
-        videoPreview.play().then(() => {
-          shortVideoPreviewBtn.innerHTML = '<i data-lucide="pause" style="width: 12px; height: 12px; fill: white;"></i>';
-          if (typeof lucide !== 'undefined') lucide.createIcons();
-        });
-      } else {
-        videoPreview.pause();
-        shortVideoPreviewBtn.innerHTML = '<i data-lucide="play" style="width: 12px; height: 12px; fill: white;"></i>';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-      }
-    });
-  }
-
-  if (videoPreview) {
     videoPreview.addEventListener('click', () => {
       if (videoPreview.paused) {
-        videoPreview.play().then(() => {
-          if (shortVideoPreviewBtn) {
-            shortVideoPreviewBtn.innerHTML = '<i data-lucide="pause" style="width: 12px; height: 12px; fill: white;"></i>';
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-          }
-        });
+        videoPreview.play().catch(() => {});
       } else {
         videoPreview.pause();
-        if (shortVideoPreviewBtn) {
-          shortVideoPreviewBtn.innerHTML = '<i data-lucide="play" style="width: 12px; height: 12px; fill: white;"></i>';
-          if (typeof lucide !== 'undefined') lucide.createIcons();
-        }
       }
+    });
+  }
+
+  if (shortTrimStartInput) {
+    shortTrimStartInput.addEventListener('input', () => {
+      if (parseFloat(shortTrimStartInput.value) >= parseFloat(shortTrimEndInput.value) - 0.2) {
+        shortTrimStartInput.value = parseFloat(shortTrimEndInput.value) - 0.2;
+      }
+      videoPreview.currentTime = parseFloat(shortTrimStartInput.value);
+      updateShortVideoTrimUI();
+    });
+  }
+
+  if (shortTrimEndInput) {
+    shortTrimEndInput.addEventListener('input', () => {
+      if (parseFloat(shortTrimEndInput.value) <= parseFloat(shortTrimStartInput.value) + 0.2) {
+        shortTrimEndInput.value = parseFloat(shortTrimStartInput.value) + 0.2;
+      }
+      videoPreview.currentTime = parseFloat(shortTrimEndInput.value);
+      updateShortVideoTrimUI();
     });
   }
 
@@ -16985,7 +17064,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const filesObj = {};
       if (type === 'video') {
         filesObj.videoFile = videoInput.files[0];
-        filesObj.videoOffset = parseFloat(document.getElementById('shortVideoOffsetSlider')?.value || 0);
+        filesObj.videoOffset = parseFloat(document.getElementById('shortTrimStartInput')?.value || 0);
+        filesObj.videoEnd = parseFloat(document.getElementById('shortTrimEndInput')?.value || 0);
       } else if (type === 'image_audio') {
         filesObj.imageFile = imageInput.files[0];
         filesObj.audioFile = audioInput.files[0];
@@ -16998,7 +17078,7 @@ document.addEventListener('DOMContentLoaded', () => {
         filesObj.audioOffset = parseFloat(document.getElementById('shortAudioOffsetSlider')?.value || 0);
       }
 
-      const duration = getActiveLimitDuration();
+      const duration = type === 'video' ? (filesObj.videoEnd - filesObj.videoOffset) : getActiveLimitDuration();
       const fit = mediaFitInput?.value === 'contain' ? 'contain' : 'cover';
 
       // Capture form state and files
@@ -17082,6 +17162,8 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('audio_duration', capturedDuration);
         formData.append('media_fit', capturedFit);
         formData.append('is_trade', capturedIsTrade);
+        formData.append('trim_start', '0');
+        formData.append('trim_end', String(capturedDuration));
         formData.append('reel_video', compiledRes.blob, `short-${Date.now()}.${compiledRes.ext}`);
 
         try {
@@ -23462,6 +23544,63 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Helper to convert base64 URL to Uint8Array for applicationServerKey
+  function urlB64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+      .replace(/\-/g, '+')
+      .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  // Subscribe user to Web Push notifications
+  async function subscribeUserToPush() {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.warn('Push messaging is not supported in this browser.');
+        return;
+      }
+
+      const reg = await navigator.serviceWorker.ready;
+      
+      // Fetch VAPID public key
+      const keyRes = await fetch('/api/notifications/vapid-public-key');
+      if (!keyRes.ok) {
+        throw new Error('Failed to fetch VAPID public key');
+      }
+      const keyData = await keyRes.json();
+      const applicationServerKey = urlB64ToUint8Array(keyData.publicKey);
+
+      // Check if we are already subscribed
+      let subscription = await reg.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey
+        });
+      }
+
+      // Send subscription to backend
+      await fetch('/api/notifications/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ subscription })
+      });
+      console.log('User successfully subscribed to push notifications.');
+    } catch (err) {
+      console.error('Failed to subscribe user to push notifications:', err);
+    }
+  }
+
   // Request browser push notification permission
   function requestNotificationPermission() {
     if ('Notification' in window) {
@@ -23470,8 +23609,11 @@ document.addEventListener('DOMContentLoaded', () => {
           if (permission === 'granted') {
             console.log('Notification permission granted.');
             playNotificationSound();
+            subscribeUserToPush();
           }
         });
+      } else if (Notification.permission === 'granted') {
+        subscribeUserToPush();
       }
     }
   }
@@ -23504,9 +23646,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // 2. Service Worker Registration
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=3')
+      navigator.serviceWorker.register('/sw.js?v=5')
         .then((reg) => {
           console.log('Service Worker registered successfully:', reg.scope);
+          if ('Notification' in window && Notification.permission === 'granted') {
+            subscribeUserToPush();
+          }
         })
         .catch((err) => {
           console.error('Service Worker registration failed:', err);
@@ -24194,4 +24339,176 @@ document.addEventListener('DOMContentLoaded', () => {
       socket.emit('game-player-network-status', { gameId: activeGame.id, status: 'online' });
     }
   });
+
+  // Onboarding Tour for first-time visitors
+  function startOnboardingTour() {
+    if (localStorage.getItem('trasx_onboarding_completed') === 'true') {
+      return;
+    }
+
+    const steps = [
+      {
+        element: '#mobileNavHome, .sidebar-brand-name',
+        title: 'Bienvenue sur TrasX !',
+        text: 'Découvrez votre tableau de bord social premium. Laissez-nous vous guider en quelques étapes.',
+        pos: 'bottom'
+      },
+      {
+        element: '.nav-item[data-view="feed"]',
+        title: 'Fil d\'actualité',
+        text: 'Parcourez les publications, photos et vidéos de la communauté, et partagez vos pensées.',
+        pos: 'right'
+      },
+      {
+        element: '.nav-item[data-view="games"]',
+        title: 'Lobby de Jeux',
+        text: 'Jouez à des jeux passionnants (comme les dominos) en solo ou contre des robots et gagnez des tokens.',
+        pos: 'right'
+      },
+      {
+        element: '.nav-item[data-view="messages"]',
+        title: 'Messagerie privée',
+        text: 'Envoyez des messages sécurisés en temps réel et discutez en privé avec vos amis.',
+        pos: 'right'
+      },
+      {
+        element: '.nav-item[data-view="shorts"]',
+        title: 'Vidéos Courtes (Shorts)',
+        text: 'Plongez dans des vidéos courtes au format vertical, fluides et rythmées.',
+        pos: 'right'
+      },
+      {
+        element: '.post-creator-box',
+        title: 'Créer un contenu',
+        text: 'Publiez une pensée, une image, une vidéo ou même une note vocale instantanément.',
+        pos: 'bottom'
+      }
+    ];
+
+    let currentStepIndex = 0;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'onboarding-overlay';
+    overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(10, 13, 22, 0.65); backdrop-filter: blur(4px); z-index: 5000; transition: all 0.3s ease; pointer-events: auto;';
+
+    const card = document.createElement('div');
+    card.className = 'onboarding-card';
+    card.style.cssText = 'position: fixed; width: min(90vw, 320px); background: var(--bg-card); border: 1px solid rgba(148, 163, 184, 0.24); border-radius: 16px; padding: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); z-index: 5001; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; gap: 12px; backdrop-filter: blur(16px);';
+
+    document.body.appendChild(overlay);
+    document.body.appendChild(card);
+
+    function showStep(index) {
+      if (index >= steps.length) {
+        finishTour();
+        return;
+      }
+
+      const step = steps[index];
+      let targetEl = document.querySelector(step.element.split(',')[0].trim());
+      if (!targetEl && step.element.split(',')[1]) {
+        targetEl = document.querySelector(step.element.split(',')[1].trim());
+      }
+
+      if (!targetEl || targetEl.offsetWidth === 0 || targetEl.offsetHeight === 0) {
+        showStep(index + 1);
+        return;
+      }
+
+      document.querySelectorAll('.onboarding-highlighted').forEach(el => {
+        el.classList.remove('onboarding-highlighted');
+        el.style.position = el.dataset.oldPosition || '';
+        el.style.zIndex = el.dataset.oldZIndex || '';
+      });
+
+      targetEl.classList.add('onboarding-highlighted');
+      targetEl.dataset.oldPosition = targetEl.style.position;
+      targetEl.dataset.oldZIndex = targetEl.style.zIndex;
+      targetEl.style.position = 'relative';
+      targetEl.style.zIndex = '5002';
+
+      card.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+          <h4 style="margin: 0; font-size: 14px; font-weight: 800; color: var(--primary); font-family: 'Outfit'; text-transform: uppercase; letter-spacing: 0.05em;">Étape ${index + 1} sur ${steps.length}</h4>
+          <button class="onboarding-skip-btn" style="border: none; background: transparent; color: var(--text-secondary); font-size: 11.5px; font-weight: 700; cursor: pointer; padding: 2px 6px;">Passer</button>
+        </div>
+        <div>
+          <h3 style="margin: 4px 0 6px 0; font-size: 16px; font-weight: 700; color: var(--text-primary); font-family: 'Outfit';">${step.title}</h3>
+          <p style="margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--text-secondary); font-weight: 500;">${step.text}</p>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+          <button class="onboarding-prev-btn" style="border: 1px solid var(--border-color); background: transparent; color: var(--text-secondary); border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; padding: 6px 12px; display: ${index === 0 ? 'none' : 'block'};">Précédent</button>
+          <div style="flex: 1;"></div>
+          <button class="onboarding-next-btn" style="border: none; background: var(--primary); color: #fff; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; padding: 7px 14px; box-shadow: 0 4px 10px rgba(139, 92, 246, 0.2);">${index === steps.length - 1 ? 'Terminer' : 'Suivant'}</button>
+        </div>
+      `;
+
+      const rect = targetEl.getBoundingClientRect();
+      const cardWidth = card.offsetWidth || 320;
+      const cardHeight = card.offsetHeight || 160;
+      const viewWidth = window.innerWidth;
+      const viewHeight = window.innerHeight;
+
+      let top = rect.bottom + 12;
+      let left = rect.left + (rect.width / 2) - (cardWidth / 2);
+
+      if (left < 10) left = 10;
+      if (left + cardWidth > viewWidth - 10) left = viewWidth - cardWidth - 10;
+
+      if (top + cardHeight > viewHeight - 20) {
+        top = rect.top - cardHeight - 12;
+      }
+      if (top < 10) top = 10;
+
+      card.style.top = `${top}px`;
+      card.style.left = `${left}px`;
+
+      card.querySelector('.onboarding-next-btn').addEventListener('click', () => {
+        currentStepIndex++;
+        showStep(currentStepIndex);
+      });
+
+      const prevBtn = card.querySelector('.onboarding-prev-btn');
+      if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+          currentStepIndex--;
+          showStep(currentStepIndex);
+        });
+      }
+
+      card.querySelector('.onboarding-skip-btn').addEventListener('click', finishTour);
+    }
+
+    function finishTour() {
+      document.querySelectorAll('.onboarding-highlighted').forEach(el => {
+        el.classList.remove('onboarding-highlighted');
+        el.style.position = el.dataset.oldPosition || '';
+        el.style.zIndex = el.dataset.oldZIndex || '';
+      });
+
+      overlay.style.opacity = '0';
+      card.style.opacity = '0';
+      card.style.transform = 'scale(0.9)';
+      setTimeout(() => {
+        overlay.remove();
+        card.remove();
+      }, 300);
+
+      localStorage.setItem('trasx_onboarding_completed', 'true');
+    }
+
+    // Start
+    setTimeout(() => {
+      showStep(currentStepIndex);
+    }, 1000);
+  }
+
+  // Trigger tour on page load
+  if (document.getElementById('feedTabBtn') || document.querySelector('.post-creator-box')) {
+    if (window.location.pathname === '/' || window.location.pathname === '/index') {
+      window.addEventListener('load', () => {
+        startOnboardingTour();
+      });
+    }
+  }
 });

@@ -29,7 +29,8 @@
     "sharp": "^0.35.2",
     "socket.io": "^4.7.5",
     "tesseract.js": "^7.0.0",
-    "tesseract.js-core": "^7.0.0"
+    "tesseract.js-core": "^7.0.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

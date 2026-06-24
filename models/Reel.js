@@ -34,6 +34,12 @@ class Reel {
     if (!columnNames.has('promo_paid_hashtag_count')) {
       await db.query('ALTER TABLE reels ADD COLUMN promo_paid_hashtag_count INT NOT NULL DEFAULT 0');
     }
+    if (!columnNames.has('trim_start')) {
+      await db.query('ALTER TABLE reels ADD COLUMN trim_start FLOAT DEFAULT NULL');
+    }
+    if (!columnNames.has('trim_end')) {
+      await db.query('ALTER TABLE reels ADD COLUMN trim_end FLOAT DEFAULT NULL');
+    }
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS reel_daily_unique_views (
@@ -71,6 +77,8 @@ class Reel {
         r.is_trade,
         r.trade_price,
         r.last_possession_user_id,
+        r.trim_start,
+        r.trim_end,
         r.next_trade_payout_admin,
         r.promo_daily_target,
         r.promo_paid_hashtag_count,
@@ -118,8 +126,9 @@ class Reel {
         r.media_fit,
         r.is_trade,
         r.trade_price,
-        r.last_possession_user_id
-        ,
+        r.last_possession_user_id,
+        r.trim_start,
+        r.trim_end,
         r.next_trade_payout_admin
       FROM reels r
       WHERE r.user_id = ?
@@ -149,8 +158,9 @@ class Reel {
         r.media_fit,
         r.is_trade,
         r.trade_price,
-        r.last_possession_user_id
-        ,
+        r.last_possession_user_id,
+        r.trim_start,
+        r.trim_end,
         r.next_trade_payout_admin
       FROM reels r
       WHERE r.id = ?
@@ -159,13 +169,13 @@ class Reel {
     return rows[0] || null;
   }
 
-  static async create({ user_id, video_url, sound_name, caption, media_type, audio_url, audio_start_time, audio_duration, media_fit, is_trade, trade_price, last_possession_user_id, promo_daily_target = 0, promo_paid_hashtag_count = 0 }) {
+  static async create({ user_id, video_url, sound_name, caption, media_type, audio_url, audio_start_time, audio_duration, media_fit, is_trade, trade_price, last_possession_user_id, promo_daily_target = 0, promo_paid_hashtag_count = 0, trim_start = null, trim_end = null }) {
     await Reel.ensureReelSchema();
     const mediaFit = media_fit === 'contain' ? 'contain' : 'cover';
     const query = `
       INSERT INTO reels 
-        (user_id, video_url, sound_name, caption, media_type, audio_url, audio_start_time, audio_duration, media_fit, is_trade, trade_price, last_possession_user_id, promo_daily_target, promo_paid_hashtag_count) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (user_id, video_url, sound_name, caption, media_type, audio_url, audio_start_time, audio_duration, media_fit, is_trade, trade_price, last_possession_user_id, promo_daily_target, promo_paid_hashtag_count, trim_start, trim_end) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const [result] = await db.query(query, [
       user_id,
@@ -181,7 +191,9 @@ class Reel {
       trade_price || null,
       last_possession_user_id || null,
       promo_daily_target || 0,
-      promo_paid_hashtag_count || 0
+      promo_paid_hashtag_count || 0,
+      trim_start,
+      trim_end
     ]);
     return result.insertId;
   }

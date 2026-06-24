@@ -68,6 +68,7 @@ router.get('/admins', ...renderAdminPage('admins'));
 router.get('/disputes', ...renderAdminPage('disputes'));
 router.get('/conversations', ...renderAdminPage('conversations'));
 router.get('/comments', ...renderAdminPage('comments'));
+router.get('/messaging', ...renderAdminPage('messaging'));
 
 router.post('/user-status', requireAdminAction('manage_users'), adminController.updateUserStatus);
 router.post('/user-certification', requireAdminAction('manage_kyc'), adminController.updateUserCertification);
@@ -90,6 +91,7 @@ router.post('/admins/create', requireAdminAction('manage_admins'), adminControll
 router.post('/admins/update', requireAdminAction('manage_admins'), adminController.updateAdminAccount);
 router.post('/disputes/resolve-account', requireAdminAction('manage_disputes'), adminController.resolveAccountDispute);
 router.post('/disputes/resolve-p2p', requireAdminAction('manage_disputes'), adminController.resolveP2PDispute);
+router.post('/messaging/send', requireAdminAction('moderate_content', { json: true }), adminController.sendAdminMessage);
 
 router.post('/change-password', adminController.changeOwnPassword);
 

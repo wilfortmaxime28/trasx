@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title><%= tText("TrasX - Login") %></title>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/styles.css?v=6">
 </head>
 <body class="auth-page auth-page-login">
   <main class="auth-shell auth-shell-centered">
@@ -42,6 +42,7 @@
             </form>
           <% } %>
 
+          <% if (typeof showDownloadLinks !== 'undefined' && showDownloadLinks) { %>
           <div class="auth-social-grid" aria-hidden="true">
             <a href="https://play.google.com/store" target="_blank" rel="noreferrer" class="auth-social-btn">
               <span class="auth-social-logo auth-social-logo-google" aria-hidden="true">
@@ -60,6 +61,7 @@
               <span><%= tText("Télécharger iPhone") %></span>
             </a>
           </div>
+          <% } %>
 
           <div class="auth-divider-row">
             <span><%= tText("or continue with email") %></span>

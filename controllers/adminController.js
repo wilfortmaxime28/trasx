@@ -61,7 +61,8 @@ const ADMIN_PAGE_PATHS = {
   admins: '/admin/admins',
   disputes: '/admin/disputes',
   conversations: '/admin/conversations',
-  comments: '/admin/comments'
+  comments: '/admin/comments',
+  messaging: '/admin/messaging'
 };
 
 const ADMIN_PAGE_PERMISSIONS = [
@@ -79,7 +80,8 @@ const ADMIN_PAGE_PERMISSIONS = [
   { key: 'admins', label: 'Gestion des admins', description: 'Peut voir la liste des admins et leurs accès.' },
   { key: 'disputes', label: 'Litiges de la plateforme', description: 'Peut voir et gérer tous les litiges (P2P et comptes bloqués).' },
   { key: 'conversations', label: 'Conversations utilisateurs', description: 'Peut voir toutes les conversations privées des utilisateurs.' },
-  { key: 'comments', label: 'Commentaires des posts', description: 'Peut voir tous les commentaires publiés sur les posts.' }
+  { key: 'comments', label: 'Commentaires des posts', description: 'Peut voir tous les commentaires publiés sur les posts.' },
+  { key: 'messaging', label: 'Messagerie admin', description: 'Peut envoyer des notifications à un utilisateur ou à tous.' }
 ];
 
 const ADMIN_ACTION_PERMISSIONS = [
@@ -116,6 +118,11 @@ const ADMIN_PAGE_META = {
     title: 'Analyse et moderation',
     breadcrumb: 'Moderation des profils et posts',
     description: 'Suivi des alertes, signalements et contenus à examiner.'
+  },
+  messaging: {
+    title: 'Messagerie d administration',
+    breadcrumb: 'Messagerie et notifications',
+    description: 'Envoyer une notification ou un message d information à un utilisateur spécifique ou à l ensemble de la communauté.'
   },
   revenue: {
     title: 'Revenus de la plateforme',
@@ -2090,6 +2097,97 @@ exports.blockReportedUser = async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ success: false, message: 'Erreur serveur.' });
+  }
+};
+
+exports.sendAdminMessage = async (req, res) => {
+  try {
+    const { target_type, target_user_id, message_text } = req.body;
+    if (!message_text || message_text.trim() === '') {
+      return res.status(400).json({ success: false, error: 'Le message ne peut pas être vide.' });
+    }
+
+    const io = req.app.get('io');
+    const cleanMessage = String(message_text).slice(0, 255);
+    const adminActorId = req.session.adminId || req.session.userId || null;
+
+    if (target_type === 'all') {
+      const allUsers = await User.getAll();
+      for (const user of allUsers) {
+        try {
+          const notificationId = await Notification.create({
+            recipientId: user.id,
+            actorId: null, // System notification
+            type: 'message',
+            message: cleanMessage
+          });
+          const unreadCount = await Notification.getUnreadCount(user.id);
+          
+          io.to(`user:${user.id}`).emit('notification-created', {
+            id: notificationId,
+            recipient_id: user.id,
+            actor_id: null,
+            type: 'message',
+            message: cleanMessage,
+            post_id: null,
+            share_id: null,
+            comment_id: null,
+            is_read: 0,
+            read_at: null,
+            created_at: new Date().toISOString(),
+            actor_name: 'Administration',
+            actor_username: 'admin',
+            actor_avatar: '/assets/trasx-logo-mark.png'
+          });
+          io.to(`user:${user.id}`).emit('notification-count-updated', { unreadCount });
+        } catch (err) {
+          console.error(`Failed to send broadcast notification to user ${user.id}:`, err);
+        }
+      }
+      
+      await ActivityLog.log(adminActorId, 'admin', 'broadcast_notification', 'all_users', null, { message: cleanMessage }, req);
+      res.json({ success: true, message: 'Message diffusé avec succès à tous les utilisateurs.' });
+    } else {
+      if (!target_user_id) {
+        return res.status(400).json({ success: false, error: 'Veuillez sélectionner un utilisateur.' });
+      }
+      const user = await User.getById(target_user_id);
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
+      }
+
+      const notificationId = await Notification.create({
+        recipientId: user.id,
+        actorId: null,
+        type: 'message',
+        message: cleanMessage
+      });
+      const unreadCount = await Notification.getUnreadCount(user.id);
+
+      io.to(`user:${user.id}`).emit('notification-created', {
+        id: notificationId,
+        recipient_id: user.id,
+        actor_id: null,
+        type: 'message',
+        message: cleanMessage,
+        post_id: null,
+        share_id: null,
+        comment_id: null,
+        is_read: 0,
+        read_at: null,
+        created_at: new Date().toISOString(),
+        actor_name: 'Administration',
+        actor_username: 'admin',
+        actor_avatar: '/assets/trasx-logo-mark.png'
+      });
+      io.to(`user:${user.id}`).emit('notification-count-updated', { unreadCount });
+
+      await ActivityLog.log(adminActorId, 'admin', 'direct_notification', 'user', user.id, { message: cleanMessage }, req);
+      res.json({ success: true, message: `Message envoyé avec succès à ${user.username || user.email || target_user_id}.` });
+    }
+  } catch (error) {
+    console.error('Error sending admin message:', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur lors de l’envoi du message.' });
   }
 };
 

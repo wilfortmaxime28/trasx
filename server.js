@@ -382,7 +382,7 @@ app.get('/robots.txt', (req, res) => {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   const locale = normalizeLocale(req.session?.locale || 'en');
   res.locals.locale = locale;
   res.locals.t = createTranslator(locale);
@@ -402,6 +402,15 @@ app.use((req, res, next) => {
     }
     return String(num);
   };
+
+  try {
+    const { getSetting } = require('./utils/appSettings');
+    const showLinks = await getSetting('show_app_download_links', '1');
+    res.locals.showDownloadLinks = (showLinks === '1');
+  } catch (err) {
+    res.locals.showDownloadLinks = true;
+  }
+
   next();
 });
 
@@ -6449,6 +6458,103 @@ io.on('connection', (socket) => {
   });
 });
 
+// Web Push setup and subscription APIs
+const webpush = require('web-push');
+
+let vapidKeys = null;
+function initializeVapidKeys() {
+  const vapidFilePath = path.join(__dirname, 'config', 'vapid.json');
+  if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+    vapidKeys = {
+      publicKey: process.env.VAPID_PUBLIC_KEY,
+      privateKey: process.env.VAPID_PRIVATE_KEY
+    };
+  } else if (fs.existsSync(vapidFilePath)) {
+    try {
+      vapidKeys = JSON.parse(fs.readFileSync(vapidFilePath, 'utf8'));
+    } catch (e) {
+      console.error('Failed to parse config/vapid.json:', e);
+    }
+  }
+
+  if (!vapidKeys) {
+    console.log('Generating fresh VAPID keys...');
+    vapidKeys = webpush.generateVAPIDKeys();
+    try {
+      if (!fs.existsSync(path.join(__dirname, 'config'))) {
+        fs.mkdirSync(path.join(__dirname, 'config'), { recursive: true });
+      }
+      fs.writeFileSync(vapidFilePath, JSON.stringify(vapidKeys, null, 2), 'utf8');
+      console.log('VAPID keys persisted in config/vapid.json');
+    } catch (e) {
+      console.error('Failed to write config/vapid.json:', e);
+    }
+  }
+
+  webpush.setVapidDetails(
+    'mailto:support@trasx.org',
+    vapidKeys.publicKey,
+    vapidKeys.privateKey
+  );
+  console.log('VAPID details initialized successfully.');
+}
+
+async function ensurePushSubscriptionsSchema() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      endpoint VARCHAR(512) NOT NULL,
+      keys_p256dh VARCHAR(256) NOT NULL,
+      keys_auth VARCHAR(256) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_endpoint (endpoint),
+      INDEX idx_user_id (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+// GET VAPID public key
+app.get('/api/notifications/vapid-public-key', (req, res) => {
+  if (vapidKeys && vapidKeys.publicKey) {
+    res.json({ publicKey: vapidKeys.publicKey });
+  } else {
+    res.status(500).json({ error: 'VAPID keys not configured.' });
+  }
+});
+
+// POST register push subscription
+app.post('/api/notifications/subscribe', requireAuth, async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    if (!subscription || !subscription.endpoint || !subscription.keys || !subscription.keys.p256dh || !subscription.keys.auth) {
+      return res.status(400).json({ error: 'Subscription missing required fields.' });
+    }
+
+    await db.query(
+      `
+        INSERT INTO push_subscriptions (user_id, endpoint, keys_p256dh, keys_auth)
+        VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE user_id = ?, keys_p256dh = ?, keys_auth = ?
+      `,
+      [
+        req.session.userId,
+        subscription.endpoint,
+        subscription.keys.p256dh,
+        subscription.keys.auth,
+        req.session.userId,
+        subscription.keys.p256dh,
+        subscription.keys.auth
+      ]
+    );
+
+    res.json({ success: true, message: 'Subscribed successfully.' });
+  } catch (err) {
+    console.error('Error saving push subscription:', err);
+    res.status(500).json({ error: 'Failed to save push subscription.' });
+  }
+});
+
 // Middleware de gestion globale des erreurs Express
 app.use((err, req, res, next) => {
   if (res.headersSent) {
@@ -6472,6 +6578,15 @@ server.listen(PORT, async () => {
       await ensureWithdrawalsSchema();
       console.log('Database bsc_withdrawals table and user PIN check complete.');
       
+      // Initialize push notifications
+      try {
+        initializeVapidKeys();
+        await ensurePushSubscriptionsSchema();
+        console.log('Database push_subscriptions table check complete.');
+      } catch (pushInitErr) {
+        console.error('Failed to initialize Web Push system:', pushInitErr);
+      }
+
       // Check/migrate admin table columns
       const Admin = require('./models/Admin');
       await Admin.getPrimaryAdmin();
@@ -6489,6 +6604,14 @@ server.listen(PORT, async () => {
         if (hasFee === null) {
           await setSetting('withdrawal_fee_percent', '30');
           console.log('Initialized default withdrawal_fee_percent: 30');
+        }
+        const hasShowDownload = await getSetting('show_app_download_links');
+        if (hasShowDownload === null) {
+          await db.query(
+            "INSERT INTO app_settings (setting_key, setting_value, description) VALUES (?, ?, ?)",
+            ['show_app_download_links', '1', 'Afficher les boutons de téléchargement d\'applications Android et iPhone (1 = Oui, 0 = Non)']
+          );
+          console.log('Initialized default show_app_download_links: 1');
         }
       } catch (settErr) {
         console.error('Failed to initialize default appSettings:', settErr);

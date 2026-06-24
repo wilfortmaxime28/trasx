@@ -690,7 +690,7 @@ function getYouTubeId(url) {
                                 <% } %>
 
                                   <!-- Bookmarks Empty State -->
-                                  <div id="bookmarksEmptyState" class="bookmarks-empty-state" style="<%= currentView === 'bookmarks' && bookmarkedPostsCount === 0 ? 'display: flex;' : '' %>">
+                                  <div id="bookmarksEmptyState" class="bookmarks-empty-state" style="display: <%= (currentView === 'bookmarks' && bookmarkedPostsCount === 0) ? 'flex' : 'none' %>;">
                                     <div class="empty-icon-container">
                                       <i data-lucide="bookmark"></i>
                                     </div>
@@ -2786,11 +2786,13 @@ function getYouTubeId(url) {
                         data-sound-name="<%= reel.sound_name ? reel.sound_name.replace(/"/g, '&quot;') : '' %>"
                         style="position: relative; width: 100%; max-width: 440px; aspect-ratio: 9/16; border-radius: var(--border-radius-card); overflow: hidden; box-shadow: var(--shadow-lg); background: #000; border: 1px solid var(--border-color);">
                         <% if (!reel.media_type || reel.media_type==='video' ) { %>
-                          <video src="<%= resolvedVideoUrl %>" muted playsinline class="reel-video"
+                          <video src="<%= resolvedVideoUrl %>" muted playsinline preload="auto" class="reel-video"
                             style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: <%= reelMediaFit %>; z-index: 1; cursor: pointer;"
                             data-media-type="video" data-media-fit="<%= reelMediaFit %>"
                             data-audio-start="<%= reel.audio_start_time || 0 %>"
-                            data-audio-duration="<%= reel.audio_duration || 30 %>"></video>
+                            data-audio-duration="<%= reel.audio_duration || 30 %>"
+                            data-trim-start="<%= reel.trim_start %>"
+                            data-trim-end="<%= reel.trim_end %>"></video>
                           <% } else if (reel.media_type==='image_audio' ) { %>
                             <div class="reel-video-container"
                               style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;">
@@ -2799,7 +2801,7 @@ function getYouTubeId(url) {
                                 data-media-type="image_audio" data-media-fit="<%= reelMediaFit %>"
                                 data-audio-start="<%= reel.audio_start_time || 0 %>"
                                 data-audio-duration="<%= reel.audio_duration || 30 %>">
-                              <audio src="<%= reel.audio_url %>" class="reel-audio-track"
+                              <audio src="<%= reel.audio_url %>" class="reel-audio-track" preload="auto"
                                 style="display:none;"></audio>
                             </div>
                             <% } else if (reel.media_type==='voice' ) { %>
@@ -2827,7 +2829,7 @@ function getYouTubeId(url) {
                                 <span
                                   style="font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 700; opacity: 0.95; letter-spacing: 0.5px;">VOICE
                                   NOTE SHORT</span>
-                                <audio src="<%= reel.audio_url %>" class="reel-audio-track"
+                                <audio src="<%= reel.audio_url %>" class="reel-audio-track" preload="auto"
                                   style="display:none;"></audio>
                               </div>
                               <% } else if (reel.media_type==='audio' ) { %>
@@ -2871,7 +2873,7 @@ function getYouTubeId(url) {
                                     </div>
                                     <p style="font-size: 11px; opacity: 0.7; margin-top: 4px;"><%= tText("Music Track Short") %></p>
                                   </div>
-                                  <audio src="<%= reel.audio_url %>" class="reel-audio-track"
+                                  <audio src="<%= reel.audio_url %>" class="reel-audio-track" preload="auto"
                                     style="display:none;"></audio>
                                 </div>
                                 <% } %>
@@ -4049,6 +4051,8 @@ function getYouTubeId(url) {
               <input type="hidden" name="audio_start_time" id="shortAudioStartTimeInput" value="0">
               <input type="hidden" name="media_fit" id="shortMediaFitInput" value="cover">
               <input type="hidden" name="is_trade" id="shortTradeInput" value="0">
+              <input type="hidden" name="trim_start" id="shortTrimStartInputHidden" value="0">
+              <input type="hidden" name="trim_end" id="shortTrimEndInputHidden" value="">
 
               <!-- Tabs Navigation -->
               <div class="status-tabs-nav short-tabs-nav" style="margin-bottom: 12px;">
@@ -4070,58 +4074,63 @@ function getYouTubeId(url) {
                 </button>
               </div>
 
-              <div class="short-format-section" id="shortMediaFitSection">
-                <div class="short-format-copy">
-                  <span><%= tText("Affichage du media") %></span>
-                  <small><%= tText("Le choix sera garde pour ce short.") %></small>
-                </div>
-                <div class="short-fit-options" role="radiogroup" aria-label="<%= tText("Affichage du media") %>">
-                  <label class="short-fit-option active" data-fit-option="cover">
-                    <input type="radio" name="short_media_fit_choice" value="cover" checked>
-                    <span class="short-fit-icon"><i data-lucide="maximize-2"></i></span>
-                    <span>
-                      <strong>Zoome</strong>
-                      <small><%= tText("Remplit tout l'ecran") %></small>
-                    </span>
-                  </label>
-                  <label class="short-fit-option" data-fit-option="contain">
-                    <input type="radio" name="short_media_fit_choice" value="contain">
-                    <span class="short-fit-icon"><i data-lucide="minimize-2"></i></span>
-                    <span>
-                      <strong><%= tText("Format initial") %></strong>
-                      <small><%= tText("Pas de recadrage") %></small>
-                    </span>
-                  </label>
-                </div>
-              </div>
+              <!-- Collapsible Advanced Options to keep modal compact -->
+              <details class="short-advanced-details" style="border: 1px solid var(--border-color); border-radius: 12px; padding: 4px 10px; background: rgba(255, 255, 255, 0.02); cursor: pointer; transition: all 0.2s;">
+                <summary style="font-size: 12px; font-weight: 700; color: var(--text-secondary); padding: 6px 0; outline: none; list-style: none; display: flex; align-items: center; justify-content: space-between;">
+                  <span><%= tText("Options avancées (Format / Trade)") %></span>
+                  <i data-lucide="chevron-down" style="width: 14px; height: 14px; transition: transform 0.2s;"></i>
+                </summary>
+                <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px; cursor: default; padding-bottom: 6px;">
+                  <div class="short-format-section" id="shortMediaFitSection">
+                    <div class="short-format-copy">
+                      <span><%= tText("Affichage du media") %></span>
+                      <small><%= tText("Le choix sera garde pour ce short.") %></small>
+                    </div>
+                    <div class="short-fit-options" role="radiogroup" aria-label="<%= tText("Affichage du media") %>">
+                      <label class="short-fit-option active" data-fit-option="cover">
+                        <input type="radio" name="short_media_fit_choice" value="cover" checked>
+                        <span class="short-fit-icon"><i data-lucide="maximize-2"></i></span>
+                        <span>
+                          <strong>Zoome</strong>
+                          <small><%= tText("Remplit tout l'ecran") %></small>
+                        </span>
+                      </label>
+                      <label class="short-fit-option" data-fit-option="contain">
+                        <input type="radio" name="short_media_fit_choice" value="contain">
+                        <span class="short-fit-icon"><i data-lucide="minimize-2"></i></span>
+                        <span>
+                          <strong><%= tText("Format initial") %></strong>
+                          <small><%= tText("Pas de recadrage") %></small>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
 
-              <div class="short-trade-section">
-                <div>
-                  <div class="short-trade-title"><%= tText("Activer l'option Trade Short") %></div>
-                  <div class="short-trade-subtitle">Permet aux autres de racheter ce short. Meme principe que les posts
-                    trade.</div>
-                </div>
-                <label class="short-trade-switch" aria-label="<%= tText("Activer l'option Trade Short") %>">
-                  <input type="checkbox" id="shortTradeToggle">
-                  <span></span>
-                </label>
-              </div>
+                  <div class="short-trade-section">
+                    <div>
+                      <div class="short-trade-title"><%= tText("Activer l'option Trade Short") %></div>
+                      <div class="short-trade-subtitle">Permet aux autres de racheter ce short. Meme principe que les posts trade.</div>
+                    </div>
+                    <label class="short-trade-switch" aria-label="<%= tText("Activer l'option Trade Short") %>">
+                      <input type="checkbox" id="shortTradeToggle">
+                      <span></span>
+                    </label>
+                  </div>
 
-              <div id="shortTradeInfo" class="short-trade-info" style="display: none;">
-                <strong><%= tText("Option Trade Short active") %></strong>
-                Vous allez payer <span><%= tText("5 tokens") %></span> pour activer le trade. Si le prix baisse apres un trade, la
-                difference divisee par le prix du token ($<%= Number(typeof tokenPriceUsd !== 'undefined' ? tokenPriceUsd : 0.1).toFixed(4).replace(/\.?0+$/, '') %>) est creditee en tokens.
-                <div
-                  class="short-trade-balance <%= Number(currentUser.token_balance || 0) < 5 ? 'is-insufficient' : '' %>">
-                  <span><%= tText("Solde disponible :") %> <strong id="shortTradeTokenBalance">
-                      <%= Number(currentUser.token_balance || 0) %>
-                    </strong> tokens</span>
-                  <span><%= tText("Cout requis :") %> <strong>5</strong> tokens</span>
+                  <div id="shortTradeInfo" class="short-trade-info" style="display: none; margin-top: 0;">
+                    <strong><%= tText("Option Trade Short active") %></strong>
+                    Vous allez payer <span><%= tText("5 tokens") %></span> pour activer le trade. Si le prix baisse apres un trade, la
+                    difference divisee par le prix du token ($<%= Number(typeof tokenPriceUsd !== 'undefined' ? tokenPriceUsd : 0.1).toFixed(4).replace(/\.?0+$/, '') %>) est creditee en tokens.
+                    <div class="short-trade-balance <%= Number(currentUser.token_balance || 0) < 5 ? 'is-insufficient' : '' %>" style="margin-top: 6px;">
+                      <span><%= tText("Solde disponible :") %> <strong id="shortTradeTokenBalance"><%= Number(currentUser.token_balance || 0) %></strong> tokens</span>
+                      <span><%= tText("Cout requis :") %> <strong>5</strong> tokens</span>
+                    </div>
+                    <% if (Number(currentUser.token_balance || 0) < 5) { %>
+                      <div class="short-trade-warning" style="margin-top: 6px;"><%= tText("Solde insuffisant pour activer Trade Short.") %></div>
+                    <% } %>
+                  </div>
                 </div>
-                <% if (Number(currentUser.token_balance || 0) < 5) { %>
-                  <div class="short-trade-warning"><%= tText("Solde insuffisant pour activer Trade Short.") %></div>
-                  <% } %>
-              </div>
+              </details>
 
               <!-- 1. Video Tab Panel -->
               <div id="shortPanelVideo" class="short-tab-panel">
@@ -4138,41 +4147,22 @@ function getYouTubeId(url) {
                     accept="video/*" style="display: none;">
                 </div>
                 <div id="shortVideoPreviewBox" class="short-media-preview-box"
-                  style="display: none; margin-top: 10px; position: relative !important; overflow: hidden !important;">
-                  <video id="shortVideoPreview" style="width:100%; height:100%; object-fit:cover;"></video>
-                  <!-- Premium overlay trimmer track directly on the video container -->
-                  <div id="shortVideoTrimSection"
-                    style="display: none; position: absolute; bottom: 12px; left: 12px; right: 12px; background: rgba(15, 23, 42, 0.88); padding: 8px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.16); backdrop-filter: blur(10px); z-index: 10; flex-direction: column; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                      <label
-                        style="font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.9); display: flex; align-items: center; gap: 4px; margin: 0;">
-                        <i data-lucide="scissors" style="width: 12px; height: 12px; color: var(--primary);"></i>
-                        Début de la vidéo (Start Time)
-                      </label>
-                      <span id="shortVideoOffsetLabel"
-                        style="font-size: 11px; font-weight: 700; color: var(--primary); font-family: monospace;">0:00</span>
-                    </div>
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                      <div style="position: relative; flex: 1; height: 16px; display: flex; align-items: center;">
-                        <!-- Track background -->
-                        <div
-                          style="width: 100%; height: 4px; background: rgba(255,255,255,0.22); border-radius: 2px; position: absolute;">
-                        </div>
-                        <!-- Highlighted active trim zone -->
-                        <div id="shortVideoTrimHighlight"
-                          style="position: absolute; height: 4px; background: var(--primary); border-radius: 2px; left: 0%; width: 100%; transition: left 0.1s ease-out, width 0.2s ease-out;">
-                        </div>
-                        <!-- Layered range slider -->
-                        <input type="range" id="shortVideoOffsetSlider" min="0" max="0" value="0" step="0.1"
-                          style="position: absolute; width: 100%; height: 16px; background: transparent; -webkit-appearance: none; appearance: none; margin: 0; outline: none; z-index: 12; accent-color: var(--primary);">
-                      </div>
-                      <button type="button" id="shortVideoPreviewBtn" class="icon-btn"
-                        style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; width: 28px; height: 28px; display: grid; place-items: center; cursor: pointer; color: #ffffff; padding: 0; flex-shrink: 0;"
-                        title="<%= tText("Preview Trimmed Video") %>">
-                        <i data-lucide="play" style="width: 12px; height: 12px; fill: white;"></i>
-                      </button>
-                    </div>
+                  style="display: none; margin-top: 10px; border-radius: 12px; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; position: relative; max-height: 190px; aspect-ratio: 9/16; margin: 10px auto;">
+                  <video id="shortVideoPreview" style="width:100%; height:100%; object-fit:cover;" muted playsinline preload="auto"></video>
+                </div>
+                
+                <!-- Premium dual video trimmer for Shorts -->
+                <div id="shortVideoTrimSection" style="display: none; flex-direction: column; gap: 8px; margin-top: 12px; background: rgba(255, 255, 255, 0.05); padding: 12px; border-radius: 12px; border: 1px solid var(--border-color);">
+                  <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); font-weight: 600;">
+                    <span>Trimmer la vidéo</span>
+                    <span id="shortTrimRangeLabel">0:00 - 0:00</span>
                   </div>
+                  <div class="trimmer-track-container" style="position: relative; width: 100%; height: 28px; background: rgba(0,0,0,0.3); border-radius: 6px; overflow: visible;">
+                    <div id="shortTrimmerHighlightTrack" style="position: absolute; height: 100%; top: 0; left: 0%; right: 0%; background: rgba(139, 92, 246, 0.4); border-left: 3px solid var(--primary); border-right: 3px solid var(--primary); pointer-events: none; border-radius: 4px; box-sizing: border-box;"></div>
+                    <input type="range" id="shortTrimStartInput" min="0" max="100" value="0" step="0.1" style="position: absolute; width: 100%; top: 0; left: 0; height: 100%; -webkit-appearance: none; appearance: none; background: transparent; pointer-events: auto; margin: 0; outline: none; cursor: pointer; z-index: 3;">
+                    <input type="range" id="shortTrimEndInput" min="0" max="100" value="100" step="0.1" style="position: absolute; width: 100%; top: 0; left: 0; height: 100%; -webkit-appearance: none; appearance: none; background: transparent; pointer-events: auto; margin: 0; outline: none; cursor: pointer; z-index: 3;">
+                  </div>
+                  <div style="font-size: 10px; color: var(--text-muted); text-align: center;">Glissez les poignées pour définir le début et la fin de votre Short.</div>
                 </div>
               </div>
 
@@ -4287,35 +4277,27 @@ function getYouTubeId(url) {
                 </div>
               </div>
 
-              <!-- Duration Limit and Captions -->
-              <div class="settings-field" style="margin-bottom: 10px;">
-                <label
-                  style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px;">Select
-                  Short Duration</label>
-                <div style="display: flex; gap: 8px;">
-                  <label
-                    style="flex: 1; text-align: center; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; cursor: pointer; font-size: 11px; font-weight: 600; display: block;"
-                    id="durationOpt30">
-                    <input type="radio" name="audio_duration" value="30" checked style="display: none;"> 30s
-                  </label>
-                  <label
-                    style="flex: 1; text-align: center; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; cursor: pointer; font-size: 11px; font-weight: 600; display: block;"
-                    id="durationOpt60">
-                    <input type="radio" name="audio_duration" value="60" style="display: none;"> 1mn
-                  </label>
-                  <label
-                    style="flex: 1; text-align: center; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; cursor: pointer; font-size: 11px; font-weight: 600; display: block;"
-                    id="durationOpt300">
-                    <input type="radio" name="audio_duration" value="300" style="display: none;"> 5mn
-                  </label>
+              <!-- Side-by-side Duration Limit and Sound Name for compact layout -->
+              <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 10px; margin-bottom: 4px;">
+                <div class="settings-field" style="margin-bottom: 0;">
+                  <label style="font-size: 11px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px;">Duration</label>
+                  <div style="display: flex; gap: 4px;">
+                    <label style="flex: 1; text-align: center; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 4px; cursor: pointer; font-size: 10.5px; font-weight: 600; display: block;" id="durationOpt30">
+                      <input type="radio" name="audio_duration" value="30" checked style="display: none;"> 30s
+                    </label>
+                    <label style="flex: 1; text-align: center; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 4px; cursor: pointer; font-size: 10.5px; font-weight: 600; display: block;" id="durationOpt60">
+                      <input type="radio" name="audio_duration" value="60" style="display: none;"> 1m
+                    </label>
+                    <label style="flex: 1; text-align: center; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 4px; cursor: pointer; font-size: 10.5px; font-weight: 600; display: block;" id="durationOpt300">
+                      <input type="radio" name="audio_duration" value="300" style="display: none;"> 5m
+                    </label>
+                  </div>
                 </div>
-              </div>
 
-              <div class="settings-field" style="margin-bottom: 10px;">
-                <label for="shortSoundName"
-                  style="font-size: 12px; font-weight: 600; color: var(--text-secondary);"><%= tText("Sound Track Name") %></label>
-                <input type="text" id="shortSoundName" name="sound_name" placeholder="<%= tText("Original Sound") %>"
-                  class="settings-input" style="height: 38px; font-size: 13px;">
+                <div class="settings-field" style="margin-bottom: 0;">
+                  <label for="shortSoundName" style="font-size: 11px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px;"><%= tText("Sound Name") %></label>
+                  <input type="text" id="shortSoundName" name="sound_name" placeholder="<%= tText("Original Sound") %>" class="settings-input" style="height: 32px; font-size: 12.5px; padding: 0 8px; border-radius: 8px;">
+                </div>
               </div>
 
               <div class="settings-field" style="margin-bottom: 10px;">
