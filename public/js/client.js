@@ -9108,15 +9108,50 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => {
               const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
               if (postCard) {
-                postCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                // Flash highlight effect
-                postCard.style.transition = 'box-shadow 0.5s ease, border-color 0.5s ease';
-                postCard.style.boxShadow = '0 0 25px rgba(59, 130, 246, 0.6)';
-                postCard.style.borderColor = 'var(--primary, #3b82f6)';
-                setTimeout(() => {
-                  postCard.style.boxShadow = '';
-                  postCard.style.borderColor = '';
-                }, 3000);
+                if (typeof scrollToAndHighlightPost === 'function') {
+                  scrollToAndHighlightPost(postCard);
+                }
+                const video = postCard.querySelector('video');
+                if (video) {
+                  video.muted = false;
+                  video.play().catch(e => console.log('Autoplay blocked:', e));
+                }
+              } else {
+                // Fetch dynamically if not loaded in feed
+                fetch(`/api/posts/${postId}`)
+                  .then(res => res.json())
+                  .then(data => {
+                    if (data && data.success && data.post) {
+                      const el = createPostCardElement(data.post);
+                      if (el) {
+                        el.setAttribute('data-progressive-item', 'post');
+                        el.setAttribute('data-created-at', data.post.created_at || '');
+                        postsContainer.insertBefore(el, postsContainer.firstChild);
+
+                        if (typeof window.initLazyMedia === 'function') {
+                          window.initLazyMedia(postsContainer);
+                        }
+                        if (typeof lucide !== 'undefined') {
+                          try { lucide.createIcons(); } catch (_) {}
+                        }
+
+                        setTimeout(() => {
+                          const newPostCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
+                          if (newPostCard) {
+                            if (typeof scrollToAndHighlightPost === 'function') {
+                              scrollToAndHighlightPost(newPostCard);
+                            }
+                            const video = newPostCard.querySelector('video');
+                            if (video) {
+                              video.muted = false;
+                              video.play().catch(e => console.log('Autoplay blocked:', e));
+                            }
+                          }
+                        }, 200);
+                      }
+                    }
+                  })
+                  .catch(err => console.error('Failed to load post for notification click:', err));
               }
             }, 100);
           } else {
