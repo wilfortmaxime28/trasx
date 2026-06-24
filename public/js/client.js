@@ -1253,8 +1253,10 @@ document.addEventListener('DOMContentLoaded', () => {
         pContent = 'Message';
       }
       parentHtml = `
-        <div class="chat-message-quote-preview" style="background: rgba(0,0,0,0.06); border-left: 3px solid var(--primary); padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; font-size: 11px; cursor: pointer; display: block; max-width: 100%; box-sizing: border-box;">
-          <strong style="color: var(--primary); display: block; font-size: 10px;">@${pUsername}</strong>
+        <div class="chat-message-quote-preview" data-parent-id="${escapeHtml(message?.parent_id ?? '')}" style="background: rgba(0,0,0,0.06); border-left: 3.2px solid var(--primary); padding: 6px 10px; border-radius: 6px; margin-bottom: 6px; font-size: 11px; cursor: pointer; display: block; max-width: 100%; box-sizing: border-box; transition: background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.1)'" onmouseout="this.style.background='rgba(0,0,0,0.06)'">
+          <strong style="color: var(--primary); display: flex; align-items: center; gap: 4px; font-size: 10px; margin-bottom: 2px;">
+            <i data-lucide="reply" style="width: 10px; height: 10px;"></i> @${pUsername}
+          </strong>
           <span style="color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; display: block;">${pContent}</span>
         </div>
       `;
@@ -1282,15 +1284,28 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="message-actions-trigger" title="Options" style="display: flex;">
         <i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i>
       </div>
-      <div class="message-actions-dropdown">
-        <button type="button" class="reply-msg-action" data-message-id="${escapeHtml(message?.id ?? '')}" data-username="${escapeHtml(message?.sender_username || (isOutgoing ? 'Moi' : 'Auteur'))}" data-content="${escapeHtml(message?.content || '')}">Répondre</button>
-        <button type="button" class="delete-msg-me-action" data-message-id="${escapeHtml(message?.id ?? '')}">Supprimer pour moi</button>
-        ${isDeletable ? `<button type="button" class="delete-msg-everyone-action delete-danger" data-message-id="${escapeHtml(message?.id ?? '')}">Supprimer pour tous</button>` : ''}
+      <div class="message-actions-dropdown" style="padding: 6px; border-radius: 12px; background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15); min-width: 170px;">
+        <button type="button" class="reply-msg-action" data-message-id="${escapeHtml(message?.id ?? '')}" data-username="${escapeHtml(message?.sender_username || (isOutgoing ? 'Moi' : 'Auteur'))}" data-content="${escapeHtml(message?.content || '')}" style="display: flex; align-items: center; gap: 8px; font-weight: 500; padding: 8px 12px; transition: background 0.15s ease; border-radius: 6px;">
+          <i data-lucide="reply" style="width: 14px; height: 14px; opacity: 0.8;"></i>
+          Répondre
+        </button>
+        <div style="height: 1px; background: var(--border-color); opacity: 0.5; margin: 4px 0;"></div>
+        <button type="button" class="delete-msg-me-action" data-message-id="${escapeHtml(message?.id ?? '')}" style="display: flex; align-items: center; gap: 8px; font-weight: 500; padding: 8px 12px; transition: background 0.15s ease; border-radius: 6px;">
+          <i data-lucide="trash-2" style="width: 14px; height: 14px; opacity: 0.8;"></i>
+          Supprimer pour moi
+        </button>
+        ${isDeletable ? `
+          <div style="height: 1px; background: var(--border-color); opacity: 0.5; margin: 4px 0;"></div>
+          <button type="button" class="delete-msg-everyone-action delete-danger" data-message-id="${escapeHtml(message?.id ?? '')}" style="display: flex; align-items: center; gap: 8px; font-weight: 500; padding: 8px 12px; transition: background 0.15s ease; color: var(--danger); border-radius: 6px;">
+            <i data-lucide="trash" style="width: 14px; height: 14px; color: var(--danger);"></i>
+            Supprimer pour tous
+          </button>
+        ` : ''}
       </div>
     `;
 
     return `
-      <div class="chat-msg-wrapper ${msgType}${isSharedSnapshot ? ' chat-msg-wrapper-shared' : ''}" data-message-id="${escapeHtml(message?.id ?? '')}" data-message-status="${escapeHtml(status || '')}" style="position: relative;">
+      <div class="chat-msg-wrapper ${msgType}${isSharedSnapshot ? ' chat-msg-wrapper-shared' : ''}" data-message-id="${escapeHtml(message?.id ?? '')}" data-parent-id="${escapeHtml(message?.parent_id ?? '')}" data-message-status="${escapeHtml(status || '')}" style="position: relative;">
         ${actionsTriggerHtml}
         ${bubbleContentHtml}
         ${attachmentHtml}
@@ -4702,6 +4717,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!isAlreadyShow) {
         openMsgDropdown(wrapper);
+      }
+      return;
+    }
+
+    // Scroll to original message when clicking on a quote preview
+    const quotePreview = e.target.closest('.chat-message-quote-preview');
+    if (quotePreview) {
+      e.stopPropagation();
+      const parentId = quotePreview.dataset.parentId;
+      if (parentId) {
+        const targetMsg = document.querySelector(`.chat-msg-wrapper[data-message-id="${parentId}"]`);
+        if (targetMsg) {
+          targetMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const bubbleEl = targetMsg.querySelector('.chat-msg-bubble');
+          if (bubbleEl) {
+            const originalBg = bubbleEl.style.backgroundColor;
+            const originalTransition = bubbleEl.style.transition;
+            bubbleEl.style.transition = 'background-color 0.15s ease';
+            bubbleEl.style.backgroundColor = 'rgba(234, 179, 8, 0.45)'; // transparent yellow highlight
+            setTimeout(() => {
+              bubbleEl.style.transition = 'background-color 0.8s ease';
+              bubbleEl.style.backgroundColor = originalBg;
+              setTimeout(() => {
+                bubbleEl.style.transition = originalTransition;
+              }, 800);
+            }, 500);
+          }
+        }
       }
       return;
     }
