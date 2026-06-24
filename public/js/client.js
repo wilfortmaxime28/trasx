@@ -7941,6 +7941,96 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 5000);
   };
 
+  // --- TikTok Style Toast Notification Helper ---
+  const showTikTokToast = (message, type = 'info') => {
+    let container = document.getElementById('tiktokToastContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'tiktokToastContainer';
+      container.style.cssText = `
+        position: fixed;
+        top: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        z-index: 100000;
+        pointer-events: none;
+        width: 100%;
+        max-width: 420px;
+        padding: 0 20px;
+      `;
+      document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    let bgColor = 'rgba(15, 23, 42, 0.95)';
+    let borderColor = 'rgba(255, 255, 255, 0.15)';
+    let icon = 'info';
+
+    if (type === 'offline') {
+      bgColor = 'rgba(220, 38, 38, 0.96)';
+      borderColor = 'rgba(220, 38, 38, 0.3)';
+      icon = 'wifi-off';
+    } else if (type === 'online') {
+      bgColor = 'rgba(22, 163, 74, 0.96)';
+      borderColor = 'rgba(22, 163, 74, 0.3)';
+      icon = 'wifi';
+    } else if (type === 'live-join') {
+      bgColor = 'rgba(219, 39, 119, 0.96)';
+      borderColor = 'rgba(219, 39, 119, 0.3)';
+      icon = 'sparkles';
+    } else if (type === 'live-chat') {
+      bgColor = 'rgba(37, 99, 235, 0.96)';
+      borderColor = 'rgba(37, 99, 235, 0.3)';
+      icon = 'message-square';
+    }
+
+    toast.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: ${bgColor};
+      border: 1px solid ${borderColor};
+      color: #ffffff;
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 13.5px;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+      pointer-events: auto;
+      font-family: 'Outfit', sans-serif;
+      transform: translateY(-30px);
+      opacity: 0;
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.2);
+      width: 100%;
+      box-sizing: border-box;
+    `;
+
+    toast.innerHTML = `
+      <i data-lucide="${icon}" style="width: 16px; height: 16px; stroke-width: 2.5px; flex-shrink: 0;"></i>
+      <span style="flex: 1; text-align: left; line-height: 1.35;">${message}</span>
+    `;
+
+    container.appendChild(toast);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    setTimeout(() => {
+      toast.style.transform = 'translateY(0)';
+      toast.style.opacity = '1';
+    }, 10);
+
+    setTimeout(() => {
+      toast.style.transform = 'translateY(-20px)';
+      toast.style.opacity = '0';
+      setTimeout(() => {
+        toast.remove();
+      }, 400);
+    }, 3800);
+  };
+
   const socialListModal = document.getElementById('socialListModal');
   const socialListModalTitle = document.getElementById('socialListModalTitle');
   const socialListModalCount = document.getElementById('socialListModalCount');
@@ -18639,6 +18729,18 @@ document.addEventListener('DOMContentLoaded', () => {
           osc.start(now + index * 0.15);
           osc.stop(now + index * 0.15 + 0.45);
         });
+      } else if (type === 'chat') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, now);
+        osc.frequency.setValueAtTime(880, now + 0.08);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.26);
       }
     } catch (e) {
       console.warn("AudioContext playback failed:", e);
@@ -20520,6 +20622,136 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
+    const showSpectatorGameResultModal = (data) => {
+      const existing = document.getElementById('gameResultOverlay');
+      if (existing) existing.remove();
+
+      const overlay = document.createElement('div');
+      overlay.id = 'gameResultOverlay';
+      overlay.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: rgba(10, 10, 12, 0.85);
+        backdrop-filter: blur(10px);
+        transition: all 0.3s ease;
+      `;
+
+      const card = document.createElement('div');
+      card.style.cssText = `
+        background: var(--bg-card, #1e293b);
+        border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+        border-radius: 24px;
+        padding: 32px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        max-width: 380px;
+        width: 90%;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        text-align: center;
+        animation: scaleInOverlay 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        font-family: 'Outfit', sans-serif;
+      `;
+
+      const title = document.createElement('h2');
+      title.textContent = 'Match Terminé !';
+      title.style.margin = '0';
+      title.style.fontSize = '26px';
+      title.style.fontWeight = '800';
+      title.style.color = '#f59e0b';
+
+      const p1Name = activeGame.player1 ? (activeGame.player1.name || activeGame.player1.username) : 'Joueur 1';
+      const p2Name = activeGame.player2 ? (activeGame.player2.name || activeGame.player2.username) : 'Joueur 2';
+      
+      let winnerName = '';
+      if (data.winnerId === 'draw') {
+        winnerName = 'Match Nul !';
+      } else if (activeGame.player1 && String(data.winnerId) === String(activeGame.player1.id)) {
+        winnerName = `🏆 ${p1Name} remporte la victoire !`;
+      } else if (activeGame.player2 && String(data.winnerId) === String(activeGame.player2.id)) {
+        winnerName = `🏆 ${p2Name} remporte la victoire !`;
+      } else {
+        winnerName = 'Partie terminée.';
+      }
+
+      const winnerEl = document.createElement('div');
+      winnerEl.textContent = winnerName;
+      winnerEl.style.fontSize = '18px';
+      winnerEl.style.fontWeight = '700';
+      winnerEl.style.color = '#ffffff';
+      winnerEl.style.marginTop = '5px';
+
+      let scoreDisplay = '';
+      if (activeGame.rounds && Number(activeGame.rounds) > 1) {
+        const p1Rounds = activeGame.roundWins ? Number(activeGame.roundWins.player1 || 0) : 0;
+        const p2Rounds = activeGame.roundWins ? Number(activeGame.roundWins.player2 || 0) : 0;
+        scoreDisplay = `${p1Name}   ${p1Rounds}  —  ${p2Rounds}   ${p2Name}`;
+      } else if (activeGame.gameType === 'tablefootball' && activeGame.tableFootballState?.scores) {
+        const s1 = activeGame.tableFootballState.scores[1] || 0;
+        const s2 = activeGame.tableFootballState.scores[2] || 0;
+        scoreDisplay = `${p1Name}   ${s1}  —  ${s2}   ${p2Name}`;
+      } else if (activeGame.gameType === 'mathduel' && activeGame.mathState?.scores) {
+        const s1 = activeGame.mathState.scores[1] || 0;
+        const s2 = activeGame.mathState.scores[2] || 0;
+        scoreDisplay = `${p1Name}   ${s1}  —  ${s2}   ${p2Name}`;
+      } else {
+        scoreDisplay = `${p1Name}  vs  ${p2Name}`;
+      }
+
+      const scoreEl = document.createElement('div');
+      scoreEl.textContent = scoreDisplay;
+      scoreEl.style.fontSize = '15px';
+      scoreEl.style.fontWeight = '600';
+      scoreEl.style.color = 'rgba(255, 255, 255, 0.7)';
+      scoreEl.style.background = 'rgba(0,0,0,0.25)';
+      scoreEl.style.padding = '10px 16px';
+      scoreEl.style.borderRadius = '12px';
+      scoreEl.style.width = '100%';
+      scoreEl.style.boxSizing = 'border-box';
+      scoreEl.style.letterSpacing = '0.5px';
+
+      const trophyImg = document.createElement('img');
+      trophyImg.src = '/assets/winner_trophy.png';
+      trophyImg.style.width = '140px';
+      trophyImg.style.height = '140px';
+      trophyImg.style.objectFit = 'contain';
+      trophyImg.style.margin = '10px 0';
+      trophyImg.onerror = () => { trophyImg.style.display = 'none'; };
+
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = 'Fermer et voir le salon';
+      closeBtn.style.width = '100%';
+      closeBtn.style.padding = '12px';
+      closeBtn.style.borderRadius = '12px';
+      closeBtn.style.border = 'none';
+      closeBtn.style.background = '#7c3aed';
+      closeBtn.style.color = '#ffffff';
+      closeBtn.style.cursor = 'pointer';
+      closeBtn.style.fontWeight = '600';
+      closeBtn.style.fontSize = '14px';
+      closeBtn.style.transition = 'all 0.2s';
+      closeBtn.addEventListener('click', () => {
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.remove(), 300);
+      });
+
+      card.appendChild(title);
+      card.appendChild(trophyImg);
+      card.appendChild(winnerEl);
+      card.appendChild(scoreEl);
+      card.appendChild(closeBtn);
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+
+      playGameSound('win');
+    };
+
     socket.on('game-over', (data) => {
       const { winnerId, winningStones, isForfeit } = data;
       if (activeGame) {
@@ -20545,24 +20777,42 @@ document.addEventListener('DOMContentLoaded', () => {
         highlightWinner(winningStones);
 
         const isPlayer = activeGame.player1.id === window.currentUserId || (activeGame.player2 && activeGame.player2.id === window.currentUserId);
+        const isRealPlayer = isPlayer && !window.isSpectatingActiveGame;
 
-        if (winnerId === 'draw') {
-          showToast("Match nul !");
-          if (isPlayer && !window.isSpectatingActiveGame) {
+        if (isRealPlayer) {
+          if (winnerId === 'draw') {
+            showToast("Match nul !");
             showGameResultOverlay('draw');
-          }
-        } else if (winnerId === window.currentUserId) {
-          showToast("Victoire ! Vous avez gagné !");
-          if (isPlayer && !window.isSpectatingActiveGame) {
+          } else if (winnerId === window.currentUserId) {
+            showToast("Victoire ! Vous avez gagné !");
             updateStoredScore(true);
             showGameResultOverlay('win');
-          }
-        } else {
-          showToast("Partie terminée.");
-          if (isPlayer && !window.isSpectatingActiveGame) {
+          } else {
+            showToast("Partie terminée.");
             updateStoredScore(false);
             showGameResultOverlay('lose');
           }
+        } else {
+          showToast("Partie terminée.");
+          showSpectatorGameResultModal({ winnerId, winningStones, isForfeit });
+        }
+      }
+    });
+
+    socket.on('game-spectator-joined-announcement', (data) => {
+      showTikTokToast(data.message, 'live-join');
+    });
+
+    socket.on('game-opponent-network-status', (data) => {
+      const { userId, status } = data;
+      if (!activeGame) return;
+      const opponent = Number(activeGame.player1.id) === Number(window.currentUserId) ? activeGame.player2 : activeGame.player1;
+      if (opponent && Number(opponent.id) === Number(userId)) {
+        const oppName = opponent.name || opponent.username || "L'adversaire";
+        if (status === 'offline') {
+          showTikTokToast(`⚠️ Connexion perdue pour ${oppName} (Hors ligne)`, 'offline');
+        } else if (status === 'online') {
+          showTikTokToast(`📶 ${oppName} est de nouveau en ligne !`, 'online');
         }
       }
     });
@@ -20603,6 +20853,11 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="color: var(--text-primary); margin-top: 2px; line-height: 1.35;">${escapeHtml(msg.content)}</div>
           </div>
         `;
+
+        if (msg.senderId !== window.currentUserId) {
+          playGameSound('chat');
+          showTikTokToast(`💬 ${msg.senderName} : ${msg.content.slice(0, 50)}${msg.content.length > 50 ? '...' : ''}`, 'live-chat');
+        }
       }
 
       const defaultMsg = gameChatFeed.querySelector('.game-chat-empty');
@@ -23170,5 +23425,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (zoomModal) zoomModal.style.display = 'none';
     const zoomedVideo = document.getElementById('zoomedPlayerVideo');
     if (zoomedVideo) zoomedVideo.srcObject = null;
+  });
+
+  // Window network status event listeners (TikTok style connectivity alert)
+  window.addEventListener('offline', () => {
+    showTikTokToast("Connexion Internet perdue. Vous êtes hors ligne.", 'offline');
+    if (typeof socket !== 'undefined' && socket && socket.connected && typeof activeGame !== 'undefined' && activeGame && activeGame.status === 'playing') {
+      socket.emit('game-player-network-status', { gameId: activeGame.id, status: 'offline' });
+    }
+  });
+
+  window.addEventListener('online', () => {
+    showTikTokToast("Connexion Internet rétablie !", 'online');
+    if (typeof socket !== 'undefined' && socket && socket.connected && typeof activeGame !== 'undefined' && activeGame && activeGame.status === 'playing') {
+      socket.emit('game-player-network-status', { gameId: activeGame.id, status: 'online' });
+    }
   });
 });

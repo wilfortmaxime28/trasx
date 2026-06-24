@@ -6144,6 +6144,11 @@ io.on('connection', (socket) => {
           spectators: updatedGame.spectators,
           count: updatedGame.spectators.length
         });
+
+        socket.to(`game:${updatedGame.id}`).emit('game-spectator-joined-announcement', {
+          message: `👁️ ${user.first_name} ${user.last_name} vient de rejoindre le live pour regarder la partie !`,
+          username: user.username
+        });
         
         if (typeof ack === 'function') {
           ack({ success: true, game: sanitizeGame(updatedGame, currentUserId) });
@@ -6225,8 +6230,37 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('game-player-network-status', (data) => {
+    const { gameId, status } = data || {};
+    const currentUserId = session?.userId;
+    if (gameId && currentUserId && (status === 'online' || status === 'offline')) {
+      socket.to(`game:${gameId}`).emit('game-opponent-network-status', {
+        userId: currentUserId,
+        status: status
+      });
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('Un utilisateur s\'est déconnecté :', socket.id);
+    const currentUserId = session?.userId;
+    if (currentUserId) {
+      try {
+        const liveGames = gamesManager.getLiveGames();
+        for (const game of liveGames) {
+          const isPlayer1 = Number(game.player1.id) === Number(currentUserId);
+          const isPlayer2 = game.player2 && Number(game.player2.id) === Number(currentUserId);
+          if ((isPlayer1 || isPlayer2) && game.status !== 'finished') {
+            io.to(`game:${game.id}`).emit('game-opponent-network-status', {
+              userId: currentUserId,
+              status: 'offline'
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error broadcasting game offline status on disconnect:', err);
+      }
+    }
   });
 });
 
