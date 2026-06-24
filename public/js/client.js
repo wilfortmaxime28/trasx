@@ -12208,8 +12208,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let pendingEventsUnlockForm = null;
   const getPageLocale = () => String(window.currentLocale || document.documentElement.getAttribute('lang') || 'en').slice(0, 2).toLowerCase();
 
-  applyNavigationQueryState();
-
   const statusCards = document.querySelectorAll('.status-card');
   statusCards.forEach((card) => {
     card.addEventListener('click', (e) => {
@@ -26264,4 +26262,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   }
+
+  // Apply navigation query state at the end of DOMContentLoaded to prevent TDZ errors
+  applyNavigationQueryState();
 });
