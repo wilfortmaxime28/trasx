@@ -19895,5 +19895,11 @@ body.dark-mode .skeleton-base {
   color: rgba(255, 255, 255, 0.6) !important;
 }
 
+#statusViewerReplyInput,
+#statusTextTextarea {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
 
 
