@@ -21977,64 +21977,525 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const buildTableFootballBoard = () => {
-    if (!tableFootballBoardContainer || !tableFootballField || !tableFootballActions || !activeGame?.tableFootballState) return;
-    const state = activeGame.tableFootballState;
+    if (!tableFootballBoardContainer || !activeGame?.tableFootballState) return;
+
+    const canvas = document.getElementById('tableFootballCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const tfScoreText = document.getElementById('tfScoreText');
+    const tfPlayer1Avatar = document.getElementById('tfPlayer1Avatar');
+    const tfPlayer2Avatar = document.getElementById('tfPlayer2Avatar');
+    const tfPlayer1Name = document.getElementById('tfPlayer1Name');
+    const tfPlayer2Name = document.getElementById('tfPlayer2Name');
+    const tableFootballStatusText = document.getElementById('tableFootballStatusText');
+    const tableFootballHelperText = document.getElementById('tableFootballHelperText');
+
+    // Update scoreboard
+    if (tfScoreText && activeGame.tableFootballState.scores) {
+      tfScoreText.textContent = `${activeGame.tableFootballState.scores[1] || 0} - ${activeGame.tableFootballState.scores[2] || 0}`;
+    }
+    if (tfPlayer1Avatar && activeGame.player1) {
+      tfPlayer1Avatar.src = activeGame.player1.avatar || '/assets/avatar_placeholder.jpg';
+    }
+    if (tfPlayer2Avatar && activeGame.player2) {
+      tfPlayer2Avatar.src = activeGame.player2.avatar || '/assets/avatar_placeholder.jpg';
+    }
+    if (tfPlayer1Name && activeGame.player1) {
+      tfPlayer1Name.textContent = activeGame.player1.name || 'Joueur 1';
+    }
+    if (tfPlayer2Name && activeGame.player2) {
+      tfPlayer2Name.textContent = activeGame.player2.name || 'Joueur 2';
+    }
+
     const isMyTurn = !window.isSpectatingActiveGame
       && activeGame.status === 'playing'
       && ((activeGame.currentPlayer === 1 && activeGame.player1.id === window.currentUserId)
         || (activeGame.currentPlayer === 2 && activeGame.player2?.id === window.currentUserId));
-    const isAttacking = activeGame.currentPlayer === state.attacker;
 
-    if (tableFootballPhaseLabel) {
-      tableFootballPhaseLabel.textContent = state.phase === 'attack' ? 'Phase d attaque' : 'Phase de défense';
-    }
-    if (tableFootballSubLabel) {
-      tableFootballSubLabel.textContent = state.phase === 'attack'
-        ? 'Choisissez un couloir pour tirer vers le but adverse.'
-        : 'Choisissez un couloir pour tenter l arrêt du tir.';
-    }
+    const mySlot = (activeGame.player1.id === window.currentUserId) ? 1 : 2;
+    const myKey = `p${mySlot}`;
 
-    const shotLane = state.lastPlay?.type === 'shot' ? state.lastPlay.shotLane : state.pendingShotLane;
-    const blockLane = state.lastPlay?.type === 'shot' ? state.lastPlay.blockLane : null;
-
-    const goalSlotsHtml = Array.from({ length: 5 }, (_, lane) => `
-      <div class="table-football-goal-slot ${shotLane === lane ? 'active' : ''} ${blockLane === lane ? 'blocked' : ''}"></div>
-    `).join('');
-
-    tableFootballField.innerHTML = `
-      <div class="table-football-goal">${goalSlotsHtml}</div>
-      <div class="table-football-center">
-        <div class="table-football-ball">⚽</div>
-      </div>
-      <div class="table-football-goal">${goalSlotsHtml}</div>
-    `;
-
-    tableFootballActions.innerHTML = '';
-    Array.from({ length: 5 }, (_, lane) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'table-football-lane-btn';
-      btn.textContent = `Couloir ${lane + 1}`;
-      btn.disabled = !isMyTurn;
-      btn.addEventListener('click', () => {
-        if (!isMyTurn) return;
-        socket.emit('game-move', { gameId: activeGame.id, r: 0, c: lane });
-      });
-      tableFootballActions.appendChild(btn);
-    });
-
-    if (tableFootballResult) {
-      if (state.lastPlay?.type === 'shot') {
-        const attackerName = state.lastPlay.attacker === 1 ? activeGame.player1.name : activeGame.player2?.name;
-        tableFootballResult.textContent = state.lastPlay.goal
-          ? `But pour ${attackerName} sur le couloir ${state.lastPlay.shotLane + 1}.`
-          : `Arrêt sur le couloir ${state.lastPlay.blockLane + 1}.`;
+    if (tableFootballStatusText) {
+      if (activeGame.status === 'finished') {
+        tableFootballStatusText.textContent = 'Match terminé !';
       } else {
-        tableFootballResult.textContent = isMyTurn
-          ? (isAttacking ? 'Vous êtes en attaque.' : 'Vous êtes en défense.')
-          : 'Attendez le choix de votre adversaire.';
+        tableFootballStatusText.textContent = isMyTurn ? 'À votre tour !' : "En attente de l'adversaire...";
       }
     }
+    if (tableFootballHelperText) {
+      if (activeGame.status === 'finished') {
+        tableFootballHelperText.textContent = 'Cliquez sur Rejouer pour lancer un autre match.';
+      } else {
+        tableFootballHelperText.textContent = isMyTurn
+          ? (mySlot === 1 ? 'Glissez depuis vos pions bleus pour tirer.' : 'Glissez depuis vos pions jaunes/verts pour tirer.')
+          : 'Patientez pendant que l\'autre joueur vise.';
+      }
+    }
+
+    // Initialize state if new game
+    if (!window.tfGameState || window.tfGameState.gameId !== activeGame.id) {
+      if (window.tfGameState && window.tfGameState.animationFrameId) {
+        cancelAnimationFrame(window.tfGameState.animationFrameId);
+      }
+      
+      const serverState = activeGame.tableFootballState;
+      window.tfGameState = {
+        gameId: activeGame.id,
+        positions: JSON.parse(JSON.stringify(serverState.positions)),
+        scores: { ...serverState.scores },
+        isSimulating: false,
+        draggedPuckIndex: null,
+        dragStart: null,
+        dragCurrent: null,
+        animationFrameId: null,
+        lastPlaySig: null
+      };
+      
+      // Wire events once
+      canvas.onmousedown = onCanvasStart;
+      canvas.ontouchstart = onCanvasStart;
+      canvas.onmousemove = onCanvasMove;
+      canvas.ontouchmove = onCanvasMove;
+      window.onmouseup = onCanvasEnd;
+      window.ontouchend = onCanvasEnd;
+    }
+
+    const state = window.tfGameState;
+
+    // Apply opponent's shot if present and not yet processed
+    const serverState = activeGame.tableFootballState;
+    if (serverState.lastPlay && serverState.lastPlay.type === 'shot') {
+      const playSig = `${serverState.lastPlay.playerSlot}-${serverState.lastPlay.puckIndex}-${serverState.lastPlay.vx}-${serverState.lastPlay.vy}`;
+      if (state.lastPlaySig !== playSig) {
+        state.lastPlaySig = playSig;
+        
+        // Sync local positions and scores to match server just before applying shot
+        if (serverState.positions) {
+          state.positions = JSON.parse(JSON.stringify(serverState.positions));
+        }
+        
+        // Apply impulse
+        const slotKey = serverState.lastPlay.playerSlot === 1 ? 'p1' : 'p2';
+        const puck = state.positions[slotKey][serverState.lastPlay.puckIndex];
+        if (puck) {
+          puck.vx = serverState.lastPlay.vx;
+          puck.vy = serverState.lastPlay.vy;
+          state.isSimulating = true;
+        }
+      }
+    }
+
+    // Physics parameters
+    const FRICTION = 0.985;
+    const BALL_FRICTION = 0.99;
+    const PUCK_RADIUS = 16;
+    const BALL_RADIUS = 10;
+    const PUCK_MASS = 2.0;
+    const BALL_MASS = 1.0;
+    const FIELD_WIDTH = 360;
+    const FIELD_HEIGHT = 600;
+    const GOAL_MIN_X = 130;
+    const GOAL_MAX_X = 230;
+
+    // Helper functions for mouse / touch coords
+    function getMousePos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: (clientX - rect.left) * (canvas.width / rect.width),
+        y: (clientY - rect.top) * (canvas.height / rect.height)
+      };
+    }
+
+    function onCanvasStart(e) {
+      if (activeGame.status !== 'playing' || !isMyTurn || state.isSimulating) return;
+      const pos = getMousePos(e);
+      
+      // Find if we clicked one of our pucks
+      const myPucks = state.positions[myKey];
+      for (let i = 0; i < myPucks.length; i++) {
+        const p = myPucks[i];
+        const dx = pos.x - p.x;
+        const dy = pos.y - p.y;
+        if (dx*dx + dy*dy < PUCK_RADIUS * PUCK_RADIUS) {
+          state.draggedPuckIndex = i;
+          state.dragStart = pos;
+          state.dragCurrent = pos;
+          e.preventDefault();
+          break;
+        }
+      }
+    }
+
+    function onCanvasMove(e) {
+      if (state.draggedPuckIndex === null) return;
+      state.dragCurrent = getMousePos(e);
+      e.preventDefault();
+    }
+
+    function onCanvasEnd(e) {
+      if (state.draggedPuckIndex === null) return;
+      
+      const pIndex = state.draggedPuckIndex;
+      const start = state.dragStart;
+      const curr = state.dragCurrent;
+      
+      state.draggedPuckIndex = null;
+      state.dragStart = null;
+      state.dragCurrent = null;
+
+      if (!start || !curr) return;
+
+      const dx = start.x - curr.x;
+      const dy = start.y - curr.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+
+      if (dist > 5) {
+        // Slingshot force
+        const maxDrag = 100;
+        const clampedDist = Math.min(dist, maxDrag);
+        const force = (clampedDist / maxDrag) * 22; // max velocity 22
+        const vx = (dx / dist) * force;
+        const vy = (dy / dist) * force;
+
+        // Apply local impulse
+        const puck = state.positions[myKey][pIndex];
+        puck.vx = vx;
+        puck.vy = vy;
+        state.isSimulating = true;
+
+        // Emit shot move to server
+        socket.emit('game-move', {
+          gameId: activeGame.id,
+          r: pIndex,
+          c: 0,
+          toR: Math.round(vx * 1000),
+          toC: Math.round(vy * 1000),
+          promotion: 'shot'
+        });
+      }
+    }
+
+    // Main animation loop
+    function loop() {
+      if (state.gameId !== activeGame.id) return; // Stop loop if active game changes
+
+      updatePhysicsState();
+      drawField();
+      
+      state.animationFrameId = requestAnimationFrame(loop);
+    }
+
+    function updatePhysicsState() {
+      let isMoving = false;
+      
+      // Update velocities and positions
+      const updateObj = (p, friction) => {
+        if (typeof p.vx === 'undefined') { p.vx = 0; p.vy = 0; }
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= friction;
+        p.vy *= friction;
+        if (Math.abs(p.vx) < 0.05) p.vx = 0;
+        if (Math.abs(p.vy) < 0.05) p.vy = 0;
+        if (p.vx !== 0 || p.vy !== 0) isMoving = true;
+      };
+
+      state.positions.p1.forEach(p => updateObj(p, FRICTION));
+      state.positions.p2.forEach(p => updateObj(p, FRICTION));
+      updateObj(state.positions.ball, BALL_FRICTION);
+
+      // Wall rebounds for pucks
+      [...state.positions.p1, ...state.positions.p2].forEach(p => {
+        if (p.x < PUCK_RADIUS) { p.x = PUCK_RADIUS; p.vx *= -0.8; }
+        if (p.x > FIELD_WIDTH - PUCK_RADIUS) { p.x = FIELD_WIDTH - PUCK_RADIUS; p.vx *= -0.8; }
+        
+        if (p.y < PUCK_RADIUS) {
+          if (p.x < GOAL_MIN_X || p.x > GOAL_MAX_X) { p.y = PUCK_RADIUS; p.vy *= -0.8; }
+          else if (p.y < -PUCK_RADIUS) { p.y = -PUCK_RADIUS; p.vy *= -0.8; }
+        }
+        if (p.y > FIELD_HEIGHT - PUCK_RADIUS) {
+          if (p.x < GOAL_MIN_X || p.x > GOAL_MAX_X) { p.y = FIELD_HEIGHT - PUCK_RADIUS; p.vy *= -0.8; }
+          else if (p.y > FIELD_HEIGHT + PUCK_RADIUS) { p.y = FIELD_HEIGHT + PUCK_RADIUS; p.vy *= -0.8; }
+        }
+      });
+
+      // Wall rebounds for ball
+      const b = state.positions.ball;
+      if (b.x < BALL_RADIUS) { b.x = BALL_RADIUS; b.vx *= -0.85; }
+      if (b.x > FIELD_WIDTH - BALL_RADIUS) { b.x = FIELD_WIDTH - BALL_RADIUS; b.vx *= -0.85; }
+      if (b.y < BALL_RADIUS && (b.x < GOAL_MIN_X || b.x > GOAL_MAX_X)) { b.y = BALL_RADIUS; b.vy *= -0.85; }
+      if (b.y > FIELD_HEIGHT - BALL_RADIUS && (b.x < GOAL_MIN_X || b.x > GOAL_MAX_X)) { b.y = FIELD_HEIGHT - BALL_RADIUS; b.vy *= -0.85; }
+
+      // Circle-Circle collisions
+      const objects = [
+        ...state.positions.p1.map((p, index) => ({ obj: p, r: PUCK_RADIUS, m: PUCK_MASS })),
+        ...state.positions.p2.map((p, index) => ({ obj: p, r: PUCK_RADIUS, m: PUCK_MASS })),
+        { obj: b, r: BALL_RADIUS, m: BALL_MASS }
+      ];
+
+      for (let i = 0; i < objects.length; i++) {
+        for (let j = i + 1; j < objects.length; j++) {
+          const o1 = objects[i];
+          const o2 = objects[j];
+          const dx = o2.obj.x - o1.obj.x;
+          const dy = o2.obj.y - o1.obj.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          const minDist = o1.r + o2.r;
+          
+          if (dist < minDist && dist > 0.1) {
+            // Push away
+            const overlap = minDist - dist;
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const totalMass = o1.m + o2.m;
+            
+            o1.obj.x -= nx * overlap * (o2.m / totalMass);
+            o1.obj.y -= ny * overlap * (o2.m / totalMass);
+            o2.obj.x += nx * overlap * (o1.m / totalMass);
+            o2.obj.y += ny * overlap * (o1.m / totalMass);
+
+            // Elastic bounce
+            const kx = o1.obj.vx - o2.obj.vx;
+            const ky = o1.obj.vy - o2.obj.vy;
+            const vn = kx*nx + ky*ny;
+            
+            if (vn > 0) {
+              const impulse = (2 * vn) / totalMass;
+              o1.obj.vx -= nx * impulse * o2.m;
+              o1.obj.vy -= ny * impulse * o2.m;
+              o2.obj.vx += nx * impulse * o1.m;
+              o2.obj.vy += ny * impulse * o1.m;
+            }
+          }
+        }
+      }
+
+      // Goal triggers
+      let goalScoredBy = null;
+      if (b.y < 0 && b.x >= GOAL_MIN_X && b.x <= GOAL_MAX_X) {
+        goalScoredBy = 2; // P2 scored ( Brazil )
+      } else if (b.y > FIELD_HEIGHT && b.x >= GOAL_MIN_X && b.x <= GOAL_MAX_X) {
+        goalScoredBy = 1; // P1 scored ( France )
+      }
+
+      if (goalScoredBy) {
+        // Increment score locally
+        state.scores[goalScoredBy] = Number(state.scores[goalScoredBy] || 0) + 1;
+        if (tfScoreText) tfScoreText.textContent = `${state.scores[1]} - ${state.scores[2]}`;
+        
+        // Show goal banner in status
+        if (tableFootballStatusText) {
+          tableFootballStatusText.innerHTML = `<span style="color:#22c55e; font-size: 16px; font-weight: 900; animation: bounce 0.5s infinite;">⚽ GOOOAL !!! ⚽</span>`;
+        }
+
+        // Reset positions
+        state.positions = {
+          p1: [
+            { x: 180, y: 80, vx: 0, vy: 0 },
+            { x: 100, y: 150, vx: 0, vy: 0 },
+            { x: 260, y: 150, vx: 0, vy: 0 },
+            { x: 130, y: 240, vx: 0, vy: 0 },
+            { x: 230, y: 240, vx: 0, vy: 0 }
+          ],
+          p2: [
+            { x: 180, y: 520, vx: 0, vy: 0 },
+            { x: 100, y: 450, vx: 0, vy: 0 },
+            { x: 260, y: 450, vx: 0, vy: 0 },
+            { x: 130, y: 360, vx: 0, vy: 0 },
+            { x: 230, y: 360, vx: 0, vy: 0 }
+          ],
+          ball: { x: 180, y: 300, vx: 0, vy: 0 }
+        };
+        
+        isMoving = false;
+        
+        // Short pause
+        state.isSimulating = true;
+        setTimeout(() => {
+          state.isSimulating = false;
+          if (activeGame.status === 'playing' && isMyTurn) {
+            socket.emit('game-move', {
+              gameId: activeGame.id,
+              r: -1,
+              c: -1,
+              promotion: 'sync',
+              finalState: { positions: state.positions, scores: state.scores }
+            });
+          }
+        }, 1500);
+      }
+
+      // If transition from simulating to stopped, sync with server
+      if (state.isSimulating && !isMoving && !goalScoredBy) {
+        state.isSimulating = false;
+        
+        // Shooter client is responsible for sending authoritative final position sync
+        if (activeGame.status === 'playing' && isMyTurn) {
+          socket.emit('game-move', {
+            gameId: activeGame.id,
+            r: -1,
+            c: -1,
+            promotion: 'sync',
+            finalState: { positions: state.positions, scores: state.scores }
+          });
+        }
+      }
+    }
+
+    function drawField() {
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw grass field stripes
+      const stripeHeight = canvas.height / 10;
+      for (let i = 0; i < 10; i++) {
+        ctx.fillStyle = (i % 2 === 0) ? '#1c3d1b' : '#173616';
+        ctx.fillRect(0, i * stripeHeight, canvas.width, stripeHeight);
+      }
+
+      // Draw pitch lines
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 3;
+
+      // Outer border
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(GOAL_MIN_X, 0);
+      ctx.moveTo(GOAL_MAX_X, 0);
+      ctx.lineTo(FIELD_WIDTH, 0);
+      ctx.lineTo(FIELD_WIDTH, FIELD_HEIGHT);
+      ctx.lineTo(GOAL_MAX_X, FIELD_HEIGHT);
+      ctx.moveTo(GOAL_MIN_X, FIELD_HEIGHT);
+      ctx.lineTo(0, FIELD_HEIGHT);
+      ctx.lineTo(0, 0);
+      ctx.stroke();
+
+      // Midfield line & center circle
+      ctx.beginPath();
+      ctx.moveTo(0, FIELD_HEIGHT / 2);
+      ctx.lineTo(FIELD_WIDTH, FIELD_HEIGHT / 2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(FIELD_WIDTH / 2, FIELD_HEIGHT / 2, 50, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Goal penalty boxes
+      ctx.strokeRect(60, 0, 240, 90);
+      ctx.strokeRect(60, 510, 240, 90);
+      
+      // Goal posts netting rectangles
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.strokeRect(GOAL_MIN_X, -20, 100, 20);
+      ctx.fillRect(GOAL_MIN_X, -20, 100, 20);
+
+      ctx.strokeRect(GOAL_MIN_X, FIELD_HEIGHT, 100, 20);
+      ctx.fillRect(GOAL_MIN_X, FIELD_HEIGHT, 100, 20);
+
+      // Draw aim line if currently dragging
+      if (state.draggedPuckIndex !== null && state.dragStart && state.dragCurrent) {
+        const p = state.positions[myKey][state.draggedPuckIndex];
+        const dx = state.dragStart.x - state.dragCurrent.x;
+        const dy = state.dragStart.y - state.dragCurrent.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        
+        if (dist > 5) {
+          const maxDrag = 100;
+          const clampedDist = Math.min(dist, maxDrag);
+          const ratio = clampedDist / maxDrag;
+
+          // Shot direction vector
+          const angle = Math.atan2(dy, dx);
+          const targetX = p.x + Math.cos(angle) * (clampedDist * 0.8);
+          const targetY = p.y + Math.sin(angle) * (clampedDist * 0.8);
+
+          // Draw neon aiming arrow
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(targetX, targetY);
+          ctx.strokeStyle = `rgba(253, 224, 71, ${0.4 + ratio * 0.6})`;
+          ctx.lineWidth = 4;
+          ctx.stroke();
+
+          // Arrow head
+          ctx.fillStyle = `rgba(253, 224, 71, ${0.4 + ratio * 0.6})`;
+          ctx.beginPath();
+          ctx.arc(targetX, targetY, 5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Drag circle boundary
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, maxDrag * 0.8, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+
+      // Draw pucks function
+      const drawPuck = (p, colorOuter, colorMiddle, colorInner) => {
+        // Shadow
+        ctx.beginPath();
+        ctx.arc(p.x, p.y + 2, PUCK_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.fill();
+
+        // Outer disc
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = colorOuter;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Middle ring
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, PUCK_RADIUS * 0.65, 0, Math.PI * 2);
+        ctx.fillStyle = colorMiddle;
+        ctx.fill();
+
+        // Inner core
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, PUCK_RADIUS * 0.35, 0, Math.PI * 2);
+        ctx.fillStyle = colorInner;
+        ctx.fill();
+      };
+
+      // Draw Player 1 (France: blue, white, red)
+      state.positions.p1.forEach(p => drawPuck(p, '#2563eb', '#ffffff', '#dc2626'));
+
+      // Draw Player 2 (Brazil: green, yellow, blue)
+      state.positions.p2.forEach(p => drawPuck(p, '#16a34a', '#facc15', '#2563eb'));
+
+      // Draw ball
+      const ball = state.positions.ball;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y + 1.5, BALL_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Pentagons inside ball
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, BALL_RADIUS * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Launch render loop
+    loop();
   };
 
   // Highlight winning cells/stones on board

@@ -161,10 +161,23 @@ class GamesManager {
       tableFootballState = {
         scores: { 1: 0, 2: 0 },
         targetScore: 5,
-        phase: 'attack',
-        attacker: 1,
-        defender: 2,
-        pendingShotLane: null,
+        positions: {
+          p1: [
+            { x: 180, y: 80 },
+            { x: 100, y: 150 },
+            { x: 260, y: 150 },
+            { x: 130, y: 240 },
+            { x: 230, y: 240 }
+          ],
+          p2: [
+            { x: 180, y: 520 },
+            { x: 100, y: 450 },
+            { x: 260, y: 450 },
+            { x: 130, y: 360 },
+            { x: 230, y: 360 }
+          ],
+          ball: { x: 180, y: 300 }
+        },
         lastPlay: null
       };
     } else {
@@ -532,61 +545,57 @@ class GamesManager {
       mathState.currentQuestion = this.generateMathQuestion();
     } else if (game.gameType === 'tablefootball') {
       const footballState = game.tableFootballState;
-      const lane = Number(parsedCol);
       if (!footballState) throw new Error('Match de football introuvable.');
-      if (!Number.isInteger(lane) || lane < 0 || lane > 4) {
-        throw new Error('Couloir invalide.');
-      }
 
-      if (footballState.phase === 'attack') {
-        if (game.currentPlayer !== footballState.attacker) {
-          throw new Error('C est au tour de l attaquant.');
+      const actionType = extraMove?.promotion || 'shot';
+
+      if (actionType === 'shot') {
+        const puckIndex = Number(parsedRow);
+        const vx = Number(extraMove?.toR) / 1000;
+        const vy = Number(extraMove?.toC) / 1000;
+
+        if (!Number.isInteger(puckIndex) || puckIndex < 0 || puckIndex > 4) {
+          throw new Error('Puck invalide.');
         }
-        footballState.pendingShotLane = lane;
-        footballState.phase = 'defend';
+        if (isNaN(vx) || isNaN(vy)) {
+          throw new Error('Impulsion de tir invalide.');
+        }
+
+        // Record the shot so the opponent can animate it locally
         footballState.lastPlay = {
-          type: 'aim',
-          attacker: footballState.attacker,
-          shotLane: lane
+          type: 'shot',
+          playerSlot: game.currentPlayer,
+          puckIndex,
+          vx,
+          vy
         };
-        game.currentPlayer = footballState.defender;
+
         return { success: true, game };
+      } else if (actionType === 'sync') {
+        const finalState = extraMove?.finalState;
+        if (!finalState || !finalState.positions || !finalState.scores) {
+          throw new Error('Données de synchronisation invalides.');
+        }
+
+        footballState.positions = finalState.positions;
+        footballState.scores = finalState.scores;
+        footballState.lastPlay = null; // Clear last play
+
+        const targetScore = footballState.targetScore || 5;
+        if (Number(footballState.scores[1]) >= targetScore) {
+          return await this.endGame(gameId, game.player1.id);
+        }
+        if (Number(footballState.scores[2]) >= targetScore) {
+          const winnerId = game.player2.id;
+          return await this.endGame(gameId, winnerId);
+        }
+
+        // Switch turn
+        game.currentPlayer = game.currentPlayer === 1 ? 2 : 1;
+        return { success: true, game };
+      } else {
+        throw new Error('Action de football inconnue.');
       }
-
-      if (footballState.phase !== 'defend') {
-        throw new Error('Phase de jeu invalide.');
-      }
-
-      if (game.currentPlayer !== footballState.defender) {
-        throw new Error('C est au tour du defenseur.');
-      }
-
-      const goal = lane !== footballState.pendingShotLane;
-      const scoringPlayerSlot = footballState.attacker;
-      if (goal) {
-        footballState.scores[scoringPlayerSlot] = Number(footballState.scores[scoringPlayerSlot] || 0) + 1;
-      }
-
-      footballState.lastPlay = {
-        type: 'shot',
-        attacker: footballState.attacker,
-        defender: footballState.defender,
-        shotLane: footballState.pendingShotLane,
-        blockLane: lane,
-        goal
-      };
-
-      if (footballState.scores[scoringPlayerSlot] >= footballState.targetScore) {
-        const winnerId = scoringPlayerSlot === 1 ? game.player1.id : game.player2.id;
-        return await this.endGame(gameId, winnerId);
-      }
-
-      footballState.pendingShotLane = null;
-      footballState.phase = 'attack';
-      footballState.attacker = footballState.attacker === 1 ? 2 : 1;
-      footballState.defender = footballState.attacker === 1 ? 2 : 1;
-      game.currentPlayer = footballState.attacker;
-      return { success: true, game };
     }
 
     // Switch player
@@ -796,19 +805,56 @@ class GamesManager {
         return await this.makeMove(gameId, game.player2.id, 0, answerIndex);
       } else if (game.gameType === 'tablefootball') {
         const footballState = game.tableFootballState;
-        if (!footballState) return;
-        if (footballState.phase === 'attack') {
-          const weightedAttackChoices = isPaidMode ? [2, 2, 1, 3, 0, 4, 2] : [2, 1, 3, 0, 4];
-          const lane = weightedAttackChoices[Math.floor(Math.random() * weightedAttackChoices.length)];
-          return await this.makeMove(gameId, game.player2.id, 0, lane);
+        if (!footballState || !footballState.positions) return;
+
+        const botPucks = footballState.positions.p2;
+        const ball = footballState.positions.ball;
+
+        // Choose the puck closest to the ball
+        let bestPuckIndex = 0;
+        let minDist = Infinity;
+        botPucks.forEach((p, index) => {
+          const dx = ball.x - p.x;
+          const dy = ball.y - p.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < minDist) {
+            minDist = dist;
+            bestPuckIndex = index;
+          }
+        });
+
+        // 25% chance of picking a random puck for variety
+        if (Math.random() < 0.25) {
+          bestPuckIndex = Math.floor(Math.random() * botPucks.length);
         }
-        const lastShotLane = footballState.pendingShotLane;
-        let blockLane = Number.isInteger(lastShotLane) ? lastShotLane : 2;
-        if (Math.random() > (isPaidMode ? 0.82 : 0.65)) {
-          const alternatives = [0, 1, 2, 3, 4].filter((lane) => lane !== blockLane);
-          blockLane = alternatives[Math.floor(Math.random() * alternatives.length)];
-        }
-        return await this.makeMove(gameId, game.player2.id, 0, blockLane);
+
+        const chosenPuck = botPucks[bestPuckIndex];
+
+        // Aim towards the ball with a minor error margin
+        const errorMargin = isPaidMode ? 6 : 22;
+        const targetX = ball.x + (Math.random() * 2 - 1) * errorMargin;
+        const targetY = ball.y + (Math.random() * 2 - 1) * errorMargin;
+
+        let dx = targetX - chosenPuck.x;
+        let dy = targetY - chosenPuck.y;
+        const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+
+        // Select a random shot force
+        const force = 11 + Math.random() * 10;
+        const vx = (dx / dist) * force;
+        const vy = (dy / dist) * force;
+
+        return await this.makeMove(
+          gameId,
+          game.player2.id,
+          bestPuckIndex,
+          0,
+          {
+            toR: Math.round(vx * 1000),
+            toC: Math.round(vy * 1000),
+            promotion: 'shot'
+          }
+        );
       } else if (game.gameType === 'gomoku') {
         botMove = this.getGomokuAIMove(game.board, game.player2.symbol, game.player1.symbol, isPaidMode);
       }

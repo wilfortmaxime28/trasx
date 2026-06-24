@@ -6119,8 +6119,8 @@ io.on('connection', (socket) => {
       const currentUserId = session.userId;
       if (!currentUserId) throw new Error('Non authentifié.');
 
-      const { gameId, r, c, toR, toC, promotion } = data || {};
-      const result = await gamesManager.makeMove(gameId, currentUserId, r, c, { toR, toC, promotion });
+      const { gameId, r, c, toR, toC, promotion, finalState } = data || {};
+      const result = await gamesManager.makeMove(gameId, currentUserId, r, c, { toR, toC, promotion, finalState });
 
       if (result && result.success) {
         // Broadcast the player's move state
