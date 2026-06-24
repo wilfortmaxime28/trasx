@@ -20453,7 +20453,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Load Lobby Lists from Server
-  const loadGamesLobby = () => {
+  function loadGamesLobby() {
     if (!socket || !socket.connected) return;
     socket.emit('games-list-get', (games = []) => {
       renderLobbyLists(games);
@@ -20463,7 +20463,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (opponentRadio && opponentRadio.value === 'bot') {
       loadBotsList();
     }
-  };
+  }
 
   const renderLobbyLists = (games) => {
     window.allLobbyGames = games; // Store globally for spectate payment checks
