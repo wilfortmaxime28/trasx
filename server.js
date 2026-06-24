@@ -383,9 +383,7 @@ function antiScrapingMiddleware(req, res, next) {
 }
 
 app.use(antiScrapingMiddleware);
-app.use('/api', customRateLimiter({ windowMs: 60 * 1000, max: 600 }));
-app.use('/auth/login', customRateLimiter({ windowMs: 60 * 1000, max: 20 }));
-app.use('/auth/register', customRateLimiter({ windowMs: 60 * 1000, max: 15 }));
+
 
 
 app.get('/robots.txt', (req, res) => {
