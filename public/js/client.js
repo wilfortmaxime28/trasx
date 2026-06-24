@@ -22198,7 +22198,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Main animation loop
     function loop() {
-      if (state.gameId !== activeGame.id) return; // Stop loop if active game changes
+      if (!activeGame || state.gameId !== activeGame.id) {
+        state.animationFrameId = null;
+        return; // Stop loop if active game changes
+      }
 
       updatePhysicsState();
       drawField();
@@ -22980,6 +22983,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       socket.emit('game-forfeit', { gameId: activeGame.id });
+    }
+
+    if (window.tfGameState) {
+      if (window.tfGameState.animationFrameId) {
+        cancelAnimationFrame(window.tfGameState.animationFrameId);
+      }
+      window.tfGameState = null;
     }
 
     if (typeof cleanupGameWebRTC === 'function') {
