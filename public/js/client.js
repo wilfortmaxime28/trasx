@@ -22109,6 +22109,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const BALL_MASS = 1.0;
     const FIELD_WIDTH = 360;
     const FIELD_HEIGHT = 600;
+    const FIELD_MIN_X = 30;
+    const FIELD_MAX_X = 330;
+    const FIELD_MIN_Y = 40;
+    const FIELD_MAX_Y = 560;
     const GOAL_MIN_X = 130;
     const GOAL_MAX_X = 230;
 
@@ -22223,25 +22227,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Wall rebounds for pucks
       [...state.positions.p1, ...state.positions.p2].forEach(p => {
-        if (p.x < PUCK_RADIUS) { p.x = PUCK_RADIUS; p.vx *= -0.8; }
-        if (p.x > FIELD_WIDTH - PUCK_RADIUS) { p.x = FIELD_WIDTH - PUCK_RADIUS; p.vx *= -0.8; }
+        if (p.x < FIELD_MIN_X + PUCK_RADIUS) { p.x = FIELD_MIN_X + PUCK_RADIUS; p.vx *= -0.8; }
+        if (p.x > FIELD_MAX_X - PUCK_RADIUS) { p.x = FIELD_MAX_X - PUCK_RADIUS; p.vx *= -0.8; }
         
-        if (p.y < PUCK_RADIUS) {
-          if (p.x < GOAL_MIN_X || p.x > GOAL_MAX_X) { p.y = PUCK_RADIUS; p.vy *= -0.8; }
-          else if (p.y < -PUCK_RADIUS) { p.y = -PUCK_RADIUS; p.vy *= -0.8; }
+        if (p.y < FIELD_MIN_Y + PUCK_RADIUS) {
+          if (p.x < GOAL_MIN_X || p.x > GOAL_MAX_X) { p.y = FIELD_MIN_Y + PUCK_RADIUS; p.vy *= -0.8; }
+          else if (p.y < 20 + PUCK_RADIUS) { p.y = 20 + PUCK_RADIUS; p.vy *= -0.8; }
         }
-        if (p.y > FIELD_HEIGHT - PUCK_RADIUS) {
-          if (p.x < GOAL_MIN_X || p.x > GOAL_MAX_X) { p.y = FIELD_HEIGHT - PUCK_RADIUS; p.vy *= -0.8; }
-          else if (p.y > FIELD_HEIGHT + PUCK_RADIUS) { p.y = FIELD_HEIGHT + PUCK_RADIUS; p.vy *= -0.8; }
+        if (p.y > FIELD_MAX_Y - PUCK_RADIUS) {
+          if (p.x < GOAL_MIN_X || p.x > GOAL_MAX_X) { p.y = FIELD_MAX_Y - PUCK_RADIUS; p.vy *= -0.8; }
+          else if (p.y > 580 - PUCK_RADIUS) { p.y = 580 - PUCK_RADIUS; p.vy *= -0.8; }
         }
       });
 
       // Wall rebounds for ball
       const b = state.positions.ball;
-      if (b.x < BALL_RADIUS) { b.x = BALL_RADIUS; b.vx *= -0.85; }
-      if (b.x > FIELD_WIDTH - BALL_RADIUS) { b.x = FIELD_WIDTH - BALL_RADIUS; b.vx *= -0.85; }
-      if (b.y < BALL_RADIUS && (b.x < GOAL_MIN_X || b.x > GOAL_MAX_X)) { b.y = BALL_RADIUS; b.vy *= -0.85; }
-      if (b.y > FIELD_HEIGHT - BALL_RADIUS && (b.x < GOAL_MIN_X || b.x > GOAL_MAX_X)) { b.y = FIELD_HEIGHT - BALL_RADIUS; b.vy *= -0.85; }
+      if (b.x < FIELD_MIN_X + BALL_RADIUS) { b.x = FIELD_MIN_X + BALL_RADIUS; b.vx *= -0.85; }
+      if (b.x > FIELD_MAX_X - BALL_RADIUS) { b.x = FIELD_MAX_X - BALL_RADIUS; b.vx *= -0.85; }
+      
+      // Top wall/goalposts
+      if (b.y < FIELD_MIN_Y + BALL_RADIUS) {
+        if (b.x < GOAL_MIN_X || b.x > GOAL_MAX_X) {
+          b.y = FIELD_MIN_Y + BALL_RADIUS;
+          b.vy *= -0.85;
+        } else {
+          // Inside goal mouth. Check side boundaries of top goal (net/posts)
+          if (b.x < GOAL_MIN_X + BALL_RADIUS) { b.x = GOAL_MIN_X + BALL_RADIUS; b.vx *= -0.85; }
+          if (b.x > GOAL_MAX_X - BALL_RADIUS) { b.x = GOAL_MAX_X - BALL_RADIUS; b.vx *= -0.85; }
+          // Back wall of net
+          if (b.y < 20 + BALL_RADIUS) { b.y = 20 + BALL_RADIUS; b.vy *= -0.85; }
+        }
+      }
+      
+      // Bottom wall/goalposts
+      if (b.y > FIELD_MAX_Y - BALL_RADIUS) {
+        if (b.x < GOAL_MIN_X || b.x > GOAL_MAX_X) {
+          b.y = FIELD_MAX_Y - BALL_RADIUS;
+          b.vy *= -0.85;
+        } else {
+          // Inside goal mouth. Check side boundaries of bottom goal (net/posts)
+          if (b.x < GOAL_MIN_X + BALL_RADIUS) { b.x = GOAL_MIN_X + BALL_RADIUS; b.vx *= -0.85; }
+          if (b.x > GOAL_MAX_X - BALL_RADIUS) { b.x = GOAL_MAX_X - BALL_RADIUS; b.vx *= -0.85; }
+          // Back wall of net
+          if (b.y > 580 - BALL_RADIUS) { b.y = 580 - BALL_RADIUS; b.vy *= -0.85; }
+        }
+      }
 
       // Circle-Circle collisions
       const objects = [
@@ -22289,9 +22319,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Goal triggers
       let goalScoredBy = null;
-      if (b.y < 0 && b.x >= GOAL_MIN_X && b.x <= GOAL_MAX_X) {
+      if (b.y < FIELD_MIN_Y - 5 && b.x >= GOAL_MIN_X && b.x <= GOAL_MAX_X) {
         goalScoredBy = 2; // P2 scored ( Brazil )
-      } else if (b.y > FIELD_HEIGHT && b.x >= GOAL_MIN_X && b.x <= GOAL_MAX_X) {
+      } else if (b.y > FIELD_MAX_Y + 5 && b.x >= GOAL_MIN_X && b.x <= GOAL_MAX_X) {
         goalScoredBy = 1; // P1 scored ( France )
       }
 
@@ -22363,54 +22393,218 @@ document.addEventListener('DOMContentLoaded', () => {
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw grass field stripes
-      const stripeHeight = canvas.height / 10;
+      // 1. Draw Background turf (dark green)
+      ctx.fillStyle = '#112211';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 2. Draw Left and Right spectator stands (tribunes)
+      // Left Tribune (X: 0 to 30)
+      ctx.fillStyle = '#2d2d2d';
+      ctx.fillRect(0, 40, 24, 520);
+      // Stands steps / benches
+      ctx.strokeStyle = '#1e1e1e';
+      ctx.lineWidth = 1;
+      for (let y = 45; y < 560; y += 12) {
+        ctx.beginPath();
+        ctx.moveTo(2, y);
+        ctx.lineTo(22, y);
+        ctx.stroke();
+
+        // Draw tiny spectator circles/dots
+        for (let x = 5; x < 22; x += 6) {
+          // 40% chance of a spectator
+          if (Math.sin(x * y) > -0.2) {
+            ctx.beginPath();
+            ctx.arc(x, y - 3, 2, 0, Math.PI * 2);
+            // Spectator colors
+            const colorHash = Math.abs(Math.sin(x + y * 10));
+            if (colorHash < 0.2) ctx.fillStyle = '#ef4444';
+            else if (colorHash < 0.4) ctx.fillStyle = '#eab308';
+            else if (colorHash < 0.6) ctx.fillStyle = '#3b82f6';
+            else if (colorHash < 0.8) ctx.fillStyle = '#22c55e';
+            else ctx.fillStyle = '#ffffff';
+            ctx.fill();
+          }
+        }
+      }
+      // White barrier line on the inside of the tribune
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(25, 40);
+      ctx.lineTo(25, 560);
+      ctx.stroke();
+
+      // Right Tribune (X: 330 to 360)
+      ctx.fillStyle = '#2d2d2d';
+      ctx.fillRect(336, 40, 24, 520);
+      for (let y = 45; y < 560; y += 12) {
+        ctx.beginPath();
+        ctx.moveTo(338, y);
+        ctx.lineTo(358, y);
+        ctx.stroke();
+
+        for (let x = 341; x < 358; x += 6) {
+          if (Math.sin(x * y) > -0.2) {
+            ctx.beginPath();
+            ctx.arc(x, y - 3, 2, 0, Math.PI * 2);
+            const colorHash = Math.abs(Math.sin(x + y * 10));
+            if (colorHash < 0.2) ctx.fillStyle = '#ef4444';
+            else if (colorHash < 0.4) ctx.fillStyle = '#eab308';
+            else if (colorHash < 0.6) ctx.fillStyle = '#3b82f6';
+            else if (colorHash < 0.8) ctx.fillStyle = '#22c55e';
+            else ctx.fillStyle = '#ffffff';
+            ctx.fill();
+          }
+        }
+      }
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(335, 40);
+      ctx.lineTo(335, 560);
+      ctx.stroke();
+
+      // 3. Draw grass field stripes inside FIELD boundaries (30 to 330, 40 to 560)
+      const fieldW = FIELD_MAX_X - FIELD_MIN_X;
+      const fieldH = FIELD_MAX_Y - FIELD_MIN_Y;
+      const stripeHeight = fieldH / 10;
       for (let i = 0; i < 10; i++) {
         ctx.fillStyle = (i % 2 === 0) ? '#1c3d1b' : '#173616';
-        ctx.fillRect(0, i * stripeHeight, canvas.width, stripeHeight);
+        ctx.fillRect(FIELD_MIN_X, FIELD_MIN_Y + i * stripeHeight, fieldW, stripeHeight);
       }
 
-      // Draw pitch lines
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 3;
+      // 4. Draw pitch lines (white lines)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.lineWidth = 2;
 
       // Outer border
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(GOAL_MIN_X, 0);
-      ctx.moveTo(GOAL_MAX_X, 0);
-      ctx.lineTo(FIELD_WIDTH, 0);
-      ctx.lineTo(FIELD_WIDTH, FIELD_HEIGHT);
-      ctx.lineTo(GOAL_MAX_X, FIELD_HEIGHT);
-      ctx.moveTo(GOAL_MIN_X, FIELD_HEIGHT);
-      ctx.lineTo(0, FIELD_HEIGHT);
-      ctx.lineTo(0, 0);
+      ctx.moveTo(FIELD_MIN_X, FIELD_MIN_Y);
+      ctx.lineTo(GOAL_MIN_X, FIELD_MIN_Y);
+      ctx.moveTo(GOAL_MAX_X, FIELD_MIN_Y);
+      ctx.lineTo(FIELD_MAX_X, FIELD_MIN_Y);
+      ctx.lineTo(FIELD_MAX_X, FIELD_MAX_Y);
+      ctx.lineTo(GOAL_MAX_X, FIELD_MAX_Y);
+      ctx.moveTo(GOAL_MIN_X, FIELD_MAX_Y);
+      ctx.lineTo(FIELD_MIN_X, FIELD_MAX_Y);
+      ctx.lineTo(FIELD_MIN_X, FIELD_MIN_Y);
       ctx.stroke();
 
       // Midfield line & center circle
       ctx.beginPath();
-      ctx.moveTo(0, FIELD_HEIGHT / 2);
-      ctx.lineTo(FIELD_WIDTH, FIELD_HEIGHT / 2);
+      ctx.moveTo(FIELD_MIN_X, 300);
+      ctx.lineTo(FIELD_MAX_X, 300);
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.arc(FIELD_WIDTH / 2, FIELD_HEIGHT / 2, 50, 0, Math.PI * 2);
+      ctx.arc(180, 300, 45, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Goal penalty boxes
-      ctx.strokeRect(60, 0, 240, 90);
-      ctx.strokeRect(60, 510, 240, 90);
-      
-      // Goal posts netting rectangles
-      ctx.strokeStyle = '#e2e8f0';
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-      ctx.strokeRect(GOAL_MIN_X, -20, 100, 20);
-      ctx.fillRect(GOAL_MIN_X, -20, 100, 20);
+      // Center point
+      ctx.beginPath();
+      ctx.arc(180, 300, 3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fill();
 
-      ctx.strokeRect(GOAL_MIN_X, FIELD_HEIGHT, 100, 20);
-      ctx.fillRect(GOAL_MIN_X, FIELD_HEIGHT, 100, 20);
+      // Penalty boxes
+      ctx.strokeRect(90, 40, 180, 65);
+      ctx.strokeRect(130, 40, 100, 25);
+      ctx.beginPath();
+      ctx.arc(180, 85, 2.5, 0, Math.PI * 2);
+      ctx.fill();
 
-      // Draw aim line if currently dragging
+      ctx.strokeRect(90, 495, 180, 65);
+      ctx.strokeRect(130, 535, 100, 25);
+      ctx.beginPath();
+      ctx.arc(180, 515, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Corner arcs
+      ctx.beginPath();
+      ctx.arc(FIELD_MIN_X, FIELD_MIN_Y, 10, 0, Math.PI * 0.5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(FIELD_MAX_X, FIELD_MIN_Y, 10, Math.PI * 0.5, Math.PI);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(FIELD_MIN_X, FIELD_MAX_Y, 10, Math.PI * 1.5, 0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(FIELD_MAX_X, FIELD_MAX_Y, 10, Math.PI, Math.PI * 1.5);
+      ctx.stroke();
+
+      // Corner Flags
+      const drawCornerFlag = (x, y) => {
+        ctx.strokeStyle = '#888888';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y - 10);
+        ctx.stroke();
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.moveTo(x, y - 10);
+        ctx.lineTo(x + (x < 180 ? 6 : -6), y - 7);
+        ctx.lineTo(x, y - 4);
+        ctx.closePath();
+        ctx.fill();
+      };
+      drawCornerFlag(FIELD_MIN_X, FIELD_MIN_Y);
+      drawCornerFlag(FIELD_MAX_X, FIELD_MIN_Y);
+      drawCornerFlag(FIELD_MIN_X, FIELD_MAX_Y);
+      drawCornerFlag(FIELD_MAX_X, FIELD_MAX_Y);
+
+      // 5. Draw Goal Nets
+      // Top Goal
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 130; x <= 230; x += 10) {
+        ctx.moveTo(x, 40);
+        ctx.lineTo(x, 20);
+      }
+      for (let y = 20; y <= 40; y += 5) {
+        ctx.moveTo(130, y);
+        ctx.lineTo(230, y);
+      }
+      ctx.stroke();
+
+      // Top Goalposts
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(130, 40);
+      ctx.lineTo(130, 20);
+      ctx.lineTo(230, 20);
+      ctx.lineTo(230, 40);
+      ctx.stroke();
+
+      // Bottom Goal
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = 130; x <= 230; x += 10) {
+        ctx.moveTo(x, 560);
+        ctx.lineTo(x, 580);
+      }
+      for (let y = 560; y <= 580; y += 5) {
+        ctx.moveTo(130, y);
+        ctx.lineTo(230, y);
+      }
+      ctx.stroke();
+
+      // Bottom Goalposts
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(130, 560);
+      ctx.lineTo(130, 580);
+      ctx.lineTo(230, 580);
+      ctx.lineTo(230, 560);
+      ctx.stroke();
+
+      // 6. Draw drag indicator & aim vector
       if (state.draggedPuckIndex !== null && state.dragStart && state.dragCurrent) {
         const p = state.positions[myKey][state.draggedPuckIndex];
         const dx = state.dragStart.x - state.dragCurrent.x;
@@ -22420,91 +22614,217 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dist > 5) {
           const maxDrag = 100;
           const clampedDist = Math.min(dist, maxDrag);
-          const ratio = clampedDist / maxDrag;
+
+          // Drag range limit circle (translucent overlay)
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, maxDrag, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
 
           // Shot direction vector
           const angle = Math.atan2(dy, dx);
-          const targetX = p.x + Math.cos(angle) * (clampedDist * 0.8);
-          const targetY = p.y + Math.sin(angle) * (clampedDist * 0.8);
+          const targetX = p.x + Math.cos(angle) * (clampedDist * 0.95);
+          const targetY = p.y + Math.sin(angle) * (clampedDist * 0.95);
 
-          // Draw neon aiming arrow
+          // Save shadow state for nice 3D arrow
+          ctx.save();
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetY = 3.5;
+
+          // Draw thick white arrow body
           ctx.beginPath();
           ctx.moveTo(p.x, p.y);
           ctx.lineTo(targetX, targetY);
-          ctx.strokeStyle = `rgba(253, 224, 71, ${0.4 + ratio * 0.6})`;
-          ctx.lineWidth = 4;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 5.5;
+          ctx.lineCap = 'round';
           ctx.stroke();
 
-          // Arrow head
-          ctx.fillStyle = `rgba(253, 224, 71, ${0.4 + ratio * 0.6})`;
+          // Draw arrow head
+          const arrowSize = 10;
           ctx.beginPath();
-          ctx.arc(targetX, targetY, 5, 0, Math.PI * 2);
+          ctx.moveTo(targetX, targetY);
+          ctx.lineTo(
+            targetX - arrowSize * Math.cos(angle - Math.PI / 6),
+            targetY - arrowSize * Math.sin(angle - Math.PI / 6)
+          );
+          ctx.lineTo(
+            targetX - arrowSize * Math.cos(angle + Math.PI / 6),
+            targetY - arrowSize * Math.sin(angle + Math.PI / 6)
+          );
+          ctx.closePath();
+          ctx.fillStyle = '#ffffff';
           ctx.fill();
 
-          // Drag circle boundary
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, maxDrag * 0.8, 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-          ctx.lineWidth = 1;
-          ctx.stroke();
+          ctx.restore();
         }
       }
 
-      // Draw pucks function
-      const drawPuck = (p, colorOuter, colorMiddle, colorInner) => {
+      // 7. Draw France Flag Pucks (Player 1)
+      const drawFrancePuck = (p) => {
         // Shadow
         ctx.beginPath();
         ctx.arc(p.x, p.y + 2, PUCK_RADIUS, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
         ctx.fill();
 
-        // Outer disc
+        ctx.save();
         ctx.beginPath();
         ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
-        ctx.fillStyle = colorOuter;
-        ctx.fill();
+        ctx.clip();
+
+        // 3 Vertical stripes: Blue, White, Red
+        const third = (PUCK_RADIUS * 2) / 3;
+        ctx.fillStyle = '#00209F'; // France Blue
+        ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, third, PUCK_RADIUS * 2);
+
+        ctx.fillStyle = '#FFFFFF'; // France White
+        ctx.fillRect(p.x - PUCK_RADIUS + third, p.y - PUCK_RADIUS, third, PUCK_RADIUS * 2);
+
+        ctx.fillStyle = '#E70020'; // France Red
+        ctx.fillRect(p.x - PUCK_RADIUS + third * 2, p.y - PUCK_RADIUS, third, PUCK_RADIUS * 2);
+
+        ctx.restore();
+
+        // Outer white ring border
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Middle ring
+        // Highlight/Reflection effect
+        const grad = ctx.createRadialGradient(p.x - 4, p.y - 4, 1, p.x, p.y, PUCK_RADIUS);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+        grad.addColorStop(0.3, 'rgba(255, 255, 255, 0.08)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+        ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, PUCK_RADIUS * 0.65, 0, Math.PI * 2);
-        ctx.fillStyle = colorMiddle;
-        ctx.fill();
-
-        // Inner core
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, PUCK_RADIUS * 0.35, 0, Math.PI * 2);
-        ctx.fillStyle = colorInner;
+        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
         ctx.fill();
       };
 
-      // Draw Player 1 (France: blue, white, red)
-      state.positions.p1.forEach(p => drawPuck(p, '#2563eb', '#ffffff', '#dc2626'));
+      // 8. Draw Brazil Flag Pucks (Player 2)
+      const drawBrazilPuck = (p) => {
+        // Shadow
+        ctx.beginPath();
+        ctx.arc(p.x, p.y + 2, PUCK_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.fill();
 
-      // Draw Player 2 (Brazil: green, yellow, blue)
-      state.positions.p2.forEach(p => drawPuck(p, '#16a34a', '#facc15', '#2563eb'));
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
+        ctx.clip();
 
-      // Draw ball
+        // Green background
+        ctx.fillStyle = '#009B3A'; // Brazil Green
+        ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
+
+        // Yellow diamond
+        ctx.fillStyle = '#FEDF00'; // Brazil Yellow
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - 11);
+        ctx.lineTo(p.x + 13, p.y);
+        ctx.lineTo(p.x, p.y + 11);
+        ctx.lineTo(p.x - 13, p.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // Blue circle in center
+        ctx.fillStyle = '#002780'; // Brazil Blue
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+
+        // Outer white ring border
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Highlight/Reflection effect
+        const grad = ctx.createRadialGradient(p.x - 4, p.y - 4, 1, p.x, p.y, PUCK_RADIUS);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+        grad.addColorStop(0.3, 'rgba(255, 255, 255, 0.08)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+      };
+
+      // Draw all pucks
+      state.positions.p1.forEach(p => drawFrancePuck(p));
+      state.positions.p2.forEach(p => drawBrazilPuck(p));
+
+      // 9. Draw Soccer Ball
       const ball = state.positions.ball;
+      
+      // Shadow
       ctx.beginPath();
-      ctx.arc(ball.x, ball.y + 1.5, BALL_RADIUS, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.arc(ball.x, ball.y + 2, BALL_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.fill();
 
+      // Ball base white circle
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
       ctx.fill();
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#666666';
+      ctx.lineWidth = 0.5;
       ctx.stroke();
 
-      // Pentagons inside ball
-      ctx.fillStyle = '#000000';
+      // Pentagons inside the ball (soccer pattern)
+      ctx.fillStyle = '#1e293b';
+      const drawPentagon = (cx, cy, r, rot) => {
+        ctx.beginPath();
+        for (let j = 0; j < 5; j++) {
+          const a = rot + (j * Math.PI * 2) / 5;
+          const px = cx + Math.cos(a) * r;
+          const py = cy + Math.sin(a) * r;
+          if (j === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+      };
+
+      // Center pentagon
+      drawPentagon(ball.x, ball.y, BALL_RADIUS * 0.28, -Math.PI / 2);
+
+      // Edge panels lines
+      const numEdges = 5;
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1;
+      for (let j = 0; j < numEdges; j++) {
+        const a = -Math.PI / 2 + (j * Math.PI * 2) / 5;
+        const startX = ball.x + Math.cos(a) * (BALL_RADIUS * 0.28);
+        const startY = ball.y + Math.sin(a) * (BALL_RADIUS * 0.28);
+        const endX = ball.x + Math.cos(a) * BALL_RADIUS;
+        const endY = ball.y + Math.sin(a) * BALL_RADIUS;
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      }
+
+      // Ball glossy gradient
+      const ballGrad = ctx.createRadialGradient(ball.x - 2, ball.y - 2, 0, ball.x, ball.y, BALL_RADIUS);
+      ballGrad.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
+      ballGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.05)');
+      ballGrad.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
+      ctx.fillStyle = ballGrad;
       ctx.beginPath();
-      ctx.arc(ball.x, ball.y, BALL_RADIUS * 0.35, 0, Math.PI * 2);
+      ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
       ctx.fill();
     }
 
