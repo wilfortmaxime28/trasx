@@ -1,5 +1,5 @@
-// TrasX Service Worker v5 — Network-first with offline fallback & Web Push
-const CACHE_NAME = 'trasx-v5';
+// TrasX Service Worker v6 — Network-first with offline fallback & Web Push
+const CACHE_NAME = 'trasx-v6';
 const OFFLINE_URL = '/';
 const STATIC_ASSETS = [
   '/',
@@ -99,6 +99,38 @@ self.addEventListener('fetch', (event) => {
 
   // Skip socket.io and API calls — always network
   if (url.pathname.startsWith('/socket.io') || url.pathname.startsWith('/api/')) return;
+
+  const isStaticOrAsset = 
+    url.pathname.includes('/assets/') || 
+    url.pathname.includes('/css/') || 
+    url.pathname.includes('/js/') || 
+    url.pathname.endsWith('.png') || 
+    url.pathname.endsWith('.jpg') || 
+    url.pathname.endsWith('.jpeg') || 
+    url.pathname.endsWith('.svg') || 
+    url.pathname.endsWith('.gif') || 
+    url.pathname.endsWith('.ico') || 
+    url.pathname.endsWith('.webp') || 
+    url.hostname.includes('unpkg.com') ||
+    url.hostname.includes('fonts.googleapis.com') ||
+    url.hostname.includes('fonts.gstatic.com');
+
+  if (isStaticOrAsset) {
+    event.respondWith(
+      caches.match(request, { ignoreSearch: true }).then((cached) => {
+        const fetchPromise = fetch(request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, networkResponse.clone());
+            });
+          }
+          return networkResponse;
+        }).catch(() => {});
+        return cached || fetchPromise;
+      })
+    );
+    return;
+  }
 
   event.respondWith(
     fetch(request)
