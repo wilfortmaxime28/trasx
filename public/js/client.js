@@ -22248,7 +22248,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Slingshot force
         const maxDrag = 100;
         const clampedDist = Math.min(dist, maxDrag);
-        const force = (clampedDist / maxDrag) * 22; // max velocity 22
+        const force = (clampedDist / maxDrag) * 14.5; // max velocity 14.5 (decreased from 22)
         const vx = (dx / dist) * force;
         const vy = (dy / dist) * force;
 
@@ -22918,6 +22918,56 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
         ctx.fill();
       };
+
+      // Draw closest puck connection (dotted line and highlight)
+      const ball = state.positions.ball;
+      let closestPuck = null;
+      let minPuckDist = Infinity;
+
+      if (ball) {
+        state.positions.p1.forEach(p => {
+          const dx = ball.x - p.x;
+          const dy = ball.y - p.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < minPuckDist) {
+            minPuckDist = dist;
+            closestPuck = p;
+          }
+        });
+        state.positions.p2.forEach(p => {
+          const dx = ball.x - p.x;
+          const dy = ball.y - p.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < minPuckDist) {
+            minPuckDist = dist;
+            closestPuck = p;
+          }
+        });
+      }
+
+      if (closestPuck && ball) {
+        // Draw dotted connection line under elements
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(closestPuck.x, closestPuck.y);
+        ctx.lineTo(ball.x, ball.y);
+        ctx.stroke();
+
+        // Draw pulsing highlight ring around closest puck
+        const pulse = 1 + 0.15 * Math.sin(Date.now() / 150);
+        ctx.beginPath();
+        ctx.arc(closestPuck.x, closestPuck.y, PUCK_RADIUS * pulse, 0, Math.PI * 2);
+        ctx.strokeStyle = '#fbbf24'; // Golden highlight
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([]); // Reset line dash
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 8;
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // Draw all pucks
       const team1 = activeGame.team1 || 'FR';

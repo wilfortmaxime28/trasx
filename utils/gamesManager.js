@@ -843,8 +843,8 @@ class GamesManager {
         let dy = targetY - chosenPuck.y;
         const dist = Math.sqrt(dx*dx + dy*dy) || 1;
 
-        // Select a random shot force
-        const force = 11 + Math.random() * 10;
+        // Select a random shot force (decreased to match maximum player velocity of 14.5)
+        const force = 7 + Math.random() * 7.5;
         const vx = (dx / dist) * force;
         const vy = (dy / dist) * force;
 
