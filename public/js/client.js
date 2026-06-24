@@ -2872,8 +2872,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const unlockFeedVideosAudio = () => {
     window.feedVideosMuted = false;
     document.querySelectorAll('.post-video').forEach(video => {
+      video.muted = false;
       if (!video.paused) {
-        video.muted = false;
+        video.play().catch(() => {}); // Re-trigger play inside the user gesture handler to unlock browser audio state
       }
     });
     // Remove the listeners immediately so it only runs once
@@ -3133,12 +3134,18 @@ document.addEventListener('DOMContentLoaded', () => {
       );
       const videoEndOverlayController = createMediaEndOverlayController(endOverlay);
 
-      // Pulse overlay helper – shows a brief play/pause icon animation
-      const triggerPulseOverlay = (isPaused) => {
+      // Pulse overlay helper – shows a brief play/pause/volume icon animation
+      const triggerPulseOverlay = (iconNameOrIsPaused) => {
         if (!pulseOverlay) return;
         const iconEl = pulseOverlay.querySelector('i');
         if (iconEl) {
-          iconEl.setAttribute('data-lucide', isPaused ? 'pause' : 'play');
+          let icon = 'play';
+          if (typeof iconNameOrIsPaused === 'string') {
+            icon = iconNameOrIsPaused;
+          } else {
+            icon = iconNameOrIsPaused ? 'pause' : 'play';
+          }
+          iconEl.setAttribute('data-lucide', icon);
           if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [iconEl] });
         }
         pulseOverlay.classList.remove('pulse-active');
@@ -3200,15 +3207,31 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       video.addEventListener('click', () => {
-        if (video.paused) {
-          if (video.ended) {
-            video.currentTime = 0;
+        if (video.muted) {
+          video.muted = false;
+          window.feedVideosMuted = false;
+          triggerPulseOverlay('volume-2');
+          if (video.paused) {
+            if (video.ended) {
+              video.currentTime = 0;
+            }
+            video.play().catch(() => {});
           }
-          video.play().catch(() => showToast("Unable to play the video."));
-          triggerPulseOverlay(true);
+          
+          document.querySelectorAll('.post-video').forEach((otherVid) => {
+            otherVid.muted = false;
+          });
         } else {
-          video.pause();
-          triggerPulseOverlay(false);
+          if (video.paused) {
+            if (video.ended) {
+              video.currentTime = 0;
+            }
+            video.play().catch(() => showToast("Unable to play the video."));
+            triggerPulseOverlay(true);
+          } else {
+            video.pause();
+            triggerPulseOverlay(false);
+          }
         }
       });
 
