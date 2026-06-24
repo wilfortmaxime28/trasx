@@ -950,10 +950,23 @@ class GamesManager {
       game.tableFootballState = {
         scores: { 1: 0, 2: 0 },
         targetScore: 5,
-        phase: 'attack',
-        attacker: 1,
-        defender: 2,
-        pendingShotLane: null,
+        positions: {
+          p1: [
+            { x: 180, y: 80 },
+            { x: 100, y: 150 },
+            { x: 260, y: 150 },
+            { x: 130, y: 240 },
+            { x: 230, y: 240 }
+          ],
+          p2: [
+            { x: 180, y: 520 },
+            { x: 100, y: 450 },
+            { x: 260, y: 450 },
+            { x: 130, y: 360 },
+            { x: 230, y: 360 }
+          ],
+          ball: { x: 180, y: 300 }
+        },
         lastPlay: null
       };
     } else if (game.gameType === 'mathduel') {

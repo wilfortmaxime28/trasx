@@ -22042,8 +22042,24 @@ document.addEventListener('DOMContentLoaded', () => {
       const serverState = activeGame.tableFootballState;
       window.tfGameState = {
         gameId: activeGame.id,
-        positions: JSON.parse(JSON.stringify(serverState.positions)),
-        scores: { ...serverState.scores },
+        positions: (serverState && serverState.positions) ? JSON.parse(JSON.stringify(serverState.positions)) : {
+          p1: [
+            { x: 180, y: 80, vx: 0, vy: 0 },
+            { x: 100, y: 150, vx: 0, vy: 0 },
+            { x: 260, y: 150, vx: 0, vy: 0 },
+            { x: 130, y: 240, vx: 0, vy: 0 },
+            { x: 230, y: 240, vx: 0, vy: 0 }
+          ],
+          p2: [
+            { x: 180, y: 520, vx: 0, vy: 0 },
+            { x: 100, y: 450, vx: 0, vy: 0 },
+            { x: 260, y: 450, vx: 0, vy: 0 },
+            { x: 130, y: 360, vx: 0, vy: 0 },
+            { x: 230, y: 360, vx: 0, vy: 0 }
+          ],
+          ball: { x: 180, y: 300, vx: 0, vy: 0 }
+        },
+        scores: serverState ? { ...serverState.scores } : { 1: 0, 2: 0 },
         isSimulating: false,
         draggedPuckIndex: null,
         dragStart: null,
@@ -22494,8 +22510,10 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fill();
     }
 
-    // Launch render loop
-    loop();
+    // Launch render loop only if not already running
+    if (!state.animationFrameId) {
+      loop();
+    }
   };
 
   // Highlight winning cells/stones on board
