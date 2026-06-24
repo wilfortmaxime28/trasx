@@ -2868,6 +2868,24 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener(eventName, ensurePlatformEndAudioUnlocked, { passive: true });
   });
 
+  // Unmute active feed videos on first user interaction to bypass browser autoplay restrictions
+  const unlockFeedVideosAudio = () => {
+    window.feedVideosMuted = false;
+    document.querySelectorAll('.post-video').forEach(video => {
+      if (!video.paused) {
+        video.muted = false;
+      }
+    });
+    // Remove the listeners immediately so it only runs once
+    ['pointerdown', 'touchstart', 'keydown'].forEach((eventName) => {
+      document.removeEventListener(eventName, unlockFeedVideosAudio);
+    });
+  };
+
+  ['pointerdown', 'touchstart', 'keydown'].forEach((eventName) => {
+    document.addEventListener(eventName, unlockFeedVideosAudio, { passive: true });
+  });
+
   const playPlatformEndSound = () => {
     try {
       if (!platformEndAudioUnlocked) return;
