@@ -41,6 +41,7 @@ router.post('/avatar', upload.single('avatarFile'), profileController.updateAvat
 router.post('/edit', profileController.updateInfo);
 router.post('/post/:id/delete', profileController.deletePost);
 router.post('/reel/:id/delete', profileController.deleteReel);
+router.get('/reel/shared-audios', profileController.getSharedAudios);
 router.post('/reel/create', uploadReels.fields([
   { name: 'reel_video', maxCount: 1 },
   { name: 'reel_image', maxCount: 1 },

@@ -54,6 +54,15 @@ class Reel {
       )
     `);
 
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS reel_shared_audios (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        audio_url VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     Reel._schemaReady = true;
   }
 
@@ -364,6 +373,20 @@ class Reel {
       'UPDATE reels SET comments_count = comments_count + 1 WHERE id = ?',
       [reelId]
     );
+    return result.insertId;
+  }
+
+  static async getSharedAudios() {
+    await Reel.ensureReelSchema();
+    const [rows] = await db.query('SELECT * FROM reel_shared_audios ORDER BY title ASC');
+    return rows;
+  }
+
+  static async saveSharedAudio(title, audioUrl) {
+    await Reel.ensureReelSchema();
+    const [existing] = await db.query('SELECT id FROM reel_shared_audios WHERE audio_url = ?', [audioUrl]);
+    if (existing && existing.length > 0) return existing[0].id;
+    const [result] = await db.query('INSERT INTO reel_shared_audios (title, audio_url) VALUES (?, ?)', [title, audioUrl]);
     return result.insertId;
   }
 }

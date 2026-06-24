@@ -3609,7 +3609,7 @@ select:-webkit-autofill {
   bottom: 0;
   border-radius: 50%;
   padding: 2px;
-  background: linear-gradient(135deg, #8a2be2, #4a00e0);
+  background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -4329,7 +4329,37 @@ select:-webkit-autofill {
     padding-right: 14px;
   }
 }
+.short-create-form select,
+.short-create-form input.settings-input {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color) !important;
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: none !important;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+  font-family: 'Outfit', sans-serif;
+}
 
+.short-create-form select:focus,
+.short-create-form input.settings-input:focus {
+  outline: none !important;
+  border-color: var(--primary) !important;
+  background: var(--bg-card) !important;
+}
+
+.status-viewer-overlay {
+  overflow: hidden !important;
+}
+.status-viewer-outer-container {
+  overflow: hidden;
+  max-width: 100%;
+}
 .status-viewer-content {
   position: relative;
   background: #000 !important;
@@ -4338,9 +4368,12 @@ select:-webkit-autofill {
   padding: 0 !important;
   border: 1px solid rgba(255, 255, 255, 0.15) !important;
   box-shadow: 0 25px 60px -15px rgba(0,0,0,0.9);
-}
-
-/* Story Progress Bar Indicator */
+  width: min(94vw, 420px);
+  height: min(85vh, 740px);
+  aspect-ratio: 9/16;
+  display: flex;
+  flex-direction: column;
+}/* Story Progress Bar Indicator */
 .status-viewer-progress-container {
   display: flex;
   gap: 4px;
@@ -6157,9 +6190,13 @@ body[data-theme="dark"] .birthday-feed-card-shell::before {
     /* Spacer for bottom nav bar */
   }
 
+  .feed-column, #feedMainContent {
+    gap: 10px !important;
+  }
+
   /* Stories view tweak */
   .stories-wrapper {
-    margin: 0 -12px;
+    margin: 0 -12px -8px -12px;
     margin-top: 16px;
     padding: 0 12px;
   }
@@ -13332,6 +13369,39 @@ body[data-theme="dark"] .compose-contact-chip {
 
   #shareSheetModal .share-sheet-body {
     max-height: 60vh !important;
+  }
+
+  /* Status viewer Instagram-style mobile view */
+  .status-viewer-overlay {
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    background: #000000 !important;
+    backdrop-filter: none !important;
+    overflow: hidden !important;
+  }
+
+  .status-viewer-outer-container {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .status-viewer-content {
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0 !important;
+    border: none !important;
+    aspect-ratio: auto !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  .status-viewer-nav-btn {
+    display: none !important;
   }
 }
 

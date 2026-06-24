@@ -231,6 +231,17 @@ class ProfileController {
     }
   }
 
+  static async getSharedAudios(req, res) {
+    try {
+      const Reel = require('../models/Reel');
+      const audios = await Reel.getSharedAudios();
+      res.json({ success: true, audios });
+    } catch (error) {
+      console.error('Get shared audios error:', error);
+      res.status(500).json({ error: 'Failed to retrieve shared audios.' });
+    }
+  }
+
   static async createReel(req, res) {
     try {
       const io = req.app.get('io');
@@ -239,7 +250,7 @@ class ProfileController {
       const currentUser = await User.getById(currentUserId);
       if (!currentUser) return res.status(401).json({ error: 'Unauthorized' });
 
-      const { caption, sound_name, media_type, audio_start_time, audio_duration, media_fit, is_trade, trim_start, trim_end } = req.body;
+      const { caption, sound_name, media_type, audio_start_time, audio_duration, media_fit, is_trade, trim_start, trim_end, existing_audio_url } = req.body;
       let video_url = null;
       let audio_url = null;
       const normalizedMediaFit = media_fit === 'contain' ? 'contain' : 'cover';
@@ -261,11 +272,19 @@ class ProfileController {
         if (!files.reel_image || files.reel_image.length === 0) {
           return res.status(400).json({ error: 'Image file required.' });
         }
-        if (!files.reel_audio || files.reel_audio.length === 0) {
-          return res.status(400).json({ error: 'Audio file required.' });
-        }
         video_url = `/uploads/reels/${files.reel_image[0].filename}`;
-        audio_url = `/uploads/reels/${files.reel_audio[0].filename}`;
+
+        if (existing_audio_url && existing_audio_url.trim() !== '') {
+          audio_url = existing_audio_url;
+        } else {
+          if (!files.reel_audio || files.reel_audio.length === 0) {
+            return res.status(400).json({ error: 'Audio file required.' });
+          }
+          audio_url = `/uploads/reels/${files.reel_audio[0].filename}`;
+          // Save new audio to shared repository
+          const cleanSoundName = (sound_name || '').trim() || 'Original Audio';
+          await Reel.saveSharedAudio(cleanSoundName, audio_url);
+        }
       } else if (media_type === 'voice') {
         if (!files.reel_audio || files.reel_audio.length === 0) {
           return res.status(400).json({ error: 'Voice recording required.' });
@@ -276,6 +295,9 @@ class ProfileController {
           return res.status(400).json({ error: 'Audio file required.' });
         }
         audio_url = `/uploads/reels/${files.reel_audio[0].filename}`;
+        // Save new audio to shared repository
+        const cleanSoundName = (sound_name || '').trim() || 'Original Audio';
+        await Reel.saveSharedAudio(cleanSoundName, audio_url);
       }
 
       if (isTradeShort) {

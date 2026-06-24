@@ -1963,7 +1963,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let isStoryPaused = false;
   let activeStatusCardElement = null;
   let statusViewerVolumeOn = true;
-
   const openStatusViewer = (card) => {
     if (!statusViewerModal || !card) return;
     activeStatusCardElement = card;
@@ -1978,11 +1977,24 @@ document.addEventListener('DOMContentLoaded', () => {
     currentStatusIndex = 0;
     showStatusSegment(currentStatusIndex);
 
+    // Instagram reply input reset and conditional visibility
+    const replyContainer = document.getElementById('statusViewerReplyContainer');
+    const replyInput = document.getElementById('statusViewerReplyInput');
+    if (replyInput) replyInput.value = '';
+    
+    const cardUserId = card.dataset.userId;
+    if (replyContainer) {
+      if (cardUserId && String(cardUserId) === String(window.currentUserId)) {
+        replyContainer.style.display = 'none';
+      } else {
+        replyContainer.style.display = 'flex';
+      }
+    }
+
     statusViewerModal.style.display = 'flex';
     statusViewerModal.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
   };
-
   const showStatusSegment = (index) => {
     if (index < 0 || index >= currentGroupStatuses.length) return;
     currentStatusIndex = index;
@@ -11558,6 +11570,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // Keyboard controls for status viewer
   document.addEventListener('keydown', (e) => {
     if (statusViewerModal && statusViewerModal.style.display === 'flex') {
+      // Ignore keys if typing in reply input
+      if (document.activeElement && document.activeElement.id === 'statusViewerReplyInput') {
+        if (e.key === 'Escape') {
+          document.activeElement.blur();
+        }
+        return;
+      }
       if (e.key === 'ArrowLeft') {
         advanceStory(-1);
       } else if (e.key === 'ArrowRight') {
@@ -11575,6 +11594,57 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  // Instagram Status Reply elements & logic
+  const statusViewerReplyInput = document.getElementById('statusViewerReplyInput');
+  const statusViewerSendBtn = document.getElementById('statusViewerSendBtn');
+
+  if (statusViewerReplyInput) {
+    statusViewerReplyInput.addEventListener('focus', () => {
+      pauseStory();
+    });
+    statusViewerReplyInput.addEventListener('blur', () => {
+      // Small timeout so Send button click event runs first
+      setTimeout(() => {
+        if (document.activeElement !== statusViewerReplyInput) {
+          resumeStory();
+        }
+      }, 250);
+    });
+    statusViewerReplyInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendStatusViewerReply();
+      }
+    });
+  }
+
+  if (statusViewerSendBtn) {
+    statusViewerSendBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sendStatusViewerReply();
+    });
+  }
+
+  const sendStatusViewerReply = () => {
+    if (!statusViewerReplyInput || !activeStatusCardElement) return;
+    const content = statusViewerReplyInput.value.trim();
+    if (!content) return;
+
+    const receiverId = parseInt(activeStatusCardElement.dataset.userId, 10);
+    if (!receiverId || isNaN(receiverId)) return;
+
+    // Emit chat message
+    socket.emit('chat-message', {
+      receiverId: receiverId,
+      content: content,
+      parentId: null
+    });
+
+    statusViewerReplyInput.value = '';
+    statusViewerReplyInput.blur();
+    showToast(tText("Message envoyé !"));
+  };
 
   if (statusViewerMuteBtn) {
     statusViewerMuteBtn.addEventListener('click', (e) => {
@@ -16032,7 +16102,8 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           if (files.audioFile) {
             tempAudio = new Audio();
-            tempAudio.src = URL.createObjectURL(files.audioFile);
+            tempAudio.crossOrigin = 'anonymous';
+            tempAudio.src = (typeof files.audioFile === 'string') ? files.audioFile : URL.createObjectURL(files.audioFile);
             tempAudio.muted = false;
             tempAudio.volume = 1.0;
 
@@ -16568,6 +16639,51 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Short Audio Source Choice & Loading logic
+  const shortAudioSourceSelect = document.getElementById('shortAudioSourceSelect');
+  const shortAudioTitleField = document.getElementById('shortAudioTitleField');
+  const shortAudioUploadField = document.getElementById('shortAudioUploadField');
+  const shortAudioSharedField = document.getElementById('shortAudioSharedField');
+  const shortAudioSharedSelect = document.getElementById('shortAudioSharedSelect');
+  const shortAudioTitleInput = document.getElementById('shortAudioTitleInput');
+
+  if (shortAudioSourceSelect) {
+    shortAudioSourceSelect.addEventListener('change', () => {
+      const val = shortAudioSourceSelect.value;
+      if (val === 'upload') {
+        if (shortAudioTitleField) shortAudioTitleField.style.display = 'block';
+        if (shortAudioUploadField) shortAudioUploadField.style.display = 'block';
+        if (shortAudioSharedField) shortAudioSharedField.style.display = 'none';
+        if (shortAudioSharedSelect) shortAudioSharedSelect.value = '';
+      } else {
+        if (shortAudioTitleField) shortAudioTitleField.style.display = 'none';
+        if (shortAudioUploadField) shortAudioUploadField.style.display = 'none';
+        if (shortAudioSharedField) shortAudioSharedField.style.display = 'block';
+        if (shortAudioTitleInput) shortAudioTitleInput.value = '';
+        loadSharedAudios();
+      }
+    });
+  }
+
+  const loadSharedAudios = async () => {
+    if (!shortAudioSharedSelect) return;
+    try {
+      const response = await fetch('/profile/reel/shared-audios');
+      const data = await response.json();
+      if (data && data.success && data.audios) {
+        shortAudioSharedSelect.innerHTML = '<option value="">-- Choisir un son disponible --</option>';
+        data.audios.forEach((audio) => {
+          const opt = document.createElement('option');
+          opt.value = audio.audio_url;
+          opt.textContent = audio.title;
+          shortAudioSharedSelect.appendChild(opt);
+        });
+      }
+    } catch (error) {
+      console.error('Error loading shared audios:', error);
+    }
+  };
+
   // 1. Video File Input Change & Preview
   const videoInput = document.getElementById('shortVideoInput');
   const videoFilename = document.getElementById('shortVideoFilename');
@@ -16734,6 +16850,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (soundNameInput && !soundNameInput.value.trim()) {
         // Remove file extension
         soundNameInput.value = file.name.replace(/\.[^/.]+$/, "");
+      }
+      const shortAudioTitleInput = document.getElementById('shortAudioTitleInput');
+      if (shortAudioTitleInput) {
+        shortAudioTitleInput.value = file.name.replace(/\.[^/.]+$/, "");
       }
 
       if (!previewAudio) {
@@ -17073,9 +17193,23 @@ document.addEventListener('DOMContentLoaded', () => {
           setShortUploadStatus("Please choose an image file first.");
           return;
         }
-        if (!audioInput || audioInput.files.length === 0) {
-          setShortUploadStatus("Please choose background audio track.");
-          return;
+        const audioSource = document.getElementById('shortAudioSourceSelect')?.value || 'upload';
+        if (audioSource === 'shared') {
+          const sharedVal = document.getElementById('shortAudioSharedSelect')?.value || '';
+          if (!sharedVal) {
+            setShortUploadStatus("Please select a shared audio track.");
+            return;
+          }
+        } else {
+          if (!audioInput || audioInput.files.length === 0) {
+            setShortUploadStatus("Please choose background audio track.");
+            return;
+          }
+          const titleVal = document.getElementById('shortAudioTitleInput')?.value?.trim();
+          if (!titleVal) {
+            setShortUploadStatus("Veuillez saisir un titre pour votre son.");
+            return;
+          }
         }
       } else if (type === 'voice') {
         if (!voiceRecordedBlob) {
@@ -17120,7 +17254,12 @@ document.addEventListener('DOMContentLoaded', () => {
         filesObj.videoEnd = parseFloat(document.getElementById('shortTrimEndInput')?.value || 0);
       } else if (type === 'image_audio') {
         filesObj.imageFile = imageInput.files[0];
-        filesObj.audioFile = audioInput.files[0];
+        const audioSource = document.getElementById('shortAudioSourceSelect')?.value || 'upload';
+        if (audioSource === 'shared') {
+          filesObj.audioFile = document.getElementById('shortAudioSharedSelect')?.value || null;
+        } else {
+          filesObj.audioFile = audioInput.files[0];
+        }
         filesObj.audioOffset = parseFloat(document.getElementById('shortAudioOffsetSlider')?.value || 0);
       } else if (type === 'voice') {
         filesObj.audioFile = voiceRecordedBlob;
@@ -17137,7 +17276,24 @@ document.addEventListener('DOMContentLoaded', () => {
       const capturedType = type;
       const capturedFilesObj = { ...filesObj };
       const capturedCaption = document.getElementById('shortCaption')?.value || '';
-      const capturedSoundName = document.getElementById('shortSoundName')?.value || 'Original Sound';
+      
+      let soundNameVal = 'Original Sound';
+      const audioSourceVal = document.getElementById('shortAudioSourceSelect')?.value || 'upload';
+      if (audioSourceVal === 'shared' && type === 'image_audio') {
+        const sharedSelect = document.getElementById('shortAudioSharedSelect');
+        const selectedOpt = sharedSelect?.options[sharedSelect.selectedIndex];
+        if (selectedOpt && selectedOpt.value !== '') {
+          soundNameVal = selectedOpt.text;
+        }
+      } else {
+        const titleInputVal = document.getElementById('shortAudioTitleInput')?.value?.trim();
+        if (titleInputVal && type === 'image_audio') {
+          soundNameVal = titleInputVal;
+        } else {
+          soundNameVal = document.getElementById('shortSoundName')?.value || 'Original Sound';
+        }
+      }
+      const capturedSoundName = soundNameVal;
       const capturedDuration = duration;
       const capturedFit = fit;
       const capturedIsTrade = shortTradeToggle?.checked ? '1' : '0';
@@ -17217,6 +17373,13 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('trim_start', '0');
         formData.append('trim_end', String(capturedDuration));
         formData.append('reel_video', compiledRes.blob, `short-${Date.now()}.${compiledRes.ext}`);
+
+        if (capturedType === 'image_audio') {
+          const audioSource = document.getElementById('shortAudioSourceSelect')?.value || 'upload';
+          if (audioSource === 'upload' && capturedFilesObj.audioFile) {
+            formData.append('reel_audio', capturedFilesObj.audioFile);
+          }
+        }
 
         try {
           const data = await uploadMediaWithProgress('/profile/reel/create', formData, (percent) => {
@@ -23777,6 +23940,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { once: true });
 
   // 2. Service Worker Registration
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    console.warn("[PWA] L'installation PWA et les Service Workers nécessitent une connexion HTTPS sécurisée en production. Veuillez installer un certificat SSL.");
+  }
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js?v=5')

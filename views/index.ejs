@@ -99,8 +99,11 @@ function getYouTubeId(url) {
                                 <defs>
                                   <linearGradient id="statusRingGradient-<%= group.user_id %>" x1="0%" y1="0%" x2="100%"
                                     y2="100%">
-                                    <stop offset="0%" stop-color="#8a2be2" />
-                                    <stop offset="100%" stop-color="#4a00e0" />
+                                    <stop offset="0%" stop-color="#f09433" />
+                                    <stop offset="25%" stop-color="#e6683c" />
+                                    <stop offset="50%" stop-color="#dc2743" />
+                                    <stop offset="75%" stop-color="#cc2366" />
+                                    <stop offset="100%" stop-color="#bc1888" />
                                   </linearGradient>
                                 </defs>
                                 <% const count=group.statuses.length; const r=46; const circumference=2 * Math.PI * r;
@@ -4181,10 +4184,27 @@ function getYouTubeId(url) {
                     accept="image/*" style="display: none;">
                 </div>
                 <div id="shortImagePreviewBox" class="short-media-preview-box"
-                  style="display: none; margin-bottom: 10px;">
+                  style="display: none; margin-bottom: 10px; border-radius: 12px; overflow: hidden; max-height: 190px; aspect-ratio: 9/16; margin: 10px auto;">
                   <img id="shortImagePreview" src="" style="width:100%; height:100%; object-fit:cover;">
                 </div>
-                <div class="settings-field short-upload-card" style="margin-bottom: 10px;">
+
+                <!-- Audio Source Choice -->
+                <div class="settings-field" style="margin-bottom: 10px;">
+                  <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px;">Source de l'audio</label>
+                  <select id="shortAudioSourceSelect" class="settings-input">
+                    <option value="upload">Importer un fichier audio depuis l'appareil</option>
+                    <option value="shared">Choisir un son déjà disponible</option>
+                  </select>
+                </div>
+
+                <!-- Custom Sound Title Input (only for new uploads) -->
+                <div class="settings-field" id="shortAudioTitleField" style="margin-bottom: 10px;">
+                  <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px;">Titre du son</label>
+                  <input type="text" id="shortAudioTitleInput" name="sound_name" readonly placeholder="Le titre sera détecté automatiquement..." class="settings-input">
+                </div>
+
+                <!-- File upload card (shown if source = upload) -->
+                <div class="settings-field short-upload-card" id="shortAudioUploadField" style="margin-bottom: 10px;">
                   <label
                     style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px;">Choose
                     Background Audio File</label>
@@ -4195,6 +4215,14 @@ function getYouTubeId(url) {
                   </div>
                   <input type="file" id="shortAudioInput" class="status-file-input-hidden" name="reel_audio"
                     accept="audio/*" style="display: none;">
+                </div>
+
+                <!-- Shared audio dropdown (shown if source = shared) -->
+                <div class="settings-field" id="shortAudioSharedField" style="display: none; margin-bottom: 10px;">
+                  <label style="font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px;">Sélectionner un son disponible</label>
+                  <select id="shortAudioSharedSelect" name="existing_audio_url" class="settings-input">
+                    <option value="">-- Charger les sons disponibles --</option>
+                  </select>
                 </div>
               </div>
 
@@ -4338,8 +4366,7 @@ function getYouTubeId(url) {
             </button>
 
             <!-- 9:16 Immersive Status Display Frame -->
-            <div class="modal-content status-viewer-content" role="dialog" aria-modal="true" aria-labelledby="statusViewerTitle"
-              style="position: relative; width: min(94vw, 420px); height: min(85vh, 740px); aspect-ratio: 9/16; background: #000; border-radius: 20px; overflow: hidden; padding: 0; border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 25px 60px -15px rgba(0,0,0,0.9); display: flex; flex-direction: column;">
+            <div class="modal-content status-viewer-content" role="dialog" aria-modal="true" aria-labelledby="statusViewerTitle">
               
               <!-- Floating Close Button inside the viewport top right -->
               <button class="status-viewer-close-btn" type="button" id="closeStatusViewerModal" aria-label="<%= tText("Close status viewer") %>"
@@ -4380,9 +4407,22 @@ function getYouTubeId(url) {
                 <video id="statusViewerVideo" playsinline style="display: none; width: 100%; height: 100%; object-fit: contain;"></video>
               </div>
 
-              <!-- Floating Bottom Overlay (Captions) -->
-              <div class="status-viewer-footer-overlay" style="position: absolute; bottom: 0; left: 0; right: 0; padding: 48px 20px 24px 20px; background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.6) 50%, rgba(0, 0, 0, 0) 100%); z-index: 15; color: #ffffff; text-align: center; pointer-events: none;">
-                <p id="statusViewerCaption" class="status-viewer-caption" style="margin: 0; font-size: 14px; font-weight: 500; line-height: 1.45; text-shadow: 0 1px 4px rgba(0,0,0,0.9); word-break: break-word; font-family: 'Outfit', sans-serif; pointer-events: auto;"></p>
+              <!-- Floating Bottom Overlay (Captions & Reply Input) -->
+              <div class="status-viewer-footer-overlay" style="position: absolute; bottom: 0; left: 0; right: 0; padding: 48px 20px 24px 20px; background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0) 100%); z-index: 15; color: #ffffff; display: flex; flex-direction: column; gap: 14px; pointer-events: none;">
+                <p id="statusViewerCaption" class="status-viewer-caption" style="margin: 0; font-size: 14px; font-weight: 500; line-height: 1.45; text-shadow: 0 1px 4px rgba(0,0,0,0.9); word-break: break-word; font-family: 'Outfit', sans-serif; pointer-events: auto; text-align: center;"></p>
+                
+                <!-- Instagram-style Reply Container -->
+                <div id="statusViewerReplyContainer" style="display: flex; align-items: center; gap: 10px; width: 100%; pointer-events: auto;">
+                  <div style="position: relative; flex: 1; display: flex; align-items: center;">
+                    <input type="text" id="statusViewerReplyInput" placeholder="<%= tText("Envoyer un message...") %>"
+                      style="width: 100%; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 24px; padding: 10px 44px 10px 18px; color: #ffffff; font-size: 14px; outline: none; font-family: 'Outfit', sans-serif; transition: all 0.2s;"
+                      onfocus="this.style.background='rgba(255, 255, 255, 0.25)'; this.style.borderColor='rgba(255, 255, 255, 0.45)';"
+                      onblur="this.style.background='rgba(255, 255, 255, 0.15)'; this.style.borderColor='rgba(255, 255, 255, 0.2)';">
+                    <button type="button" id="statusViewerSendBtn" style="position: absolute; right: 6px; background: none; border: none; color: #ffffff; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; opacity: 0.8; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
+                      <i data-lucide="send" style="width: 18px; height: 18px;"></i>
+                    </button>
+                  </div>
+                </div>
               </div>
 
             </div>
