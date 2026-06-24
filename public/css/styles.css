@@ -19949,3 +19949,30 @@ body.dark-mode .skeleton-base {
 .chat-msg-wrapper.incoming .chat-message-quote-preview svg {
   stroke: var(--primary) !important;
 }
+
+/* Flexbox layout overrides for shared feed card post footer action buttons */
+.chat-shared-feed-card .post-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 6px !important;
+  width: 100% !important;
+}
+
+.chat-shared-feed-card .post-action-btn {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 30px !important;
+  padding: 4px 6px !important;
+  font-size: 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+}
+
+.chat-shared-feed-card .btn-text-label {
+  display: none !important;
+}
