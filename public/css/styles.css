@@ -7175,7 +7175,7 @@ body[data-theme="dark"] .chat-icon-btn:hover {
 }
 
 .chat-msg-wrapper.outgoing .chat-msg-status.read {
-  color: #ffffff;
+  color: #34b7f1 !important;
 }
 
 .chat-msg-wrapper.incoming .chat-msg-footer {
@@ -7190,7 +7190,7 @@ body[data-theme="dark"] .chat-icon-btn:hover {
 }
 
 .chat-msg-status.read {
-  color: var(--primary);
+  color: #34b7f1 !important;
 }
 
 .chat-msg-status.sent {

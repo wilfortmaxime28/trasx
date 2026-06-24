@@ -1,5 +1,6 @@
 const Status = require('../models/Status');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 const { normalizeLocale, createTranslator } = require('../utils/i18n');
 
 function wantsJsonResponse(req) {
@@ -112,6 +113,132 @@ class StatusController {
         return res.status(500).json({ success: false, message });
       }
       return res.redirect(`/` + `?error=${encodeURIComponent(message)}`);
+    }
+  }
+
+  static async recordView(req, res) {
+    try {
+      const currentUserId = req.session.userId;
+      const statusId = parseInt(req.params.id, 10);
+      if (!statusId) {
+        return res.status(400).json({ error: 'Status ID is required.' });
+      }
+
+      await Status.recordView(statusId, currentUserId);
+      const viewsCount = await Status.getViewCount(statusId);
+      return res.json({ success: true, viewsCount });
+    } catch (err) {
+      console.error('recordView error:', err);
+      return res.status(500).json({ error: 'Failed to record view.' });
+    }
+  }
+
+  static async createComment(req, res) {
+    try {
+      const currentUserId = req.session.userId;
+      const statusId = parseInt(req.params.id, 10);
+      const content = String(req.body.content || '').trim();
+
+      if (!statusId || !content) {
+        return res.status(400).json({ error: 'Status ID and comment content are required.' });
+      }
+
+      const status = await Status.getById(statusId);
+      if (!status) {
+        return res.status(404).json({ error: 'Status not found.' });
+      }
+
+      await Status.addComment(statusId, currentUserId, content);
+
+      // Notify the status creator if it's not their own status
+      if (Number(status.user_id) !== Number(currentUserId)) {
+        const currentUser = await User.getById(currentUserId);
+        const senderName = currentUser ? `${currentUser.first_name} ${currentUser.last_name}` : 'Quelqu\'un';
+        
+        const notificationMessage = `${senderName} a commenté votre statut : "${content.slice(0, 50)}${content.length > 50 ? '...' : ''}"`;
+        const notificationId = await Notification.create({
+          recipientId: status.user_id,
+          actorId: currentUserId,
+          type: 'comment',
+          message: notificationMessage
+        });
+
+        // Emit real-time notification via socket
+        const io = req.app.get('io');
+        if (io) {
+          io.to(`user:${status.user_id}`).emit('notification-created', {
+            id: notificationId,
+            recipient_id: status.user_id,
+            actor_id: currentUserId,
+            actor_name: senderName,
+            actor_avatar: currentUser?.avatar || '/assets/avatar_placeholder.jpg',
+            type: 'comment',
+            message: notificationMessage,
+            created_at: new Date()
+          });
+
+          const unreadCount = await Notification.getUnreadCount(status.user_id);
+          io.to(`user:${status.user_id}`).emit('notification-count-updated', { unreadCount });
+        }
+      }
+
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('createComment error:', err);
+      return res.status(500).json({ error: 'Failed to post comment.' });
+    }
+  }
+
+  static async recordShare(req, res) {
+    try {
+      const currentUserId = req.session.userId;
+      const statusId = parseInt(req.params.id, 10);
+      
+      if (!statusId) {
+        return res.status(400).json({ error: 'Status ID is required.' });
+      }
+
+      const status = await Status.getById(statusId);
+      if (!status) {
+        return res.status(404).json({ error: 'Status not found.' });
+      }
+
+      // Notify the status creator if it's not their own status
+      if (Number(status.user_id) !== Number(currentUserId)) {
+        const currentUser = await User.getById(currentUserId);
+        const senderName = currentUser ? `${currentUser.first_name} ${currentUser.last_name}` : 'Quelqu\'un';
+        
+        const notificationMessage = `${senderName} a partagé votre statut.`;
+        const notificationId = await Notification.create({
+          recipientId: status.user_id,
+          actorId: currentUserId,
+          type: 'share',
+          message: notificationMessage
+        });
+
+        // Emit real-time notification via socket
+        const io = req.app.get('io');
+        if (io) {
+          io.to(`user:${status.user_id}`).emit('notification-created', {
+            id: notificationId,
+            recipient_id: status.user_id,
+            actor_id: currentUserId,
+            actor_name: senderName,
+            actor_avatar: currentUser?.avatar || '/assets/avatar_placeholder.jpg',
+            type: 'share',
+            message: notificationMessage,
+            created_at: new Date()
+          });
+
+          const unreadCount = await Notification.getUnreadCount(status.user_id);
+          io.to(`user:${status.user_id}`).emit('notification-count-updated', { unreadCount });
+        }
+      }
+
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('recordShare error:', err);
+      return res.status(500).json({ error: 'Failed to record share.' });
     }
   }
 }

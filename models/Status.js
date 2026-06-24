@@ -22,6 +22,32 @@ async function ensureStatusTable() {
         )
       `);
 
+      // Create status_views table
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS status_views (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          status_id INT NOT NULL,
+          user_id INT NOT NULL,
+          viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY unique_status_user_view (status_id, user_id),
+          FOREIGN KEY (status_id) REFERENCES statuses(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+
+      // Create status_comments table
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS status_comments (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          status_id INT NOT NULL,
+          user_id INT NOT NULL,
+          content TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (status_id) REFERENCES statuses(id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+
       // Dynamically add new columns to support WhatsApp-like video editing and text/voice statuses
       try {
         await db.query(`ALTER TABLE statuses ADD COLUMN trim_start FLOAT DEFAULT NULL`);
@@ -202,6 +228,36 @@ class Status {
     });
 
     return groups.slice(0, Number(limit) || 12);
+  }
+
+  static async recordView(statusId, userId) {
+    await ensureStatusTable();
+    try {
+      await db.query(
+        'INSERT IGNORE INTO status_views (status_id, user_id) VALUES (?, ?)',
+        [Number(statusId), Number(userId)]
+      );
+    } catch (e) {
+      console.error('Error recording status view:', e);
+    }
+  }
+
+  static async getViewCount(statusId) {
+    await ensureStatusTable();
+    const [rows] = await db.query(
+      'SELECT COUNT(*) AS count FROM status_views WHERE status_id = ?',
+      [Number(statusId)]
+    );
+    return Number(rows[0]?.count || 0);
+  }
+
+  static async addComment(statusId, userId, content) {
+    await ensureStatusTable();
+    const [result] = await db.query(
+      'INSERT INTO status_comments (status_id, user_id, content) VALUES (?, ?, ?)',
+      [Number(statusId), Number(userId), content]
+    );
+    return result.insertId;
   }
 }
 

@@ -894,6 +894,51 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const renderSharedContentBubble = (sharedContentData) => {
+    if (sharedContentData?.type === 'shared_status') {
+      const statusData = sharedContentData.status || {};
+      const statusAuthorName = escapeHtml(statusData.user_name || 'Status');
+      const statusAuthorAvatar = escapeHtml(statusData.avatar || '/assets/avatar_placeholder.jpg');
+      const statusCaption = escapeHtml(statusData.caption || '');
+      const statusMediaUrl = escapeHtml(statusData.media_url || '');
+      const statusMediaType = String(statusData.media_type || '').toLowerCase();
+      
+      let statusMediaHtml = '';
+      if (statusMediaType.startsWith('video/')) {
+        statusMediaHtml = `
+          <div class="chat-shared-post-media chat-shared-post-media-video" style="aspect-ratio: 9/16; max-height: 240px; overflow: hidden; border-radius: 8px;">
+            <video src="${statusMediaUrl}" muted playsinline preload="metadata" style="width: 100%; height: 100%; object-fit: cover;"></video>
+          </div>
+        `;
+      } else if (statusMediaType.startsWith('image/')) {
+        statusMediaHtml = `
+          <div class="chat-shared-post-media" style="aspect-ratio: 9/16; max-height: 240px; overflow: hidden; border-radius: 8px;">
+            <img src="${statusMediaUrl}" alt="Status" style="width: 100%; height: 100%; object-fit: cover;">
+          </div>
+        `;
+      } else {
+        // Text status
+        statusMediaHtml = `
+          <div class="chat-shared-post-media" style="aspect-ratio: 9/16; max-height: 240px; display: flex; align-items: center; justify-content: center; background: ${statusData.bg_color || 'linear-gradient(135deg, #8a2be2, #4a00e0)'}; padding: 12px; text-align: center; border-radius: 8px; font-size: 11px; font-weight: 500; color: white;">
+            ${statusCaption}
+          </div>
+        `;
+      }
+
+      return `
+        <div class="chat-msg-bubble chat-shared-post-bubble chat-shared-instagram-card" tabindex="0" role="link" data-shared-target-url="${window.location.origin}" style="width: 200px; padding: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; display: flex; flex-direction: column; gap: 8px; cursor: pointer;">
+          <div class="chat-shared-post-author" style="display: flex; align-items: center; gap: 8px; padding-bottom: 4px;">
+            <img src="${statusAuthorAvatar}" alt="${statusAuthorName}" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,0.2);">
+            <div style="display: flex; flex-direction: column; min-width: 0;">
+              <strong style="font-size: 11px; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${statusAuthorName}</strong>
+              <span style="font-size: 8px; color: rgba(255,255,255,0.5);">Statut</span>
+            </div>
+          </div>
+          ${statusMediaHtml}
+          ${statusCaption && !statusMediaType.startsWith('text') ? `<p style="margin: 0; font-size: 10px; color: rgba(255,255,255,0.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${statusCaption}</p>` : ''}
+        </div>
+      `;
+    }
+
     const isReel = sharedContentData?.type === 'shared_reel';
     const contentData = isReel
       ? (sharedContentData?.reel && typeof sharedContentData.reel === 'object' ? sharedContentData.reel : {})
@@ -2030,6 +2075,23 @@ document.addEventListener('DOMContentLoaded', () => {
     statusViewerModal.dataset.expiresAt = expiresAt || '';
     statusViewerModal.dataset.statusId = status.id || '';
 
+    // Record view in the background and update view counter badge
+    const badge = document.getElementById('statusViewerViewsBadge');
+    const countSpan = document.getElementById('statusViewerCount');
+    if (badge) badge.style.display = 'none';
+
+    if (status.id) {
+      fetch(`/status/view/${status.id}`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && countSpan && badge) {
+            countSpan.textContent = data.viewsCount || 0;
+            badge.style.display = 'inline-flex';
+          }
+        })
+        .catch(err => console.error("Error recording status view:", err));
+    }
+
     // Hide mute button by default
     if (statusViewerMuteBtn) {
       statusViewerMuteBtn.style.display = 'none';
@@ -3164,6 +3226,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let activeSharePostId = null;
   let activeSharePostCard = null;
+  let activeShareStatusData = null;
   let activeGiftPostId = null;
   let activeGiftPostCard = null;
   let activeGiftTargetType = 'post';
@@ -3311,6 +3374,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (modal) modal.style.display = 'none';
     activeSharePostId = null;
     activeSharePostCard = null;
+    if (activeShareStatusData) {
+      activeShareStatusData = null;
+      resumeStory();
+    }
   };
 
   const buildSharedPostPayload = (postCard, postId, shareUrl) => {
@@ -8549,6 +8616,29 @@ document.addEventListener('DOMContentLoaded', () => {
           if (recipientBtn) {
             const recipientUserId = recipientBtn.getAttribute('data-share-recipient-id');
             const recipientName = recipientBtn.getAttribute('data-share-recipient-name') || 'friend';
+
+            if (activeShareStatusData) {
+              const sharedPayload = {
+                type: 'shared_status',
+                status: activeShareStatusData
+              };
+
+              socket.emit('chat-message', {
+                receiverId: parseInt(recipientUserId, 10),
+                content: JSON.stringify(sharedPayload)
+              });
+
+              fetch(`/status/share/${activeShareStatusData.id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recipientUserId })
+              }).catch(err => console.error("Error logging status share:", err));
+
+              showToast(`Partagé avec ${recipientName}.`);
+              closeShareSheet();
+              return;
+            }
+
             const { shareUrl } = await buildShareUrl({
               channel: 'direct',
               recipientUserId
@@ -11626,6 +11716,45 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const statusViewerShareBtn = document.getElementById('statusViewerShareBtn');
+  if (statusViewerShareBtn) {
+    statusViewerShareBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      pauseStory();
+      
+      const currentStatus = currentGroupStatuses[currentStatusIndex];
+      const userName = activeStatusCardElement.dataset.userName || activeStatusCardElement.dataset.username || 'Status';
+      const avatar = activeStatusCardElement.dataset.avatar || '/assets/avatar_placeholder.jpg';
+
+      activeShareStatusData = {
+        id: currentStatus.id,
+        user_id: activeStatusCardElement.dataset.userId,
+        user_name: userName,
+        avatar: avatar,
+        media_url: currentStatus.media_url,
+        media_type: currentStatus.media_type,
+        caption: currentStatus.caption || ''
+      };
+
+      activeSharePostId = null;
+      activeSharePostCard = null;
+
+      // Open the share modal
+      const modal = getShareSheetModal();
+      if (modal) {
+        const modalAuthor = modal.querySelector('#shareSheetPostAuthor');
+        const modalAvatar = modal.querySelector('#shareSheetPostAvatar');
+        const modalExcerpt = modal.querySelector('#shareSheetPostExcerpt');
+        if (modalAuthor) modalAuthor.textContent = userName;
+        if (modalAvatar) modalAvatar.src = avatar;
+        if (modalExcerpt) modalExcerpt.textContent = currentStatus.caption || (getPageLocale() === 'fr' ? 'Statut de ' + userName : userName + '\'s status');
+
+        modal.style.display = 'flex';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    });
+  }
+
   const sendStatusViewerReply = () => {
     if (!statusViewerReplyInput || !activeStatusCardElement) return;
     const content = statusViewerReplyInput.value.trim();
@@ -11634,12 +11763,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const receiverId = parseInt(activeStatusCardElement.dataset.userId, 10);
     if (!receiverId || isNaN(receiverId)) return;
 
+    const statusId = statusViewerModal.dataset.statusId;
+
     // Emit chat message
     socket.emit('chat-message', {
       receiverId: receiverId,
       content: content,
       parentId: null
     });
+
+    // Record as status comment and trigger notification
+    if (statusId) {
+      fetch(`/status/comment/${statusId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      }).catch(err => console.error("Error recording status comment:", err));
+    }
 
     statusViewerReplyInput.value = '';
     statusViewerReplyInput.blur();

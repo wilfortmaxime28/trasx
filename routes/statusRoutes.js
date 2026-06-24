@@ -30,6 +30,17 @@ const uploadStatusMedia = multer({
   }
 });
 
+const requireAuth = (req, res, next) => {
+  if (req.session && req.session.userId) {
+    next();
+  } else {
+    res.status(401).json({ error: 'Unauthorized' });
+  }
+};
+
 router.post('/create', uploadStatusMedia.single('status_media'), statusController.createStatus);
+router.post('/view/:id', requireAuth, statusController.recordView);
+router.post('/comment/:id', requireAuth, statusController.createComment);
+router.post('/share/:id', requireAuth, statusController.recordShare);
 
 module.exports = router;

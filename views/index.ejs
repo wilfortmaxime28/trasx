@@ -4368,52 +4368,59 @@ function getYouTubeId(url) {
             <!-- 9:16 Immersive Status Display Frame -->
             <div class="modal-content status-viewer-content" role="dialog" aria-modal="true" aria-labelledby="statusViewerTitle">
               
-              <!-- Floating Close Button inside the viewport top right -->
-              <button class="status-viewer-close-btn" type="button" id="closeStatusViewerModal" aria-label="<%= tText("Close status viewer") %>"
-                style="position: absolute; top: 16px; right: 16px; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.15); color: #ffffff; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 3160; transition: all 0.2s ease; backdrop-filter: blur(4px);"
-                onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'; this.style.transform='scale(1.05)';"
-                onmouseout="this.style.background='rgba(0, 0, 0, 0.4)'; this.style.transform='scale(1)';">
-                <i data-lucide="x" style="width: 18px; height: 18px;"></i>
-              </button>
-
               <!-- Floating Header Overlay (Progress bar + User info) -->
-              <div class="status-viewer-header-overlay" style="position: absolute; top: 0; left: 0; right: 0; padding: 16px 60px 32px 16px; background: linear-gradient(to bottom, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.6) 50%, rgba(0, 0, 0, 0) 100%); z-index: 15; pointer-events: none; display: flex; flex-direction: column; gap: 10px;">
+              <div class="status-viewer-header-overlay" style="position: absolute; top: 0; left: 0; right: 0; padding: 10px 10px 32px 10px; background: linear-gradient(to bottom, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.5) 60%, rgba(0, 0, 0, 0) 100%); z-index: 15; pointer-events: none; display: flex; flex-direction: column; gap: 8px;">
                 <!-- Segmented progress bars (WhatsApp / Instagram style) -->
                 <div class="status-viewer-progress-container" id="statusViewerProgressContainer"
-                  style="display: flex; gap: 4px; width: 100%; margin-bottom: 4px; pointer-events: auto;"></div>
+                  style="display: flex; gap: 4px; width: 100%; margin-bottom: 2px; pointer-events: auto;"></div>
                 
                 <div class="status-viewer-topline" style="display: flex; align-items: center; justify-content: space-between; width: 100%; pointer-events: auto;">
                   <div class="status-viewer-user" style="display: flex; align-items: center; gap: 10px; min-width: 0;">
                     <div class="avatar" style="width: 38px; height: 38px; border-radius: 50%; border: 2px solid #fff; overflow: hidden; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
                       <img id="statusViewerAvatar" src="" alt="" style="width: 100%; height: 100%; object-fit: cover;">
                     </div>
-                    <div style="min-width: 0;">
-                      <h2 id="statusViewerTitle" style="margin: 0; font-size: 15px; font-weight: 600; color: #ffffff; text-shadow: 0 1px 3px rgba(0,0,0,0.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Outfit', sans-serif;"></h2>
-                      <div id="statusViewerTimer" style="font-size: 11px; color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 3px rgba(0,0,0,0.8); font-family: 'Outfit', sans-serif;"></div>
+                    <div style="min-width: 0; display: flex; flex-direction: column;">
+                      <h2 id="statusViewerTitle" style="margin: 0; font-size: 14px; font-weight: 700; color: #ffffff; text-shadow: 0 1px 3px rgba(0,0,0,0.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Outfit', sans-serif;"></h2>
+                      <div style="display: flex; align-items: center; gap: 6px; margin-top: 1px;">
+                        <span id="statusViewerTimer" style="font-size: 10.5px; color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 3px rgba(0,0,0,0.8); font-family: 'Outfit', sans-serif;"></span>
+                        <span id="statusViewerViewsBadge" style="display: none; align-items: center; gap: 3px; font-size: 10px; background: rgba(0, 0, 0, 0.45); padding: 2px 6px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.9);">
+                          <i data-lucide="eye" style="width: 10px; height: 10px;"></i>
+                          <span id="statusViewerCount">0</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
                   
-                  <button type="button" id="statusViewerMuteBtn"
-                    style="display: none; background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.1); color: white; border-radius: 50%; width: 34px; height: 34px; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(4px);"
-                    title="<%= tText("Toggle Audio") %>">
-                    <i data-lucide="volume-2" style="width: 16px; height: 16px;"></i>
-                  </button>
+                  <!-- Sound Mute & Close Buttons Aligned Side-by-Side -->
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <button type="button" id="statusViewerMuteBtn"
+                      style="display: none; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.15); color: white; border-radius: 50%; width: 34px; height: 34px; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(4px);"
+                      title="<%= tText("Toggle Audio") %>">
+                      <i data-lucide="volume-2" style="width: 16px; height: 16px;"></i>
+                    </button>
+                    <button class="status-viewer-close-btn" type="button" id="closeStatusViewerModal" aria-label="<%= tText("Close status viewer") %>"
+                      style="background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.15); color: #ffffff; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; backdrop-filter: blur(4px);"
+                      onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'; this.style.transform='scale(1.05)';"
+                      onmouseout="this.style.background='rgba(0, 0, 0, 0.4)'; this.style.transform='scale(1)';">
+                      <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                    </button>
+                  </div>
                 </div>
               </div>
-
+ 
               <!-- Media viewport (occupies full height/width of frame) -->
               <div class="status-viewer-media-shell" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #050505; display: flex; align-items: center; justify-content: center; z-index: 5;">
                 <img id="statusViewerImage" alt="" style="display: none; width: 100%; height: 100%; object-fit: contain;">
                 <video id="statusViewerVideo" playsinline style="display: none; width: 100%; height: 100%; object-fit: contain;"></video>
               </div>
-
+ 
               <!-- Floating Bottom Overlay (Captions & Reply Input) -->
               <div class="status-viewer-footer-overlay" style="position: absolute; bottom: 0; left: 0; right: 0; padding: 48px 20px 24px 20px; background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0) 100%); z-index: 15; color: #ffffff; display: flex; flex-direction: column; gap: 14px; pointer-events: none;">
                 <p id="statusViewerCaption" class="status-viewer-caption" style="margin: 0; font-size: 14px; font-weight: 500; line-height: 1.45; text-shadow: 0 1px 4px rgba(0,0,0,0.9); word-break: break-word; font-family: 'Outfit', sans-serif; pointer-events: auto; text-align: center;"></p>
                 
-                <!-- Instagram-style Reply Container -->
-                <div id="statusViewerReplyContainer" style="display: flex; align-items: center; gap: 10px; width: 100%; pointer-events: auto;">
-                  <div style="position: relative; flex: 1; display: flex; align-items: center;">
+                <!-- Instagram-style Reply Container & Share Button -->
+                <div id="statusViewerFooterBar" style="display: flex; align-items: center; gap: 10px; width: 100%; pointer-events: auto;">
+                  <div id="statusViewerReplyContainer" style="position: relative; flex: 1; display: flex; align-items: center;">
                     <input type="text" id="statusViewerReplyInput" placeholder="<%= tText("Envoyer un message...") %>"
                       style="width: 100%; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 24px; padding: 10px 44px 10px 18px; color: #ffffff; font-size: 14px; outline: none; font-family: 'Outfit', sans-serif; transition: all 0.2s;"
                       onfocus="this.style.background='rgba(255, 255, 255, 0.25)'; this.style.borderColor='rgba(255, 255, 255, 0.45)';"
@@ -4422,6 +4429,11 @@ function getYouTubeId(url) {
                       <i data-lucide="send" style="width: 18px; height: 18px;"></i>
                     </button>
                   </div>
+                  
+                  <!-- Instagram-style Share Button -->
+                  <button type="button" id="statusViewerShareBtn" style="background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.2); color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(4px); flex-shrink: 0;" title="<%= tText("Partager") %>">
+                    <i data-lucide="send" style="width: 18px; height: 18px; transform: rotate(-28deg) translate(1px, -1px);"></i>
+                  </button>
                 </div>
               </div>
 
