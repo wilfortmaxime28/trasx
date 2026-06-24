@@ -251,6 +251,21 @@ class Status {
     return Number(rows[0]?.count || 0);
   }
 
+  static async getViewers(statusId) {
+    await ensureStatusTable();
+    const [rows] = await db.query(
+      `SELECT sv.user_id, sv.viewed_at,
+              COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS user_name,
+              u.username, u.avatar
+       FROM status_views sv
+       JOIN users u ON sv.user_id = u.id
+       WHERE sv.status_id = ?
+       ORDER BY sv.viewed_at DESC`,
+      [Number(statusId)]
+    );
+    return rows;
+  }
+
   static async addComment(statusId, userId, content) {
     await ensureStatusTable();
     const [result] = await db.query(

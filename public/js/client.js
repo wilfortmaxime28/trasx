@@ -2039,18 +2039,17 @@ document.addEventListener('DOMContentLoaded', () => {
     currentStatusIndex = 0;
     showStatusSegment(currentStatusIndex);
 
-    // Instagram reply input reset and conditional visibility
-    const replyContainer = document.getElementById('statusViewerReplyContainer');
+    // WhatsApp reply input reset and resetting drawers/likes
     const replyInput = document.getElementById('statusViewerReplyInput');
     if (replyInput) replyInput.value = '';
-    
-    const cardUserId = card.dataset.userId;
-    if (replyContainer) {
-      if (cardUserId && String(cardUserId) === String(window.currentUserId)) {
-        replyContainer.style.display = 'none';
-      } else {
-        replyContainer.style.display = 'flex';
-      }
+
+    const drawer = document.getElementById('statusViewersDrawer');
+    if (drawer) drawer.style.transform = 'translateY(100%)';
+
+    const likeIcon = document.getElementById('statusViewerLikeIcon');
+    if (likeIcon) {
+      likeIcon.style.fill = 'none';
+      likeIcon.style.color = 'white';
     }
 
     statusViewerModal.style.display = 'flex';
@@ -2092,21 +2091,47 @@ document.addEventListener('DOMContentLoaded', () => {
     statusViewerModal.dataset.expiresAt = expiresAt || '';
     statusViewerModal.dataset.statusId = status.id || '';
 
-    // Record view in the background and update view counter badge
-    const badge = document.getElementById('statusViewerViewsBadge');
-    const countSpan = document.getElementById('statusViewerCount');
-    if (badge) badge.style.display = 'none';
+    // Record view or handle ownership display
+    const cardUserId = activeStatusCardElement ? activeStatusCardElement.dataset.userId : null;
+    const isOwn = cardUserId && String(cardUserId) === String(window.currentUserId);
 
-    if (status.id) {
-      fetch(`/status/view/${status.id}`, { method: 'POST' })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && countSpan && badge) {
-            countSpan.textContent = data.viewsCount || 0;
-            badge.style.display = 'inline-flex';
-          }
-        })
-        .catch(err => console.error("Error recording status view:", err));
+    const replyBar = document.getElementById('statusViewerReplyBar');
+    const ownerStatsBar = document.getElementById('statusViewerOwnerStatsBar');
+    const statusDrawer = document.getElementById('statusViewersDrawer');
+
+    if (statusDrawer) {
+      statusDrawer.style.transform = 'translateY(100%)';
+    }
+
+    const likeIcon = document.getElementById('statusViewerLikeIcon');
+    if (likeIcon) {
+      likeIcon.style.fill = 'none';
+      likeIcon.style.color = 'white';
+    }
+
+    if (isOwn) {
+      if (replyBar) replyBar.style.display = 'none';
+      if (ownerStatsBar) {
+        ownerStatsBar.style.display = 'flex';
+        const ownerViewsSpan = document.getElementById('statusViewerOwnerViewsCount');
+        if (ownerViewsSpan && status.id) {
+          fetch(`/status/viewers/${status.id}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.success) {
+                ownerViewsSpan.textContent = data.viewers ? data.viewers.length : 0;
+              }
+            })
+            .catch(err => console.error("Error fetching status viewers list count:", err));
+        }
+      }
+    } else {
+      if (ownerStatsBar) ownerStatsBar.style.display = 'none';
+      if (replyBar) replyBar.style.display = 'flex';
+
+      if (status.id) {
+        fetch(`/status/view/${status.id}`, { method: 'POST' }).catch(err => console.error("Error recording status view:", err));
+      }
     }
 
     // Hide mute button by default
@@ -12161,9 +12186,186 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Instagram Status Reply elements & logic
+  // WhatsApp Status Reply elements, reactions, & drawers logic
   const statusViewerReplyInput = document.getElementById('statusViewerReplyInput');
   const statusViewerSendBtn = document.getElementById('statusViewerSendBtn');
+
+  const sendStatusReaction = (reaction) => {
+    if (!activeStatusCardElement) return;
+    const receiverId = parseInt(activeStatusCardElement.dataset.userId, 10);
+    if (!receiverId || isNaN(receiverId)) return;
+
+    const statusId = statusViewerModal.dataset.statusId;
+    const socketMsg = `Réaction à votre statut : ${reaction}`;
+
+    // Emit chat message
+    socket.emit('chat-message', {
+      receiverId: receiverId,
+      content: socketMsg,
+      parentId: null
+    });
+
+    // Record as status comment and trigger notification
+    if (statusId) {
+      fetch(`/status/comment/${statusId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: reaction })
+      }).catch(err => console.error("Error recording status comment reaction:", err));
+    }
+
+    showToast(tText("Réaction envoyée !"));
+  };
+
+  // Bind quick emoji reactions
+  document.querySelectorAll('.status-reaction-emoji-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const emoji = btn.getAttribute('data-emoji');
+      if (emoji) sendStatusReaction(emoji);
+    });
+  });
+
+  // Bind heart Like button
+  const statusViewerLikeBtn = document.getElementById('statusViewerLikeBtn');
+  const statusViewerLikeIcon = document.getElementById('statusViewerLikeIcon');
+  if (statusViewerLikeBtn && statusViewerLikeIcon) {
+    statusViewerLikeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isLiked = statusViewerLikeIcon.style.fill === 'red' || statusViewerLikeIcon.getAttribute('fill') === 'red';
+      if (!isLiked) {
+        statusViewerLikeIcon.style.fill = 'red';
+        statusViewerLikeIcon.style.color = 'red';
+        sendStatusReaction("❤️");
+      } else {
+        statusViewerLikeIcon.style.fill = 'none';
+        statusViewerLikeIcon.style.color = 'white';
+      }
+    });
+  }
+
+  // Drawer formatting and listing
+  function formatViewerTime(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const timeStr = `${hours}:${minutes}`;
+    
+    const isToday = date.getDate() === now.getDate() &&
+                    date.getMonth() === now.getMonth() &&
+                    date.getFullYear() === now.getFullYear();
+                    
+    if (isToday) {
+      return `Aujourd'hui, ${timeStr}`;
+    }
+    
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = date.getDate() === yesterday.getDate() &&
+                        date.getMonth() === yesterday.getMonth() &&
+                        date.getFullYear() === yesterday.getFullYear();
+    if (isYesterday) {
+      return `Hier, ${timeStr}`;
+    }
+    
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return `${day}/${month}/${date.getFullYear()}, ${timeStr}`;
+  }
+
+  function renderViewersList(viewers) {
+    const container = document.getElementById('statusViewersListContainer');
+    const countTitle = document.getElementById('statusViewersDrawerCount');
+    if (!container) return;
+    
+    const count = viewers ? viewers.length : 0;
+    if (countTitle) {
+      countTitle.textContent = `Vu par ${count}`;
+    }
+    
+    if (!viewers || viewers.length === 0) {
+      container.innerHTML = `
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; color: rgba(255, 255, 255, 0.5); gap: 10px;">
+          <i data-lucide="eye-off" style="width: 36px; height: 36px; stroke-width: 1.5;"></i>
+          <span style="font-size: 13px; font-family: 'Outfit', sans-serif;">Aucune vue pour le moment</span>
+        </div>
+      `;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      return;
+    }
+    
+    container.innerHTML = '';
+    viewers.forEach(v => {
+      const item = document.createElement('div');
+      item.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        gap: 12px;
+      `;
+      
+      const avatarSrc = v.avatar || '/uploads/avatars/default.png';
+      const viewTimeFormatted = formatViewerTime(v.viewed_at);
+      
+      item.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1;">
+          <img src="${avatarSrc}" alt="${v.user_name}" style="width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,0.15);">
+          <div style="min-width: 0; display: flex; flex-direction: column;">
+            <span style="font-size: 13.5px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Outfit', sans-serif;">${escapeHtml(v.user_name)}</span>
+            <span style="font-size: 11.5px; color: rgba(255,255,255,0.5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Outfit', sans-serif;">@${escapeHtml(v.username)}</span>
+          </div>
+        </div>
+        <span style="font-size: 11.5px; color: rgba(255, 255, 255, 0.6); font-family: 'Outfit', sans-serif; white-space: nowrap;">${viewTimeFormatted}</span>
+      `;
+      container.appendChild(item);
+    });
+  }
+
+  function loadStatusViewers(statusId) {
+    const container = document.getElementById('statusViewersListContainer');
+    if (!container) return;
+    
+    container.innerHTML = `
+      <div style="display: flex; justify-content: center; align-items: center; padding: 30px; color: rgba(255,255,255,0.6); font-family: 'Outfit', sans-serif;">
+        <div style="border: 2px solid rgba(255,255,255,0.2); border-top: 2px solid #fff; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.8s linear infinite; margin-right: 8px;"></div>
+        Chargement...
+      </div>
+    `;
+    
+    fetch(`/status/viewers/${statusId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          renderViewersList(data.viewers);
+        } else {
+          container.innerHTML = `<div style="text-align: center; padding: 20px; color: #ff6b6b; font-family: 'Outfit', sans-serif;">Erreur de chargement.</div>`;
+        }
+      })
+      .catch(err => {
+        console.error("Error loading status viewers:", err);
+        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #ff6b6b; font-family: 'Outfit', sans-serif;">Erreur de connexion.</div>`;
+      });
+  }
+
+  window.toggleStatusViewersDrawer = (show) => {
+    const drawer = document.getElementById('statusViewersDrawer');
+    if (!drawer) return;
+    if (show) {
+      pauseStory();
+      const statusId = statusViewerModal.dataset.statusId;
+      if (statusId) {
+        loadStatusViewers(statusId);
+      }
+      drawer.style.transform = 'translateY(0)';
+    } else {
+      drawer.style.transform = 'translateY(100%)';
+      resumeStory();
+    }
+  };
 
   if (statusViewerReplyInput) {
     statusViewerReplyInput.addEventListener('focus', () => {

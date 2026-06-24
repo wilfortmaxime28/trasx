@@ -42,5 +42,6 @@ router.post('/create', uploadStatusMedia.single('status_media'), statusControlle
 router.post('/view/:id', requireAuth, statusController.recordView);
 router.post('/comment/:id', requireAuth, statusController.createComment);
 router.post('/share/:id', requireAuth, statusController.recordShare);
+router.get('/viewers/:id', requireAuth, statusController.getViewers);
 
 module.exports = router;

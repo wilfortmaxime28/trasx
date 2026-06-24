@@ -241,6 +241,28 @@ class StatusController {
       return res.status(500).json({ error: 'Failed to record share.' });
     }
   }
+
+  static async getViewers(req, res) {
+    try {
+      const currentUserId = req.session.userId;
+      const statusId = parseInt(req.params.id, 10);
+      if (!statusId) {
+        return res.status(400).json({ error: 'Status ID is required.' });
+      }
+      const status = await Status.getById(statusId);
+      if (!status) {
+        return res.status(404).json({ error: 'Status not found.' });
+      }
+      if (Number(status.user_id) !== Number(currentUserId)) {
+        return res.status(403).json({ error: 'Unauthorized to view status viewers.' });
+      }
+      const viewers = await Status.getViewers(statusId);
+      return res.json({ success: true, viewers });
+    } catch (err) {
+      console.error('getViewers error:', err);
+      return res.status(500).json({ error: 'Failed to retrieve viewers.' });
+    }
+  }
 }
 
 module.exports = StatusController;

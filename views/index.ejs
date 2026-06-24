@@ -4466,23 +4466,64 @@ function getYouTubeId(url) {
               <div class="status-viewer-footer-overlay" style="position: absolute; bottom: 0; left: 0; right: 0; padding: 48px 16px max(20px, env(safe-area-inset-bottom)) 16px; background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0) 100%); z-index: 15; color: #ffffff; display: flex; flex-direction: column; gap: 12px; pointer-events: none;">
                 <p id="statusViewerCaption" class="status-viewer-caption" style="margin: 0; font-size: 14px; font-weight: 500; line-height: 1.45; text-shadow: 0 1px 4px rgba(0,0,0,0.9); word-break: break-word; font-family: 'Outfit', sans-serif; pointer-events: auto; text-align: center;"></p>
                 
-                <!-- Reply & Share bar -->
-                <div id="statusViewerFooterBar" style="display: flex; align-items: center; gap: 10px; width: 100%; pointer-events: auto; padding-bottom: 4px;">
-                  <!-- Reply input with embedded send button -->
-                  <div id="statusViewerReplyContainer" style="position: relative; flex: 1; display: flex; align-items: center;">
-                    <input type="text" id="statusViewerReplyInput" placeholder="<%= tText("Envoyer un message...") %>"
-                      style="width: 100%; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.22); border-radius: 24px; padding: 10px 46px 10px 18px; color: #ffffff; font-size: 14px; outline: none; font-family: 'Outfit', sans-serif; transition: background 0.2s, border-color 0.2s; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,0.2);"
-                      onfocus="this.style.background='rgba(255,255,255,0.22)'; this.style.borderColor='rgba(255,255,255,0.45)';"
-                      onblur="this.style.background='rgba(255,255,255,0.12)'; this.style.borderColor='rgba(255,255,255,0.22)';">
-                    <button type="button" id="statusViewerSendBtn" style="position: absolute; right: 8px; background: none; border: none; color: #ffffff; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; opacity: 0.75; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.75'">
-                      <i data-lucide="send" style="width: 16px; height: 16px;"></i>
+                <!-- Reply & Share bar / Owner stats bar -->
+                <div id="statusViewerFooterBar" style="width: 100%; pointer-events: auto; padding-bottom: 4px;">
+                  <!-- WhatsApp-style Reply Bar for Non-Owners -->
+                  <div id="statusViewerReplyBar" style="display: flex; align-items: center; gap: 8px; width: 100%;">
+                    <!-- Reply input with embedded send button -->
+                    <div style="position: relative; flex: 1; display: flex; align-items: center;">
+                      <input type="text" id="statusViewerReplyInput" placeholder="<%= tText("Répondre") %>"
+                        style="width: 100%; background: rgba(255,255,255,0.15); border: none; border-radius: 24px; padding: 10px 42px 10px 18px; color: #ffffff; font-size: 14px; outline: none; font-family: 'Outfit', sans-serif; transition: background 0.2s; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 2px 10px rgba(0,0,0,0.25);">
+                      <button type="button" id="statusViewerSendBtn" style="position: absolute; right: 8px; background: none; border: none; color: #ffffff; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; opacity: 0.75; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.75'">
+                        <i data-lucide="send" style="width: 16px; height: 16px;"></i>
+                      </button>
+                    </div>
+                    
+                    <!-- Quick Reaction Emojis -->
+                    <div class="status-quick-reactions" style="display: flex; align-items: center; gap: 4px;">
+                      <button type="button" class="status-reaction-emoji-btn" data-emoji="😍" style="background: rgba(255, 255, 255, 0.12); border: none; font-size: 18px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s ease, background 0.2s ease;" onmouseover="this.style.transform='scale(1.15)'; this.style.background='rgba(255,255,255,0.25)';" onmouseout="this.style.transform='scale(1)'; this.style.background='rgba(255,255,255,0.12)';">😍</button>
+                      <button type="button" class="status-reaction-emoji-btn" data-emoji="😂" style="background: rgba(255, 255, 255, 0.12); border: none; font-size: 18px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s ease, background 0.2s ease;" onmouseover="this.style.transform='scale(1.15)'; this.style.background='rgba(255,255,255,0.25)';" onmouseout="this.style.transform='scale(1)'; this.style.background='rgba(255,255,255,0.12)';">😂</button>
+                      <button type="button" class="status-reaction-emoji-btn" data-emoji="😮" style="background: rgba(255, 255, 255, 0.12); border: none; font-size: 18px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s ease, background 0.2s ease;" onmouseover="this.style.transform='scale(1.15)'; this.style.background='rgba(255,255,255,0.25)';" onmouseout="this.style.transform='scale(1)'; this.style.background='rgba(255,255,255,0.12)';">😮</button>
+                    </div>
+
+                    <!-- Heart/Like Button -->
+                    <button type="button" id="statusViewerLikeBtn" style="background: rgba(255,255,255,0.12); border: none; color: white; border-radius: 50%; width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,0.25);" title="<%= tText("Like") %>">
+                      <i data-lucide="heart" id="statusViewerLikeIcon" style="width: 16px; height: 16px; transition: fill 0.2s, color 0.2s;"></i>
+                    </button>
+                    
+                    <!-- Share to chat button -->
+                    <button type="button" id="statusViewerShareBtn" style="background: rgba(255,255,255,0.12); border: none; color: white; border-radius: 50%; width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,0.25);" title="<%= tText("Partager") %>">
+                      <i data-lucide="share-2" style="width: 16px; height: 16px;"></i>
                     </button>
                   </div>
-                  
-                  <!-- Share to chat button (distinct from send reply) -->
-                  <button type="button" id="statusViewerShareBtn" style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.22); color: white; border-radius: 50%; width: 42px; height: 42px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,0.2);" title="<%= tText("Partager") %>">
-                    <i data-lucide="share-2" style="width: 17px; height: 17px;"></i>
+
+                  <!-- Swipe-Up / Click-Up Tab for Status Owner -->
+                  <div id="statusViewerOwnerStatsBar" style="display: none; align-items: center; justify-content: center; flex-direction: column; width: 100%; cursor: pointer; padding: 6px 0; gap: 2px;" onclick="window.toggleStatusViewersDrawer(true)">
+                    <i data-lucide="chevron-up" style="width: 18px; height: 18px; color: rgba(255, 255, 255, 0.7); animation: bounce-up-down 1.5s infinite;"></i>
+                    <div style="display: flex; align-items: center; gap: 6px; color: #ffffff; font-size: 13px; font-weight: 600; font-family: 'Outfit', sans-serif;">
+                      <i data-lucide="eye" style="width: 14px; height: 14px;"></i>
+                      <span id="statusViewerOwnerViewsCount">0</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Status Viewers Bottom Drawer (WhatsApp style) -->
+              <div id="statusViewersDrawer" style="position: absolute; bottom: 0; left: 0; right: 0; height: 50%; background: rgba(18, 27, 34, 0.96); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-radius: 20px 20px 0 0; z-index: 100; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.1, 0.76, 0.55, 0.94); border-top: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 -8px 32px rgba(0,0,0,0.5); overflow: hidden;">
+                <!-- Drag Handle visual element -->
+                <div style="width: 36px; height: 4px; background: rgba(255, 255, 255, 0.3); border-radius: 2px; margin: 8px auto 4px auto; cursor: pointer;" onclick="window.toggleStatusViewersDrawer(false)"></div>
+                
+                <!-- Header -->
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 16px 12px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                  <span id="statusViewersDrawerCount" style="font-size: 14.5px; font-weight: 700; color: #ffffff; font-family: 'Outfit', sans-serif;">Vu par 0</span>
+                  <button type="button" style="background: none; border: none; color: rgba(255, 255, 255, 0.7); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; transition: color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255, 255, 255, 0.7)'" onclick="window.toggleStatusViewersDrawer(false)">
+                    <i data-lucide="chevron-down" style="width: 20px; height: 20px;"></i>
                   </button>
+                </div>
+                
+                <!-- Viewers List Body -->
+                <div id="statusViewersListContainer" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column;">
+                  <!-- Dynamically populated viewer list items -->
                 </div>
               </div>
 
