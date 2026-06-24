@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   window.currentView = 'feed';
-  window.feedVideosMuted = true;
+  window.feedVideosMuted = false;
   let wasReelDragging = false;
   const userTypingStates = {};
   const userTypingTimers = {};
@@ -2825,9 +2825,14 @@ document.addEventListener('DOMContentLoaded', () => {
     entries.forEach(entry => {
       const video = entry.target;
       if (entry.isIntersecting) {
-        video.muted = (typeof window.feedVideosMuted !== 'undefined' ? window.feedVideosMuted : true);
+        const targetMuted = (typeof window.feedVideosMuted !== 'undefined' ? window.feedVideosMuted : false);
+        video.muted = targetMuted;
         video.play().catch(err => {
-          // Silently catch autoplay blocks (e.g. browser restriction)
+          // If playing unmuted was blocked by browser autoplay policy, retry muted
+          if (!targetMuted && err.name === 'NotAllowedError') {
+            video.muted = true;
+            video.play().catch(() => {});
+          }
         });
       } else {
         if (!video.paused) {
