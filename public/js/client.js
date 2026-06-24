@@ -4680,6 +4680,32 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Toggle dropdown on message bubble click (for mobile and click accessibility)
+    const bubble = e.target.closest('.chat-msg-bubble');
+    if (bubble) {
+      if (e.target.tagName === 'A' || e.target.closest('a') || e.target.closest('button')) {
+        return;
+      }
+      e.stopPropagation();
+      const wrapper = bubble.closest('.chat-msg-wrapper');
+      if (!wrapper) return;
+      const dropdown = wrapper.querySelector('.message-actions-dropdown');
+      if (!dropdown) return;
+      const isAlreadyShow = dropdown.classList.contains('show');
+      
+      document.querySelectorAll('.message-actions-dropdown.show').forEach(d => {
+        d.classList.remove('show');
+      });
+      document.querySelectorAll('.chat-msg-wrapper.action-open').forEach(w => {
+        w.classList.remove('action-open');
+      });
+
+      if (!isAlreadyShow) {
+        openMsgDropdown(wrapper);
+      }
+      return;
+    }
+
     // Close dropdowns when clicking outside
     if (!e.target.closest('.message-actions-dropdown')) {
       document.querySelectorAll('.message-actions-dropdown.show').forEach(d => d.classList.remove('show'));
