@@ -475,7 +475,7 @@ function getYouTubeId(url) {
                 <div id="postsGrid" class="profile-grid profile-grid-container active">
                   <% if (userPosts && userPosts.length> 0) { %>
                     <% userPosts.forEach(post=> { %>
-                      <div class="grid-item" data-post-id="<%= post.id %>">
+                      <div class="grid-item" data-post-id="<%= post.id %>" onclick="window.location.href='/#post-<%= post.id %>'" style="cursor: pointer;">
                         <% if (post.is_live === 1) { 
                              const ytId = getYouTubeId(post.live_url);
                         %>
@@ -510,7 +510,7 @@ function getYouTubeId(url) {
                               <div class="views" style="display: flex; gap: 8px;">
                                 <span style="display: flex; align-items: center; gap: 3px;">
                                   <i data-lucide="eye" style="width: 12px; height: 12px;"></i>
-                                  <%= formatNumber((post.likes_count || 0) * 12 + (post.id % 7) * 3 + 15) %>
+                                  <%= formatNumber(post.views_count || 0) %>
                                 </span>
                                 <span style="display: flex; align-items: center; gap: 3px;">
                                   <i data-lucide="heart" style="width: 12px; height: 12px;"></i>

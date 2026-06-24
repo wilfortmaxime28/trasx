@@ -213,6 +213,7 @@ class Post {
         COALESCE(cc.comments_count, 0)  AS comments_count,
         COALESCE(fc.followers_count, 0) AS author_followers_count,
         COALESCE(sc.shares_count, 0)    AS shares_count,
+        COALESCE(vc.views_count, 0)     AS views_count,
         (ul.user_id IS NOT NULL)        AS is_liked,
         (ub.user_id IS NOT NULL)        AS is_bookmarked,
         (lu.user_id IS NOT NULL)        AS is_live_unlocked,
@@ -228,6 +229,7 @@ class Post {
       LEFT JOIN (SELECT post_id, COUNT(*) AS comments_count FROM comments  GROUP BY post_id) cc ON cc.post_id = p.id
       LEFT JOIN (SELECT following_id, COUNT(*) AS followers_count FROM follows GROUP BY following_id) fc ON fc.following_id = p.user_id
       LEFT JOIN (SELECT post_id, COUNT(*) AS shares_count   FROM post_shares WHERE clicked_at IS NOT NULL GROUP BY post_id) sc ON sc.post_id = p.id
+      LEFT JOIN (SELECT post_id, COUNT(*) AS views_count    FROM post_daily_unique_views GROUP BY post_id) vc ON vc.post_id = p.id
       LEFT JOIN likes        ul ON ul.post_id     = p.id AND ul.user_id      = ?
       LEFT JOIN bookmarks    ub ON ub.post_id     = p.id AND ub.user_id      = ?
       LEFT JOIN live_unlocks lu ON lu.post_id     = p.id AND lu.user_id      = ?
@@ -527,6 +529,7 @@ class Post {
           FROM post_shares ps
           WHERE ps.post_id = p.id AND ps.clicked_at IS NOT NULL
         ) AS shares_count,
+        (SELECT COUNT(*) FROM post_daily_unique_views WHERE post_id = p.id) AS views_count,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) AS likes_count,
         (SELECT COUNT(*) FROM comments WHERE post_id = p.id) AS comments_count,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) AS is_liked,

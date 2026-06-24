@@ -8225,7 +8225,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }, (res) => {
               hideGlobalVideoProgress();
               if (res && res.success && res.postId) {
-                window.location.href = `/?view=feed&post_id=${res.postId}`;
+                finalizePostCreation();
+                window.location.href = `/#post-${res.postId}`;
               } else {
                 showToast(res ? res.error : "Failed to create post");
               }
@@ -8299,9 +8300,17 @@ document.addEventListener('DOMContentLoaded', () => {
               isLive: selectedLiveConfig?.isLive ? 1 : 0,
               liveUrl: selectedLiveConfig?.liveUrl || null,
               livePrice: selectedLiveConfig?.livePrice || 0
+            }, (res) => {
+              if (res && res.success && res.postId) {
+                finalizePostCreation();
+                window.location.href = `/#post-${res.postId}`;
+              } else {
+                showToast(res ? res.error : 'Failed to create post');
+                if (sharePostBtn) { sharePostBtn.disabled = false; sharePostBtn.textContent = 'Share Post'; }
+                if (confirmShareBtn) { confirmShareBtn.disabled = false; confirmShareBtn.textContent = 'Share Post'; }
+              }
             });
 
-            finalizePostCreation();
           })
           .catch(err => {
             console.error(err);
@@ -8337,8 +8346,16 @@ document.addEventListener('DOMContentLoaded', () => {
           isLive: selectedLiveConfig?.isLive ? 1 : 0,
           liveUrl: selectedLiveConfig?.liveUrl || null,
           livePrice: selectedLiveConfig?.livePrice || 0
+        }, (res) => {
+          if (res && res.success && res.postId) {
+            finalizePostCreation();
+            window.location.href = `/#post-${res.postId}`;
+          } else {
+            showToast(res ? res.error : 'Failed to create post');
+            if (sharePostBtn) { sharePostBtn.disabled = false; sharePostBtn.textContent = 'Share Post'; }
+            if (confirmShareBtn) { confirmShareBtn.disabled = false; confirmShareBtn.textContent = 'Share Post'; }
+          }
         });
-        finalizePostCreation();
       }
     };
 

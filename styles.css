@@ -1106,27 +1106,36 @@ button {
 .post-images-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  padding: 0 20px;
+  gap: 4px;
+  padding: 0;
 }
 
 .grid-image-wrapper {
   aspect-ratio: 1.15;
-  border-radius: 12px;
+  border-radius: 0;
   overflow: hidden;
   background-color: var(--bg-input);
-  box-shadow: var(--shadow-sm);
+}
+
+.post-images-grid.grid-2 .grid-image-wrapper:first-child {
+  border-radius: 0;
+}
+
+.post-images-grid.grid-2 .grid-image-wrapper:last-child {
+  border-radius: 0;
 }
 
 .post-single-image {
-  padding: 0 20px;
-  border-radius: 12px;
+  padding: 0;
+  border-radius: 0;
   overflow: hidden;
+  width: 100%;
 }
 
 .post-single-image img {
-  border-radius: 12px;
-  max-height: 400px;
+  border-radius: 0;
+  max-height: 520px;
+  width: 100%;
 }
 
 .post-img {
@@ -1134,6 +1143,7 @@ button {
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: 0 !important;
   transition: transform 0.5s var(--transition-smooth);
 }
 

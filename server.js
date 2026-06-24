@@ -613,8 +613,11 @@ app.get('/api/feed/posts', requireAuth, async (req, res) => {
     }
     feedResult.posts.forEach(p => { p.comments = commentsByPostId.get(p.id) || []; });
 
-    // Enregistrer les vues du lot
-    const postIds = feedResult.posts.map(p => Number(p.id)).filter(Boolean);
+    // Enregistrer les vues du lot (exclure les posts propres de l'utilisateur)
+    const postIds = feedResult.posts
+      .filter(p => Number(p.user_id) !== currentUserId)
+      .map(p => Number(p.id))
+      .filter(Boolean);
     if (postIds.length) await Post.recordDailyViews(postIds, currentUserId);
 
     return res.json({
