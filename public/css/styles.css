@@ -6328,17 +6328,17 @@ body[data-theme="dark"] .birthday-feed-card-shell::before {
   }
 
   .post-images-grid {
-    padding: 0 12px;
-    gap: 8px;
+    padding: 0 !important;
+    gap: 4px;
   }
 
   .post-single-image {
-    padding: 0 12px;
+    padding: 0 !important;
   }
 
   .post-single-image img,
   .grid-image-wrapper {
-    border-radius: 8px;
+    border-radius: 0 !important;
   }
 
   .post-footer {
