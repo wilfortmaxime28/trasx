@@ -3040,8 +3040,8 @@ function getYouTubeId(url) {
                                           onclick="window.handleReelTradeClick && window.handleReelTradeClick(this)"
                                           onpointerup="window.handleReelTradeClick && window.handleReelTradeClick(this)"
                                           style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
-                                          <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(124, 58, 237, 0.85); display: grid; place-items: center;">
-                                            <i data-lucide="repeat" style="width: 12px; height: 12px;"></i>
+                                          <div style="width: 18px; height: 18px; border-radius: 50%; background: rgba(124, 58, 237, 0.85); display: grid; place-items: center;">
+                                            <i data-lucide="repeat" style="width: 10px; height: 10px;"></i>
                                           </div>
                                           <span style="font-size: 9px; font-weight: 600; line-height: 1.1;">Trade</span>
                                           <strong class="reel-trade-price-val" style="font-size: 8px; line-height: 1.1; margin-top: -1px;">$<%= reelTradePrice.toFixed(2) %></strong>
@@ -4417,7 +4417,7 @@ function getYouTubeId(url) {
             <div class="modal-content status-viewer-content" role="dialog" aria-modal="true" aria-labelledby="statusViewerTitle">
               
               <!-- Floating Header Overlay (Progress bar + User info) -->
-              <div class="status-viewer-header-overlay" style="position: absolute; top: 0; left: 0; right: 0; padding: 10px 10px 32px 10px; background: linear-gradient(to bottom, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.5) 60%, rgba(0, 0, 0, 0) 100%); z-index: 15; pointer-events: none; display: flex; flex-direction: column; gap: 8px;">
+              <div class="status-viewer-header-overlay" style="position: absolute; top: 0; left: 0; right: 0; padding: 6px 10px 24px 10px; background: linear-gradient(to bottom, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.5) 60%, rgba(0, 0, 0, 0) 100%); z-index: 15; pointer-events: none; display: flex; flex-direction: column; gap: 6px;">
                 <!-- Segmented progress bars (WhatsApp / Instagram style) -->
                 <div class="status-viewer-progress-container" id="statusViewerProgressContainer"
                   style="display: flex; gap: 4px; width: 100%; margin-bottom: 2px; pointer-events: auto;"></div>
@@ -4463,24 +4463,25 @@ function getYouTubeId(url) {
               </div>
  
               <!-- Floating Bottom Overlay (Captions & Reply Input) -->
-              <div class="status-viewer-footer-overlay" style="position: absolute; bottom: 0; left: 0; right: 0; padding: 48px 20px 24px 20px; background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0) 100%); z-index: 15; color: #ffffff; display: flex; flex-direction: column; gap: 14px; pointer-events: none;">
+              <div class="status-viewer-footer-overlay" style="position: absolute; bottom: 0; left: 0; right: 0; padding: 48px 16px max(20px, env(safe-area-inset-bottom)) 16px; background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0) 100%); z-index: 15; color: #ffffff; display: flex; flex-direction: column; gap: 12px; pointer-events: none;">
                 <p id="statusViewerCaption" class="status-viewer-caption" style="margin: 0; font-size: 14px; font-weight: 500; line-height: 1.45; text-shadow: 0 1px 4px rgba(0,0,0,0.9); word-break: break-word; font-family: 'Outfit', sans-serif; pointer-events: auto; text-align: center;"></p>
                 
-                <!-- Instagram-style Reply Container & Share Button -->
-                <div id="statusViewerFooterBar" style="display: flex; align-items: center; gap: 10px; width: 100%; pointer-events: auto;">
+                <!-- Reply & Share bar -->
+                <div id="statusViewerFooterBar" style="display: flex; align-items: center; gap: 10px; width: 100%; pointer-events: auto; padding-bottom: 4px;">
+                  <!-- Reply input with embedded send button -->
                   <div id="statusViewerReplyContainer" style="position: relative; flex: 1; display: flex; align-items: center;">
                     <input type="text" id="statusViewerReplyInput" placeholder="<%= tText("Envoyer un message...") %>"
-                      style="width: 100%; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 24px; padding: 10px 44px 10px 18px; color: #ffffff; font-size: 14px; outline: none; font-family: 'Outfit', sans-serif; transition: all 0.2s;"
-                      onfocus="this.style.background='rgba(255, 255, 255, 0.25)'; this.style.borderColor='rgba(255, 255, 255, 0.45)';"
-                      onblur="this.style.background='rgba(255, 255, 255, 0.15)'; this.style.borderColor='rgba(255, 255, 255, 0.2)';">
-                    <button type="button" id="statusViewerSendBtn" style="position: absolute; right: 6px; background: none; border: none; color: #ffffff; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; opacity: 0.8; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
-                      <i data-lucide="send" style="width: 18px; height: 18px;"></i>
+                      style="width: 100%; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.22); border-radius: 24px; padding: 10px 46px 10px 18px; color: #ffffff; font-size: 14px; outline: none; font-family: 'Outfit', sans-serif; transition: background 0.2s, border-color 0.2s; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,0.2);"
+                      onfocus="this.style.background='rgba(255,255,255,0.22)'; this.style.borderColor='rgba(255,255,255,0.45)';"
+                      onblur="this.style.background='rgba(255,255,255,0.12)'; this.style.borderColor='rgba(255,255,255,0.22)';">
+                    <button type="button" id="statusViewerSendBtn" style="position: absolute; right: 8px; background: none; border: none; color: #ffffff; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; opacity: 0.75; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.75'">
+                      <i data-lucide="send" style="width: 16px; height: 16px;"></i>
                     </button>
                   </div>
                   
-                  <!-- Instagram-style Share Button -->
-                  <button type="button" id="statusViewerShareBtn" style="background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.2); color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(4px); flex-shrink: 0;" title="<%= tText("Partager") %>">
-                    <i data-lucide="send" style="width: 18px; height: 18px; transform: rotate(-28deg) translate(1px, -1px);"></i>
+                  <!-- Share to chat button (distinct from send reply) -->
+                  <button type="button" id="statusViewerShareBtn" style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.22); color: white; border-radius: 50%; width: 42px; height: 42px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,0.2);" title="<%= tText("Partager") %>">
+                    <i data-lucide="share-2" style="width: 17px; height: 17px;"></i>
                   </button>
                 </div>
               </div>

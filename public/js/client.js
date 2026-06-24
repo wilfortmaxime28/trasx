@@ -2254,16 +2254,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof lucide !== 'undefined') lucide.createIcons();
       }
 
-      // 3. Video Status (with Media Fragment trimming support)
-      let srcUrl = mediaUrl;
-      if (trimStart !== null || trimEnd !== null) {
-        const start = trimStart !== null ? trimStart : 0;
-        const end = trimEnd !== null ? trimEnd : '';
-        srcUrl += `#t=${start},${end}`;
-      }
-
-      statusViewerVideo.src = srcUrl;
+      // 3. Video Status — load clean URL, seek via currentTime to avoid buffering chops
+      statusViewerVideo.src = mediaUrl;
       statusViewerVideo.muted = !statusViewerVolumeOn;
+      statusViewerVideo.preload = 'auto';
       statusViewerVideo.style.display = 'block';
       statusViewerVideo.style.pointerEvents = 'auto';
       statusViewerVideo.load();
