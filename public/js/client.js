@@ -10694,9 +10694,37 @@ document.addEventListener('DOMContentLoaded', () => {
     closeStatusViewerModalBtn.addEventListener('click', closeStatusViewer);
   }
 
+  const statusViewerPrevBtn = document.getElementById('statusViewerPrevBtn');
+  const statusViewerNextBtn = document.getElementById('statusViewerNextBtn');
+  if (statusViewerPrevBtn) {
+    statusViewerPrevBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      advanceStory(-1);
+    });
+  }
+  if (statusViewerNextBtn) {
+    statusViewerNextBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      advanceStory(1);
+    });
+  }
+
+  // Keyboard controls for status viewer
+  document.addEventListener('keydown', (e) => {
+    if (statusViewerModal && statusViewerModal.style.display === 'flex') {
+      if (e.key === 'ArrowLeft') {
+        advanceStory(-1);
+      } else if (e.key === 'ArrowRight') {
+        advanceStory(1);
+      } else if (e.key === 'Escape') {
+        closeStatusViewer();
+      }
+    }
+  });
+
   if (statusViewerModal) {
     statusViewerModal.addEventListener('click', (e) => {
-      if (e.target === statusViewerModal) {
+      if (e.target === statusViewerModal || e.target.classList.contains('status-viewer-outer-container')) {
         closeStatusViewer();
       }
     });

@@ -4335,21 +4335,25 @@ select:-webkit-autofill {
 }
 
 .status-viewer-content {
-  max-width: 720px;
-  width: min(94vw, 720px);
+  position: relative;
+  background: #000 !important;
+  border-radius: 20px;
+  overflow: hidden;
+  padding: 0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 25px 60px -15px rgba(0,0,0,0.9);
 }
 
 /* Story Progress Bar Indicator */
 .status-viewer-progress-container {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
-  margin-bottom: 12px;
 }
 
 .status-viewer-progress-segment {
   height: 4px;
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.25) !important;
   border-radius: 2px;
   flex: 1;
   overflow: hidden;
@@ -4357,13 +4361,13 @@ select:-webkit-autofill {
 }
 
 body[data-theme="dark"] .status-viewer-progress-segment {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.25) !important;
 }
 
 .status-viewer-progress-fill {
   height: 100%;
   width: 0%;
-  background: var(--primary);
+  background: #ffffff !important;
   border-radius: 2px;
   transition: width 0.1s linear;
 }
@@ -4377,27 +4381,26 @@ body[data-theme="dark"] .status-viewer-progress-segment {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  width: 100%;
 }
 
 .status-viewer-user {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
 .status-viewer-media-shell {
-  position: relative;
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
-  min-height: 420px;
-  border-radius: 16px;
-  overflow: hidden;
-  background: #000;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
+  height: 100%;
+  background: #050505;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .status-viewer-media-shell img,
@@ -4405,16 +4408,22 @@ body[data-theme="dark"] .status-viewer-progress-segment {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  background: #000;
-  pointer-events: none; /* Let click event pass to the parent shell for coordinate checking */
+  background: #050505;
+  pointer-events: none;
 }
 
 .status-viewer-caption {
-  margin-top: 14px;
-  color: var(--text-primary);
+  margin: 0;
   font-size: 14px;
-  line-height: 1.5;
-  min-height: 20px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: #ffffff;
+}
+
+@media (max-width: 768px) {
+  .status-viewer-nav-btn {
+    display: none !important;
+  }
 }
 
 /* Create Post Card */
