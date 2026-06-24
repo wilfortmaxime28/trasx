@@ -332,7 +332,20 @@ function customRateLimiter(options = {}) {
   const message = options.message || { error: "Trop de requêtes, veuillez réessayer plus tard." };
 
   return (req, res, next) => {
-    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    let ip = req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress;
+    
+    // Parse client IP if forwarded by proxy (e.g., "client, proxy1, proxy2")
+    if (ip && typeof ip === 'string') {
+      if (ip.includes(',')) {
+        ip = ip.split(',')[0].trim();
+      }
+    }
+
+    // Bypass rate limiting for localhost / loopback interfaces in development
+    if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost') {
+      return next();
+    }
+
     const now = Date.now();
 
     if (!rateLimitStore.has(ip)) {
@@ -345,6 +358,7 @@ function customRateLimiter(options = {}) {
     rateLimitStore.set(ip, timestamps);
 
     if (timestamps.length > max) {
+      console.warn(`[Rate Limit] IP ${ip} exceeded limit (${timestamps.length}/${max}) on ${req.originalUrl}`);
       return res.status(429).json(message);
     }
     next();
@@ -369,9 +383,10 @@ function antiScrapingMiddleware(req, res, next) {
 }
 
 app.use(antiScrapingMiddleware);
-app.use('/api', customRateLimiter({ windowMs: 60 * 1000, max: 200 }));
-app.use('/auth/login', customRateLimiter({ windowMs: 60 * 1000, max: 15 }));
-app.use('/auth/register', customRateLimiter({ windowMs: 60 * 1000, max: 10 }));
+app.use('/api', customRateLimiter({ windowMs: 60 * 1000, max: 600 }));
+app.use('/auth/login', customRateLimiter({ windowMs: 60 * 1000, max: 20 }));
+app.use('/auth/register', customRateLimiter({ windowMs: 60 * 1000, max: 15 }));
+
 
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain');
