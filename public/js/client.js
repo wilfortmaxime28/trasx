@@ -22539,9 +22539,9 @@ document.addEventListener('DOMContentLoaded', () => {
           } else if (idx < state.history.length) {
             drawField(state.history[idx]);
             drawReplayOverlay();
-            // Dynamically calculate speed to make the replay last exactly 45 seconds.
-            // At 60 FPS, 45 seconds is 2700 animation frames.
-            const replayTicks = 60 * 45; // 45 seconds target
+            // Dynamically calculate speed to make the replay last exactly 35 seconds.
+            // At 60 FPS, 35 seconds is 2100 animation frames.
+            const replayTicks = 60 * 35; // 35 seconds target
             const increment = Math.max(0.01, state.history.length / replayTicks);
             state.replayFrame += increment;
           } else {
