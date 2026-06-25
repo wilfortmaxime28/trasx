@@ -451,10 +451,12 @@ class FeedController {
       const marketDefaultPaymentMethods = getDefaultPaymentMethodsForCountry(currentUser.country);
 
       const initiallyVisiblePostIds = posts
+        .filter((post) => Number(post.user_id) !== currentUserId)
         .map((post) => Number(post.id))
         .filter((id) => Number.isFinite(id) && id > 0);
       const initiallyVisibleReelIds = reels
         .slice(0, initialShortBatchSize)
+        .filter((reel) => Number(reel.user_id) !== currentUserId)
         .map((reel) => Number(reel.id))
         .filter((id) => Number.isFinite(id) && id > 0);
 

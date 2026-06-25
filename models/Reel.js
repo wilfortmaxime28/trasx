@@ -238,16 +238,15 @@ class Reel {
       return;
     }
 
-    const values = ids.map(() => '(?, ?, CURDATE())').join(', ');
-    const params = [];
-    ids.forEach((reelId) => {
-      params.push(reelId, numericViewerUserId);
-    });
+    const placeholders = ids.map(() => '?').join(', ');
+    const params = [numericViewerUserId, ...ids, numericViewerUserId];
 
     await db.query(
       `
         INSERT IGNORE INTO reel_daily_unique_views (reel_id, viewer_user_id, view_date)
-        VALUES ${values}
+        SELECT id, ?, CURDATE()
+        FROM reels
+        WHERE id IN (${placeholders}) AND user_id != ?
       `,
       params
     );
