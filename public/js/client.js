@@ -22544,18 +22544,20 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset positions
         state.positions = {
           p1: [
-            { x: 180, y: 80, vx: 0, vy: 0 },
-            { x: 100, y: 150, vx: 0, vy: 0 },
-            { x: 260, y: 150, vx: 0, vy: 0 },
-            { x: 130, y: 240, vx: 0, vy: 0 },
-            { x: 230, y: 240, vx: 0, vy: 0 }
+            { x: 180, y: 55, vx: 0, vy: 0 },
+            { x: 100, y: 120, vx: 0, vy: 0 },
+            { x: 260, y: 120, vx: 0, vy: 0 },
+            { x: 180, y: 200, vx: 0, vy: 0 },
+            { x: 110, y: 260, vx: 0, vy: 0 },
+            { x: 250, y: 260, vx: 0, vy: 0 }
           ],
           p2: [
-            { x: 180, y: 520, vx: 0, vy: 0 },
-            { x: 100, y: 450, vx: 0, vy: 0 },
-            { x: 260, y: 450, vx: 0, vy: 0 },
-            { x: 130, y: 360, vx: 0, vy: 0 },
-            { x: 230, y: 360, vx: 0, vy: 0 }
+            { x: 180, y: 545, vx: 0, vy: 0 },
+            { x: 100, y: 480, vx: 0, vy: 0 },
+            { x: 260, y: 480, vx: 0, vy: 0 },
+            { x: 180, y: 400, vx: 0, vy: 0 },
+            { x: 110, y: 340, vx: 0, vy: 0 },
+            { x: 250, y: 340, vx: 0, vy: 0 }
           ],
           ball: { x: 180, y: 300, vx: 0, vy: 0 }
         };
@@ -22566,7 +22568,8 @@ document.addEventListener('DOMContentLoaded', () => {
         state.isSimulating = true;
         setTimeout(() => {
           state.isSimulating = false;
-          if (activeGame.status === 'playing' && isMyTurn) {
+          const isBotGame = activeGame.opponentType === 'bot';
+          if (activeGame.status === 'playing' && (isMyTurn || (isBotGame && !window.isSpectatingActiveGame))) {
             socket.emit('game-move', {
               gameId: activeGame.id,
               r: -1,
@@ -22582,8 +22585,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (state.isSimulating && !isMoving && !goalScoredBy) {
         state.isSimulating = false;
         
-        // Shooter client is responsible for sending authoritative final position sync
-        if (activeGame.status === 'playing' && isMyTurn) {
+        // Shooter client (or the human player if the opponent is a bot) is responsible for sending authoritative final position sync
+        const isBotGame = activeGame.opponentType === 'bot';
+        if (activeGame.status === 'playing' && (isMyTurn || (isBotGame && !window.isSpectatingActiveGame))) {
           socket.emit('game-move', {
             gameId: activeGame.id,
             r: -1,
