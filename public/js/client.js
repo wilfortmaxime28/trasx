@@ -22252,27 +22252,12 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const buildTableFootballBoard = () => {
-    console.log('[DEBUG] buildTableFootballBoard invoked', {
-      tableFootballBoardContainerExists: !!tableFootballBoardContainer,
-      activeGameExists: !!activeGame,
-      activeGameType: activeGame?.gameType,
-      activeGameStatus: activeGame?.status,
-      tableFootballStateExists: !!activeGame?.tableFootballState
-    });
-
     if (!tableFootballBoardContainer || !activeGame?.tableFootballState) {
-      console.log('[DEBUG] buildTableFootballBoard early exit:', {
-        container: !tableFootballBoardContainer,
-        state: !activeGame?.tableFootballState
-      });
       return;
     }
 
     const canvas = document.getElementById('tableFootballCanvas');
-    if (!canvas) {
-      console.log('[DEBUG] buildTableFootballBoard canvas not found!');
-      return;
-    }
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
     const tfScoreText = document.getElementById('tfScoreText');
@@ -22283,7 +22268,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableFootballStatusText = document.getElementById('tableFootballStatusText');
     const tableFootballHelperText = document.getElementById('tableFootballHelperText');
 
-    // Update scoreboard
     if (tfScoreText && activeGame.tableFootballState.scores) {
       tfScoreText.textContent = `${activeGame.tableFootballState.scores[1] || 0} - ${activeGame.tableFootballState.scores[2] || 0}`;
     }
@@ -22308,6 +22292,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const mySlot = (Number(activeGame.player1.id) === Number(window.currentUserId)) ? 1 : 2;
     const myKey = `p${mySlot}`;
 
+    const TEAM_NAMES_MAP = {
+      FR: ["Maignan", "Hernandez", "Saliba", "Kanté", "Mbappé", "Griezmann"],
+      BR: ["Alisson", "Arana", "Marquinhos", "Paquetá", "Vinícius", "Rodrygo"],
+      AR: ["Martínez", "Tagliafico", "Romero", "De Paul", "Messi", "Álvarez"],
+      DE: ["Neuer", "Mittelstädt", "Rüdiger", "Kroos", "Musiala", "Wirtz"],
+      ES: ["Simón", "Cucurella", "Laporte", "Rodri", "Yamal", "Williams"],
+      IT: ["Donnarumma", "Dimarco", "Bastoni", "Barella", "Chiesa", "Retegui"],
+      PT: ["Costa", "Mendes", "Dias", "Fernandes", "Ronaldo", "Leão"],
+      GB: ["Pickford", "Shaw", "Stones", "Rice", "Bellingham", "Kane"],
+      MA: ["Bounou", "Mazraoui", "Aguerd", "Amrabat", "Ziyech", "En-Nesyri"],
+      SN: ["Mendy", "Jakobs", "Koulibaly", "Gueye", "Mané", "Sarr"]
+    };
+
+    function getPuckName(slot, index) {
+      const code = slot === 1 ? (activeGame.team1 || 'FR') : (activeGame.team2 || 'BR');
+      const names = TEAM_NAMES_MAP[code] || ["Gardien", "Défenseur G", "Défenseur D", "Milieu", "Attaquant G", "Attaquant D"];
+      return names[index] || `Puck ${index}`;
+    }
+
+    function getPuckRole(index) {
+      const roles = ["Gardien (GK)", "Défenseur (DF)", "Défenseur (DF)", "Milieu (MF)", "Attaquant (FW)", "Attaquant (FW)"];
+      return roles[index] || "Joueur";
+    }
+
+    const tfActionSelector = document.getElementById('tfActionSelector');
+    const tfSelectedPlayerName = document.getElementById('tfSelectedPlayerName');
+    const tfSelectedPlayerRole = document.getElementById('tfSelectedPlayerRole');
+    const tfActionShoot = document.getElementById('tfActionShoot');
+    const tfActionPass = document.getElementById('tfActionPass');
+    const tfActionMove = document.getElementById('tfActionMove');
+
     if (tableFootballStatusText) {
       if (activeGame.status === 'finished') {
         tableFootballStatusText.textContent = 'Match terminé !';
@@ -22320,12 +22335,11 @@ document.addEventListener('DOMContentLoaded', () => {
         tableFootballHelperText.textContent = 'Cliquez sur Rejouer pour lancer un autre match.';
       } else {
         tableFootballHelperText.textContent = isMyTurn
-          ? (mySlot === 1 ? 'Glissez depuis vos pions bleus pour tirer.' : 'Glissez depuis vos pions jaunes/verts pour tirer.')
+          ? 'Sélectionnez un pion et choisissez une action.'
           : 'Patientez pendant que l\'autre joueur vise.';
       }
     }
 
-    // Initialize state if new game
     if (!window.tfGameState || window.tfGameState.gameId !== activeGame.id) {
       if (window.tfGameState && window.tfGameState.animationFrameId) {
         cancelAnimationFrame(window.tfGameState.animationFrameId);
@@ -22544,6 +22558,8 @@ document.addEventListener('DOMContentLoaded', () => {
               ball: { x: 180, y: 300, vx: 0, vy: 0 }
             };
             state.lastTouchedBy = null;
+            state.selectedPuckIndex = null;
+            if (tfActionSelector) tfActionSelector.style.display = 'none';
             
             // Clear custom goal text
             if (tableFootballStatusText) {
@@ -22564,6 +22580,59 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         } else {
           updatePhysicsState();
+
+          // Calculate ball possession
+          const b = state.positions.ball;
+          let minPossessionDist = Infinity;
+          let possessorTeam = null;
+          let possessorIndex = null;
+          
+          state.positions.p1.forEach((p, idx) => {
+            const dx = p.x - b.x;
+            const dy = p.y - b.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < minPossessionDist) {
+              minPossessionDist = dist;
+              possessorTeam = 1;
+              possessorIndex = idx;
+            }
+          });
+          state.positions.p2.forEach((p, idx) => {
+            const dx = p.x - b.x;
+            const dy = p.y - b.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < minPossessionDist) {
+              minPossessionDist = dist;
+              possessorTeam = 2;
+              possessorIndex = idx;
+            }
+          });
+          
+          const POSSESSION_THRESHOLD = PUCK_RADIUS + BALL_RADIUS + 10; // 36px
+          if (minPossessionDist <= POSSESSION_THRESHOLD && possessorTeam !== null) {
+            const name = getPuckName(possessorTeam, possessorIndex);
+            const teamCode = possessorTeam === 1 ? (activeGame.team1 || 'FR') : (activeGame.team2 || 'BR');
+            state.ballPossession = { name, team: teamCode };
+          } else {
+            state.ballPossession = null;
+          }
+          
+          // Render status text dynamically with possession name
+          if (tableFootballStatusText && !state.pendingEvent) {
+            let turnLabel = isMyTurn ? `C'est votre tour !` : `Tour de l'adversaire...`;
+            if (state.ballPossession) {
+              tableFootballStatusText.innerHTML = `${turnLabel}<div style="font-size: 10px; color: #a3e635; margin-top: 2px; font-weight: bold;">⚽ ${state.ballPossession.name} (${state.ballPossession.team}) a le ballon</div>`;
+            } else {
+              tableFootballStatusText.innerHTML = `${turnLabel}<div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">Pas de possession claire</div>`;
+            }
+          }
+
+          if (tfActionSelector) {
+            if (!isMyTurn || state.selectedPuckIndex === null || state.isSimulating) {
+              tfActionSelector.style.display = 'none';
+            }
+          }
+
           drawField();
         }
       } catch (err) {
@@ -23095,13 +23164,47 @@ document.addEventListener('DOMContentLoaded', () => {
       // 6. Draw drag indicator & aim vector
       if (state.draggedPuckIndex !== null && state.dragStart && state.dragCurrent) {
         const p = positionsToDraw[myKey][state.draggedPuckIndex];
-        const dx = state.dragStart.x - state.dragCurrent.x;
-        const dy = state.dragStart.y - state.dragCurrent.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
+        let dx = state.dragStart.x - state.dragCurrent.x;
+        let dy = state.dragStart.y - state.dragCurrent.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
         
-        if (dist > 5) {
+        if (state.selectedActionMode === 'move') {
+          // In move mode we draw the original puck pos shadow and a dashed line connecting it to where it is dragged.
+          if (state.moveStartPos) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(state.moveStartPos.x, state.moveStartPos.y, PUCK_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            
+            // Line connecting the original position to the dragged position
+            ctx.beginPath();
+            ctx.moveTo(state.moveStartPos.x, state.moveStartPos.y);
+            ctx.lineTo(p.x, p.y);
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.restore();
+          }
+        } else if (dist > 5) {
           const maxDrag = 100;
-          const clampedDist = Math.min(dist, maxDrag);
+          let clampedDist = Math.min(dist, maxDrag);
+          let isSnapped = false;
+          let targetName = "";
+          
+          if (state.selectedActionMode === 'pass') {
+            const passVec = getPassVector(state.draggedPuckIndex, state.dragStart, state.dragCurrent);
+            dx = passVec.dx;
+            dy = passVec.dy;
+            dist = Math.sqrt(dx*dx + dy*dy);
+            clampedDist = Math.min(dist, maxDrag);
+            isSnapped = passVec.snapped;
+            targetName = passVec.targetName;
+          }
 
           // Drag range limit circle (translucent overlay)
           ctx.beginPath();
@@ -23123,11 +23226,16 @@ document.addEventListener('DOMContentLoaded', () => {
           ctx.shadowBlur = 6;
           ctx.shadowOffsetY = 3.5;
 
-          // Draw thick white arrow body
+          // Draw thick arrow body
           ctx.beginPath();
           ctx.moveTo(p.x, p.y);
           ctx.lineTo(targetX, targetY);
-          ctx.strokeStyle = '#ffffff';
+          
+          let arrowColor = '#ffffff';
+          if (state.selectedActionMode === 'pass') {
+            arrowColor = isSnapped ? '#22d3ee' : '#10b981';
+          }
+          ctx.strokeStyle = arrowColor;
           ctx.lineWidth = 5.5;
           ctx.lineCap = 'round';
           ctx.stroke();
@@ -23145,10 +23253,22 @@ document.addEventListener('DOMContentLoaded', () => {
             targetY - arrowSize * Math.sin(angle + Math.PI / 6)
           );
           ctx.closePath();
-          ctx.fillStyle = '#ffffff';
+          ctx.fillStyle = arrowColor;
           ctx.fill();
 
           ctx.restore();
+
+          // If snapped, render target snap text above arrow
+          if (isSnapped) {
+            ctx.save();
+            ctx.fillStyle = '#22d3ee';
+            ctx.font = 'bold 9px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 4;
+            ctx.fillText(`Cible: ${targetName}`, p.x, p.y - PUCK_RADIUS - 8);
+            ctx.restore();
+          }
         }
       }
 
@@ -23389,6 +23509,37 @@ document.addEventListener('DOMContentLoaded', () => {
       const team2 = activeGame.team2 || 'BR';
       positionsToDraw.p1.forEach((p, idx) => drawTeamPuck(p, team1, idx === 0));
       positionsToDraw.p2.forEach((p, idx) => drawTeamPuck(p, team2, idx === 0));
+
+      // Draw selected puck highlight & move boundary inside canvas
+      if (state.selectedPuckIndex !== null && !state.isSimulating) {
+        const selPuck = state.positions[myKey][state.selectedPuckIndex];
+        if (selPuck) {
+          // Highlight ring
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(selPuck.x, selPuck.y, PUCK_RADIUS + 4, 0, Math.PI * 2);
+          ctx.strokeStyle = '#3b82f6';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([4, 4]);
+          ctx.stroke();
+          ctx.restore();
+
+          // Move boundary limit
+          if (state.selectedActionMode === 'move') {
+            const startPos = state.moveStartPos || selPuck;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(startPos.x, startPos.y, 100, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(59, 130, 246, 0.04)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.25)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([6, 3]);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+      }
 
       // 9. Draw Soccer Ball
       ctx.save();

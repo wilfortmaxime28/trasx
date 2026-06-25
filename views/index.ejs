@@ -3548,6 +3548,22 @@ function getYouTubeId(url) {
                             <canvas id="tableFootballCanvas" width="360" height="600" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair;"></canvas>
                           </div>
 
+                          <!-- Interactive Action Selector -->
+                          <div id="tfActionSelector" class="tf-action-selector" style="display: none; align-items: center; justify-content: space-between; margin-top: 8px; padding: 8px 12px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; font-family: 'Outfit', sans-serif; gap: 6px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                              <span style="font-size: 14px;">🏃‍♂️</span>
+                              <div style="display: flex; flex-direction: column;">
+                                <span id="tfSelectedPlayerName" style="font-size: 11px; font-weight: 800; color: #60a5fa;">Nom Joueur</span>
+                                <span id="tfSelectedPlayerRole" style="font-size: 8px; color: #94a3b8; text-transform: uppercase;">Rôle</span>
+                              </div>
+                            </div>
+                            <div style="display: flex; gap: 4px;">
+                              <button id="tfActionShoot" class="tf-action-btn active" style="background: #3b82f6; color: #fff; border: 0; border-radius: 6px; padding: 4px 8px; font-size: 9px; font-weight: 700; cursor: pointer; transition: all 0.2s;">Tirer</button>
+                              <button id="tfActionPass" class="tf-action-btn" style="background: rgba(255,255,255,0.1); color: #ccc; border: 0; border-radius: 6px; padding: 4px 8px; font-size: 9px; font-weight: 700; cursor: pointer; transition: all 0.2s;">Passer</button>
+                              <button id="tfActionMove" class="tf-action-btn" style="background: rgba(255,255,255,0.1); color: #ccc; border: 0; border-radius: 6px; padding: 4px 8px; font-size: 9px; font-weight: 700; cursor: pointer; transition: all 0.2s;">Déplacer</button>
+                            </div>
+                          </div>
+
                           <!-- Game status and footer actions -->
                           <div class="table-football-footer" style="margin-top: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px;">
                             <div id="tableFootballStatusText" style="font-size: 12px; font-weight: 700; color: #fff; text-align: center; font-family: 'Outfit', sans-serif;">Prêt à jouer !</div>
