@@ -24974,7 +24974,6 @@ document.addEventListener('DOMContentLoaded', () => {
         <div style="margin-top: 15px; width: 100%; text-align: left;">
           <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px;">Votre Équipe (Drapeau)</span>
           <select id="inviteTfTeam2" style="width: 100%; height: 42px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: #fff; font-size: 0.95rem; padding: 0 10px; outline: none; box-sizing: border-box;">
-            <option value="" disabled selected style="background: var(--bg-card); color: var(--text-muted);">Choisissez votre équipe...</option>
           </select>
         </div>
       `;
@@ -25103,26 +25102,13 @@ document.addEventListener('DOMContentLoaded', () => {
         opt.style.background = 'var(--bg-card)';
         opt.style.color = '#fff';
         opt.textContent = `${team.flag} ${team.name}`;
+        if (key === 'BR') opt.selected = true; // default select Brazil
         inviteTfTeamSelectRecv.appendChild(opt);
       });
-
-      // Disable the accept button and do not start the timer/progress bar initially
-      acceptBtn.disabled = true;
-      acceptBtn.style.opacity = '0.5';
-      acceptBtn.style.cursor = 'not-allowed';
-
-      inviteTfTeamSelectRecv.addEventListener('change', () => {
-        if (inviteTfTeamSelectRecv.value) {
-          acceptBtn.disabled = false;
-          acceptBtn.style.opacity = '1';
-          acceptBtn.style.cursor = 'pointer';
-          startTimer();
-        }
-      });
-    } else {
-      // Start timer immediately for games with no team selection
-      startTimer();
     }
+
+    // Start timer immediately under all circumstances (as it was originally)
+    startTimer();
 
     acceptBtn.addEventListener('click', () => {
       if (timer) clearInterval(timer);
