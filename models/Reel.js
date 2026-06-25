@@ -48,11 +48,30 @@ class Reel {
         viewer_user_id INT NOT NULL,
         view_date DATE NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uniq_reel_viewer_day (reel_id, viewer_user_id, view_date),
+        UNIQUE KEY uniq_reel_viewer (reel_id, viewer_user_id),
         INDEX idx_reel_daily_views_date (view_date),
         INDEX idx_reel_daily_views_reel (reel_id)
       )
     `);
+
+    // Migration: convert to unique view per user per reel (if not already migrated)
+    const [reelIndexes] = await db.query("SHOW INDEX FROM reel_daily_unique_views");
+    const hasReelNewUnique = reelIndexes.some(idx => idx.Key_name === 'uniq_reel_viewer');
+    const hasReelOldUnique = reelIndexes.some(idx => idx.Key_name === 'uniq_reel_viewer_day');
+    if (!hasReelNewUnique) {
+      if (hasReelOldUnique) {
+        await db.query("ALTER TABLE reel_daily_unique_views DROP KEY uniq_reel_viewer_day");
+      }
+      // Deduplicate rows (keep only first view per user per reel)
+      await db.query(`
+        DELETE t1 FROM reel_daily_unique_views t1
+        INNER JOIN reel_daily_unique_views t2 
+        WHERE t1.id > t2.id 
+          AND t1.reel_id = t2.reel_id 
+          AND t1.viewer_user_id = t2.viewer_user_id
+      `);
+      await db.query("ALTER TABLE reel_daily_unique_views ADD UNIQUE KEY uniq_reel_viewer (reel_id, viewer_user_id)");
+    }
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS reel_shared_audios (

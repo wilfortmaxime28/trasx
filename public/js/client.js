@@ -16466,13 +16466,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let html = '';
 
-      if ((!data.users || data.users.length === 0) && (!data.posts || data.posts.length === 0)) {
+      if ((!data.users || data.users.length === 0) && (!data.posts || data.posts.length === 0) && (!data.hashtags || data.hashtags.length === 0)) {
         html = `<div class="search-results-empty" style="padding: 20px 16px; text-align: center; color: var(--text-muted); font-size: 13px;">Aucun résultat pour "${escapeHtml(query)}"</div>`;
       } else {
         // Users section
         if (data.users && data.users.length > 0) {
+          const hasMore = (data.posts && data.posts.length > 0) || (data.hashtags && data.hashtags.length > 0);
           html += `
-            <div class="search-results-section" style="padding: 6px 0; border-bottom: ${data.posts && data.posts.length > 0 ? '1px solid var(--border-color)' : 'none'};">
+            <div class="search-results-section" style="padding: 6px 0; border-bottom: ${hasMore ? '1px solid var(--border-color)' : 'none'};">
               <div class="search-results-section-header" style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 16px 8px 16px;">Utilisateurs</div>
           `;
           data.users.forEach(user => {
@@ -16488,6 +16489,27 @@ document.addEventListener('DOMContentLoaded', () => {
                   </div>
                   <div class="search-result-subtitle" style="font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@${escapeHtml(user.username)}</div>
                 </div>
+              </a>
+            `;
+          });
+          html += `</div>`;
+        }
+
+        // Hashtags section
+        if (data.hashtags && data.hashtags.length > 0) {
+          const hasMore = data.posts && data.posts.length > 0;
+          html += `
+            <div class="search-results-section" style="padding: 6px 0; border-bottom: ${hasMore ? '1px solid var(--border-color)' : 'none'};">
+              <div class="search-results-section-header" style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 16px 8px 16px;">Hashtags</div>
+          `;
+          data.hashtags.forEach(tag => {
+            html += `
+              <a href="javascript:void(0)" class="search-result-item hashtag-link" data-tag="${escapeHtml(tag.name)}" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; color: var(--text-primary); text-decoration: none; transition: background 0.15s ease;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-hover); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: var(--primary); flex-shrink: 0;">#</div>
+                  <div style="font-size: 14px; font-weight: 600; color: var(--text-primary);">#${escapeHtml(tag.name)}</div>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary);">${tag.usage_count || 0} publications</div>
               </a>
             `;
           });
@@ -16529,25 +16551,25 @@ document.addEventListener('DOMContentLoaded', () => {
       // Click on search result item handler
       container.querySelectorAll('.search-result-item').forEach(item => {
         item.addEventListener('click', (e) => {
+          // Hide search result dropdowns
+          const searchDropdowns = document.querySelectorAll('.search-dropdown-results');
+          searchDropdowns.forEach(drop => drop.style.display = 'none');
+
+          // Hide mobile search overlay if active
+          const mobOverlay = document.getElementById('mobileSearchOverlay');
+          if (mobOverlay) {
+            mobOverlay.style.display = 'none';
+            const mobileSearchInput = document.getElementById('mobileSearchInput');
+            const mobileSearchClear = document.getElementById('mobileSearchClear');
+            if (mobileSearchInput) mobileSearchInput.value = '';
+            if (mobileSearchClear) mobileSearchClear.style.display = 'none';
+          }
+
           const href = item.getAttribute('href');
           if (href && href.includes('#post-')) {
             e.preventDefault();
             const postId = href.split('#post-')[1];
             const targetEl = document.getElementById(`post-${postId}`);
-
-            // Hide search result dropdowns
-            const searchDropdowns = document.querySelectorAll('.search-dropdown-results');
-            searchDropdowns.forEach(drop => drop.style.display = 'none');
-
-            // Hide mobile search overlay if active
-            const mobOverlay = document.getElementById('mobileSearchOverlay');
-            if (mobOverlay) {
-              mobOverlay.style.display = 'none';
-              const mobileSearchInput = document.getElementById('mobileSearchInput');
-              const mobileSearchClear = document.getElementById('mobileSearchClear');
-              if (mobileSearchInput) mobileSearchInput.value = '';
-              if (mobileSearchClear) mobileSearchClear.style.display = 'none';
-            }
 
             if (targetEl) {
               // Scroll to feed view if it was hidden
@@ -16571,6 +16593,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
               window.location.href = href;
             }
+          } else if (href && href !== 'javascript:void(0)') {
+            e.preventDefault();
+            window.location.href = href;
           }
         });
 
@@ -22923,6 +22948,8 @@ document.addEventListener('DOMContentLoaded', () => {
           puck.vx = serverState.lastPlay.vx;
           puck.vy = serverState.lastPlay.vy;
           state.isSimulating = true;
+          state.lastTouchedBy = null;
+          state.shooterInfo = { slot: serverState.lastPlay.playerSlot, index: serverState.lastPlay.puckIndex };
         }
       }
     }
@@ -23173,7 +23200,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function onCanvasStart(e) {
-      if (activeGame.status !== 'playing' || !isMyTurn() || state.isSimulating) return;
+      if (activeGame.status !== 'playing' || state.isSimulating) return;
       const pos = getMousePos(e);
       
       // Find if we clicked one of our pucks
@@ -23191,25 +23218,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (clickedPuckIndex !== null) {
         state.selectedPuckIndex = clickedPuckIndex;
-        // Default to 'shoot' if no action was selected yet
-        if (!state.selectedActionMode) {
+        
+        if (!isMyTurn()) {
+          state.selectedActionMode = 'move';
+        } else if (!state.selectedActionMode) {
           selectActionMode('shoot');
         } else {
           selectActionMode(state.selectedActionMode);
         }
 
-        // Show selection panel & update names
+        // Show selection panel & update names (only when it is my turn)
         if (tfActionSelector) {
-          tfActionSelector.style.display = 'flex';
+          tfActionSelector.style.display = isMyTurn() ? 'flex' : 'none';
         }
-        if (tfSelectedPlayerName) {
+        if (tfSelectedPlayerName && isMyTurn()) {
           tfSelectedPlayerName.textContent = getPuckName(mySlot, clickedPuckIndex);
         }
-        if (tfSelectedPlayerRole) {
+        if (tfSelectedPlayerRole && isMyTurn()) {
           tfSelectedPlayerRole.textContent = getPuckRole(clickedPuckIndex);
         }
 
-        if (state.selectedActionMode === 'move') {
+        if (state.selectedActionMode === 'move' || !isMyTurn()) {
           const p = myPucks[clickedPuckIndex];
           state.moveStartPos = { x: p.x, y: p.y };
         }
@@ -23272,19 +23301,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!start || !curr) return;
 
-      if (state.selectedActionMode === 'move') {
-        // Move was finalized, emit sync immediately to flip turn
+      if (state.selectedActionMode === 'move' || !isMyTurn()) {
+        // Move was finalized, emit sync
         state.moveStartPos = null;
         if (tfActionSelector) {
           tfActionSelector.style.display = 'none';
         }
-        socket.emit('game-move', {
-          gameId: activeGame.id,
-          r: -1,
-          c: -1,
-          promotion: 'sync',
-          finalState: { positions: state.positions, scores: state.scores }
-        });
+        const dx = start.x - curr.x;
+        const dy = start.y - curr.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist > 2) {
+          const nextTurnPlayer = isMyTurn() ? (activeGame.currentPlayer === 1 ? 2 : 1) : activeGame.currentPlayer;
+          socket.emit('game-move', {
+            gameId: activeGame.id,
+            r: -1,
+            c: -1,
+            promotion: 'sync',
+            nextPlayer: nextTurnPlayer,
+            finalState: { positions: state.positions, scores: state.scores }
+          });
+        }
         return;
       }
 
@@ -23313,6 +23349,8 @@ document.addEventListener('DOMContentLoaded', () => {
         puck.vx = vx;
         puck.vy = vy;
         state.isSimulating = true;
+        state.lastTouchedBy = null;
+        state.shooterInfo = { slot: mySlot, index: pIndex };
 
         if (tfActionSelector) {
           tfActionSelector.style.display = 'none';

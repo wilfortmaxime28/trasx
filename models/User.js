@@ -705,11 +705,11 @@ class User {
   static async search(query) {
     const searchQuery = `%${query}%`;
     const [rows] = await db.query(
-      `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar 
+      `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar, certification_type AS certType
        FROM users 
-       WHERE username LIKE ? OR first_name LIKE ? OR last_name LIKE ? 
+       WHERE username LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR display_name LIKE ?
        LIMIT 10`,
-      [searchQuery, searchQuery, searchQuery]
+      [searchQuery, searchQuery, searchQuery, searchQuery]
     );
     return rows;
   }

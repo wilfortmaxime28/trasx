@@ -2183,15 +2183,17 @@ app.get('/api/backgrounds', requireAuth, async (req, res) => {
   }
 });
 
-// ── Route API Recherche Globale (posts depuis la DB) ──
+// ── Route API Recherche Globale (posts, users, hashtags depuis la DB) ──
 app.get('/api/search', requireAuth, async (req, res) => {
   try {
     const currentUserId = req.session.userId;
     const rawQ = String(req.query.q || '').trim();
     if (!rawQ || rawQ.length < 2) {
-      return res.json({ users: [], posts: [] });
+      return res.json({ users: [], posts: [], hashtags: [] });
     }
     const q = `%${rawQ}%`;
+    const cleanQForHashtag = rawQ.startsWith('#') ? rawQ.substring(1) : rawQ;
+    const hQ = `%${cleanQForHashtag}%`;
 
     // Search posts
     const [postRows] = await db.query(
@@ -2268,10 +2270,30 @@ app.get('/api/search', requireAuth, async (req, res) => {
       };
     });
 
-    res.json({ users: [], posts });
+    // Search users
+    const [userRows] = await db.query(
+      `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar, certification_type AS certType
+       FROM users
+       WHERE username LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR display_name LIKE ?
+       LIMIT 10`,
+      [q, q, q, q]
+    );
+
+    // Search hashtags
+    const [hashtagRows] = await db.query(
+      `SELECT h.*,
+              (SELECT COUNT(*) FROM posts p WHERE LOWER(COALESCE(p.content, '')) REGEXP CONCAT('(^|[^a-z0-9_])#', LOWER(h.name), '([^a-z0-9_]|$)')) AS usage_count
+       FROM hashtags h
+       WHERE h.name LIKE ?
+       ORDER BY usage_count DESC, h.created_at DESC
+       LIMIT 10`,
+      [hQ]
+    );
+
+    res.json({ users: userRows, posts, hashtags: hashtagRows });
   } catch (err) {
     console.error('[API /search] Error:', err);
-    res.status(500).json({ error: 'Search failed', users: [], posts: [] });
+    res.status(500).json({ error: 'Search failed', users: [], posts: [], hashtags: [] });
   }
 });
 
