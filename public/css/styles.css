@@ -14988,6 +14988,9 @@ body[data-theme="dark"] .game-card-bg-glow {
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .lobby-list-card h3 {
@@ -15034,6 +15037,8 @@ body[data-theme="dark"] .game-card-bg-glow {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
+  width: 100%;
 }
 
 .games-list-empty {
@@ -15055,6 +15060,9 @@ body[data-theme="dark"] .game-card-bg-glow {
   gap: 12px;
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   cursor: pointer;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .game-list-item:hover {
@@ -19985,4 +19993,17 @@ body.dark-mode .skeleton-base {
 
 .chat-shared-feed-card .btn-text-label {
   display: none !important;
+}
+
+@media (max-width: 576px) {
+  .lobby-list-card {
+    padding: 14px 16px !important;
+  }
+  .game-list-item {
+    padding: 10px 12px !important;
+    gap: 8px !important;
+  }
+  .game-item-title {
+    font-size: 12.5px !important;
+  }
 }
