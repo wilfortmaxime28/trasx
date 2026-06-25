@@ -22360,7 +22360,9 @@ document.addEventListener('DOMContentLoaded', () => {
         lastPlaySig: null,
         history: [],
         isReplaying: false,
-        replayFrame: 0
+        replayFrame: 0,
+        lastTouchedBy: null,
+        pendingEvent: null
       };
       
       // Wire events once
@@ -22541,6 +22543,7 @@ document.addEventListener('DOMContentLoaded', () => {
               ],
               ball: { x: 180, y: 300, vx: 0, vy: 0 }
             };
+            state.lastTouchedBy = null;
             
             // Clear custom goal text
             if (tableFootballStatusText) {
@@ -22652,11 +22655,132 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
+      // Check for out-of-bounds events (Throw-in, Corner, Goal Kick)
+      if (!state.isReplaying && !state.pendingEvent) {
+        let eventType = null;
+        let spotX = 180;
+        let spotY = 300;
+        let advantagedPlayer = null;
+
+        const ballTouchXLeft = FIELD_MIN_X + BALL_RADIUS + 0.1;
+        const ballTouchXRight = FIELD_MAX_X - BALL_RADIUS - 0.1;
+        const ballTouchYTop = FIELD_MIN_Y + BALL_RADIUS + 0.1;
+        const ballTouchYBottom = FIELD_MAX_Y - BALL_RADIUS - 0.1;
+
+        // Side out-of-bounds (Throw-in)
+        if (b.x <= ballTouchXLeft || b.x >= ballTouchXRight) {
+          eventType = 'touche';
+          const lastTouch = (state.lastTouchedBy !== null) ? state.lastTouchedBy : activeGame.currentPlayer;
+          advantagedPlayer = (lastTouch === 1) ? 2 : 1;
+          spotX = (b.x <= ballTouchXLeft) ? FIELD_MIN_X + 25 : FIELD_MAX_X - 25;
+          spotY = Math.max(FIELD_MIN_Y + 50, Math.min(FIELD_MAX_Y - 50, b.y));
+        }
+        // Top out-of-bounds (Goal Kick or Corner)
+        else if (b.y <= ballTouchYTop && (b.x < GOAL_MIN_X || b.x > GOAL_MAX_X)) {
+          const lastTouch = (state.lastTouchedBy !== null) ? state.lastTouchedBy : activeGame.currentPlayer;
+          if (lastTouch === 1) {
+            eventType = 'corner';
+            advantagedPlayer = 2;
+            spotX = (b.x < GOAL_MIN_X) ? FIELD_MIN_X + 25 : FIELD_MAX_X - 25;
+            spotY = FIELD_MIN_Y + 25;
+          } else {
+            eventType = 'degagement';
+            advantagedPlayer = 1;
+            spotX = 180;
+            spotY = FIELD_MIN_Y + 60;
+          }
+        }
+        // Bottom out-of-bounds (Goal Kick or Corner)
+        else if (b.y >= ballTouchYBottom && (b.x < GOAL_MIN_X || b.x > GOAL_MAX_X)) {
+          const lastTouch = (state.lastTouchedBy !== null) ? state.lastTouchedBy : activeGame.currentPlayer;
+          if (lastTouch === 2) {
+            eventType = 'corner';
+            advantagedPlayer = 1;
+            spotX = (b.x < GOAL_MIN_X) ? FIELD_MIN_X + 25 : FIELD_MAX_X - 25;
+            spotY = FIELD_MAX_Y - 25;
+          } else {
+            eventType = 'degagement';
+            advantagedPlayer = 2;
+            spotX = 180;
+            spotY = FIELD_MAX_Y - 60;
+          }
+        }
+
+        if (eventType) {
+          b.vx = 0; b.vy = 0;
+          b.x = spotX;
+          b.y = spotY;
+          
+          state.positions.p1.forEach(p => { p.vx = 0; p.vy = 0; });
+          state.positions.p2.forEach(p => { p.vx = 0; p.vy = 0; });
+          isMoving = false;
+          
+          state.lastTouchedBy = null;
+
+          // Push any overlapping pucks away from the new ball spot to prevent glitchy bounces
+          const pushDistance = PUCK_RADIUS + BALL_RADIUS + 8;
+          [...state.positions.p1, ...state.positions.p2].forEach(p => {
+            const dx = p.x - spotX;
+            const dy = p.y - spotY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < pushDistance) {
+              const angle = dist > 0.1 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2;
+              p.x = spotX + Math.cos(angle) * pushDistance;
+              p.y = spotY + Math.sin(angle) * pushDistance;
+              p.x = Math.max(FIELD_MIN_X + PUCK_RADIUS, Math.min(FIELD_MAX_X - PUCK_RADIUS, p.x));
+              p.y = Math.max(FIELD_MIN_Y + PUCK_RADIUS, Math.min(FIELD_MAX_Y - PUCK_RADIUS, p.y));
+            }
+          });
+
+          state.pendingEvent = {
+            type: eventType,
+            nextPlayer: advantagedPlayer
+          };
+
+          playGameSound('goal');
+
+          if (tableFootballStatusText) {
+            let label = 'TOUCHE !';
+            let color = '#3b82f6';
+            if (eventType === 'corner') { label = 'CORNER !'; color = '#fbbf24'; }
+            if (eventType === 'degagement') { label = 'SIX MÈTRES !'; color = '#10b981'; }
+            
+            const teamName = (advantagedPlayer === 1) ? (activeGame.team1 || 'FR') : (activeGame.team2 || 'BR');
+            tableFootballStatusText.innerHTML = `<span style="color:${color}; font-size: 16px; font-weight: 900; animation: bounce 0.5s infinite;">⚽ ${label} pour ${teamName} ⚽</span>`;
+          }
+
+          state.isSimulating = true;
+          setTimeout(() => {
+            state.isSimulating = false;
+            state.pendingEvent = null;
+
+            if (tableFootballStatusText) {
+              const isMyTurnNext = (mySlot === advantagedPlayer);
+              tableFootballStatusText.innerHTML = isMyTurnNext ? `C'est votre tour !` : `Tour de l'adversaire...`;
+            }
+
+            const isBotGame = activeGame.opponentType === 'bot';
+            if (activeGame.status === 'playing' && (isMyTurn || (isBotGame && !window.isSpectatingActiveGame))) {
+              socket.emit('game-move', {
+                gameId: activeGame.id,
+                r: -1,
+                c: -1,
+                promotion: 'sync',
+                nextPlayer: advantagedPlayer,
+                finalState: { positions: state.positions, scores: state.scores }
+              });
+            }
+          }, 1500);
+
+          return;
+        }
+      }
+
       // Circle-Circle collisions
       const objects = [
-        ...state.positions.p1.map((p, index) => ({ obj: p, r: PUCK_RADIUS, m: PUCK_MASS, isBall: false })),
-        ...state.positions.p2.map((p, index) => ({ obj: p, r: PUCK_RADIUS, m: PUCK_MASS, isBall: false })),
-        { obj: b, r: BALL_RADIUS, m: BALL_MASS, isBall: true }
+        ...state.positions.p1.map((p, index) => ({ obj: p, r: PUCK_RADIUS, m: PUCK_MASS, isBall: false, team: 1 })),
+        ...state.positions.p2.map((p, index) => ({ obj: p, r: PUCK_RADIUS, m: PUCK_MASS, isBall: false, team: 2 })),
+        { obj: b, r: BALL_RADIUS, m: BALL_MASS, isBall: true, team: null }
       ];
 
       for (let i = 0; i < objects.length; i++) {
@@ -22695,6 +22819,7 @@ document.addEventListener('DOMContentLoaded', () => {
               // Play kick sound when a puck hits the ball
               if (o1.isBall || o2.isBall) {
                 playGameSound('kick');
+                state.lastTouchedBy = o1.isBall ? o2.team : o1.team;
               }
             }
           }

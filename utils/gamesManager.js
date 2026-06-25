@@ -597,8 +597,12 @@ class GamesManager {
           return await this.endGame(gameId, winnerId);
         }
 
-        // Switch turn
-        game.currentPlayer = game.currentPlayer === 1 ? 2 : 1;
+        // Switch turn or assign custom next player
+        if (extraMove && extraMove.nextPlayer) {
+          game.currentPlayer = Number(extraMove.nextPlayer);
+        } else {
+          game.currentPlayer = game.currentPlayer === 1 ? 2 : 1;
+        }
         return { success: true, game };
       } else {
         throw new Error('Action de football inconnue.');
