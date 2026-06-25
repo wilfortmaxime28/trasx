@@ -20838,7 +20838,63 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const now = ctx.currentTime;
 
-      if (type === 'drop') {
+      if (type === 'kick') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(280, now);
+        osc.frequency.exponentialRampToValueAtTime(45, now + 0.08);
+        gain.gain.setValueAtTime(0.45, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.09);
+      } else if (type === 'goal') {
+        // Whistle: 2 sine waves with beating effect
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        const gain2 = ctx.createGain();
+        
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(950, now);
+        osc1.frequency.setValueAtTime(970, now + 0.15);
+        gain1.gain.setValueAtTime(0.15, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(955, now);
+        osc2.frequency.setValueAtTime(975, now + 0.15);
+        gain2.gain.setValueAtTime(0.15, now);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+        
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        
+        osc1.start(now);
+        osc1.stop(now + 0.45);
+        osc2.start(now);
+        osc2.stop(now + 0.45);
+
+        // Arpeggio chord (celebration)
+        const chord = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        chord.forEach((freq, idx) => {
+          const cOsc = ctx.createOscillator();
+          const cGain = ctx.createGain();
+          cOsc.type = 'triangle';
+          cOsc.frequency.setValueAtTime(freq, now + 0.1 + idx * 0.08);
+          cGain.gain.setValueAtTime(0.0, now + 0.1 + idx * 0.08);
+          cGain.gain.linearRampToValueAtTime(0.12, now + 0.1 + idx * 0.08 + 0.02);
+          cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1 + idx * 0.08 + 0.5);
+          cOsc.connect(cGain);
+          cGain.connect(ctx.destination);
+          cOsc.start(now + 0.1 + idx * 0.08);
+          cOsc.stop(now + 0.1 + idx * 0.08 + 0.55);
+        });
+      } else if (type === 'drop') {
         const osc1 = ctx.createOscillator();
         const gain1 = ctx.createGain();
         osc1.type = 'triangle';
@@ -22301,7 +22357,10 @@ document.addEventListener('DOMContentLoaded', () => {
         dragStart: null,
         dragCurrent: null,
         animationFrameId: null,
-        lastPlaySig: null
+        lastPlaySig: null,
+        history: [],
+        isReplaying: false,
+        replayFrame: 0
       };
       
       // Wire events once
@@ -22450,8 +22509,60 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       try {
-        updatePhysicsState();
-        drawField();
+        if (state.isReplaying) {
+          // Slow motion playback: advance frame by 0.5 (50% speed)
+          const idx = Math.floor(state.replayFrame);
+          if (idx < state.history.length) {
+            drawField(state.history[idx]);
+            drawReplayOverlay();
+            state.replayFrame += 0.5;
+          } else {
+            // Replay finished! Clean up, reset board positions, and sync
+            state.isReplaying = false;
+            state.history = [];
+            
+            // Reset positions to kickoff layout
+            state.positions = {
+              p1: [
+                { x: 180, y: 55, vx: 0, vy: 0 },
+                { x: 100, y: 120, vx: 0, vy: 0 },
+                { x: 260, y: 120, vx: 0, vy: 0 },
+                { x: 180, y: 200, vx: 0, vy: 0 },
+                { x: 110, y: 260, vx: 0, vy: 0 },
+                { x: 250, y: 260, vx: 0, vy: 0 }
+              ],
+              p2: [
+                { x: 180, y: 545, vx: 0, vy: 0 },
+                { x: 100, y: 480, vx: 0, vy: 0 },
+                { x: 260, y: 480, vx: 0, vy: 0 },
+                { x: 180, y: 400, vx: 0, vy: 0 },
+                { x: 110, y: 340, vx: 0, vy: 0 },
+                { x: 250, y: 340, vx: 0, vy: 0 }
+              ],
+              ball: { x: 180, y: 300, vx: 0, vy: 0 }
+            };
+            
+            // Clear custom goal text
+            if (tableFootballStatusText) {
+              tableFootballStatusText.innerHTML = isMyTurn ? `C'est votre tour !` : `Tour de l'adversaire...`;
+            }
+
+            // Emit final sync to server
+            const isBotGame = activeGame.opponentType === 'bot';
+            if (activeGame.status === 'playing' && (isMyTurn || (isBotGame && !window.isSpectatingActiveGame))) {
+              socket.emit('game-move', {
+                gameId: activeGame.id,
+                r: -1,
+                c: -1,
+                promotion: 'sync',
+                finalState: { positions: state.positions, scores: state.scores }
+              });
+            }
+          }
+        } else {
+          updatePhysicsState();
+          drawField();
+        }
       } catch (err) {
         console.error('[DEBUG] Error in tablefootball loop:', err);
       }
@@ -22460,6 +22571,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updatePhysicsState() {
+      // Save current positions to history for replay
+      if (!state.isReplaying) {
+        const copyPositions = (pos) => {
+          return {
+            p1: pos.p1.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy })),
+            p2: pos.p2.map(p => ({ x: p.x, y: p.y, vx: p.vx, vy: p.vy })),
+            ball: { x: pos.ball.x, y: pos.ball.y, vx: pos.ball.vx, vy: pos.ball.vy }
+          };
+        };
+        state.history.push(copyPositions(state.positions));
+        if (state.history.length > 120) {
+          state.history.shift();
+        }
+      }
+
       let isMoving = false;
       
       // Update velocities and positions
@@ -22528,9 +22654,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Circle-Circle collisions
       const objects = [
-        ...state.positions.p1.map((p, index) => ({ obj: p, r: PUCK_RADIUS, m: PUCK_MASS })),
-        ...state.positions.p2.map((p, index) => ({ obj: p, r: PUCK_RADIUS, m: PUCK_MASS })),
-        { obj: b, r: BALL_RADIUS, m: BALL_MASS }
+        ...state.positions.p1.map((p, index) => ({ obj: p, r: PUCK_RADIUS, m: PUCK_MASS, isBall: false })),
+        ...state.positions.p2.map((p, index) => ({ obj: p, r: PUCK_RADIUS, m: PUCK_MASS, isBall: false })),
+        { obj: b, r: BALL_RADIUS, m: BALL_MASS, isBall: true }
       ];
 
       for (let i = 0; i < objects.length; i++) {
@@ -22565,6 +22691,11 @@ document.addEventListener('DOMContentLoaded', () => {
               o1.obj.vy -= ny * impulse * o2.m;
               o2.obj.vx += nx * impulse * o1.m;
               o2.obj.vy += ny * impulse * o1.m;
+
+              // Play kick sound when a puck hits the ball
+              if (o1.isBall || o2.isBall) {
+                playGameSound('kick');
+              }
             }
           }
         }
@@ -22579,53 +22710,23 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (goalScoredBy) {
+        // Play goal whistle sound
+        playGameSound('goal');
+
         // Increment score locally
         state.scores[goalScoredBy] = Number(state.scores[goalScoredBy] || 0) + 1;
         if (tfScoreText) tfScoreText.textContent = `${state.scores[1]} - ${state.scores[2]}`;
         
         // Show goal banner in status
         if (tableFootballStatusText) {
-          tableFootballStatusText.innerHTML = `<span style="color:#22c55e; font-size: 16px; font-weight: 900; animation: bounce 0.5s infinite;">⚽ GOOOAL !!! ⚽</span>`;
+          tableFootballStatusText.innerHTML = `<span style="color:#ef4444; font-size: 16px; font-weight: 900; animation: bounce 0.5s infinite;">⚽ GOOOAL !!! ⚽</span>`;
         }
 
-        // Reset positions
-        state.positions = {
-          p1: [
-            { x: 180, y: 55, vx: 0, vy: 0 },
-            { x: 100, y: 120, vx: 0, vy: 0 },
-            { x: 260, y: 120, vx: 0, vy: 0 },
-            { x: 180, y: 200, vx: 0, vy: 0 },
-            { x: 110, y: 260, vx: 0, vy: 0 },
-            { x: 250, y: 260, vx: 0, vy: 0 }
-          ],
-          p2: [
-            { x: 180, y: 545, vx: 0, vy: 0 },
-            { x: 100, y: 480, vx: 0, vy: 0 },
-            { x: 260, y: 480, vx: 0, vy: 0 },
-            { x: 180, y: 400, vx: 0, vy: 0 },
-            { x: 110, y: 340, vx: 0, vy: 0 },
-            { x: 250, y: 340, vx: 0, vy: 0 }
-          ],
-          ball: { x: 180, y: 300, vx: 0, vy: 0 }
-        };
-        
+        // Trigger slow-motion replay instead of immediate reset
+        state.isReplaying = true;
+        state.replayFrame = 0;
         isMoving = false;
-        
-        // Short pause
-        state.isSimulating = true;
-        setTimeout(() => {
-          state.isSimulating = false;
-          const isBotGame = activeGame.opponentType === 'bot';
-          if (activeGame.status === 'playing' && (isMyTurn || (isBotGame && !window.isSpectatingActiveGame))) {
-            socket.emit('game-move', {
-              gameId: activeGame.id,
-              r: -1,
-              c: -1,
-              promotion: 'sync',
-              finalState: { positions: state.positions, scores: state.scores }
-            });
-          }
-        }, 1500);
+        return;
       }
 
       // If transition from simulating to stopped, sync with server
@@ -22646,7 +22747,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    function drawField() {
+    function drawField(positionsToDraw = state.positions) {
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -22868,7 +22969,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 6. Draw drag indicator & aim vector
       if (state.draggedPuckIndex !== null && state.dragStart && state.dragCurrent) {
-        const p = state.positions[myKey][state.draggedPuckIndex];
+        const p = positionsToDraw[myKey][state.draggedPuckIndex];
         const dx = state.dragStart.x - state.dragCurrent.x;
         const dy = state.dragStart.y - state.dragCurrent.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
@@ -23109,12 +23210,12 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       // Draw closest puck connection (dotted line and highlight)
-      const ball = state.positions.ball;
+      const ball = positionsToDraw.ball;
       let closestPuck = null;
       let minPuckDist = Infinity;
 
       if (ball) {
-        state.positions.p1.forEach(p => {
+        positionsToDraw.p1.forEach(p => {
           const dx = ball.x - p.x;
           const dy = ball.y - p.y;
           const dist = Math.sqrt(dx*dx + dy*dy);
@@ -23123,7 +23224,7 @@ document.addEventListener('DOMContentLoaded', () => {
             closestPuck = p;
           }
         });
-        state.positions.p2.forEach(p => {
+        positionsToDraw.p2.forEach(p => {
           const dx = ball.x - p.x;
           const dy = ball.y - p.y;
           const dist = Math.sqrt(dx*dx + dy*dy);
@@ -23161,8 +23262,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // Draw all pucks
       const team1 = activeGame.team1 || 'FR';
       const team2 = activeGame.team2 || 'BR';
-      state.positions.p1.forEach((p, idx) => drawTeamPuck(p, team1, idx === 0));
-      state.positions.p2.forEach((p, idx) => drawTeamPuck(p, team2, idx === 0));
+      positionsToDraw.p1.forEach((p, idx) => drawTeamPuck(p, team1, idx === 0));
+      positionsToDraw.p2.forEach((p, idx) => drawTeamPuck(p, team2, idx === 0));
 
       // 9. Draw Soccer Ball
       ctx.save();
@@ -23233,6 +23334,42 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.restore();
 
       // Restore global transform (reverts translate/scale if active)
+      ctx.restore();
+    }
+
+    function drawReplayOverlay() {
+      ctx.save();
+      // Top bar banner
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.beginPath();
+      const x = 15;
+      const y = 15;
+      const w = 100;
+      const h = 26;
+      const r = 13;
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+      ctx.fill();
+
+      // Flashing red dot
+      const flash = Math.floor(Date.now() / 350) % 2 === 0;
+      if (flash) {
+        ctx.beginPath();
+        ctx.arc(x + 18, y + 13, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#ef4444';
+        ctx.fill();
+      }
+
+      // Text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('REPLAY', x + 32, y + 13);
       ctx.restore();
     }
 
