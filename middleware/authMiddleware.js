@@ -4,7 +4,12 @@ const { createTranslator, normalizeLocale, SUPPORTED_LOCALES } = require('../uti
 const { getNumberSetting } = require('../utils/appSettings');
 
 const requireAuth = async (req, res, next) => {
+  const isApi = req.path.startsWith('/api/') || req.originalUrl.startsWith('/api/') || (req.headers.accept && req.headers.accept.includes('application/json'));
+
   if (!req.session || !req.session.userId) {
+    if (isApi) {
+      return res.status(401).json({ error: 'Session expirée. Veuillez vous reconnecter.', code: 'SESSION_EXPIRED' });
+    }
     return res.redirect('/auth/login');
   }
 
@@ -12,11 +17,17 @@ const requireAuth = async (req, res, next) => {
     const user = await User.getById(req.session.userId);
     if (!user) {
       req.session.destroy();
+      if (isApi) {
+        return res.status(401).json({ error: 'Utilisateur introuvable.', code: 'SESSION_EXPIRED' });
+      }
       return res.redirect('/auth/login');
     }
 
     if (user.account_status === 'Blocked' || user.account_status === 'Frozen') {
       req.session.destroy();
+      if (isApi) {
+        return res.status(403).json({ error: 'Votre compte a été suspendu ou bloqué.', code: 'ACCOUNT_STATUS_ERROR' });
+      }
       return res.redirect('/auth/login');
     }
 

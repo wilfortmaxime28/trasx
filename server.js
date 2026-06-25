@@ -3057,6 +3057,51 @@ io.on('connection', (socket) => {
   const session = socket.request.session;
   console.log('Un utilisateur s\'est connecté :', socket.id, 'User ID:', session?.userId);
 
+  // Intercepter tous les messages/évènements du socket pour vérifier la validité de la session et le statut utilisateur en temps réel
+  socket.use(async ([event, ...args], next) => {
+    if (event === 'disconnect') {
+      return next();
+    }
+
+    try {
+      if (socket.request.session && typeof socket.request.session.reload === 'function') {
+        await new Promise((resolve) => {
+          socket.request.session.reload((err) => {
+            if (err) {
+              console.warn(`[Socket Session] Erreur lors du rechargement de la session pour le socket ${socket.id}:`, err.message);
+            }
+            resolve();
+          });
+        });
+      }
+
+      const currentUserId = socket.request.session?.userId;
+      if (!currentUserId) {
+        socket.emit('session-expired', { message: 'Session expirée ou utilisateur déconnecté.' });
+        socket.disconnect(true);
+        return next(new Error('Session expirée.'));
+      }
+
+      const user = await User.getById(currentUserId);
+      if (!user) {
+        socket.emit('session-expired', { message: 'Utilisateur introuvable.' });
+        socket.disconnect(true);
+        return next(new Error('Utilisateur introuvable.'));
+      }
+
+      if (user.account_status === 'Blocked' || user.account_status === 'Frozen') {
+        socket.emit('session-expired', { message: 'Votre compte a été bloqué ou gelé.' });
+        socket.disconnect(true);
+        return next(new Error('Compte bloqué ou gelé.'));
+      }
+
+      next();
+    } catch (err) {
+      console.error('[Socket Security] Erreur d\'autorisation socket:', err);
+      next(err);
+    }
+  });
+
   if (session?.userId) {
     socket.join(`user:${session.userId}`);
     presence.markUserOnline(session.userId).then((state) => {

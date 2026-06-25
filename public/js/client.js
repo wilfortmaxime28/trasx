@@ -1,6 +1,33 @@
 document.addEventListener('DOMContentLoaded', () => {
   // Initialisation du client Socket.io
   const socket = io();
+
+  // Écouter l'événement de déconnexion/session expirée du socket
+  socket.on('session-expired', (data) => {
+    console.warn('Session expired or account suspended:', data?.message);
+    window.location.href = '/auth/login?error=' + encodeURIComponent(data?.message || 'session_expired');
+  });
+
+  // Intercepter les appels fetch pour rediriger si la session a expiré (erreur 401/403)
+  const originalFetch = window.fetch;
+  window.fetch = async function (...args) {
+    try {
+      const response = await originalFetch.apply(this, args);
+      if (response.status === 401 || response.status === 403) {
+        let msg = 'session_expired';
+        try {
+          const data = await response.clone().json();
+          if (data && data.error) msg = data.error;
+        } catch (_) {}
+        window.location.href = '/auth/login?error=' + encodeURIComponent(msg);
+        return response;
+      }
+      return response;
+    } catch (err) {
+      throw err;
+    }
+  };
+
   const tText = (source, fallback = '') => {
     if (typeof window.__text === 'function') {
       return window.__text(source, fallback || source);
