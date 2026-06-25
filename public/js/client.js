@@ -1368,10 +1368,32 @@ document.addEventListener('DOMContentLoaded', () => {
       statusText = '<span class="game-time-status" style="color: var(--text-secondary);">En attente de réponse...</span>';
       
       if (msgType === 'incoming') {
+        const isTF = gameKey === 'tablefootball';
+        const teamSelectHtml = isTF ? `
+          <div style="margin-bottom: 8px; width: 100%;">
+            <label style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px; text-align: left;">Votre équipe (Drapeau)</label>
+            <select class="game-invite-team-select" data-message-id="${messageId}" style="width: 100%; height: 32px; background: rgba(0,0,0,0.15); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 12px; outline: none; padding: 0 8px; font-weight: 500;">
+              <option value="FR" style="background: var(--bg-card); color: #fff;">🇫🇷 France</option>
+              <option value="BR" style="background: var(--bg-card); color: #fff;" selected>🇧🇷 Brésil</option>
+              <option value="AR" style="background: var(--bg-card); color: #fff;">🇦🇷 Argentine</option>
+              <option value="DE" style="background: var(--bg-card); color: #fff;">🇩🇪 Allemagne</option>
+              <option value="ES" style="background: var(--bg-card); color: #fff;">🇪🇸 Espagne</option>
+              <option value="IT" style="background: var(--bg-card); color: #fff;">🇮🇹 Italie</option>
+              <option value="PT" style="background: var(--bg-card); color: #fff;">🇵🇹 Portugal</option>
+              <option value="GB" style="background: var(--bg-card); color: #fff;">🇬🇧 Angleterre</option>
+              <option value="MA" style="background: var(--bg-card); color: #fff;">🇲🇦 Maroc</option>
+              <option value="SN" style="background: var(--bg-card); color: #fff;">🇸🇳 Sénégal</option>
+            </select>
+          </div>
+        ` : '';
+
         buttonsHtml = `
-          <div class="game-invite-actions" style="display: flex; gap: 8px; margin-top: 12px;">
-            <button type="button" class="game-accept-btn" data-message-id="${messageId}" style="flex: 1; padding: 6px 12px; border-radius: 12px; border: none; background: #10b981; color: white; cursor: pointer; font-weight: 600; font-size: 12px;">Accepter</button>
-            <button type="button" class="game-decline-btn" data-message-id="${messageId}" style="flex: 1; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-secondary); cursor: pointer; font-weight: 600; font-size: 12px;">Refuser</button>
+          <div class="game-invite-actions" style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
+            ${teamSelectHtml}
+            <div style="display: flex; gap: 8px; width: 100%;">
+              <button type="button" class="game-accept-btn" data-message-id="${messageId}" style="flex: 1; padding: 6px 12px; border-radius: 12px; border: none; background: #10b981; color: white; cursor: pointer; font-weight: 600; font-size: 12px;">Accepter</button>
+              <button type="button" class="game-decline-btn" data-message-id="${messageId}" style="flex: 1; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-secondary); cursor: pointer; font-weight: 600; font-size: 12px;">Refuser</button>
+            </div>
           </div>
         `;
       }
@@ -19729,10 +19751,26 @@ document.addEventListener('DOMContentLoaded', () => {
         <form id="gameRequestForm" style="padding: 20px; display: flex; flex-direction: column; gap: 16px; color: var(--text-main);">
           <div style="display: flex; flex-direction: column; gap: 6px;">
             <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">Sélectionnez le jeu</label>
-            <select name="game" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 14px; outline: none;">
+            <select name="game" id="inviteGameSelect" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 14px; outline: none;">
               <option value="gomoku">🎮 Morpion / Gomoku</option>
               <option value="connect4">🔴 Puissance 4</option>
               <option value="tablefootball">⚽ Football Table</option>
+            </select>
+          </div>
+
+          <div id="inviteTfTeamWrapper" style="display: none; flex-direction: column; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">Choisissez votre équipe (Drapeau)</label>
+            <select name="team" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 14px; outline: none;">
+              <option value="FR" style="background: var(--bg-card); color: #fff;">🇫🇷 France</option>
+              <option value="BR" style="background: var(--bg-card); color: #fff;" selected>🇧🇷 Brésil</option>
+              <option value="AR" style="background: var(--bg-card); color: #fff;">🇦🇷 Argentine</option>
+              <option value="DE" style="background: var(--bg-card); color: #fff;">🇩🇪 Allemagne</option>
+              <option value="ES" style="background: var(--bg-card); color: #fff;">🇪🇸 Espagne</option>
+              <option value="IT" style="background: var(--bg-card); color: #fff;">🇮🇹 Italie</option>
+              <option value="PT" style="background: var(--bg-card); color: #fff;">🇵🇹 Portugal</option>
+              <option value="GB" style="background: var(--bg-card); color: #fff;">🇬🇧 Angleterre</option>
+              <option value="MA" style="background: var(--bg-card); color: #fff;">🇲🇦 Maroc</option>
+              <option value="SN" style="background: var(--bg-card); color: #fff;">🇸🇳 Sénégal</option>
             </select>
           </div>
 
@@ -19790,6 +19828,18 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
+    const inviteGameSelect = modal.querySelector('#inviteGameSelect');
+    const inviteTfTeamWrapper = modal.querySelector('#inviteTfTeamWrapper');
+    if (inviteGameSelect && inviteTfTeamWrapper) {
+      inviteGameSelect.addEventListener('change', (e) => {
+        if (e.target.value === 'tablefootball') {
+          inviteTfTeamWrapper.style.display = 'flex';
+        } else {
+          inviteTfTeamWrapper.style.display = 'none';
+        }
+      });
+    }
+
     const closeModal = () => modal.remove();
     modal.querySelector('.modal-close-btn').addEventListener('click', closeModal);
     modal.querySelector('.modal-cancel-btn').addEventListener('click', closeModal);
@@ -19801,13 +19851,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const priceType = formData.get('priceType');
       const priceAmount = priceType === 'paid' ? parseFloat(formData.get('priceAmount')) : 0;
       const durationSeconds = parseInt(formData.get('duration'), 10);
+      const team = game === 'tablefootball' ? formData.get('team') : undefined;
 
-      sendGameInvitation(targetUserId, { game, priceType, priceAmount, durationSeconds });
+      sendGameInvitation(targetUserId, { game, priceType, priceAmount, durationSeconds, team });
       closeModal();
     });
   };
 
-  const sendGameInvitation = (targetUserId, { game, priceType, priceAmount, durationSeconds }) => {
+  const sendGameInvitation = (targetUserId, { game, priceType, priceAmount, durationSeconds, team }) => {
     const inviteId = 'game_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
     const expiresAt = new Date(Date.now() + durationSeconds * 1000).toISOString();
 
@@ -19819,7 +19870,8 @@ document.addEventListener('DOMContentLoaded', () => {
       status: "pending",
       expiresAt,
       inviteId,
-      durationSeconds
+      durationSeconds,
+      team1: team || 'FR'
     };
 
     const contentString = JSON.stringify(invitationPayload);
@@ -19843,9 +19895,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const handleGameInvitationAction = (messageId, action) => {
+  const handleGameInvitationAction = (messageId, action, team) => {
     if (typeof socket !== 'undefined' && socket) {
-      socket.emit('game-invitation-action', { messageId: Number(messageId), action });
+      socket.emit('game-invitation-action', { messageId: Number(messageId), action, team });
     }
   };
 
@@ -19902,7 +19954,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (acceptBtn) {
       e.preventDefault();
       const messageId = acceptBtn.dataset.messageId;
-      handleGameInvitationAction(messageId, 'accept');
+      const teamSelect = document.querySelector(`.game-invite-team-select[data-message-id="${messageId}"]`);
+      const selectedTeam = teamSelect ? teamSelect.value : null;
+      handleGameInvitationAction(messageId, 'accept', selectedTeam);
       return;
     }
 
@@ -20509,6 +20563,56 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  const openJoinTeamSelectorModal = (onConfirm) => {
+    const modalHtml = `
+      <div class="modal-overlay game-request-modal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 99999; animation: fadeIn 0.25s ease-out;">
+        <div class="modal-content" style="background: var(--bg-card); border: 1.5px solid var(--border-color); border-radius: 24px; padding: 24px; width: 340px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); transform: scale(0.9); animation: scaleUp 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="font-weight: 800; font-size: 16px; margin: 0; color: var(--text-primary); text-align: left;">Choisissez votre équipe</h3>
+            <button type="button" class="modal-close-btn" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 20px; padding: 4px; line-height: 1;">&times;</button>
+          </div>
+          <form id="joinTeamForm">
+            <div class="form-group" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; text-align: left;">
+              <label for="joinTfTeamSelect" style="font-size: 13px; font-weight: 700; color: var(--text-secondary);">Drapeau de l'équipe</label>
+              <select id="joinTfTeamSelect" name="team" style="width: 100%; height: 42px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-primary); font-size: 14px; outline: none; padding: 0 12px; font-weight: 500;">
+                <option value="FR" style="background: var(--bg-card); color: #fff;">🇫🇷 France</option>
+                <option value="BR" style="background: var(--bg-card); color: #fff;" selected>🇧🇷 Brésil</option>
+                <option value="AR" style="background: var(--bg-card); color: #fff;">🇦🇷 Argentine</option>
+                <option value="DE" style="background: var(--bg-card); color: #fff;">🇩🇪 Allemagne</option>
+                <option value="ES" style="background: var(--bg-card); color: #fff;">🇪🇸 Espagne</option>
+                <option value="IT" style="background: var(--bg-card); color: #fff;">🇮🇹 Italie</option>
+                <option value="PT" style="background: var(--bg-card); color: #fff;">🇵🇹 Portugal</option>
+                <option value="GB" style="background: var(--bg-card); color: #fff;">🇬🇧 Angleterre</option>
+                <option value="MA" style="background: var(--bg-card); color: #fff;">🇲🇦 Maroc</option>
+                <option value="SN" style="background: var(--bg-card); color: #fff;">🇸🇳 Sénégal</option>
+              </select>
+            </div>
+            <div style="display: flex; gap: 12px;">
+              <button type="button" class="modal-cancel-btn btn-secondary" style="flex: 1; height: 40px; border-radius: 12px; border: 1px solid var(--border-color); background: none; color: var(--text-secondary); cursor: pointer; font-weight: 700; font-size: 13px;">Annuler</button>
+              <button type="submit" class="btn-primary" style="flex: 1; height: 40px; border-radius: 12px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 700; font-size: 13px;">Confirmer</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const modal = document.createElement('div');
+    modal.innerHTML = modalHtml.trim();
+    const modalEl = modal.firstChild;
+    document.body.appendChild(modalEl);
+
+    const closeModal = () => modalEl.remove();
+    modalEl.querySelector('.modal-close-btn').addEventListener('click', closeModal);
+    modalEl.querySelector('.modal-cancel-btn').addEventListener('click', closeModal);
+
+    modalEl.querySelector('#joinTeamForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const team = new FormData(e.target).get('team') || 'BR';
+      closeModal();
+      onConfirm(team);
+    });
+  };
+
   const renderLobbyLists = (games) => {
     window.allLobbyGames = games; // Store globally for spectate payment checks
     const waitingGames = games.filter(g => g.status === 'waiting');
@@ -20537,7 +20641,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${isOwner ? `
                   <span class="game-item-btn-waiting">Attente...</span>
                 ` : `
-                  <button class="join-game-action-btn settings-primary-btn" data-game-id="${game.id}" style="height: 30px; font-size: 11.5px; padding: 0 14px; border-radius: 8px; font-weight: 700; background: var(--primary); color: white; border: none; cursor: pointer;">Rejoindre</button>
+                  <button class="join-game-action-btn settings-primary-btn" data-game-id="${game.id}" data-game-type="${game.gameType}" style="height: 30px; font-size: 11.5px; padding: 0 14px; border-radius: 8px; font-weight: 700; background: var(--primary); color: white; border: none; cursor: pointer;">Rejoindre</button>
                 `}
               </div>
             </div>
@@ -20556,19 +20660,28 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.addEventListener('click', (e) => {
               e.stopPropagation();
               const gameId = btn.getAttribute('data-game-id');
+              const gameType = btn.getAttribute('data-game-type');
               
               // Clear rematch flags to ensure a clean score reset
               window.lastActiveGameInfo = null;
               window.isRematchGame = false;
 
-              socket.emit('game-join', { gameId }, (res) => {
-                if (res && res.error) {
-                  showToast(res.error);
-                } else if (res && res.game) {
-                  initActiveGame(res.game);
-                  showToast("Vous avez rejoint la partie !");
-                }
-              });
+              const performJoin = (selectedTeam) => {
+                socket.emit('game-join', { gameId, team: selectedTeam }, (res) => {
+                  if (res && res.error) {
+                    showToast(res.error);
+                  } else if (res && res.game) {
+                    initActiveGame(res.game);
+                    showToast("Vous avez rejoint la partie !");
+                  }
+                });
+              };
+
+              if (gameType === 'tablefootball') {
+                openJoinTeamSelectorModal(performJoin);
+              } else {
+                performJoin();
+              }
             });
           }
         });

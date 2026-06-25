@@ -4971,7 +4971,7 @@ io.on('connection', (socket) => {
       const currentUserId = session.userId;
       if (!currentUserId) return;
 
-      const { messageId, action } = data || {};
+      const { messageId, action, team } = data || {};
       const parsedMsgId = parseInt(messageId, 10);
       if (!parsedMsgId || !['accept', 'decline'].includes(action)) return;
 
@@ -5022,7 +5022,12 @@ io.on('connection', (socket) => {
               'player',
               gameData.priceType,
               null,
-              gameData.priceAmount
+              gameData.priceAmount,
+              1,
+              'free',
+              0.50,
+              gameData.team1 || 'FR',
+              team || 'BR'
             );
 
             // Join the receiver to the game
@@ -5639,8 +5644,8 @@ io.on('connection', (socket) => {
       const user = await User.getById(currentUserId);
       if (!user) throw new Error('Utilisateur introuvable.');
 
-      const { gameId } = data || {};
-      const game = await gamesManager.joinGame(gameId, currentUserId, user);
+      const { gameId, team } = data || {};
+      const game = await gamesManager.joinGame(gameId, currentUserId, user, team);
 
       socket.join(`game:${game.id}`);
 

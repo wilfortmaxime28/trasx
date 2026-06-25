@@ -274,7 +274,7 @@ class GamesManager {
   }
 
   // Join a waiting game
-  async joinGame(gameId, player2Id, player2Info) {
+  async joinGame(gameId, player2Id, player2Info, team) {
     if (this.isUserBusy(player2Id)) {
       throw new Error("Vous êtes déjà dans une partie ou avez une invitation en attente.");
     }
@@ -304,6 +304,9 @@ class GamesManager {
       symbol: 2,
       isBot: false
     };
+    if (team) {
+      game.team2 = team;
+    }
     if (game.gameType === 'domino') {
       game.player2Hand = game.boneyard.splice(0, 7);
     }
