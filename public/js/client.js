@@ -20850,34 +20850,84 @@ document.addEventListener('DOMContentLoaded', () => {
         gain.connect(ctx.destination);
         osc.start(now);
         osc.stop(now + 0.09);
+      } else if (type === 'bounce') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(180, now);
+        osc.frequency.exponentialRampToValueAtTime(60, now + 0.06);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.07);
+      } else if (type === 'whistle') {
+        // Double whistle blast for out-of-bounds
+        const playBlast = (delay) => {
+          const osc1 = ctx.createOscillator();
+          const osc2 = ctx.createOscillator();
+          const gain1 = ctx.createGain();
+          const gain2 = ctx.createGain();
+          
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(1200, now + delay);
+          gain1.gain.setValueAtTime(0, now + delay);
+          gain1.gain.linearRampToValueAtTime(0.06, now + delay + 0.01);
+          gain1.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.15);
+          
+          osc2.type = 'sine';
+          osc2.frequency.setValueAtTime(1210, now + delay);
+          gain2.gain.setValueAtTime(0, now + delay);
+          gain2.gain.linearRampToValueAtTime(0.06, now + delay + 0.01);
+          gain2.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.15);
+          
+          osc1.connect(gain1);
+          gain1.connect(ctx.destination);
+          osc2.connect(gain2);
+          gain2.connect(ctx.destination);
+          
+          osc1.start(now + delay);
+          osc1.stop(now + delay + 0.2);
+          osc2.start(now + delay);
+          osc2.stop(now + delay + 0.2);
+        };
+        playBlast(0);
+        playBlast(0.18);
       } else if (type === 'goal') {
-        // Whistle: 2 sine waves with beating effect
-        const osc1 = ctx.createOscillator();
-        const osc2 = ctx.createOscillator();
-        const gain1 = ctx.createGain();
-        const gain2 = ctx.createGain();
+        // Long triple whistle blast
+        const playWhistle = (delay, duration) => {
+          const osc1 = ctx.createOscillator();
+          const osc2 = ctx.createOscillator();
+          const gain1 = ctx.createGain();
+          const gain2 = ctx.createGain();
+          
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(1100, now + delay);
+          gain1.gain.setValueAtTime(0, now + delay);
+          gain1.gain.linearRampToValueAtTime(0.1, now + delay + 0.02);
+          gain1.gain.exponentialRampToValueAtTime(0.001, now + delay + duration);
+          
+          osc2.type = 'sine';
+          osc2.frequency.setValueAtTime(1105, now + delay);
+          gain2.gain.setValueAtTime(0, now + delay);
+          gain2.gain.linearRampToValueAtTime(0.1, now + delay + 0.02);
+          gain2.gain.exponentialRampToValueAtTime(0.001, now + delay + duration);
+          
+          osc1.connect(gain1);
+          gain1.connect(ctx.destination);
+          osc2.connect(gain2);
+          gain2.connect(ctx.destination);
+          
+          osc1.start(now + delay);
+          osc1.stop(now + delay + duration + 0.05);
+          osc2.start(now + delay);
+          osc2.stop(now + delay + duration + 0.05);
+        };
         
-        osc1.type = 'sine';
-        osc1.frequency.setValueAtTime(950, now);
-        osc1.frequency.setValueAtTime(970, now + 0.15);
-        gain1.gain.setValueAtTime(0.15, now);
-        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-        
-        osc2.type = 'sine';
-        osc2.frequency.setValueAtTime(955, now);
-        osc2.frequency.setValueAtTime(975, now + 0.15);
-        gain2.gain.setValueAtTime(0.15, now);
-        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-        
-        osc1.connect(gain1);
-        gain1.connect(ctx.destination);
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        
-        osc1.start(now);
-        osc1.stop(now + 0.45);
-        osc2.start(now);
-        osc2.stop(now + 0.45);
+        playWhistle(0, 0.2);
+        playWhistle(0.25, 0.2);
+        playWhistle(0.5, 0.65);
 
         // Arpeggio chord (celebration)
         const chord = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
@@ -20885,15 +20935,46 @@ document.addEventListener('DOMContentLoaded', () => {
           const cOsc = ctx.createOscillator();
           const cGain = ctx.createGain();
           cOsc.type = 'triangle';
-          cOsc.frequency.setValueAtTime(freq, now + 0.1 + idx * 0.08);
-          cGain.gain.setValueAtTime(0.0, now + 0.1 + idx * 0.08);
-          cGain.gain.linearRampToValueAtTime(0.12, now + 0.1 + idx * 0.08 + 0.02);
-          cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1 + idx * 0.08 + 0.5);
+          cOsc.frequency.setValueAtTime(freq, now + 0.4 + idx * 0.08);
+          cGain.gain.setValueAtTime(0.0, now + 0.4 + idx * 0.08);
+          cGain.gain.linearRampToValueAtTime(0.12, now + 0.4 + idx * 0.08 + 0.02);
+          cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4 + idx * 0.08 + 0.5);
           cOsc.connect(cGain);
           cGain.connect(ctx.destination);
-          cOsc.start(now + 0.1 + idx * 0.08);
-          cOsc.stop(now + 0.1 + idx * 0.08 + 0.55);
+          cOsc.start(now + 0.4 + idx * 0.08);
+          cOsc.stop(now + 0.4 + idx * 0.08 + 0.55);
         });
+
+        // Synthesize stadium crowd cheer (filtered white noise)
+        try {
+          const bufferSize = ctx.sampleRate * 1.5; // 1.5 seconds
+          const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+          }
+          const noise = ctx.createBufferSource();
+          noise.buffer = buffer;
+          
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(450, now);
+          filter.frequency.exponentialRampToValueAtTime(900, now + 0.4);
+          filter.Q.value = 1.2;
+          
+          const noiseGain = ctx.createGain();
+          noiseGain.gain.setValueAtTime(0, now);
+          noiseGain.gain.linearRampToValueAtTime(0.15, now + 0.35);
+          noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 1.4);
+          
+          noise.connect(filter);
+          filter.connect(noiseGain);
+          noiseGain.connect(ctx.destination);
+          noise.start(now);
+          noise.stop(now + 1.5);
+        } catch (e) {
+          console.error("Crowd roar synthesis failed", e);
+        }
       } else if (type === 'drop') {
         const osc1 = ctx.createOscillator();
         const gain1 = ctx.createGain();
@@ -22714,35 +22795,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Wall rebounds for ball
       const b = state.positions.ball;
-      if (b.x < FIELD_MIN_X + BALL_RADIUS) { b.x = FIELD_MIN_X + BALL_RADIUS; b.vx *= -0.85; }
-      if (b.x > FIELD_MAX_X - BALL_RADIUS) { b.x = FIELD_MAX_X - BALL_RADIUS; b.vx *= -0.85; }
+      let bounced = false;
+      if (b.x < FIELD_MIN_X + BALL_RADIUS) {
+        if (Math.abs(b.vx) > 0.3) bounced = true;
+        b.x = FIELD_MIN_X + BALL_RADIUS; b.vx *= -0.85;
+      }
+      if (b.x > FIELD_MAX_X - BALL_RADIUS) {
+        if (Math.abs(b.vx) > 0.3) bounced = true;
+        b.x = FIELD_MAX_X - BALL_RADIUS; b.vx *= -0.85;
+      }
       
       // Top wall/goalposts
       if (b.y < FIELD_MIN_Y + BALL_RADIUS) {
         if (b.x < GOAL_MIN_X || b.x > GOAL_MAX_X) {
+          if (Math.abs(b.vy) > 0.3) bounced = true;
           b.y = FIELD_MIN_Y + BALL_RADIUS;
           b.vy *= -0.85;
         } else {
           // Inside goal mouth. Check side boundaries of top goal (net/posts)
-          if (b.x < GOAL_MIN_X + BALL_RADIUS) { b.x = GOAL_MIN_X + BALL_RADIUS; b.vx *= -0.85; }
-          if (b.x > GOAL_MAX_X - BALL_RADIUS) { b.x = GOAL_MAX_X - BALL_RADIUS; b.vx *= -0.85; }
+          if (b.x < GOAL_MIN_X + BALL_RADIUS) {
+            if (Math.abs(b.vx) > 0.3) bounced = true;
+            b.x = GOAL_MIN_X + BALL_RADIUS; b.vx *= -0.85;
+          }
+          if (b.x > GOAL_MAX_X - BALL_RADIUS) {
+            if (Math.abs(b.vx) > 0.3) bounced = true;
+            b.x = GOAL_MAX_X - BALL_RADIUS; b.vx *= -0.85;
+          }
           // Back wall of net
-          if (b.y < 20 + BALL_RADIUS) { b.y = 20 + BALL_RADIUS; b.vy *= -0.85; }
+          if (b.y < 20 + BALL_RADIUS) {
+            if (Math.abs(b.vy) > 0.3) bounced = true;
+            b.y = 20 + BALL_RADIUS; b.vy *= -0.85;
+          }
         }
       }
       
       // Bottom wall/goalposts
       if (b.y > FIELD_MAX_Y - BALL_RADIUS) {
         if (b.x < GOAL_MIN_X || b.x > GOAL_MAX_X) {
+          if (Math.abs(b.vy) > 0.3) bounced = true;
           b.y = FIELD_MAX_Y - BALL_RADIUS;
           b.vy *= -0.85;
         } else {
           // Inside goal mouth. Check side boundaries of bottom goal (net/posts)
-          if (b.x < GOAL_MIN_X + BALL_RADIUS) { b.x = GOAL_MIN_X + BALL_RADIUS; b.vx *= -0.85; }
-          if (b.x > GOAL_MAX_X - BALL_RADIUS) { b.x = GOAL_MAX_X - BALL_RADIUS; b.vx *= -0.85; }
+          if (b.x < GOAL_MIN_X + BALL_RADIUS) {
+            if (Math.abs(b.vx) > 0.3) bounced = true;
+            b.x = GOAL_MIN_X + BALL_RADIUS; b.vx *= -0.85;
+          }
+          if (b.x > GOAL_MAX_X - BALL_RADIUS) {
+            if (Math.abs(b.vx) > 0.3) bounced = true;
+            b.x = GOAL_MAX_X - BALL_RADIUS; b.vx *= -0.85;
+          }
           // Back wall of net
-          if (b.y > 580 - BALL_RADIUS) { b.y = 580 - BALL_RADIUS; b.vy *= -0.85; }
+          if (b.y > 580 - BALL_RADIUS) {
+            if (Math.abs(b.vy) > 0.3) bounced = true;
+            b.y = 580 - BALL_RADIUS; b.vy *= -0.85;
+          }
         }
+      }
+
+      if (bounced) {
+        playGameSound('bounce');
       }
 
       // Check for out-of-bounds events (Throw-in, Corner, Goal Kick)
@@ -22827,7 +22939,7 @@ document.addEventListener('DOMContentLoaded', () => {
             nextPlayer: advantagedPlayer
           };
 
-          playGameSound('goal');
+          playGameSound('whistle');
 
           if (tableFootballStatusText) {
             let label = 'TOUCHE !';
@@ -23295,7 +23407,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // 7. Draw Team Flag Pucks (Dynamic Flags & Goalkeeper Border)
-      const drawTeamPuck = (p, code, isGoalkeeper) => {
+      const drawTeamPuck = (p, code, index, slot) => {
+        const isGoalkeeper = (index === 0);
         ctx.save();
         ctx.translate(p.x, p.y);
         if (mySlot === 1) {
@@ -23472,6 +23585,19 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.beginPath();
         ctx.arc(0, 0, PUCK_RADIUS, 0, Math.PI * 2);
         ctx.fill();
+
+        // Draw player name text
+        const name = getPuckName(slot, index);
+        ctx.font = 'bold 8px "Outfit", sans-serif';
+        ctx.textAlign = 'center';
+        
+        // Draw text shadow outline
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.lineWidth = 2.5;
+        ctx.strokeText(name, 0, PUCK_RADIUS + 11);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(name, 0, PUCK_RADIUS + 11);
         
         ctx.restore();
       };
@@ -23529,8 +23655,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // Draw all pucks
       const team1 = activeGame.team1 || 'FR';
       const team2 = activeGame.team2 || 'BR';
-      positionsToDraw.p1.forEach((p, idx) => drawTeamPuck(p, team1, idx === 0));
-      positionsToDraw.p2.forEach((p, idx) => drawTeamPuck(p, team2, idx === 0));
+      positionsToDraw.p1.forEach((p, idx) => drawTeamPuck(p, team1, idx, 1));
+      positionsToDraw.p2.forEach((p, idx) => drawTeamPuck(p, team2, idx, 2));
 
       // Draw selected puck highlight & move boundary inside canvas
       if (state.selectedPuckIndex !== null && !state.isSimulating) {
