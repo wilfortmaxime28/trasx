@@ -20037,20 +20037,6 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // --- REAL-TIME GAMES CLIENT ENGINE ---
-  console.log('[DEBUG-SETUP] Initial check on DOMContentLoaded:');
-  console.log('[DEBUG-SETUP] gamesLobby element:', document.getElementById('gamesLobby') ? 'Found' : 'NOT Found');
-  console.log('[DEBUG-SETUP] tableFootballSetupOptions element:', document.getElementById('tableFootballSetupOptions') ? 'Found' : 'NOT Found');
-  console.log('[DEBUG-SETUP] setupTfTeam1 element:', document.getElementById('setupTfTeam1') ? 'Found' : 'NOT Found');
-  console.log('[DEBUG-SETUP] setupTfTeam2 element:', document.getElementById('setupTfTeam2') ? 'Found' : 'NOT Found');
-
-  document.addEventListener('click', (e) => {
-    const closestGameChoice = e.target.closest('.game-choice-option, .sub-choice-option');
-    if (closestGameChoice) {
-      console.log('[DEBUG-CLICK] Clicked inside game choice option. Target:', e.target.tagName, 'OuterHTML:', closestGameChoice.outerHTML.substring(0, 200));
-      const radio = closestGameChoice.querySelector('input[type="radio"]');
-      console.log('[DEBUG-CLICK] Associated radio:', radio ? { name: radio.name, value: radio.value, checked: radio.checked } : 'none');
-    }
-  });
 
   let activeGame = null;
   let selectedGameType = null;
@@ -20141,19 +20127,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Custom Radio Label Styles Toggle for Game Lobby
   const lobbyRadioLabels = document.querySelectorAll('.game-choice-option, .sub-choice-option');
-  console.log('[DEBUG-SETUP] lobbyRadioLabels query count:', lobbyRadioLabels.length);
-  lobbyRadioLabels.forEach((label, idx) => {
+  lobbyRadioLabels.forEach((label) => {
     const radio = label.querySelector('input[type="radio"]');
     if (radio) {
-      console.log(`[DEBUG-SETUP] Found radio input #${idx} name="${radio.getAttribute('name')}" value="${radio.value}"`);
       label.addEventListener('click', (e) => {
-        console.log('[DEBUG-SETUP] Click event triggered on label:', label.outerHTML.substring(0, 100));
         // Prevent default browser click handling on label to avoid double firing and weird radio behaviors
         e.preventDefault();
         
         // Check the radio button
         radio.checked = true;
-        console.log('[DEBUG-SETUP] Programmatically set radio.checked = true for value:', radio.value);
         
         // Trigger visual class changes
         const name = radio.getAttribute('name');
@@ -20161,28 +20143,20 @@ document.addEventListener('DOMContentLoaded', () => {
           const parentLabel = r.closest('.game-choice-option, .sub-choice-option');
           if (parentLabel) {
             parentLabel.classList.remove('active');
-            console.log('[DEBUG-SETUP] Removed active class from label for value:', r.value);
           }
         });
         label.classList.add('active');
-        console.log('[DEBUG-SETUP] Added active class to label for value:', radio.value);
         
         // Dispatch change event so any other listeners get notified
         radio.dispatchEvent(new Event('change', { bubbles: true }));
-        console.log('[DEBUG-SETUP] Dispatched change event on radio input');
         
         // Trigger visibility changes immediately
         if (name === 'setupGameType' || name === 'setupOpponent') {
           if (typeof updateTableFootballSetupVisibility === 'function') {
-            console.log('[DEBUG-SETUP] Invoking updateTableFootballSetupVisibility directly from click handler');
             updateTableFootballSetupVisibility();
-          } else {
-            console.warn('[DEBUG-SETUP] updateTableFootballSetupVisibility is not a function!');
           }
         }
       });
-    } else {
-      console.warn(`[DEBUG-SETUP] No radio input found inside label #${idx}`);
     }
   });
 
@@ -20299,57 +20273,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Toggle Table Football team choices visibility based on active game type and opponent type
   function updateTableFootballSetupVisibility() {
-    console.log('[DEBUG-SETUP] updateTableFootballSetupVisibility execution started');
     const activeGameTypeRadio = document.querySelector('input[name="setupGameType"]:checked');
-    console.log('[DEBUG-SETUP] activeGameTypeRadio selected:', activeGameTypeRadio ? { value: activeGameTypeRadio.value, checked: activeGameTypeRadio.checked } : 'none');
-    
     const isTF = activeGameTypeRadio && activeGameTypeRadio.value === 'tablefootball';
     const tfSetupOptions = document.getElementById('tableFootballSetupOptions');
-    console.log('[DEBUG-SETUP] tfSetupOptions element found:', tfSetupOptions ? 'yes' : 'no', 'isTF computed:', isTF);
     
     if (tfSetupOptions) {
       tfSetupOptions.style.display = isTF ? 'block' : 'none';
-      console.log('[DEBUG-SETUP] tfSetupOptions display style set to:', tfSetupOptions.style.display);
-      
-      if (isTF) {
-        const computed = window.getComputedStyle(tfSetupOptions);
-        console.log('[DEBUG-SETUP] tfSetupOptions layout details:', {
-          display: computed.display,
-          visibility: computed.visibility,
-          opacity: computed.opacity,
-          height: tfSetupOptions.offsetHeight,
-          width: tfSetupOptions.offsetWidth,
-          parentElement: tfSetupOptions.parentElement?.tagName,
-          parentDisplay: tfSetupOptions.parentElement ? window.getComputedStyle(tfSetupOptions.parentElement).display : 'N/A',
-          parentVisible: tfSetupOptions.parentElement ? window.getComputedStyle(tfSetupOptions.parentElement).visibility : 'N/A'
-        });
-        
-        const select1 = document.getElementById('setupTfTeam1');
-        if (select1) {
-          const comp1 = window.getComputedStyle(select1);
-          console.log('[DEBUG-SETUP] setupTfTeam1 details:', {
-            display: comp1.display,
-            visibility: comp1.visibility,
-            height: select1.offsetHeight,
-            color: comp1.color,
-            backgroundColor: comp1.backgroundColor,
-            optionsCount: select1.options.length,
-            htmlSample: select1.outerHTML.substring(0, 200)
-          });
-        }
-      }
     }
 
     const activeOpponentRadio = document.querySelector('input[name="setupOpponent"]:checked');
-    console.log('[DEBUG-SETUP] activeOpponentRadio selected:', activeOpponentRadio ? { value: activeOpponentRadio.value, checked: activeOpponentRadio.checked } : 'none');
-    
     const isBot = activeOpponentRadio && activeOpponentRadio.value === 'bot';
     const tfTeam2Wrapper = document.getElementById('setupTfTeam2Wrapper');
-    console.log('[DEBUG-SETUP] tfTeam2Wrapper element found:', tfTeam2Wrapper ? 'yes' : 'no', 'isBot computed:', isBot);
     
     if (tfTeam2Wrapper) {
       tfTeam2Wrapper.style.display = isBot ? 'block' : 'none';
-      console.log('[DEBUG-SETUP] tfTeam2Wrapper display style set to:', tfTeam2Wrapper.style.display);
     }
   }
 
