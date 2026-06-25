@@ -1,5 +1,5 @@
-// TrasX Service Worker v8 — Network-first with offline fallback & Web Push
-const CACHE_NAME = 'trasx-v11';
+// TrasX Service Worker v9 — Network-first with offline fallback & Web Push
+const CACHE_NAME = 'trasx-v12';
 const OFFLINE_URL = '/';
 const STATIC_ASSETS = [
   '/',
@@ -100,10 +100,28 @@ self.addEventListener('fetch', (event) => {
   // Skip socket.io and API calls — always network
   if (url.pathname.startsWith('/socket.io') || url.pathname.startsWith('/api/')) return;
 
+  const isCodeAsset = url.pathname.includes('/css/') || url.pathname.includes('/js/');
+
+  if (isCodeAsset) {
+    event.respondWith(
+      fetch(request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, clone);
+          });
+        }
+        return networkResponse;
+      }).catch(async () => {
+        const cached = await caches.match(request, { ignoreSearch: true });
+        return cached || new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+      })
+    );
+    return;
+  }
+
   const isStaticOrAsset = 
     url.pathname.includes('/assets/') || 
-    url.pathname.includes('/css/') || 
-    url.pathname.includes('/js/') || 
     url.pathname.endsWith('.png') || 
     url.pathname.endsWith('.jpg') || 
     url.pathname.endsWith('.jpeg') || 

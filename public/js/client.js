@@ -9964,7 +9964,49 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  const cleanupGameOverlays = () => {
+    // If there is an active game, and it is finished OR the user is spectating, clean it up silently when switching tabs
+    if (activeGame && (activeGame.status === 'finished' || window.isSpectatingActiveGame)) {
+      if (window.isSpectatingActiveGame) {
+        socket.emit('game-spectate-leave', { gameId: activeGame.id });
+      }
+      if (window.tfGameState) {
+        if (window.tfGameState.animationFrameId) {
+          cancelAnimationFrame(window.tfGameState.animationFrameId);
+        }
+        window.tfGameState = null;
+      }
+      if (typeof cleanupGameWebRTC === 'function') {
+        cleanupGameWebRTC();
+      }
+      activeGame = null;
+      window.isSpectatingActiveGame = false;
+      if (activeGameArea) activeGameArea.style.display = 'none';
+      if (gamesLobby) gamesLobby.style.display = 'flex';
+      loadGamesLobby();
+    }
+
+    const resultOverlay = document.getElementById('gameResultOverlay');
+    if (resultOverlay) {
+      resultOverlay.remove();
+    }
+    const confirmModal = document.getElementById('gameConfirmModal');
+    if (confirmModal) {
+      confirmModal.style.display = 'none';
+      confirmModal.setAttribute('aria-hidden', 'true');
+    }
+    const inviteModal = document.getElementById('gameInviteReceivedModal');
+    if (inviteModal) {
+      inviteModal.remove();
+    }
+    const waitingModal = document.getElementById('gameInviteWaitingModal');
+    if (waitingModal) {
+      waitingModal.remove();
+    }
+  };
+
   const showShortsView = () => {
+    cleanupGameOverlays();
     if (feedMainContent && shortsSection && mobileMessagesSection) {
       const storiesWrapper = document.querySelector('.stories-wrapper');
       const createPostCard = document.querySelector('.create-post-card');
@@ -10084,6 +10126,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const showBookmarksView = () => {
+    cleanupGameOverlays();
     if (feedMainContent && shortsSection && mobileMessagesSection) {
       shortsSection.style.display = 'none';
       feedMainContent.style.display = 'flex';
@@ -10143,6 +10186,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const showFeedView = (scrollToTop = true) => {
+    cleanupGameOverlays();
     if (feedMainContent && shortsSection && mobileMessagesSection) {
       shortsSection.style.display = 'none';
       feedMainContent.style.display = 'flex';
@@ -10193,6 +10237,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const showMessagesView = () => {
+    cleanupGameOverlays();
     if (feedMainContent && shortsSection && mobileMessagesSection) {
       const storiesWrapper = document.querySelector('.stories-wrapper');
       const createPostCard = document.querySelector('.create-post-card');
@@ -10221,6 +10266,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const showMarketView = () => {
+    cleanupGameOverlays();
     if (feedMainContent && marketSection && shortsSection && mobileMessagesSection) {
       const storiesWrapper = document.querySelector('.stories-wrapper');
       const createPostCard = document.querySelector('.create-post-card');
@@ -20060,8 +20106,83 @@ document.addEventListener('DOMContentLoaded', () => {
     PT: { name: 'Portugal', flag: '🇵🇹' },
     GB: { name: 'Angleterre', flag: '🇬🇧' },
     MA: { name: 'Maroc', flag: '🇲🇦' },
-    SN: { name: 'Sénégal', flag: '🇸🇳' }
+    SN: { name: 'Sénégal', flag: '🇸🇳' },
+    BE: { name: 'Belgique', flag: '🇧🇪' },
+    NL: { name: 'Pays-Bas', flag: '🇳🇱' },
+    HR: { name: 'Croatie', flag: '🇭🇷' },
+    UY: { name: 'Uruguay', flag: '🇺🇾' },
+    CO: { name: 'Colombie', flag: '🇨🇴' },
+    US: { name: 'États-Unis', flag: '🇺🇸' },
+    MX: { name: 'Mexique', flag: '🇲🇽' },
+    CM: { name: 'Cameroun', flag: '🇨🇲' },
+    CI: { name: 'Côte d\'Ivoire', flag: '🇨🇮' },
+    DZ: { name: 'Algérie', flag: '🇩🇿' },
+    TN: { name: 'Tunisie', flag: '🇹🇳' },
+    EG: { name: 'Égypte', flag: '🇪🇬' },
+    JP: { name: 'Japon', flag: '🇯🇵' },
+    KR: { name: 'Corée du Sud', flag: '🇰🇷' },
+    SA: { name: 'Arabie Saoudite', flag: '🇸🇦' },
+    CH: { name: 'Suisse', flag: '🇨🇭' },
+    DK: { name: 'Danemark', flag: '🇩🇰' },
+    SE: { name: 'Suède', flag: '🇸🇪' },
+    NO: { name: 'Norvège', flag: '🇳🇴' },
+    PL: { name: 'Pologne', flag: '🇵🇱' },
+    UA: { name: 'Ukraine', flag: '🇺🇦' },
+    TR: { name: 'Turquie', flag: '🇹🇷' },
+    CA: { name: 'Canada', flag: '🇨🇦' },
+    CL: { name: 'Chili', flag: '🇨🇱' },
+    AU: { name: 'Australie', flag: '🇦🇺' },
+    NG: { name: 'Nigéria', flag: '🇳🇬' },
+    GH: { name: 'Ghana', flag: '🇬🇭' },
+    AT: { name: 'Autriche', flag: '🇦🇹' },
+    RO: { name: 'Roumanie', flag: '🇷🇴' },
+    HU: { name: 'Hongrie', flag: '🇭🇺' },
+    EC: { name: 'Équateur', flag: '🇪🇨' },
+    PE: { name: 'Pérou', flag: '🇵🇪' },
+    PY: { name: 'Paraguay', flag: '🇵🇾' },
+    VE: { name: 'Venezuela', flag: '🇻🇪' },
+    BO: { name: 'Bolivie', flag: '🇧🇴' },
+    QA: { name: 'Qatar', flag: '🇶🇦' },
+    IR: { name: 'Iran', flag: '🇮🇷' },
+    NZ: { name: 'Nouvelle-Zélande', flag: '🇳🇿' },
+    ZA: { name: 'Afrique du Sud', flag: '🇿🇦' },
+    IE: { name: 'Irlande', flag: '🇮🇪' },
+    HT: { name: 'Haïti', flag: '🇭🇹' }
   };
+
+  const populateTeamDropdowns = () => {
+    const setupTfTeam1 = document.getElementById('setupTfTeam1');
+    const setupTfTeam2 = document.getElementById('setupTfTeam2');
+    if (setupTfTeam1 && setupTfTeam2) {
+      setupTfTeam1.innerHTML = '';
+      setupTfTeam2.innerHTML = '';
+      
+      const sortedKeys = Object.keys(TEAMS).sort((a, b) => 
+        TEAMS[a].name.localeCompare(TEAMS[b].name, 'fr', { sensitivity: 'base' })
+      );
+      
+      sortedKeys.forEach(key => {
+        const team = TEAMS[key];
+        
+        const opt1 = document.createElement('option');
+        opt1.value = key;
+        opt1.style.background = 'var(--bg-card)';
+        opt1.style.color = '#fff';
+        opt1.textContent = `${team.flag} ${team.name}`;
+        if (key === 'BR') opt1.selected = true;
+        setupTfTeam1.appendChild(opt1);
+        
+        const opt2 = document.createElement('option');
+        opt2.value = key;
+        opt2.style.background = 'var(--bg-card)';
+        opt2.style.color = '#fff';
+        opt2.textContent = `${team.flag} ${team.name}`;
+        if (key === 'FR') opt2.selected = true;
+        setupTfTeam2.appendChild(opt2);
+      });
+    }
+  };
+  populateTeamDropdowns();
 
   // --- REAL-TIME GAMES CLIENT ENGINE ---
 
@@ -20153,11 +20274,17 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Custom Radio Label Styles Toggle for Game Lobby
-  const lobbyRadioLabels = document.querySelectorAll('.game-choice-option, .sub-choice-option');
-  lobbyRadioLabels.forEach((label) => {
-    const radio = label.querySelector('input[type="radio"]');
-    if (radio) {
-      label.addEventListener('click', (e) => {
+  // Custom Radio Label Styles Toggle for Game Lobby using event delegation
+  document.addEventListener('click', (e) => {
+    const label = e.target.closest('.game-choice-option, .sub-choice-option');
+    if (label) {
+      // If the click is inside a button, let the button handle it
+      if (e.target.closest('button')) {
+        return;
+      }
+      
+      const radio = label.querySelector('input[type="radio"]');
+      if (radio) {
         // Prevent default browser click handling on label to avoid double firing and weird radio behaviors
         e.preventDefault();
         
@@ -20183,7 +20310,151 @@ document.addEventListener('DOMContentLoaded', () => {
             updateTableFootballSetupVisibility();
           }
         }
-      });
+      }
+    }
+  });
+
+  // Game Rules descriptions for the Info buttons
+  const gameRules = {
+    connect4: {
+      title: "Puissance 4",
+      icon: "columns",
+      content: `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div style="background: rgba(124, 58, 237, 0.08); border-left: 4px solid #7c3aed; padding: 12px; border-radius: 4px 8px 8px 4px;">
+            <strong style="color: var(--primary);">But du jeu :</strong> Aligner 4 pions de votre couleur horizontalement, verticalement ou diagonalement avant votre adversaire.
+          </div>
+          <div>
+            <h4 style="margin: 0 0 8px 0; font-weight: 700; color: var(--text-primary);">Comment jouer :</h4>
+            <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px;">
+              <li>Chaque joueur dispose de pions d'une couleur (Rouge ou Jaune).</li>
+              <li>À tour de rôle, cliquez sur l'une des colonnes pour y laisser tomber un pion. Le pion descend automatiquement jusqu'à la première case libre de la colonne.</li>
+              <li>Le premier joueur à réaliser un alignement de <strong>4 pions consécutifs</strong> remporte la partie.</li>
+              <li>Si la grille est entièrement remplie sans qu'aucun alignement ne soit réalisé, la partie est déclarée nulle.</li>
+            </ul>
+          </div>
+        </div>
+      `
+    },
+    gomoku: {
+      title: "Gomoku",
+      icon: "grid",
+      content: `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div style="background: rgba(124, 58, 237, 0.08); border-left: 4px solid #7c3aed; padding: 12px; border-radius: 4px 8px 8px 4px;">
+            <strong style="color: var(--primary);">But du jeu :</strong> Aligner 5 pions de votre couleur sur une grille de jeu avant votre adversaire.
+          </div>
+          <div>
+            <h4 style="margin: 0 0 8px 0; font-weight: 700; color: var(--text-primary);">Comment jouer :</h4>
+            <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px;">
+              <li>Le jeu se joue à tour de rôle sur un plateau quadrillé.</li>
+              <li>Cliquez sur n'importe quelle intersection vide pour y placer l'un de vos pions (Noir ou Blanc).</li>
+              <li>Le premier joueur à former une ligne ininterrompue de <strong>5 pions</strong> horizontalement, verticalement ou diagonalement gagne le match.</li>
+              <li>Ce jeu requiert de l'anticipation pour bloquer les tentatives d'alignement de l'adversaire tout en créant ses propres opportunités.</li>
+            </ul>
+          </div>
+        </div>
+      `
+    },
+    tablefootball: {
+      title: "Football Table (Baby-foot)",
+      icon: "gamepad-2",
+      content: `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div style="background: rgba(124, 58, 237, 0.08); border-left: 4px solid #7c3aed; padding: 12px; border-radius: 4px 8px 8px 4px;">
+            <strong style="color: var(--primary);">But du jeu :</strong> Marquer 5 buts dans le but de l'adversaire.
+          </div>
+          <div>
+            <h4 style="margin: 0 0 8px 0; font-weight: 700; color: var(--text-primary);">Contrôles et Actions :</h4>
+            <p style="margin: 0 0 10px 0;">Sélectionnez l'un de vos 6 joueurs (pions) en cliquant dessus sur le terrain de jeu. Choisissez ensuite l'une des 3 actions tactiques au bas de l'écran :</p>
+            <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px;">
+              <li><strong>Tirer (Shoot) :</strong> Cliquez sur le pion sélectionné et faites glisser le curseur en arrière pour doser la force (visée élastique), puis relâchez pour propulser le pion et frapper la balle.</li>
+              <li><strong>Passer (Pass) :</strong> Similaire au tir, mais avec une puissance de frappe modérée et une <strong>aide à la visée intelligente</strong> (magnétisme) qui redirige le tir directement vers le coéquipier le plus proche dans l'axe.</li>
+              <li><strong>Se déplacer (Move) :</strong> Ajustez la position de vos joueurs. Glissez le pion n'importe où dans un rayon de <strong>100 pixels</strong> autour de sa position initiale. Relâcher valide sa nouvelle position et passe le tour immédiatement.</li>
+            </ul>
+          </div>
+        </div>
+      `
+    }
+  };
+
+  const gameInfoModal = document.getElementById('gameInfoModal');
+  const gameInfoModalIcon = document.getElementById('gameInfoModalIcon');
+  const gameInfoModalTitle = document.getElementById('gameInfoModalTitle');
+  const gameInfoModalBody = document.getElementById('gameInfoModalBody');
+  const closeGameInfoModal = document.getElementById('closeGameInfoModal');
+  const closeGameInfoModalBtn = document.getElementById('closeGameInfoModalBtn');
+
+  function openGameInfo(gameType) {
+    const rules = gameRules[gameType];
+    if (!rules) return;
+
+    const modal = document.getElementById('gameInfoModal');
+    const iconEl = document.getElementById('gameInfoModalIcon');
+    const titleEl = document.getElementById('gameInfoModalTitle');
+    const bodyEl = document.getElementById('gameInfoModalBody');
+
+    if (iconEl) {
+      iconEl.setAttribute('data-lucide', rules.icon);
+    }
+    if (titleEl) {
+      titleEl.textContent = rules.title;
+    }
+    if (bodyEl) {
+      bodyEl.innerHTML = rules.content;
+    }
+
+    if (modal) {
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+    }
+
+    // Re-initialize lucide icons inside the modal
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+      window.lucide.createIcons();
+    }
+  }
+
+  function hideGameInfo() {
+    const modal = document.getElementById('gameInfoModal');
+    if (modal) {
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  // Handle click on info triggers using event delegation (capture phase to run before label click handler)
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.game-info-trigger');
+    if (btn) {
+      e.stopPropagation();
+      e.preventDefault();
+      const gameType = btn.getAttribute('data-game-type');
+      openGameInfo(gameType);
+    }
+  }, true);
+
+  // Handle click on active game rules button
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('#activeGameInfoBtn');
+    if (btn) {
+      e.stopPropagation();
+      e.preventDefault();
+      if (activeGame && activeGame.gameType) {
+        openGameInfo(activeGame.gameType);
+      }
+    }
+  });
+
+  // Handle close buttons and modal clicking outside using delegation
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#closeGameInfoModal') || e.target.closest('#closeGameInfoModalBtn')) {
+      e.preventDefault();
+      hideGameInfo();
+    }
+    const modal = document.getElementById('gameInfoModal');
+    if (e.target === modal) {
+      hideGameInfo();
     }
   });
 
@@ -21497,6 +21768,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (gamesLobby) gamesLobby.style.display = 'none';
     if (activeGameArea) activeGameArea.style.display = 'grid';
 
+    // Show/Hide active game info button depending on rules support
+    const activeGameInfoBtn = document.getElementById('activeGameInfoBtn');
+    if (activeGameInfoBtn) {
+      activeGameInfoBtn.style.display = (gameRules && gameRules[game.gameType]) ? 'inline-flex' : 'none';
+    }
+
     // Show/Hide WebRTC Controls
     const isPlayer = Number(game.player1.id) === Number(window.currentUserId) || 
                      (game.player2 && Number(game.player2.id) === Number(window.currentUserId));
@@ -22346,8 +22623,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const tfPlayer2Avatar = document.getElementById('tfPlayer2Avatar');
     const tfPlayer1Name = document.getElementById('tfPlayer1Name');
     const tfPlayer2Name = document.getElementById('tfPlayer2Name');
+    const tfPlayer1Team = document.getElementById('tfPlayer1Team');
+    const tfPlayer2Team = document.getElementById('tfPlayer2Team');
     const tableFootballStatusText = document.getElementById('tableFootballStatusText');
     const tableFootballHelperText = document.getElementById('tableFootballHelperText');
+
+    const tfActionSelector = document.getElementById('tfActionSelector');
+    const tfActionShoot = document.getElementById('tfActionShoot');
+    const tfActionPass = document.getElementById('tfActionPass');
+    const tfActionMove = document.getElementById('tfActionMove');
+    const tfSelectedPlayerName = document.getElementById('tfSelectedPlayerName');
+    const tfSelectedPlayerRole = document.getElementById('tfSelectedPlayerRole');
+    const tfJoystickContainer = document.getElementById('tfJoystickContainer');
+    const tfJoystickKnob = document.getElementById('tfJoystickKnob');
 
     if (tfScoreText && activeGame.tableFootballState.scores) {
       tfScoreText.textContent = `${activeGame.tableFootballState.scores[1] || 0} - ${activeGame.tableFootballState.scores[2] || 0}`;
@@ -22363,6 +22651,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (tfPlayer2Name && activeGame.player2) {
       tfPlayer2Name.textContent = activeGame.player2.name || 'Joueur 2';
+    }
+
+    const t1Code = activeGame.team1 || 'FR';
+    const t2Code = activeGame.team2 || 'BR';
+    const t1Data = TEAMS[t1Code] || { name: 'France', flag: '🇫🇷' };
+    const t2Data = TEAMS[t2Code] || { name: 'Brésil', flag: '🇧🇷' };
+
+    if (tfPlayer1Team) {
+      tfPlayer1Team.textContent = `${t1Data.flag} ${t1Data.name}`;
+    }
+    if (tfPlayer2Team) {
+      tfPlayer2Team.textContent = `${t2Data.flag} ${t2Data.name}`;
     }
 
     // isMyTurn must be a function (not a const) so the animation loop always reads live state
@@ -22385,7 +22685,48 @@ document.addEventListener('DOMContentLoaded', () => {
       PT: ["Costa", "Mendes", "Dias", "Fernandes", "Ronaldo", "Leão"],
       GB: ["Pickford", "Shaw", "Stones", "Rice", "Bellingham", "Kane"],
       MA: ["Bounou", "Mazraoui", "Aguerd", "Amrabat", "Ziyech", "En-Nesyri"],
-      SN: ["Mendy", "Jakobs", "Koulibaly", "Gueye", "Mané", "Sarr"]
+      SN: ["Mendy", "Jakobs", "Koulibaly", "Gueye", "Mané", "Sarr"],
+      BE: ["Courtois", "Castagne", "Vertonghen", "De Bruyne", "Lukaku", "Doku"],
+      NL: ["Verbruggen", "Aké", "Van Dijk", "De Jong", "Depay", "Gakpo"],
+      HR: ["Livaković", "Gvardiol", "Šutalo", "Modrić", "Kovačić", "Kramarić"],
+      UY: ["Rochet", "Olivera", "Giménez", "Valverde", "Núñez", "Araujo"],
+      CO: ["Vargas", "Mojica", "Sánchez", "Rodríguez", "Díaz", "Borré"],
+      US: ["Turner", "Robinson", "Ream", "McKennie", "Pulisic", "Balogun"],
+      MX: ["Ochoa", "Gallardo", "Montes", "Álvarez", "Lozano", "Giménez"],
+      CM: ["Onana", "Tolo", "Wooh", "Anguissa", "Toko Ekambi", "Aboubakar"],
+      CI: ["Fofana", "Konan", "Ndicka", "Kessié", "Haller", "Adinga"],
+      DZ: ["Mandrea", "Aït-Nouri", "Bensebaini", "Bennacer", "Mahrez", "Bounedjah"],
+      TN: ["Dahmen", "Abdi", "Talbi", "Skhiri", "Msakni", "Sliti"],
+      EG: ["El Shenawy", "Fatouh", "Hegazi", "Elneny", "Salah", "Mohamed"],
+      JP: ["Suzuki", "Itakura", "Tomiyasu", "Endo", "Kubo", "Mitoma"],
+      KR: ["Jo", "Seol", "Kim", "Hwang", "Son", "Lee"],
+      SA: ["Al-Owais", "Al-Shahrani", "Al-Bulaihi", "Kanno", "Al-Dawsari", "Al-Shehri"],
+      CH: ["Sommer", "Rodriguez", "Akanji", "Xhaka", "Embolo", "Vargas"],
+      DK: ["Schmeichel", "Maehle", "Christensen", "Højbjerg", "Eriksen", "Højlund"],
+      SE: ["Olsen", "Augustinsson", "Lindelöf", "Kulusevski", "Isak", "Gyökeres"],
+      NO: ["Nyland", "Meling", "Østigård", "Ødegaard", "Haaland", "Sørloth"],
+      PL: ["Szczęsny", "Kiwior", "Bednarek", "Zieliński", "Lewandowski", "Świderski"],
+      UA: ["Lunin", "Mykolenko", "Matviyenko", "Zinchenko", "Mudryk", "Dovbyk"],
+      TR: ["Günok", "Kadıoğlu", "Bardakcı", "Çalhanoğlu", "Güler", "Yılmaz"],
+      CA: ["Crépeau", "Laryea", "Johnston", "Eustáquio", "Davies", "David"],
+      CL: ["Arias", "Suazo", "Maripán", "Pulgar", "Sánchez", "Vargas"],
+      AU: ["Ryan", "Behich", "Souttar", "Irvine", "Goodwin", "Duke"],
+      NG: ["Nwabali", "Sanusi", "Troost-Ekong", "Iwobi", "Lookman", "Osimhen"],
+      GH: ["Ati-Zigi", "Mensah", "Salisu", "Partey", "Kudus", "Ayew"],
+      AT: ["Pentz", "Posch", "Lienhart", "Sabitzer", "Baumgartner", "Gregoritsch"],
+      RO: ["Niță", "Bancu", "Drăgușin", "Marin", "Stanciu", "Drăguș"],
+      HU: ["Gulácsi", "Kerkez", "Orbán", "Nagy", "Szoboszlai", "Varga"],
+      EC: ["Domínguez", "Hincapié", "Torres", "Caicedo", "Valencia", "Rodríguez"],
+      PE: ["Gallese", "Advíncula", "Zambrano", "Tapia", "Lapadula", "Guerrero"],
+      PY: ["Coronel", "Espinoza", "Gomez", "Villasanti", "Almirón", "Bareiro"],
+      VE: ["Romo", "Navarro", "Angel", "Rincón", "Rondón", "Soteldo"],
+      BO: ["Viscarra", "Sagredo", "Haquin", "Justiniano", "Moreno", "Vaca"],
+      QA: ["Barsham", "Mendes", "Khoukhi", "Hatem", "Afif", "Ali"],
+      IR: ["Beiranvand", "Mohammadi", "Kanaanizadegan", "Ezatolahi", "Taremi", "Azmoun"],
+      NZ: ["Crocombe", "Cacace", "Boxall", "Garbett", "Wood", "Waine"],
+      ZA: ["Williams", "Modiba", "Mvala", "Mokoena", "Tau", "Zwane"],
+      IE: ["Kelleher", "Doherty", "Collins", "Cullen", "Ferguson", "Szmodics"],
+      HT: ["Placide", "Arcus", "Adé", "Alceus", "Nazon", "Pierrot"]
     };
 
     function getPuckName(slot, index) {
@@ -22399,12 +22740,47 @@ document.addEventListener('DOMContentLoaded', () => {
       return roles[index] || "Joueur";
     }
 
-    const tfActionSelector = document.getElementById('tfActionSelector');
-    const tfSelectedPlayerName = document.getElementById('tfSelectedPlayerName');
-    const tfSelectedPlayerRole = document.getElementById('tfSelectedPlayerRole');
-    const tfActionShoot = document.getElementById('tfActionShoot');
-    const tfActionPass = document.getElementById('tfActionPass');
-    const tfActionMove = document.getElementById('tfActionMove');
+    function getPassVector(puckIndex, start, curr) {
+      const myPucks = state.positions[myKey];
+      const puck = myPucks[puckIndex];
+      let dx = start.x - curr.x;
+      let dy = start.y - curr.y;
+      
+      let bestTeammate = null;
+      let minAngleDiff = Infinity;
+      const dragAngle = Math.atan2(dy, dx);
+      const dragDist = Math.sqrt(dx*dx + dy*dy);
+      
+      for (let i = 0; i < myPucks.length; i++) {
+        if (i === puckIndex) continue;
+        const tm = myPucks[i];
+        const tmDx = tm.x - puck.x;
+        const tmDy = tm.y - puck.y;
+        const tmAngle = Math.atan2(tmDy, tmDx);
+        
+        let diff = Math.abs(dragAngle - tmAngle);
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        diff = Math.abs(diff);
+        
+        if (diff < 0.35 && diff < minAngleDiff) {
+          minAngleDiff = diff;
+          bestTeammate = { index: i, x: tm.x, y: tm.y, dx: tmDx, dy: tmDy, dist: Math.sqrt(tmDx*tmDx + tmDy*tmDy) };
+        }
+      }
+      
+      if (bestTeammate && dragDist > 5) {
+        // Snap the direction to the teammate
+        const targetAngle = Math.atan2(bestTeammate.dy, bestTeammate.dx);
+        return {
+          dx: Math.cos(targetAngle) * dragDist,
+          dy: Math.sin(targetAngle) * dragDist,
+          snapped: true,
+          targetName: getPuckName(mySlot, bestTeammate.index)
+        };
+      }
+      
+      return { dx, dy, snapped: false, targetName: "" };
+    }
 
     if (tableFootballStatusText) {
       if (activeGame.status === 'finished') {
@@ -22451,11 +22827,15 @@ document.addEventListener('DOMContentLoaded', () => {
         scores: serverState ? { ...serverState.scores } : { 1: 0, 2: 0 },
         isSimulating: false,
         draggedPuckIndex: null,
+        selectedPuckIndex: null,
+        selectedActionMode: 'shoot',
+        moveStartPos: null,
         dragStart: null,
         dragCurrent: null,
         animationFrameId: null,
         lastPlaySig: null,
         history: [],
+        lastFrameWasMoving: false,
         isReplaying: false,
         replayFrame: 0,
         replayPaused: false,
@@ -22465,6 +22845,7 @@ document.addEventListener('DOMContentLoaded', () => {
       };
       
       // Wire events once
+      setupVirtualJoystick();
       canvas.onmousedown = onCanvasStart;
       canvas.ontouchstart = onCanvasStart;
       canvas.onmousemove = onCanvasMove;
@@ -22474,6 +22855,44 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const state = window.tfGameState;
+    
+    // Wire up selector actions
+    function selectActionMode(mode) {
+      if (!state) return;
+      state.selectedActionMode = mode;
+      
+      [
+        { btn: tfActionShoot, key: 'shoot' },
+        { btn: tfActionPass, key: 'pass' },
+        { btn: tfActionMove, key: 'move' }
+      ].forEach(item => {
+        if (item.btn) {
+          if (item.key === mode) {
+            item.btn.classList.add('active');
+            item.btn.style.background = '#3b82f6';
+            item.btn.style.color = '#fff';
+          } else {
+            item.btn.classList.remove('active');
+            item.btn.style.background = 'rgba(255,255,255,0.1)';
+            item.btn.style.color = '#ccc';
+          }
+        }
+      });
+      updateJoystickVisibility();
+    }
+
+    if (tfActionShoot) tfActionShoot.onclick = () => selectActionMode('shoot');
+    if (tfActionPass) tfActionPass.onclick = () => selectActionMode('pass');
+    if (tfActionMove) tfActionMove.onclick = () => {
+      selectActionMode('move');
+      if (state && state.selectedPuckIndex !== null) {
+        const p = state.positions[myKey][state.selectedPuckIndex];
+        state.moveStartPos = { x: p.x, y: p.y };
+      }
+    };
+
+    // Initialize/Reset action mode to shoot on game start
+    selectActionMode('shoot');
     const serverState = activeGame.tableFootballState;
 
     // Sync positions from server when not simulating to ensure up-to-date layout (e.g. initial launch / player joins)
@@ -22533,29 +22952,303 @@ document.addEventListener('DOMContentLoaded', () => {
       };
     }
 
+    function updateJoystickVisibility() {
+      if (!tfJoystickContainer) return;
+      const isMobile = window.innerWidth <= 768 || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+      const shouldShow = isMobile 
+        && state 
+        && state.selectedPuckIndex !== null 
+        && !state.isSimulating 
+        && isMyTurn();
+
+      if (shouldShow) {
+        tfJoystickContainer.style.display = 'flex';
+      } else {
+        tfJoystickContainer.style.display = 'none';
+        if (tfJoystickKnob) {
+          tfJoystickKnob.style.transform = 'translate(0px, 0px)';
+        }
+      }
+    }
+
+    function setupVirtualJoystick() {
+      if (!tfJoystickContainer || !tfJoystickKnob) return;
+
+      let isDragging = false;
+      let startTouchX = 0;
+      let startTouchY = 0;
+      const maxVisualRadius = 35; // Maximum pixel offset visually
+
+      const onPointerDown = (e) => {
+        if (!state || state.selectedPuckIndex === null || state.isSimulating || !isMyTurn()) return;
+        isDragging = true;
+        
+        const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+        const clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+        startTouchX = clientX;
+        startTouchY = clientY;
+        
+        state.draggedPuckIndex = state.selectedPuckIndex;
+        const myPucks = state.positions[myKey];
+        const puck = myPucks[state.selectedPuckIndex];
+        state.dragStart = { x: puck.x, y: puck.y };
+        state.dragCurrent = { x: puck.x, y: puck.y };
+
+        if (state.selectedActionMode === 'move') {
+          state.moveStartPos = { x: puck.x, y: puck.y };
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+      };
+
+      const onPointerMove = (e) => {
+        if (!isDragging || state.selectedPuckIndex === null) return;
+
+        const clientX = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+        const clientY = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+
+        let deltaX = clientX - startTouchX;
+        let deltaY = clientY - startTouchY;
+
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        if (distance > maxVisualRadius) {
+          deltaX = (deltaX / distance) * maxVisualRadius;
+          deltaY = (deltaY / distance) * maxVisualRadius;
+        }
+
+        tfJoystickKnob.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+
+        const jx = deltaX / maxVisualRadius;
+        const jy = deltaY / maxVisualRadius;
+
+        const maxDragDistance = 100;
+        const targetDx = jx * maxDragDistance;
+        const targetDy = jy * maxDragDistance;
+
+        const puck = state.positions[myKey][state.selectedPuckIndex];
+
+        if (state.selectedActionMode === 'move' && state.moveStartPos) {
+          let targetX = state.moveStartPos.x;
+          let targetY = state.moveStartPos.y;
+
+          if (mySlot === 1) {
+            targetX += targetDx;
+            targetY -= targetDy; // inverted coordinate space for P1 Y-flipping
+          } else {
+            targetX += targetDx;
+            targetY += targetDy;
+          }
+
+          targetX = Math.max(FIELD_MIN_X + PUCK_RADIUS, Math.min(FIELD_MAX_X - PUCK_RADIUS, targetX));
+          targetY = Math.max(FIELD_MIN_Y + PUCK_RADIUS, Math.min(FIELD_MAX_Y - PUCK_RADIUS, targetY));
+
+          puck.x = targetX;
+          puck.y = targetY;
+        } else {
+          if (mySlot === 1) {
+            state.dragCurrent = {
+              x: state.dragStart.x - targetDx,
+              y: state.dragStart.y + targetDy // inverted coordinate space for P1 Y-flipping
+            };
+          } else {
+            state.dragCurrent = {
+              x: state.dragStart.x - targetDx,
+              y: state.dragStart.y - targetDy
+            };
+          }
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+      };
+
+      const onPointerUp = (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+
+        tfJoystickKnob.style.transform = 'translate(0px, 0px)';
+
+        if (state.selectedPuckIndex === null) {
+          state.draggedPuckIndex = null;
+          state.dragStart = null;
+          state.dragCurrent = null;
+          return;
+        }
+
+        const dragStartPos = state.dragStart;
+        const dragCurrentPos = state.dragCurrent;
+        const pIndex = state.selectedPuckIndex;
+
+        let dx = 0;
+        let dy = 0;
+        let dist = 0;
+
+        if (dragStartPos && dragCurrentPos) {
+          dx = dragStartPos.x - dragCurrentPos.x;
+          dy = dragStartPos.y - dragCurrentPos.y;
+          dist = Math.sqrt(dx*dx + dy*dy);
+        }
+
+        const deadzone = 8;
+        if (state.selectedActionMode !== 'move' && dist < deadzone) {
+          state.draggedPuckIndex = null;
+          state.dragStart = null;
+          state.dragCurrent = null;
+          return;
+        }
+
+        if (state.selectedActionMode === 'move') {
+          state.draggedPuckIndex = null;
+          state.dragStart = null;
+          state.dragCurrent = null;
+          state.moveStartPos = null;
+          
+          if (tfActionSelector) {
+            tfActionSelector.style.display = 'none';
+          }
+          
+          socket.emit('game-move', {
+            gameId: activeGame.id,
+            r: -1,
+            c: -1,
+            promotion: 'sync',
+            finalState: { positions: state.positions, scores: state.scores }
+          });
+        } else {
+          state.draggedPuckIndex = null;
+          state.dragStart = null;
+          state.dragCurrent = null;
+
+          if (state.selectedActionMode === 'pass') {
+            const passVec = getPassVector(pIndex, dragStartPos, dragCurrentPos);
+            dx = passVec.dx;
+            dy = passVec.dy;
+            dist = Math.sqrt(dx*dx + dy*dy);
+          }
+
+          if (dist > 5) {
+            const maxDrag = 100;
+            const clampedDist = Math.min(dist, maxDrag);
+            const maxVelocity = (state.selectedActionMode === 'pass') ? 8.5 : 14.5;
+            const force = (clampedDist / maxDrag) * maxVelocity;
+            const vx = (dx / dist) * force;
+            const vy = (dy / dist) * force;
+
+            const puck = state.positions[myKey][pIndex];
+            puck.vx = vx;
+            puck.vy = vy;
+            state.isSimulating = true;
+
+            if (tfActionSelector) {
+              tfActionSelector.style.display = 'none';
+            }
+
+            socket.emit('game-move', {
+              gameId: activeGame.id,
+              r: pIndex,
+              c: 0,
+              toR: Math.round(vx * 1000),
+              toC: Math.round(vy * 1000),
+              promotion: 'shot'
+            });
+          }
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+      };
+
+      tfJoystickContainer.onpointerdown = onPointerDown;
+      tfJoystickContainer.onpointermove = onPointerMove;
+      tfJoystickContainer.onpointerup = onPointerUp;
+      tfJoystickContainer.onpointercancel = onPointerUp;
+    }
+
     function onCanvasStart(e) {
       if (activeGame.status !== 'playing' || !isMyTurn() || state.isSimulating) return;
       const pos = getMousePos(e);
       
       // Find if we clicked one of our pucks
+      let clickedPuckIndex = null;
       const myPucks = state.positions[myKey];
       for (let i = 0; i < myPucks.length; i++) {
         const p = myPucks[i];
         const dx = pos.x - p.x;
         const dy = pos.y - p.y;
         if (dx*dx + dy*dy < PUCK_RADIUS * PUCK_RADIUS) {
-          state.draggedPuckIndex = i;
-          state.dragStart = pos;
-          state.dragCurrent = pos;
-          e.preventDefault();
+          clickedPuckIndex = i;
           break;
         }
+      }
+
+      if (clickedPuckIndex !== null) {
+        state.selectedPuckIndex = clickedPuckIndex;
+        // Default to 'shoot' if no action was selected yet
+        if (!state.selectedActionMode) {
+          selectActionMode('shoot');
+        } else {
+          selectActionMode(state.selectedActionMode);
+        }
+
+        // Show selection panel & update names
+        if (tfActionSelector) {
+          tfActionSelector.style.display = 'flex';
+        }
+        if (tfSelectedPlayerName) {
+          tfSelectedPlayerName.textContent = getPuckName(mySlot, clickedPuckIndex);
+        }
+        if (tfSelectedPlayerRole) {
+          tfSelectedPlayerRole.textContent = getPuckRole(clickedPuckIndex);
+        }
+
+        if (state.selectedActionMode === 'move') {
+          const p = myPucks[clickedPuckIndex];
+          state.moveStartPos = { x: p.x, y: p.y };
+        }
+
+        state.draggedPuckIndex = clickedPuckIndex;
+        state.dragStart = pos;
+        state.dragCurrent = pos;
+        e.preventDefault();
+      } else {
+        // Clicked empty space: clear selection & hide selector
+        state.selectedPuckIndex = null;
+        if (tfActionSelector) {
+          tfActionSelector.style.display = 'none';
+        }
+        updateJoystickVisibility();
       }
     }
 
     function onCanvasMove(e) {
       if (state.draggedPuckIndex === null) return;
-      state.dragCurrent = getMousePos(e);
+      const pos = getMousePos(e);
+      state.dragCurrent = pos;
+
+      if (state.selectedActionMode === 'move' && state.moveStartPos) {
+        // Move the puck directly (1-to-1 position update), but clamped to max distance 100px
+        let dx = pos.x - state.moveStartPos.x;
+        let dy = pos.y - state.moveStartPos.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const maxMoveDist = 100;
+        if (dist > maxMoveDist) {
+          dx = (dx / dist) * maxMoveDist;
+          dy = (dy / dist) * maxMoveDist;
+        }
+        
+        const puck = state.positions[myKey][state.draggedPuckIndex];
+        let targetX = state.moveStartPos.x + dx;
+        let targetY = state.moveStartPos.y + dy;
+        
+        // Clamp to field boundaries
+        targetX = Math.max(FIELD_MIN_X + PUCK_RADIUS, Math.min(FIELD_MAX_X - PUCK_RADIUS, targetX));
+        targetY = Math.max(FIELD_MIN_Y + PUCK_RADIUS, Math.min(FIELD_MAX_Y - PUCK_RADIUS, targetY));
+        
+        puck.x = targetX;
+        puck.y = targetY;
+      }
+
       e.preventDefault();
     }
 
@@ -22572,15 +23265,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!start || !curr) return;
 
-      const dx = start.x - curr.x;
-      const dy = start.y - curr.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (state.selectedActionMode === 'move') {
+        // Move was finalized, emit sync immediately to flip turn
+        state.moveStartPos = null;
+        if (tfActionSelector) {
+          tfActionSelector.style.display = 'none';
+        }
+        socket.emit('game-move', {
+          gameId: activeGame.id,
+          r: -1,
+          c: -1,
+          promotion: 'sync',
+          finalState: { positions: state.positions, scores: state.scores }
+        });
+        return;
+      }
+
+      let dx = start.x - curr.x;
+      let dy = start.y - curr.y;
+      let dist = Math.sqrt(dx*dx + dy*dy);
+
+      if (state.selectedActionMode === 'pass') {
+        const passVec = getPassVector(pIndex, start, curr);
+        dx = passVec.dx;
+        dy = passVec.dy;
+        dist = Math.sqrt(dx*dx + dy*dy);
+      }
 
       if (dist > 5) {
         // Slingshot force
         const maxDrag = 100;
         const clampedDist = Math.min(dist, maxDrag);
-        const force = (clampedDist / maxDrag) * 14.5; // max velocity 14.5 (decreased from 22)
+        const maxVelocity = (state.selectedActionMode === 'pass') ? 8.5 : 14.5;
+        const force = (clampedDist / maxDrag) * maxVelocity;
         const vx = (dx / dist) * force;
         const vy = (dy / dist) * force;
 
@@ -22589,6 +23306,10 @@ document.addEventListener('DOMContentLoaded', () => {
         puck.vx = vx;
         puck.vy = vy;
         state.isSimulating = true;
+
+        if (tfActionSelector) {
+          tfActionSelector.style.display = 'none';
+        }
 
         // Emit shot move to server
         socket.emit('game-move', {
@@ -22608,6 +23329,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.animationFrameId = null;
         return; // Stop loop if active game changes
       }
+      updateJoystickVisibility();
 
       try {
         if (state.isReplaying) {
@@ -22620,9 +23342,9 @@ document.addEventListener('DOMContentLoaded', () => {
           } else if (idx < state.history.length) {
             drawField(state.history[idx]);
             drawReplayOverlay();
-            // Dynamically calculate speed to make the replay last exactly 35 seconds.
-            // At 60 FPS, 35 seconds is 2100 animation frames.
-            const replayTicks = 60 * 35; // 35 seconds target
+            // Dynamically calculate speed to make the replay last exactly 40 seconds.
+            // At 60 FPS, 40 seconds is 2400 animation frames.
+            const replayTicks = 60 * 40; // 40 seconds target
             const increment = Math.max(0.01, state.history.length / replayTicks);
             state.replayFrame += increment;
           } else {
@@ -22754,8 +23476,21 @@ document.addEventListener('DOMContentLoaded', () => {
             ball: { x: pos.ball.x, y: pos.ball.y, vx: pos.ball.vx, vy: pos.ball.vy }
           };
         };
-        state.history.push(copyPositions(state.positions));
-        if (state.history.length > 500) {
+
+        const anyMoving = state.positions.p1.some(p => (p.vx && Math.abs(p.vx) > 0.05) || (p.vy && Math.abs(p.vy) > 0.05)) ||
+                          state.positions.p2.some(p => (p.vx && Math.abs(p.vx) > 0.05) || (p.vy && Math.abs(p.vy) > 0.05)) ||
+                          (state.positions.ball.vx && Math.abs(state.positions.ball.vx) > 0.05) || 
+                          (state.positions.ball.vy && Math.abs(state.positions.ball.vy) > 0.05);
+
+        if (anyMoving) {
+          state.history.push(copyPositions(state.positions));
+          state.lastFrameWasMoving = true;
+        } else if (state.lastFrameWasMoving || state.history.length === 0) {
+          state.history.push(copyPositions(state.positions));
+          state.lastFrameWasMoving = false;
+        }
+
+        if (state.history.length > 800) {
           state.history.shift();
         }
       }
@@ -22947,8 +23682,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (eventType === 'corner') { label = 'CORNER !'; color = '#fbbf24'; }
             if (eventType === 'degagement') { label = 'SIX MÈTRES !'; color = '#10b981'; }
             
-            const teamName = (advantagedPlayer === 1) ? (activeGame.team1 || 'FR') : (activeGame.team2 || 'BR');
-            tableFootballStatusText.innerHTML = `<span style="color:${color}; font-size: 16px; font-weight: 900; animation: bounce 0.5s infinite;">⚽ ${label} pour ${teamName} ⚽</span>`;
+            const teamCode = (advantagedPlayer === 1) ? (activeGame.team1 || 'FR') : (activeGame.team2 || 'BR');
+            const teamData = TEAMS[teamCode] || { name: teamCode, flag: '' };
+            const teamLabel = `${teamData.flag} ${teamData.name.toUpperCase()}`.trim();
+            tableFootballStatusText.innerHTML = `<span style="color:${color}; font-size: 14px; font-weight: 900; animation: bounce 0.5s infinite;">⚽ ${label} POUR ${teamLabel} ⚽</span>`;
           }
 
           state.isSimulating = true;
@@ -23044,9 +23781,23 @@ document.addEventListener('DOMContentLoaded', () => {
         state.scores[goalScoredBy] = Number(state.scores[goalScoredBy] || 0) + 1;
         if (tfScoreText) tfScoreText.textContent = `${state.scores[1]} - ${state.scores[2]}`;
         
+        let scorerName = "Joueur";
+        let scorerFlag = "";
+        if (goalScoredBy === 1 && activeGame.player1) {
+          scorerName = activeGame.player1.name || "Joueur 1";
+          const t1Code = activeGame.team1 || 'FR';
+          const t1Data = TEAMS[t1Code] || { name: 'France', flag: '🇫🇷' };
+          scorerFlag = t1Data.flag || "";
+        } else if (goalScoredBy === 2 && activeGame.player2) {
+          scorerName = activeGame.player2.name || "Joueur 2";
+          const t2Code = activeGame.team2 || 'BR';
+          const t2Data = TEAMS[t2Code] || { name: 'Brésil', flag: '🇧🇷' };
+          scorerFlag = t2Data.flag || "";
+        }
+
         // Show goal banner in status
         if (tableFootballStatusText) {
-          tableFootballStatusText.innerHTML = `<span style="color:#ef4444; font-size: 16px; font-weight: 900; animation: bounce 0.5s infinite;">⚽ GOOOAL !!! ⚽</span>`;
+          tableFootballStatusText.innerHTML = `<span style="color:#ef4444; font-size: 14px; font-weight: 900; animation: bounce 0.5s infinite;">⚽ BUT DE ${scorerName.toUpperCase()} ${scorerFlag} ! ⚽</span>`;
         }
 
         // Trigger slow-motion replay instead of immediate reset
@@ -23538,9 +24289,30 @@ document.addEventListener('DOMContentLoaded', () => {
           ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
           ctx.fill();
         } else {
-          // Fallback blue
-          ctx.fillStyle = '#3b82f6';
+          const colors = {
+            BE: '#000000', NL: '#FF4F00', HR: '#FF0000', UY: '#75AADB', CO: '#FCD116',
+            US: '#002868', MX: '#006847', CM: '#007A5E', CI: '#FF8200', DZ: '#006233',
+            TN: '#E2011A', EG: '#C8102E', JP: '#000080', KR: '#CD2E3A', SA: '#006C35',
+            CH: '#D80027', DK: '#C8102E', SE: '#006AA7', NO: '#D81930', PL: '#DC143C',
+            UA: '#0057B7', TR: '#E30A17', CA: '#FF0000', CL: '#0039A6', AU: '#00008F',
+            NG: '#008751', GH: '#FCD116', AT: '#C8102E', RO: '#002B7F', HU: '#436F4D',
+            EC: '#ED1C24', PE: '#D91414', PY: '#D52B1E', VE: '#7B1226', BO: '#007934',
+            QA: '#8A1538', IR: '#228B22', NZ: '#000000', ZA: '#007A4D', IE: '#009A49',
+            HT: '#00209F'
+          };
+          ctx.fillStyle = colors[code] || '#3b82f6';
           ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
+          
+          const teamData = TEAMS[code];
+          if (teamData && teamData.flag) {
+            ctx.save();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '15px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(teamData.flag, 0, 0.5);
+            ctx.restore();
+          }
         }
 
         ctx.restore();
@@ -23562,11 +24334,13 @@ document.addEventListener('DOMContentLoaded', () => {
           ctx.lineWidth = 1;
           ctx.stroke();
 
+          ctx.save();
           ctx.fillStyle = '#1e293b';
           ctx.font = 'bold 7px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText('GK', 0, 0.5);
+          ctx.restore();
         } else {
           // Normal outer white ring border
           ctx.beginPath();
@@ -23591,6 +24365,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.font = 'bold 8px "Outfit", sans-serif';
         ctx.textAlign = 'center';
         
+        ctx.save();
         // Draw text shadow outline
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
         ctx.lineWidth = 2.5;
@@ -23598,6 +24373,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         ctx.fillStyle = '#ffffff';
         ctx.fillText(name, 0, PUCK_RADIUS + 11);
+        ctx.restore();
         
         ctx.restore();
       };
@@ -24578,7 +25354,12 @@ document.addEventListener('DOMContentLoaded', () => {
       closeBtn.style.transition = 'all 0.2s';
       closeBtn.addEventListener('click', () => {
         overlay.style.opacity = '0';
-        setTimeout(() => overlay.remove(), 300);
+        setTimeout(() => {
+          overlay.remove();
+          if (typeof performLeaveGame === 'function') {
+            performLeaveGame();
+          }
+        }, 300);
       });
 
       card.appendChild(title);

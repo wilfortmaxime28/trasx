@@ -836,7 +836,7 @@ class GamesManager {
         const botPucks = footballState.positions.p2;
         const ball = footballState.positions.ball;
 
-        // Choose the puck closest to the ball
+        // Choose the puck closest to the ball (no random selection, as requested)
         let bestPuckIndex = 0;
         let minDist = Infinity;
         botPucks.forEach((p, index) => {
@@ -849,24 +849,82 @@ class GamesManager {
           }
         });
 
-        // 25% chance of picking a random puck for variety
-        if (Math.random() < 0.25) {
-          bestPuckIndex = Math.floor(Math.random() * botPucks.length);
-        }
-
         const chosenPuck = botPucks[bestPuckIndex];
 
-        // Aim towards the ball with a minor error margin
-        const errorMargin = isPaidMode ? 6 : 22;
-        const targetX = ball.x + (Math.random() * 2 - 1) * errorMargin;
-        const targetY = ball.y + (Math.random() * 2 - 1) * errorMargin;
+        // Opponent's camp is at the top (Y = 50).
+        // If the closest puck is below the ball (chosenPuck.y > ball.y), it can shoot towards the opponent's camp.
+        // If chosenPuck.y <= ball.y, it is in front of the ball, so it must perform a pass.
+        const canShoot = chosenPuck.y > ball.y;
 
-        let dx = targetX - chosenPuck.x;
-        let dy = targetY - chosenPuck.y;
+        let dx, dy, force;
+
+        if (canShoot) {
+          // Shoot towards the opponent's goal (target around X=180, Y=50)
+          const errorMargin = isPaidMode ? 10 : 35;
+          const targetGoalX = 180 + (Math.random() * 2 - 1) * errorMargin;
+          const targetGoalY = 50;
+
+          const dx_goal = targetGoalX - ball.x;
+          const dy_goal = targetGoalY - ball.y;
+          const dist_goal = Math.sqrt(dx_goal*dx_goal + dy_goal*dy_goal) || 1;
+
+          // Ghost ball position for hitting the ball towards the goal
+          const collisionDist = 16 + 10; // PUCK_RADIUS + BALL_RADIUS
+          const targetX = ball.x - (dx_goal / dist_goal) * collisionDist;
+          const targetY = ball.y - (dy_goal / dist_goal) * collisionDist;
+
+          dx = targetX - chosenPuck.x;
+          dy = targetY - chosenPuck.y;
+          force = 10 + Math.random() * 4.5; // High velocity for shot (max 14.5)
+        } else {
+          // Make a pass to a teammate.
+          // Find teammates (other bot pucks)
+          const teammates = botPucks.filter((_, index) => index !== bestPuckIndex);
+          // Prefer teammates that are behind the ball (T.y > ball.y)
+          const candidates = teammates.filter(p => p.y > ball.y);
+
+          let targetTeammate = null;
+          if (candidates.length > 0) {
+            // Choose the candidate closest to the ball to receive the pass
+            let minTeammateDist = Infinity;
+            candidates.forEach(p => {
+              const tx = p.x - ball.x;
+              const ty = p.y - ball.y;
+              const dist = Math.sqrt(tx*tx + ty*ty);
+              if (dist < minTeammateDist) {
+                minTeammateDist = dist;
+                targetTeammate = p;
+              }
+            });
+          }
+
+          // Fallback if no teammates are below the ball: pass to the first available teammate
+          if (!targetTeammate && teammates.length > 0) {
+            targetTeammate = teammates[0];
+          }
+
+          if (targetTeammate) {
+            const dx_pass = targetTeammate.x - ball.x;
+            const dy_pass = targetTeammate.y - ball.y;
+            const dist_pass = Math.sqrt(dx_pass*dx_pass + dy_pass*dy_pass) || 1;
+
+            // Ghost ball position for passing the ball to the teammate
+            const collisionDist = 16 + 10; // PUCK_RADIUS + BALL_RADIUS
+            const targetX = ball.x - (dx_pass / dist_pass) * collisionDist;
+            const targetY = ball.y - (dy_pass / dist_pass) * collisionDist;
+
+            dx = targetX - chosenPuck.x;
+            dy = targetY - chosenPuck.y;
+            force = 5.5 + Math.random() * 3; // Lower velocity for a pass (max 8.5)
+          } else {
+            // Ultimate fallback: aim at the ball
+            dx = ball.x - chosenPuck.x;
+            dy = ball.y - chosenPuck.y;
+            force = 6;
+          }
+        }
+
         const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-
-        // Select a random shot force (decreased to match maximum player velocity of 14.5)
-        const force = 7 + Math.random() * 7.5;
         const vx = (dx / dist) * force;
         const vy = (dy / dist) * force;
 

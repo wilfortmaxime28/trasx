@@ -3138,21 +3138,21 @@ function getYouTubeId(url) {
                                 <span>Domino</span>
                               </div>
                             </label> -->
-                            <label class="game-choice-option">
+                            <label class="game-choice-option" style="position: relative;">
                               <input type="radio" name="setupGameType" value="connect4">
                               <div class="choice-card-content">
                                 <i data-lucide="columns"></i>
                                 <span><%= tText("Puissance 4") %></span>
                               </div>
                             </label>
-                            <label class="game-choice-option">
+                            <label class="game-choice-option" style="position: relative;">
                               <input type="radio" name="setupGameType" value="gomoku">
                               <div class="choice-card-content">
                                 <i data-lucide="grid"></i>
                                 <span><%= tText("Gomoku") %></span>
                               </div>
                             </label>
-                            <label class="game-choice-option">
+                            <label class="game-choice-option" style="position: relative;">
                               <input type="radio" name="setupGameType" value="tablefootball">
                               <div class="choice-card-content">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3378,6 +3378,9 @@ function getYouTubeId(url) {
                       <button id="leaveGameBtn" class="icon-btn" title="<%= tText("Quitter la partie") %>">
                         <i data-lucide="arrow-left"></i>
                       </button>
+                      <button id="activeGameInfoBtn" class="icon-btn" title="<%= tText("Règles du jeu") %>" style="display: inline-flex; align-items: center; justify-content: center;">
+                        <i data-lucide="info" style="width: 16px; height: 16px;"></i>
+                      </button>
                       <div>
                         <h3 id="activeGameTitle"><%= tText("Partie en cours") %></h3>
                         <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
@@ -3531,7 +3534,7 @@ function getYouTubeId(url) {
                               </div>
                               <div style="display: flex; flex-direction: column;">
                                 <span id="tfPlayer1Name" style="font-size: 11px; font-weight: 700; color: #60a5fa; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Player 1</span>
-                                <span style="font-size: 8px; color: #94a3b8; text-transform: uppercase;">Team Bleu</span>
+                                <span id="tfPlayer1Team" style="font-size: 8px; color: #94a3b8; text-transform: uppercase;">Team Bleu</span>
                               </div>
                             </div>
                             
@@ -3546,7 +3549,7 @@ function getYouTubeId(url) {
                               </div>
                               <div style="display: flex; flex-direction: column; align-items: flex-end;">
                                 <span id="tfPlayer2Name" style="font-size: 11px; font-weight: 700; color: #fde047; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Player 2</span>
-                                <span style="font-size: 8px; color: #94a3b8; text-transform: uppercase;">Team Jaune</span>
+                                <span id="tfPlayer2Team" style="font-size: 8px; color: #94a3b8; text-transform: uppercase;">Team Jaune</span>
                               </div>
                             </div>
                           </div>
@@ -3554,28 +3557,38 @@ function getYouTubeId(url) {
                           <!-- The Physics Field Canvas -->
                           <div class="table-football-canvas-wrapper" style="position: relative; width: 100%; aspect-ratio: 360 / 600; background: #1e3a1e; border-radius: 12px; overflow: hidden; border: 2px solid rgba(255,255,255,0.15);">
                             <canvas id="tableFootballCanvas" width="360" height="600" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair;"></canvas>
-                          </div>
-
-                          <!-- Interactive Action Selector -->
-                          <div id="tfActionSelector" class="tf-action-selector" style="display: none; align-items: center; justify-content: space-between; margin-top: 8px; padding: 8px 12px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; font-family: 'Outfit', sans-serif; gap: 6px;">
-                            <div style="display: flex; align-items: center; gap: 6px;">
-                              <span style="font-size: 14px;">🏃‍♂️</span>
-                              <div style="display: flex; flex-direction: column;">
-                                <span id="tfSelectedPlayerName" style="font-size: 11px; font-weight: 800; color: #60a5fa;">Nom Joueur</span>
-                                <span id="tfSelectedPlayerRole" style="font-size: 8px; color: #94a3b8; text-transform: uppercase;">Rôle</span>
+                            
+                            <!-- Virtual Joystick for Mobile Aiming/Movement -->
+                            <div id="tfJoystickContainer" style="position: absolute; bottom: 20px; right: 20px; width: 90px; height: 90px; background: rgba(15, 23, 42, 0.65); border: 1.5px solid rgba(255, 255, 255, 0.25); border-radius: 50%; backdrop-filter: blur(8px); display: none; touch-action: none; z-index: 20; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(0,0,0,0.65); -webkit-backdrop-filter: blur(8px);">
+                              <div id="tfJoystickKnob" style="width: 38px; height: 38px; background: radial-gradient(circle, #ffffff 0%, #d1d5db 100%); border-radius: 50%; box-shadow: 0 4px 8px rgba(0,0,0,0.5); cursor: grab; border: 1px solid rgba(0,0,0,0.25); touch-action: none; display: flex; align-items: center; justify-content: center; transition: transform 0.05s ease;">
+                                <div style="width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(15, 23, 42, 0.25);"></div>
                               </div>
                             </div>
-                            <div style="display: flex; gap: 4px;">
-                              <button id="tfActionShoot" class="tf-action-btn active" style="background: #3b82f6; color: #fff; border: 0; border-radius: 6px; padding: 4px 8px; font-size: 9px; font-weight: 700; cursor: pointer; transition: all 0.2s;">Tirer</button>
-                              <button id="tfActionPass" class="tf-action-btn" style="background: rgba(255,255,255,0.1); color: #ccc; border: 0; border-radius: 6px; padding: 4px 8px; font-size: 9px; font-weight: 700; cursor: pointer; transition: all 0.2s;">Passer</button>
-                              <button id="tfActionMove" class="tf-action-btn" style="background: rgba(255,255,255,0.1); color: #ccc; border: 0; border-radius: 6px; padding: 4px 8px; font-size: 9px; font-weight: 700; cursor: pointer; transition: all 0.2s;">Déplacer</button>
-                            </div>
                           </div>
 
-                          <!-- Game status and footer actions -->
-                          <div class="table-football-footer" style="margin-top: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px;">
-                            <div id="tableFootballStatusText" style="font-size: 12px; font-weight: 700; color: #fff; text-align: center; font-family: 'Outfit', sans-serif;">Prêt à jouer !</div>
-                            <div id="tableFootballHelperText" style="font-size: 9px; color: #94a3b8; text-align: center;">Glissez depuis vos pions bleus pour tirer.</div>
+                          <!-- Fixed-height container to avoid layout shift (vertical jumping) -->
+                          <div style="height: 98px; display: flex; flex-direction: column; justify-content: space-between; position: relative; width: 100%; box-sizing: border-box; padding: 2px 0; margin-top: 8px;">
+                            <!-- Interactive Action Selector -->
+                            <div id="tfActionSelector" class="tf-action-selector" style="display: none; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 12px; font-family: 'Outfit', sans-serif; gap: 6px; box-sizing: border-box; width: 100%;">
+                              <div style="display: flex; align-items: center; gap: 6px;">
+                                <span style="font-size: 14px;">🏃‍♂️</span>
+                                <div style="display: flex; flex-direction: column;">
+                                  <span id="tfSelectedPlayerName" style="font-size: 11px; font-weight: 800; color: #60a5fa;">Nom Joueur</span>
+                                  <span id="tfSelectedPlayerRole" style="font-size: 8px; color: #94a3b8; text-transform: uppercase;">Rôle</span>
+                                </div>
+                              </div>
+                              <div style="display: flex; gap: 4px;">
+                                <button id="tfActionShoot" class="tf-action-btn active" style="background: #3b82f6; color: #fff; border: 0; border-radius: 6px; padding: 4px 8px; font-size: 9px; font-weight: 700; cursor: pointer; transition: all 0.2s;">Tirer</button>
+                                <button id="tfActionPass" class="tf-action-btn" style="background: rgba(255,255,255,0.1); color: #ccc; border: 0; border-radius: 6px; padding: 4px 8px; font-size: 9px; font-weight: 700; cursor: pointer; transition: all 0.2s;">Passer</button>
+                                <button id="tfActionMove" class="tf-action-btn" style="background: rgba(255,255,255,0.1); color: #ccc; border: 0; border-radius: 6px; padding: 4px 8px; font-size: 9px; font-weight: 700; cursor: pointer; transition: all 0.2s;">Déplacer</button>
+                              </div>
+                            </div>
+
+                            <!-- Game status and footer actions -->
+                            <div class="table-football-footer" style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; margin-top: auto;">
+                              <div id="tableFootballStatusText" style="font-size: 12px; font-weight: 700; color: #fff; text-align: center; font-family: 'Outfit', sans-serif;">Prêt à jouer !</div>
+                              <div id="tableFootballHelperText" style="font-size: 9px; color: #94a3b8; text-align: center;">Glissez depuis vos pions bleus pour tirer.</div>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -3599,6 +3612,32 @@ function getYouTubeId(url) {
                     <div class="game-confirm-modal-actions">
                       <button type="button" id="gameConfirmCancelBtn" class="game-confirm-cancel-btn">Annuler</button>
                       <button type="button" id="gameConfirmAcceptBtn" class="game-confirm-accept-btn">Confirmer</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Game Info Modal (Premium Design) -->
+                <div class="modal-overlay" id="gameInfoModal" style="display: none; backdrop-filter: blur(8px); z-index: 3300;" aria-hidden="true">
+                  <div class="modal-content"
+                    style="max-width: 480px; padding: 0; overflow: hidden; background: var(--bg-card); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border-radius: 16px;">
+                    <!-- Gradient Header -->
+                    <div id="gameInfoModalHeader"
+                      style="background: linear-gradient(135deg, #7c3aed 0%, #3b82f6 100%); padding: 24px 24px; position: relative;">
+                      <button class="modal-close" id="closeGameInfoModal" type="button"
+                        style="position: absolute; right: 16px; top: 16px; color: rgba(255,255,255,0.8); background: rgba(0,0,0,0.2); border: none; cursor: pointer; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;"><i
+                          data-lucide="x" style="width: 16px; height: 16px;"></i></button>
+                      <div
+                        style="background: rgba(255,255,255,0.2); width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; backdrop-filter: blur(4px); box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                        <i id="gameInfoModalIcon" data-lucide="gamepad-2" style="color: white; width: 22px; height: 22px;"></i>
+                      </div>
+                      <h3 id="gameInfoModalTitle" style="margin: 0; color: white; font-size: 20px; font-weight: 700; letter-spacing: -0.5px;">Comment jouer</h3>
+                      <p id="gameInfoModalSubtitle" style="margin: 4px 0 0 0; color: rgba(255,255,255,0.9); font-size: 13px;">Découvrez les règles et astuces du jeu.</p>
+                    </div>
+                    <div class="modal-body" id="gameInfoModalBody" style="padding: 24px; color: var(--text-main); font-size: 14px; line-height: 1.6; max-height: 380px; overflow-y: auto;">
+                      <!-- Dynamic content will be injected here -->
+                    </div>
+                    <div style="padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; background: var(--bg-hover);">
+                      <button type="button" id="closeGameInfoModalBtn" class="settings-primary-btn" style="padding: 8px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;">Compris !</button>
                     </div>
                   </div>
                 </div>
