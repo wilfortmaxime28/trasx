@@ -20134,6 +20134,12 @@ document.addEventListener('DOMContentLoaded', () => {
           radio.checked = true;
           radio.dispatchEvent(new Event('change', { bubbles: true }));
         }
+        const name = radio.getAttribute('name');
+        if (name === 'setupGameType' || name === 'setupOpponent') {
+          if (typeof updateTableFootballSetupVisibility === 'function') {
+            updateTableFootballSetupVisibility();
+          }
+        }
       });
       radio.addEventListener('change', () => {
         const name = radio.getAttribute('name');
