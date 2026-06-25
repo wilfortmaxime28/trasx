@@ -22379,7 +22379,8 @@ document.addEventListener('DOMContentLoaded', () => {
         replayFrame: 0,
         replayPaused: false,
         lastTouchedBy: null,
-        pendingEvent: null
+        pendingEvent: null,
+        goalScoredBy: null
       };
       
       // Wire events once
@@ -22588,11 +22589,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 r: -1,
                 c: -1,
                 promotion: 'sync',
+                nextPlayer: state.goalScoredBy,
                 finalState: { positions: state.positions, scores: state.scores }
               });
             }
-                state.isReplaying = false;
-              }, 2000); // 2-second freeze so players can enjoy the goal
+            state.isSimulating = false;
+            state.isReplaying = false;
+            state.goalScoredBy = null;
+          }, 2000); // 2-second freeze so players can enjoy the goal
             }
           }
         } else {
@@ -22936,6 +22940,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Trigger slow-motion replay instead of immediate reset
         state.isReplaying = true;
         state.replayFrame = 0;
+        state.goalScoredBy = goalScoredBy;
         isMoving = false;
         return;
       }
