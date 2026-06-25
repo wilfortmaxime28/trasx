@@ -22362,9 +22362,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const rect = canvas.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const canvasX = (clientX - rect.left) * (canvas.width / rect.width);
+      let canvasY = (clientY - rect.top) * (canvas.height / rect.height);
+      if (mySlot === 1) {
+        canvasY = 600 - canvasY;
+      }
       return {
-        x: (clientX - rect.left) * (canvas.width / rect.width),
-        y: (clientY - rect.top) * (canvas.height / rect.height)
+        x: canvasX,
+        y: canvasY
       };
     }
 
@@ -22649,12 +22654,19 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fillStyle = '#112211';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+      // Save context and apply flip transform if we are P1 (so we see our team at the bottom)
+      ctx.save();
+      if (mySlot === 1) {
+        ctx.translate(0, 600);
+        ctx.scale(1, -1);
+      }
+
       // 2. Draw Left and Right spectator stands (tribunes)
       // Left Tribune (X: 0 to 30)
       ctx.fillStyle = '#2d2d2d';
       ctx.fillRect(0, 40, 24, 520);
       // Stands steps / benches
-      ctx.strokeStyle = '#1e1e1e';
+      ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 1;
       for (let y = 45; y < 560; y += 12) {
         ctx.beginPath();
@@ -22664,11 +22676,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Draw tiny spectator circles/dots
         for (let x = 5; x < 22; x += 6) {
-          // 40% chance of a spectator
           if (Math.sin(x * y) > -0.2) {
             ctx.beginPath();
             ctx.arc(x, y - 3, 2, 0, Math.PI * 2);
-            // Spectator colors
             const colorHash = Math.abs(Math.sin(x + y * 10));
             if (colorHash < 0.2) ctx.fillStyle = '#ef4444';
             else if (colorHash < 0.4) ctx.fillStyle = '#eab308';
@@ -22918,15 +22928,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 7. Draw Team Flag Pucks (Dynamic Flags & Goalkeeper Border)
       const drawTeamPuck = (p, code, isGoalkeeper) => {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        if (mySlot === 1) {
+          ctx.scale(1, -1);
+        }
+
         // Shadow
         ctx.beginPath();
-        ctx.arc(p.x, p.y + 2, PUCK_RADIUS, 0, Math.PI * 2);
+        ctx.arc(0, 2, PUCK_RADIUS, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
         ctx.fill();
 
         ctx.save();
         ctx.beginPath();
-        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
+        ctx.arc(0, 0, PUCK_RADIUS, 0, Math.PI * 2);
         ctx.clip();
 
         // Draw simple flags
@@ -22934,116 +22950,116 @@ document.addEventListener('DOMContentLoaded', () => {
           // France: Vertical Blue, White, Red
           const w = (PUCK_RADIUS * 2) / 3;
           ctx.fillStyle = '#00209F';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, w, PUCK_RADIUS * 2);
           ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(p.x - PUCK_RADIUS + w, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS + w, -PUCK_RADIUS, w, PUCK_RADIUS * 2);
           ctx.fillStyle = '#E70020';
-          ctx.fillRect(p.x - PUCK_RADIUS + w * 2, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS + w * 2, -PUCK_RADIUS, w, PUCK_RADIUS * 2);
         } else if (code === 'BR') {
           // Brazil: Green + Yellow diamond + Blue circle
           ctx.fillStyle = '#009B3A';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
           ctx.fillStyle = '#FEDF00';
           ctx.beginPath();
-          ctx.moveTo(p.x, p.y - 11);
-          ctx.lineTo(p.x + 13, p.y);
-          ctx.lineTo(p.x, p.y + 11);
-          ctx.lineTo(p.x - 13, p.y);
+          ctx.moveTo(0, -11);
+          ctx.lineTo(13, 0);
+          ctx.lineTo(0, 11);
+          ctx.lineTo(-13, 0);
           ctx.closePath();
           ctx.fill();
           ctx.fillStyle = '#002780';
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+          ctx.arc(0, 0, 6, 0, Math.PI * 2);
           ctx.fill();
         } else if (code === 'AR') {
           // Argentina: Light Blue, White, Light Blue horizontal
           const h = (PUCK_RADIUS * 2) / 3;
           ctx.fillStyle = '#75AADB';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, h);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, PUCK_RADIUS * 2, h);
           ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h, PUCK_RADIUS * 2, h);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS + h, PUCK_RADIUS * 2, h);
           ctx.fillStyle = '#75AADB';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h * 2, PUCK_RADIUS * 2, h);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS + h * 2, PUCK_RADIUS * 2, h);
           // Yellow Sun in center
           ctx.fillStyle = '#F9A825';
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+          ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
           ctx.fill();
         } else if (code === 'DE') {
           // Germany: Black, Red, Gold horizontal
           const h = (PUCK_RADIUS * 2) / 3;
           ctx.fillStyle = '#000000';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, h);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, PUCK_RADIUS * 2, h);
           ctx.fillStyle = '#FF0000';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h, PUCK_RADIUS * 2, h);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS + h, PUCK_RADIUS * 2, h);
           ctx.fillStyle = '#FFCC00';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h * 2, PUCK_RADIUS * 2, h);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS + h * 2, PUCK_RADIUS * 2, h);
         } else if (code === 'ES') {
           // Spain: Red (1/4), Yellow (1/2), Red (1/4) horizontal
           const h1 = (PUCK_RADIUS * 2) / 4;
           const h2 = (PUCK_RADIUS * 2) / 2;
           ctx.fillStyle = '#C60B1E';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, h1);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, PUCK_RADIUS * 2, h1);
           ctx.fillStyle = '#FBE122';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h1, PUCK_RADIUS * 2, h2);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS + h1, PUCK_RADIUS * 2, h2);
           ctx.fillStyle = '#C60B1E';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS + h1 + h2, PUCK_RADIUS * 2, h1);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS + h1 + h2, PUCK_RADIUS * 2, h1);
         } else if (code === 'IT') {
           // Italy: Green, White, Red vertical
           const w = (PUCK_RADIUS * 2) / 3;
           ctx.fillStyle = '#008C45';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, w, PUCK_RADIUS * 2);
           ctx.fillStyle = '#F4F5F0';
-          ctx.fillRect(p.x - PUCK_RADIUS + w, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS + w, -PUCK_RADIUS, w, PUCK_RADIUS * 2);
           ctx.fillStyle = '#CD212A';
-          ctx.fillRect(p.x - PUCK_RADIUS + w * 2, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS + w * 2, -PUCK_RADIUS, w, PUCK_RADIUS * 2);
         } else if (code === 'PT') {
           // Portugal: Green (2/5), Red (3/5) vertical
           const w1 = (PUCK_RADIUS * 2) * 0.4;
           const w2 = (PUCK_RADIUS * 2) * 0.6;
           ctx.fillStyle = '#006600';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, w1, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, w1, PUCK_RADIUS * 2);
           ctx.fillStyle = '#FF0000';
-          ctx.fillRect(p.x - PUCK_RADIUS + w1, p.y - PUCK_RADIUS, w2, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS + w1, -PUCK_RADIUS, w2, PUCK_RADIUS * 2);
           // Yellow shield in center
           ctx.fillStyle = '#FFFF00';
           ctx.beginPath();
-          ctx.arc(p.x - PUCK_RADIUS + w1, p.y, 4, 0, Math.PI * 2);
+          ctx.arc(-PUCK_RADIUS + w1, 0, 4, 0, Math.PI * 2);
           ctx.fill();
         } else if (code === 'GB') {
           // England: White + Red Cross
           ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
           ctx.fillStyle = '#CF081F';
-          ctx.fillRect(p.x - 3, p.y - PUCK_RADIUS, 6, PUCK_RADIUS * 2);
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - 3, PUCK_RADIUS * 2, 6);
+          ctx.fillRect(-3, -PUCK_RADIUS, 6, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS, -3, PUCK_RADIUS * 2, 6);
         } else if (code === 'MA') {
           // Morocco: Red + Green star outline
           ctx.fillStyle = '#C1272D';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
           // Simple green star center
           ctx.fillStyle = '#006233';
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+          ctx.arc(0, 0, 4, 0, Math.PI * 2);
           ctx.fill();
         } else if (code === 'SN') {
           // Senegal: Green, Yellow, Red vertical + Green star in yellow center
           const w = (PUCK_RADIUS * 2) / 3;
           ctx.fillStyle = '#00853F';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, w, PUCK_RADIUS * 2);
           ctx.fillStyle = '#FDEF42';
-          ctx.fillRect(p.x - PUCK_RADIUS + w, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS + w, -PUCK_RADIUS, w, PUCK_RADIUS * 2);
           ctx.fillStyle = '#E31B23';
-          ctx.fillRect(p.x - PUCK_RADIUS + w * 2, p.y - PUCK_RADIUS, w, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS + w * 2, -PUCK_RADIUS, w, PUCK_RADIUS * 2);
           // Green star in middle
           ctx.fillStyle = '#00853F';
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+          ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
           ctx.fill();
         } else {
           // Fallback blue
           ctx.fillStyle = '#3b82f6';
-          ctx.fillRect(p.x - PUCK_RADIUS, p.y - PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
+          ctx.fillRect(-PUCK_RADIUS, -PUCK_RADIUS, PUCK_RADIUS * 2, PUCK_RADIUS * 2);
         }
 
         ctx.restore();
@@ -23051,14 +23067,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Goalkeeper special thick gold border vs normal white border
         if (isGoalkeeper) {
           ctx.beginPath();
-          ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
+          ctx.arc(0, 0, PUCK_RADIUS, 0, Math.PI * 2);
           ctx.strokeStyle = '#fbbf24'; // Gold
           ctx.lineWidth = 3;
           ctx.stroke();
 
           // Draw small white circle with GK text
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+          ctx.arc(0, 0, 7, 0, Math.PI * 2);
           ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
           ctx.fill();
           ctx.strokeStyle = '#1e293b';
@@ -23069,25 +23085,27 @@ document.addEventListener('DOMContentLoaded', () => {
           ctx.font = 'bold 7px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText('GK', p.x, p.y + 0.5);
+          ctx.fillText('GK', 0, 0.5);
         } else {
           // Normal outer white ring border
           ctx.beginPath();
-          ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
+          ctx.arc(0, 0, PUCK_RADIUS, 0, Math.PI * 2);
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 2;
           ctx.stroke();
         }
 
         // Highlight/Reflection effect
-        const grad = ctx.createRadialGradient(p.x - 4, p.y - 4, 1, p.x, p.y, PUCK_RADIUS);
+        const grad = ctx.createRadialGradient(-4, -4, 1, 0, 0, PUCK_RADIUS);
         grad.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
         grad.addColorStop(0.3, 'rgba(255, 255, 255, 0.08)');
         grad.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, PUCK_RADIUS, 0, Math.PI * 2);
+        ctx.arc(0, 0, PUCK_RADIUS, 0, Math.PI * 2);
         ctx.fill();
+        
+        ctx.restore();
       };
 
       // Draw closest puck connection (dotted line and highlight)
@@ -23147,16 +23165,21 @@ document.addEventListener('DOMContentLoaded', () => {
       state.positions.p2.forEach((p, idx) => drawTeamPuck(p, team2, idx === 0));
 
       // 9. Draw Soccer Ball
-      
+      ctx.save();
+      ctx.translate(ball.x, ball.y);
+      if (mySlot === 1) {
+        ctx.scale(1, -1);
+      }
+
       // Shadow
       ctx.beginPath();
-      ctx.arc(ball.x, ball.y + 2, BALL_RADIUS, 0, Math.PI * 2);
+      ctx.arc(0, 2, BALL_RADIUS, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.fill();
 
       // Ball base white circle
       ctx.beginPath();
-      ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
+      ctx.arc(0, 0, BALL_RADIUS, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
       ctx.fill();
       ctx.strokeStyle = '#666666';
@@ -23179,7 +23202,7 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       // Center pentagon
-      drawPentagon(ball.x, ball.y, BALL_RADIUS * 0.28, -Math.PI / 2);
+      drawPentagon(0, 0, BALL_RADIUS * 0.28, -Math.PI / 2);
 
       // Edge panels lines
       const numEdges = 5;
@@ -23187,10 +23210,10 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.lineWidth = 1;
       for (let j = 0; j < numEdges; j++) {
         const a = -Math.PI / 2 + (j * Math.PI * 2) / 5;
-        const startX = ball.x + Math.cos(a) * (BALL_RADIUS * 0.28);
-        const startY = ball.y + Math.sin(a) * (BALL_RADIUS * 0.28);
-        const endX = ball.x + Math.cos(a) * BALL_RADIUS;
-        const endY = ball.y + Math.sin(a) * BALL_RADIUS;
+        const startX = Math.cos(a) * (BALL_RADIUS * 0.28);
+        const startY = Math.sin(a) * (BALL_RADIUS * 0.28);
+        const endX = Math.cos(a) * BALL_RADIUS;
+        const endY = Math.sin(a) * BALL_RADIUS;
         ctx.beginPath();
         ctx.moveTo(startX, startY);
         ctx.lineTo(endX, endY);
@@ -23198,14 +23221,19 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Ball glossy gradient
-      const ballGrad = ctx.createRadialGradient(ball.x - 2, ball.y - 2, 0, ball.x, ball.y, BALL_RADIUS);
+      const ballGrad = ctx.createRadialGradient(-2, -2, 0, 0, 0, BALL_RADIUS);
       ballGrad.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
       ballGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.05)');
       ballGrad.addColorStop(1, 'rgba(0, 0, 0, 0.2)');
       ctx.fillStyle = ballGrad;
       ctx.beginPath();
-      ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
+      ctx.arc(0, 0, BALL_RADIUS, 0, Math.PI * 2);
       ctx.fill();
+
+      ctx.restore();
+
+      // Restore global transform (reverts translate/scale if active)
+      ctx.restore();
     }
 
     // Launch render loop only if not already running
