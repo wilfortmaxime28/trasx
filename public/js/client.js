@@ -19833,17 +19833,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
           <div id="inviteTfTeamWrapper" style="display: none; flex-direction: column; gap: 6px;">
             <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">Choisissez votre équipe (Drapeau)</label>
-            <select name="team" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 14px; outline: none;">
-              <option value="FR" style="background: var(--bg-card); color: #fff;">🇫🇷 France</option>
-              <option value="BR" style="background: var(--bg-card); color: #fff;" selected>🇧🇷 Brésil</option>
-              <option value="AR" style="background: var(--bg-card); color: #fff;">🇦🇷 Argentine</option>
-              <option value="DE" style="background: var(--bg-card); color: #fff;">🇩🇪 Allemagne</option>
-              <option value="ES" style="background: var(--bg-card); color: #fff;">🇪🇸 Espagne</option>
-              <option value="IT" style="background: var(--bg-card); color: #fff;">🇮🇹 Italie</option>
-              <option value="PT" style="background: var(--bg-card); color: #fff;">🇵🇹 Portugal</option>
-              <option value="GB" style="background: var(--bg-card); color: #fff;">🇬🇧 Angleterre</option>
-              <option value="MA" style="background: var(--bg-card); color: #fff;">🇲🇦 Maroc</option>
-              <option value="SN" style="background: var(--bg-card); color: #fff;">🇸🇳 Sénégal</option>
+            <select name="team" id="inviteTfTeamSelectSend" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 14px; outline: none;">
             </select>
           </div>
 
@@ -19888,6 +19878,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.body.appendChild(modal);
     if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    const inviteTfTeamSelectSend = modal.querySelector('#inviteTfTeamSelectSend');
+    if (inviteTfTeamSelectSend) {
+      const sortedKeys = Object.keys(TEAMS).sort((a, b) => 
+        TEAMS[a].name.localeCompare(TEAMS[b].name, 'fr', { sensitivity: 'base' })
+      );
+      sortedKeys.forEach(key => {
+        const team = TEAMS[key];
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.style.background = 'var(--bg-card)';
+        opt.style.color = '#fff';
+        opt.textContent = `${team.flag} ${team.name}`;
+        if (key === 'BR') opt.selected = true; // default select Brazil
+        inviteTfTeamSelectSend.appendChild(opt);
+      });
+    }
 
     const priceRadios = modal.querySelectorAll('input[name="priceType"]');
     const amountWrapper = modal.querySelector('#gamePriceAmountWrapper');
@@ -24967,16 +24974,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div style="margin-top: 15px; width: 100%; text-align: left;">
           <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px;">Votre Équipe (Drapeau)</span>
           <select id="inviteTfTeam2" style="width: 100%; height: 42px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; color: #fff; font-size: 0.95rem; padding: 0 10px; outline: none; box-sizing: border-box;">
-            <option value="FR" style="background: var(--bg-card); color: #fff;">🇫🇷 France</option>
-            <option value="BR" style="background: var(--bg-card); color: #fff;" selected>🇧🇷 Brésil</option>
-            <option value="AR" style="background: var(--bg-card); color: #fff;">🇦🇷 Argentine</option>
-            <option value="DE" style="background: var(--bg-card); color: #fff;">🇩🇪 Allemagne</option>
-            <option value="ES" style="background: var(--bg-card); color: #fff;">🇪🇸 Espagne</option>
-            <option value="IT" style="background: var(--bg-card); color: #fff;">🇮🇹 Italie</option>
-            <option value="PT" style="background: var(--bg-card); color: #fff;">🇵🇹 Portugal</option>
-            <option value="GB" style="background: var(--bg-card); color: #fff;">🇬🇧 Angleterre</option>
-            <option value="MA" style="background: var(--bg-card); color: #fff;">🇲🇦 Maroc</option>
-            <option value="SN" style="background: var(--bg-card); color: #fff;">🇸🇳 Sénégal</option>
+            <option value="" disabled selected style="background: var(--bg-card); color: var(--text-muted);">Choisissez votre équipe...</option>
           </select>
         </div>
       `;
@@ -25061,39 +25059,78 @@ document.addEventListener('DOMContentLoaded', () => {
     const declineBtn = modal.querySelector('#declineGameInviteBtn');
     const progressBar = modal.querySelector('#gameInviteProgressBar');
     const timerSpan  = modal.querySelector('#girTimerSeconds');
+    const inviteTfTeamSelectRecv = modal.querySelector('#inviteTfTeam2');
 
     let timeLeft = totalMs;
     const intervalTime = 100;
-    const timer = setInterval(() => {
-      timeLeft -= intervalTime;
-      const percent = Math.max(0, (timeLeft / totalMs) * 100);
-      if (progressBar) {
-        progressBar.style.width = `${percent}%`;
-        if (percent < 30) {
-          progressBar.style.background = 'linear-gradient(90deg, #ef4444, #f87171)';
-        } else if (percent < 60) {
-          progressBar.style.background = 'linear-gradient(90deg, #f59e0b, #fcd34d)';
-        }
-      }
-      if (timerSpan) {
-        timerSpan.textContent = `${Math.ceil(timeLeft / 1000)}s`;
-      }
+    let timer = null;
 
-      if (timeLeft <= 0) {
-        clearInterval(timer);
-        socket.emit('game-invite-decline', { gameId: invite.gameId });
-        modal.remove();
-        showToast("L'invitation a expiré.");
-      }
-    }, intervalTime);
+    const startTimer = () => {
+      if (timer) return;
+      timer = setInterval(() => {
+        timeLeft -= intervalTime;
+        const percent = Math.max(0, (timeLeft / totalMs) * 100);
+        if (progressBar) {
+          progressBar.style.width = `${percent}%`;
+          if (percent < 30) {
+            progressBar.style.background = 'linear-gradient(90deg, #ef4444, #f87171)';
+          } else if (percent < 60) {
+            progressBar.style.background = 'linear-gradient(90deg, #f59e0b, #fcd34d)';
+          }
+        }
+        if (timerSpan) {
+          timerSpan.textContent = `${Math.ceil(timeLeft / 1000)}s`;
+        }
+
+        if (timeLeft <= 0) {
+          clearInterval(timer);
+          socket.emit('game-invite-decline', { gameId: invite.gameId });
+          modal.remove();
+          showToast("L'invitation a expiré.");
+        }
+      }, intervalTime);
+    };
+
+    if (inviteTfTeamSelectRecv) {
+      // Dynamically populate options from TEAMS object sorted alphabetically
+      const sortedKeys = Object.keys(TEAMS).sort((a, b) => 
+        TEAMS[a].name.localeCompare(TEAMS[b].name, 'fr', { sensitivity: 'base' })
+      );
+      sortedKeys.forEach(key => {
+        const team = TEAMS[key];
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.style.background = 'var(--bg-card)';
+        opt.style.color = '#fff';
+        opt.textContent = `${team.flag} ${team.name}`;
+        inviteTfTeamSelectRecv.appendChild(opt);
+      });
+
+      // Disable the accept button and do not start the timer/progress bar initially
+      acceptBtn.disabled = true;
+      acceptBtn.style.opacity = '0.5';
+      acceptBtn.style.cursor = 'not-allowed';
+
+      inviteTfTeamSelectRecv.addEventListener('change', () => {
+        if (inviteTfTeamSelectRecv.value) {
+          acceptBtn.disabled = false;
+          acceptBtn.style.opacity = '1';
+          acceptBtn.style.cursor = 'pointer';
+          startTimer();
+        }
+      });
+    } else {
+      // Start timer immediately for games with no team selection
+      startTimer();
+    }
 
     acceptBtn.addEventListener('click', () => {
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
       acceptBtn.disabled = true;
       declineBtn.disabled = true;
       acceptBtn.textContent = 'Connexion…';
 
-      const selectedTeam = document.getElementById('inviteTfTeam2')?.value || 'BR';
+      const selectedTeam = inviteTfTeamSelectRecv?.value || 'BR';
 
       socket.emit('game-invite-accept', { gameId: invite.gameId, team: selectedTeam }, (res) => {
         if (res && res.error) {
@@ -25108,7 +25145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     declineBtn.addEventListener('click', () => {
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
       socket.emit('game-invite-decline', { gameId: invite.gameId }, () => {
         modal.remove();
       });
