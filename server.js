@@ -65,6 +65,33 @@ async function emitRealtimeBalanceUpdate(userId, message = null) {
   return payload;
 }
 
+function logSocketError(context, err) {
+  if (!err) return;
+  const msg = err.message || '';
+  const isValidationError = 
+    msg.includes('déjà dans une partie') ||
+    msg.includes('invitation en attente') ||
+    msg.includes('insuffisant') ||
+    msg.includes('introuvable') ||
+    msg.includes('pas assez de tokens') ||
+    msg.includes('plus disponible') ||
+    msg.includes('authentifié') ||
+    msg.includes('jouer contre vous-même') ||
+    msg.includes('pas dans cette partie') ||
+    msg.includes('Pas votre tour') ||
+    msg.includes('déjà terminée') ||
+    msg.includes('Ce jeu n est plus disponible') ||
+    msg.includes('pas assez de solde') ||
+    msg.includes('déjà accepté') ||
+    msg.includes('expiré');
+  
+  if (isValidationError) {
+    console.warn(`[Game Validation Warning] ${context}: ${msg}`);
+  } else {
+    console.error(`Error on ${context}:`, err);
+  }
+}
+
 async function emitMarketNotification(recipientId, actorId, message) {
   try {
     const cleanMessage = String(message || '').slice(0, 255);
@@ -5493,7 +5520,7 @@ io.on('connection', (socket) => {
         ack({ success: true, game: sanitizeGame(game, currentUserId) });
       }
     } catch (err) {
-      console.error('Error on game-create:', err);
+      logSocketError('game-create', err);
       if (typeof ack === 'function') {
         ack({ error: err.message });
       }
@@ -5589,7 +5616,7 @@ io.on('connection', (socket) => {
         ack({ success: true, game: sanitizeGame(game, currentUserId) });
       }
     } catch (err) {
-      console.error('Error on game-invite-accept:', err);
+      logSocketError('game-invite-accept', err);
       // Cancel the invitation in case of failure
       if (data && data.gameId) {
         const game = gamesManager.games[data.gameId];
@@ -5635,7 +5662,7 @@ io.on('connection', (socket) => {
         ack({ success: true });
       }
     } catch (err) {
-      console.error('Error on game-invite-decline:', err);
+      logSocketError('game-invite-decline', err);
       if (typeof ack === 'function') {
         ack({ error: err.message });
       }
@@ -5674,7 +5701,7 @@ io.on('connection', (socket) => {
         ack({ success: true });
       }
     } catch (err) {
-      console.error('Error on game-invite-cancel:', err);
+      logSocketError('game-invite-cancel', err);
       if (typeof ack === 'function') {
         ack({ error: err.message });
       }
@@ -5704,7 +5731,7 @@ io.on('connection', (socket) => {
         ack({ success: true, game: sanitizeGame(game, currentUserId) });
       }
     } catch (err) {
-      console.error('Error on game-join:', err);
+      logSocketError('game-join', err);
       if (typeof ack === 'function') {
         ack({ error: err.message });
       }
@@ -6290,7 +6317,7 @@ io.on('connection', (socket) => {
         }
       }
     } catch (err) {
-      console.error('Error on game-draw:', err);
+      logSocketError('game-draw', err);
       if (typeof ack === 'function') {
         ack({ error: err.message });
       }
@@ -6338,7 +6365,7 @@ io.on('connection', (socket) => {
         }
       }
     } catch (err) {
-      console.error('Error on game-pass:', err);
+      logSocketError('game-pass', err);
       if (typeof ack === 'function') {
         ack({ error: err.message });
       }
@@ -6410,7 +6437,7 @@ io.on('connection', (socket) => {
         throw new Error('Partie introuvable ou terminée.');
       }
     } catch (err) {
-      console.error('Error on game-spectate-join:', err);
+      logSocketError('game-spectate-join', err);
       if (typeof ack === 'function') {
         ack({ error: err.message });
       }
@@ -6433,7 +6460,7 @@ io.on('connection', (socket) => {
       }
       socket.leave(`game:${gameId}`);
     } catch (err) {
-      console.error('Error on game-spectate-leave:', err);
+      logSocketError('game-spectate-leave', err);
     }
   });
 
@@ -6458,7 +6485,7 @@ io.on('connection', (socket) => {
         }
       }
     } catch (err) {
-      console.error('Error on game-forfeit:', err);
+      logSocketError('game-forfeit', err);
     }
   });
 
@@ -6488,7 +6515,7 @@ io.on('connection', (socket) => {
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       });
     } catch (err) {
-      console.error('Error on game-chat-message:', err);
+      logSocketError('game-chat-message', err);
     }
   });
 
@@ -6511,7 +6538,7 @@ io.on('connection', (socket) => {
         });
       }
     } catch (err) {
-      console.error('Error on game-chat-delete:', err);
+      logSocketError('game-chat-delete', err);
     }
   });
 
@@ -6717,4 +6744,13 @@ server.listen(PORT, async () => {
   }
   console.log(`Le serveur tourne sur http://localhost:${PORT}`);
 });
+
+process.on('uncaughtException', (err) => {
+  console.error('CRITICAL: Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 // Nodemon trigger comment
