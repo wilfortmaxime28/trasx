@@ -20142,6 +20142,13 @@ document.addEventListener('DOMContentLoaded', () => {
           if (parentLabel) parentLabel.classList.remove('active');
         });
         label.classList.add('active');
+        
+        // Trigger visibility changes immediately
+        if (name === 'setupGameType' || name === 'setupOpponent') {
+          if (typeof updateTableFootballSetupVisibility === 'function') {
+            updateTableFootballSetupVisibility();
+          }
+        }
       });
     }
   });
@@ -20258,24 +20265,23 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Toggle Table Football team choices visibility based on active game type and opponent type
-  const tableFootballSetupOptions = document.getElementById('tableFootballSetupOptions');
-  const setupTfTeam2Wrapper = document.getElementById('setupTfTeam2Wrapper');
-  const setupGameTypeRadios = document.querySelectorAll('input[name="setupGameType"]');
-
-  const updateTableFootballSetupVisibility = () => {
+  function updateTableFootballSetupVisibility() {
     const activeGameTypeRadio = document.querySelector('input[name="setupGameType"]:checked');
     const isTF = activeGameTypeRadio && activeGameTypeRadio.value === 'tablefootball';
-    if (tableFootballSetupOptions) {
-      tableFootballSetupOptions.style.display = isTF ? 'block' : 'none';
+    const tfSetupOptions = document.getElementById('tableFootballSetupOptions');
+    if (tfSetupOptions) {
+      tfSetupOptions.style.display = isTF ? 'block' : 'none';
     }
 
     const activeOpponentRadio = document.querySelector('input[name="setupOpponent"]:checked');
     const isBot = activeOpponentRadio && activeOpponentRadio.value === 'bot';
-    if (setupTfTeam2Wrapper) {
-      setupTfTeam2Wrapper.style.display = isBot ? 'block' : 'none';
+    const tfTeam2Wrapper = document.getElementById('setupTfTeam2Wrapper');
+    if (tfTeam2Wrapper) {
+      tfTeam2Wrapper.style.display = isBot ? 'block' : 'none';
     }
-  };
+  }
 
+  const setupGameTypeRadios = document.querySelectorAll('input[name="setupGameType"]');
   setupGameTypeRadios.forEach(radio => {
     radio.addEventListener('change', updateTableFootballSetupVisibility);
   });
@@ -24187,6 +24193,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activeGameArea) activeGameArea.style.display = 'none';
         if (gamesLobby) gamesLobby.style.display = 'flex';
         loadGamesLobby();
+        if (typeof updateTableFootballSetupVisibility === 'function') {
+          updateTableFootballSetupVisibility();
+        }
       }
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
