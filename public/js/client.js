@@ -20130,24 +20130,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const radio = label.querySelector('input[type="radio"]');
     if (radio) {
       label.addEventListener('click', (e) => {
-        if (e.target !== radio) {
-          radio.checked = true;
-          radio.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        const name = radio.getAttribute('name');
-        if (name === 'setupGameType' || name === 'setupOpponent') {
-          if (typeof updateTableFootballSetupVisibility === 'function') {
-            updateTableFootballSetupVisibility();
-          }
-        }
-      });
-      radio.addEventListener('change', () => {
+        // Prevent default browser click handling on label to avoid double firing and weird radio behaviors
+        e.preventDefault();
+        
+        // Check the radio button
+        radio.checked = true;
+        
+        // Trigger visual class changes
         const name = radio.getAttribute('name');
         document.querySelectorAll(`input[name="${name}"]`).forEach(r => {
           const parentLabel = r.closest('.game-choice-option, .sub-choice-option');
           if (parentLabel) parentLabel.classList.remove('active');
         });
         label.classList.add('active');
+        
+        // Dispatch change event so any other listeners get notified
+        radio.dispatchEvent(new Event('change', { bubbles: true }));
         
         // Trigger visibility changes immediately
         if (name === 'setupGameType' || name === 'setupOpponent') {
