@@ -20310,6 +20310,34 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tfSetupOptions) {
       tfSetupOptions.style.display = isTF ? 'block' : 'none';
       console.log('[DEBUG-SETUP] tfSetupOptions display style set to:', tfSetupOptions.style.display);
+      
+      if (isTF) {
+        const computed = window.getComputedStyle(tfSetupOptions);
+        console.log('[DEBUG-SETUP] tfSetupOptions layout details:', {
+          display: computed.display,
+          visibility: computed.visibility,
+          opacity: computed.opacity,
+          height: tfSetupOptions.offsetHeight,
+          width: tfSetupOptions.offsetWidth,
+          parentElement: tfSetupOptions.parentElement?.tagName,
+          parentDisplay: tfSetupOptions.parentElement ? window.getComputedStyle(tfSetupOptions.parentElement).display : 'N/A',
+          parentVisible: tfSetupOptions.parentElement ? window.getComputedStyle(tfSetupOptions.parentElement).visibility : 'N/A'
+        });
+        
+        const select1 = document.getElementById('setupTfTeam1');
+        if (select1) {
+          const comp1 = window.getComputedStyle(select1);
+          console.log('[DEBUG-SETUP] setupTfTeam1 details:', {
+            display: comp1.display,
+            visibility: comp1.visibility,
+            height: select1.offsetHeight,
+            color: comp1.color,
+            backgroundColor: comp1.backgroundColor,
+            optionsCount: select1.options.length,
+            htmlSample: select1.outerHTML.substring(0, 200)
+          });
+        }
+      }
     }
 
     const activeOpponentRadio = document.querySelector('input[name="setupOpponent"]:checked');
@@ -26138,7 +26166,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=9')
+      navigator.serviceWorker.register('/sw.js?v=10')
         .then((reg) => {
           console.log('Service Worker registered successfully:', reg.scope);
           if ('Notification' in window && Notification.permission === 'granted') {

@@ -1,5 +1,5 @@
 // TrasX Service Worker v7 — Network-first with offline fallback & Web Push
-const CACHE_NAME = 'trasx-v9';
+const CACHE_NAME = 'trasx-v10';
 const OFFLINE_URL = '/';
 const STATIC_ASSETS = [
   '/',
