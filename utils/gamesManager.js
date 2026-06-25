@@ -240,6 +240,7 @@ class GamesManager {
       spectators: [],
       createdAt: Date.now(),
       startedAt: (opponentType === 'bot') ? Date.now() : null,
+      lastActivityAt: Date.now(),
       team1: team1 || 'FR',
       team2: team2 || 'BR'
     };
@@ -312,6 +313,7 @@ class GamesManager {
     }
     game.status = 'playing';
     game.startedAt = Date.now();
+    game.lastActivityAt = Date.now();
     return game;
   }
 
@@ -347,8 +349,16 @@ class GamesManager {
     if (!game) throw new Error('Partie introuvable.');
     if (game.status !== 'playing') throw new Error('La partie n\'est pas en cours.');
 
+    game.lastActivityAt = Date.now();
+
     const activePlayer = game.currentPlayer === 1 ? game.player1 : game.player2;
-    if (activePlayer.id !== playerId) throw new Error('Ce n\'est pas votre tour.');
+
+    // For tablefootball 'sync': the human client simulates physics for BOTH sides
+    // (including after a bot shot), so allow either player to submit a sync regardless of whose turn it is.
+    const isTableFootballSync = game.gameType === 'tablefootball' && extraMove?.promotion === 'sync';
+    const isGameParticipant = playerId === game.player1.id || playerId === game.player2?.id;
+    if (!isTableFootballSync && activePlayer.id !== playerId) throw new Error('Ce n\'est pas votre tour.');
+    if (isTableFootballSync && !isGameParticipant) throw new Error('Ce n\'est pas votre tour.');
 
     // Ensure numeric coordinates are parsed as integers to prevent string concatenation bugs
     const parsedRow = isNaN(parseInt(r, 10)) ? r : parseInt(r, 10);
@@ -622,6 +632,11 @@ class GamesManager {
   async makeBotMove(gameId) {
     const game = this.games[gameId];
     if (!game || game.status !== 'playing' || !game.player2.isBot) return;
+
+    // Race-condition guard: by the time the delayed timeout fires, the turn may have
+    // already changed (e.g. an extra sync arrived and flipped currentPlayer back to 1).
+    // Silently bail out instead of crashing with 'Ce n'est pas votre tour.'
+    if (game.currentPlayer !== 2) return;
 
     if (game.gameType === 'domino') {
       const hand = game.player2Hand;
@@ -1150,7 +1165,7 @@ class GamesManager {
           if (botBankRows && botBankRows.length > 0) {
             botBankId = botBankRows[0].id;
           }
-          if (winnerId === 'draw') {
+          if (winnerId === 'draw' || winnerId === 'cancelled') {
             if (game.player1) {
               await db.execute('UPDATE users SET token_balance = token_balance + ? WHERE id = ?', [betAmount, game.player1.id]);
             }
@@ -1170,7 +1185,7 @@ class GamesManager {
             }
           }
         } else {
-          if (winnerId === 'draw') {
+          if (winnerId === 'draw' || winnerId === 'cancelled') {
             if (game.player1 && !game.player1.isBot) {
               await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?', [betAmount, game.player1.id]);
             }

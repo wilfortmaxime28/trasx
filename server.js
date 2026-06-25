@@ -6234,10 +6234,18 @@ io.on('connection', (socket) => {
             scheduleNextGameRound(gameId);
           }
 
-          // Schedule bot move with a thinking delay
-          const nextPlayer = result.game.currentPlayer === 1 ? result.game.player1 : result.game.player2;
-          if (nextPlayer && nextPlayer.isBot && !result.roundWinnerId) {
-            const delay = 1200 + Math.random() * 1000; // 1.2s to 2.2s delay
+          // For tablefootball: after a 'shot', the client still needs to simulate physics and send a 'sync'.
+          // Do NOT schedule a bot move after a shot — only after a sync (turn has actually flipped).
+          const isTableFootballShot = result.game.gameType === 'tablefootball' && promotion === 'shot';
+
+          // Schedule bot move with a thinking delay (only when turn has truly switched to the bot)
+          const nextPlayerObj = result.game.currentPlayer === 1 ? result.game.player1 : result.game.player2;
+          if (nextPlayerObj && nextPlayerObj.isBot && !result.roundWinnerId && !isTableFootballShot) {
+            // For tablefootball sync: give extra time so client can replay/animate the ball
+            const isTableFootball = result.game.gameType === 'tablefootball';
+            const delay = isTableFootball
+              ? 2500 + Math.random() * 1000  // 2.5–3.5s for football (accounts for animation)
+              : 1200 + Math.random() * 1000; // 1.2–2.2s for other games
             setTimeout(async () => {
               try {
                 const botResult = await gamesManager.makeBotMove(gameId);
@@ -6736,6 +6744,44 @@ server.listen(PORT, async () => {
       }
       
       bscMonitor.start(io);
+
+      // Start periodic check for inactive tablefootball games (5 minutes of inactivity -> cancel & refund)
+      setInterval(async () => {
+        try {
+          const now = Date.now();
+          const gameIds = Object.keys(gamesManager.games);
+          for (const gameId of gameIds) {
+            const game = gamesManager.games[gameId];
+            if (game && game.gameType === 'tablefootball' && game.status === 'playing') {
+              const lastActivity = game.lastActivityAt || game.startedAt || game.createdAt || now;
+              const inactiveDuration = now - lastActivity;
+              if (inactiveDuration > 5 * 60 * 1000) {
+                console.log(`[Inactivity Checker] Game ${gameId} has been inactive for ${Math.round(inactiveDuration / 1000)} seconds. Cancelling and refunding...`);
+                
+                const result = await gamesManager.endGame(gameId, 'cancelled');
+                
+                if (result && result.finished) {
+                  io.to(`game:${gameId}`).emit('game-over', {
+                    winnerId: 'cancelled',
+                    winningStones: null,
+                    isForfeit: false
+                  });
+                  io.emit('game-list-updated', gamesManager.getLiveGames());
+                  
+                  if (game.mode === 'paid' && game.player2 && game.player2.isBot) {
+                    await emitRealtimeBalanceUpdate(game.player1.id, "Mise remboursée suite à l'annulation pour inactivité.");
+                  } else if (game.mode === 'paid') {
+                    if (game.player1) await emitRealtimeBalanceUpdate(game.player1.id, "Mise remboursée suite à l'annulation pour inactivité.");
+                    if (game.player2) await emitRealtimeBalanceUpdate(game.player2.id, "Mise remboursée suite à l'annulation pour inactivité.");
+                  }
+                }
+              }
+            }
+          }
+        } catch (checkErr) {
+          console.error('[Inactivity Checker Error] Failed to run inactivity checks:', checkErr);
+        }
+      }, 15000);
     } else {
       console.log('Application is not installed yet. Skipping database schema verification and background services.');
     }

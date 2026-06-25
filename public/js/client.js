@@ -22284,13 +22284,15 @@ document.addEventListener('DOMContentLoaded', () => {
       tfPlayer2Name.textContent = activeGame.player2.name || 'Joueur 2';
     }
 
-    const isMyTurn = !window.isSpectatingActiveGame
+    // isMyTurn must be a function (not a const) so the animation loop always reads live state
+    const isMyTurn = () => !window.isSpectatingActiveGame
       && activeGame.status === 'playing'
       && ((activeGame.currentPlayer === 1 && Number(activeGame.player1.id) === Number(window.currentUserId))
         || (activeGame.currentPlayer === 2 && activeGame.player2 && Number(activeGame.player2.id) === Number(window.currentUserId)));
 
     const mySlot = (Number(activeGame.player1.id) === Number(window.currentUserId)) ? 1 : 2;
     const myKey = `p${mySlot}`;
+
 
     const TEAM_NAMES_MAP = {
       FR: ["Maignan", "Hernandez", "Saliba", "Kanté", "Mbappé", "Griezmann"],
@@ -22327,14 +22329,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (activeGame.status === 'finished') {
         tableFootballStatusText.textContent = 'Match terminé !';
       } else {
-        tableFootballStatusText.textContent = isMyTurn ? 'À votre tour !' : "En attente de l'adversaire...";
+        tableFootballStatusText.textContent = isMyTurn() ? 'À votre tour !' : "En attente de l'adversaire...";
       }
     }
     if (tableFootballHelperText) {
       if (activeGame.status === 'finished') {
         tableFootballHelperText.textContent = 'Cliquez sur Rejouer pour lancer un autre match.';
       } else {
-        tableFootballHelperText.textContent = isMyTurn
+        tableFootballHelperText.textContent = isMyTurn()
           ? 'Sélectionnez un pion et choisissez une action.'
           : 'Patientez pendant que l\'autre joueur vise.';
       }
@@ -22375,6 +22377,7 @@ document.addEventListener('DOMContentLoaded', () => {
         history: [],
         isReplaying: false,
         replayFrame: 0,
+        replayPaused: false,
         lastTouchedBy: null,
         pendingEvent: null
       };
@@ -22449,7 +22452,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function onCanvasStart(e) {
-      if (activeGame.status !== 'playing' || !isMyTurn || state.isSimulating) return;
+      if (activeGame.status !== 'playing' || !isMyTurn() || state.isSimulating) return;
       const pos = getMousePos(e);
       
       // Find if we clicked one of our pucks
@@ -22528,13 +22531,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.isReplaying) {
           // Slow motion playback: advance frame by 0.5 (50% speed)
           const idx = Math.floor(state.replayFrame);
-          if (idx < state.history.length) {
+          if (state.replayPaused) {
+            // Freeze on goal frame for 2 seconds before resetting
+            drawField(state.history[state.history.length - 1]);
+            drawReplayOverlay();
+          } else if (idx < state.history.length) {
             drawField(state.history[idx]);
             drawReplayOverlay();
-            state.replayFrame += 0.5;
+            // Dynamically calculate speed to make the replay last exactly 45 seconds.
+            // At 60 FPS, 45 seconds is 2700 animation frames.
+            const replayTicks = 60 * 45; // 45 seconds target
+            const increment = Math.max(0.01, state.history.length / replayTicks);
+            state.replayFrame += increment;
           } else {
-            // Replay finished! Clean up, reset board positions, and sync
-            state.isReplaying = false;
+            // Frames done — freeze on last frame for 2s before resetting
+            if (!state.replayPaused) {
+              state.replayPaused = true;
+              setTimeout(() => {
+                state.replayPaused = false;
             state.history = [];
             
             // Reset positions to kickoff layout
@@ -22563,12 +22577,12 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Clear custom goal text
             if (tableFootballStatusText) {
-              tableFootballStatusText.innerHTML = isMyTurn ? `C'est votre tour !` : `Tour de l'adversaire...`;
+              tableFootballStatusText.innerHTML = isMyTurn() ? `C'est votre tour !` : `Tour de l'adversaire...`;
             }
 
             // Emit final sync to server
             const isBotGame = activeGame.opponentType === 'bot';
-            if (activeGame.status === 'playing' && (isMyTurn || (isBotGame && !window.isSpectatingActiveGame))) {
+            if (activeGame.status === 'playing' && (isMyTurn() || (isBotGame && !window.isSpectatingActiveGame))) {
               socket.emit('game-move', {
                 gameId: activeGame.id,
                 r: -1,
@@ -22576,6 +22590,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 promotion: 'sync',
                 finalState: { positions: state.positions, scores: state.scores }
               });
+            }
+                state.isReplaying = false;
+              }, 2000); // 2-second freeze so players can enjoy the goal
             }
           }
         } else {
@@ -22619,7 +22636,7 @@ document.addEventListener('DOMContentLoaded', () => {
           
           // Render status text dynamically with possession name
           if (tableFootballStatusText && !state.pendingEvent) {
-            let turnLabel = isMyTurn ? `C'est votre tour !` : `Tour de l'adversaire...`;
+            let turnLabel = isMyTurn() ? `C'est votre tour !` : `Tour de l'adversaire...`;
             if (state.ballPossession) {
               tableFootballStatusText.innerHTML = `${turnLabel}<div style="font-size: 10px; color: #a3e635; margin-top: 2px; font-weight: bold;">⚽ ${state.ballPossession.name} (${state.ballPossession.team}) a le ballon</div>`;
             } else {
@@ -22628,7 +22645,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
 
           if (tfActionSelector) {
-            if (!isMyTurn || state.selectedPuckIndex === null || state.isSimulating) {
+            if (!isMyTurn() || state.selectedPuckIndex === null || state.isSimulating) {
               tfActionSelector.style.display = 'none';
             }
           }
@@ -22653,7 +22670,7 @@ document.addEventListener('DOMContentLoaded', () => {
           };
         };
         state.history.push(copyPositions(state.positions));
-        if (state.history.length > 120) {
+        if (state.history.length > 500) {
           state.history.shift();
         }
       }
@@ -22829,7 +22846,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const isBotGame = activeGame.opponentType === 'bot';
-            if (activeGame.status === 'playing' && (isMyTurn || (isBotGame && !window.isSpectatingActiveGame))) {
+            if (activeGame.status === 'playing' && (isMyTurn() || (isBotGame && !window.isSpectatingActiveGame))) {
               socket.emit('game-move', {
                 gameId: activeGame.id,
                 r: -1,
@@ -22929,7 +22946,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Shooter client (or the human player if the opponent is a bot) is responsible for sending authoritative final position sync
         const isBotGame = activeGame.opponentType === 'bot';
-        if (activeGame.status === 'playing' && (isMyTurn || (isBotGame && !window.isSpectatingActiveGame))) {
+        if (activeGame.status === 'playing' && (isMyTurn() || (isBotGame && !window.isSpectatingActiveGame))) {
           socket.emit('game-move', {
             gameId: activeGame.id,
             r: -1,
@@ -24472,7 +24489,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const isRealPlayer = isPlayer && !window.isSpectatingActiveGame;
 
         if (isRealPlayer) {
-          if (winnerId === 'draw') {
+          if (winnerId === 'cancelled') {
+            showToast("Le match a été annulé pour inactivité. Vos fonds ont été remboursés.");
+            if (window.tfGameState && window.tfGameState.animationFrameId) {
+              cancelAnimationFrame(window.tfGameState.animationFrameId);
+            }
+            window.tfGameState = null;
+            activeGame = null;
+            if (activeGameArea) activeGameArea.style.display = 'none';
+            if (gamesLobby) gamesLobby.style.display = 'flex';
+            loadGamesLobby();
+          } else if (winnerId === 'draw') {
             showToast("Match nul !");
             showGameResultOverlay('draw');
           } else if (winnerId === window.currentUserId) {
@@ -24485,8 +24512,19 @@ document.addEventListener('DOMContentLoaded', () => {
             showGameResultOverlay('lose');
           }
         } else {
-          showToast("Partie terminée.");
-          showSpectatorGameResultModal({ winnerId, winningStones, isForfeit });
+          showToast(winnerId === 'cancelled' ? "Le match a été annulé pour inactivité." : "Partie terminée.");
+          if (winnerId === 'cancelled') {
+            if (window.tfGameState && window.tfGameState.animationFrameId) {
+              cancelAnimationFrame(window.tfGameState.animationFrameId);
+            }
+            window.tfGameState = null;
+            activeGame = null;
+            if (activeGameArea) activeGameArea.style.display = 'none';
+            if (gamesLobby) gamesLobby.style.display = 'flex';
+            loadGamesLobby();
+          } else {
+            showSpectatorGameResultModal({ winnerId, winningStones, isForfeit });
+          }
         }
       }
     });
