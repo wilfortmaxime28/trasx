@@ -23379,9 +23379,12 @@ document.addEventListener('DOMContentLoaded', () => {
             state.selectedPuckIndex = null;
             if (tfActionSelector) tfActionSelector.style.display = 'none';
             
+            const nextPlayer = state.goalScoredBy === 1 ? 2 : 1;
+            const isMyTurnNext = (mySlot === nextPlayer);
+            
             // Clear custom goal text
             if (tableFootballStatusText) {
-              tableFootballStatusText.innerHTML = isMyTurn() ? `C'est votre tour !` : `Tour de l'adversaire...`;
+              tableFootballStatusText.innerHTML = isMyTurnNext ? `C'est votre tour !` : `Tour de l'adversaire...`;
             }
 
             // Emit final sync to server
@@ -23392,7 +23395,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 r: -1,
                 c: -1,
                 promotion: 'sync',
-                nextPlayer: state.goalScoredBy,
+                nextPlayer: nextPlayer,
                 finalState: { positions: state.positions, scores: state.scores }
               });
             }
