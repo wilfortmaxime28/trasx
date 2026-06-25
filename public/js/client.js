@@ -22246,10 +22246,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const isMyTurn = !window.isSpectatingActiveGame
       && activeGame.status === 'playing'
-      && ((activeGame.currentPlayer === 1 && activeGame.player1.id === window.currentUserId)
-        || (activeGame.currentPlayer === 2 && activeGame.player2?.id === window.currentUserId));
+      && ((activeGame.currentPlayer === 1 && Number(activeGame.player1.id) === Number(window.currentUserId))
+        || (activeGame.currentPlayer === 2 && activeGame.player2 && Number(activeGame.player2.id) === Number(window.currentUserId)));
 
-    const mySlot = (activeGame.player1.id === window.currentUserId) ? 1 : 2;
+    const mySlot = (Number(activeGame.player1.id) === Number(window.currentUserId)) ? 1 : 2;
     const myKey = `p${mySlot}`;
 
     if (tableFootballStatusText) {
