@@ -20037,6 +20037,21 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // --- REAL-TIME GAMES CLIENT ENGINE ---
+  console.log('[DEBUG-SETUP] Initial check on DOMContentLoaded:');
+  console.log('[DEBUG-SETUP] gamesLobby element:', document.getElementById('gamesLobby') ? 'Found' : 'NOT Found');
+  console.log('[DEBUG-SETUP] tableFootballSetupOptions element:', document.getElementById('tableFootballSetupOptions') ? 'Found' : 'NOT Found');
+  console.log('[DEBUG-SETUP] setupTfTeam1 element:', document.getElementById('setupTfTeam1') ? 'Found' : 'NOT Found');
+  console.log('[DEBUG-SETUP] setupTfTeam2 element:', document.getElementById('setupTfTeam2') ? 'Found' : 'NOT Found');
+
+  document.addEventListener('click', (e) => {
+    const closestGameChoice = e.target.closest('.game-choice-option, .sub-choice-option');
+    if (closestGameChoice) {
+      console.log('[DEBUG-CLICK] Clicked inside game choice option. Target:', e.target.tagName, 'OuterHTML:', closestGameChoice.outerHTML.substring(0, 200));
+      const radio = closestGameChoice.querySelector('input[type="radio"]');
+      console.log('[DEBUG-CLICK] Associated radio:', radio ? { name: radio.name, value: radio.value, checked: radio.checked } : 'none');
+    }
+  });
+
   let activeGame = null;
   let selectedGameType = null;
 
@@ -26123,7 +26138,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=8')
+      navigator.serviceWorker.register('/sw.js?v=9')
         .then((reg) => {
           console.log('Service Worker registered successfully:', reg.scope);
           if ('Notification' in window && Notification.permission === 'granted') {
