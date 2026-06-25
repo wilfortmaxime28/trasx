@@ -24957,6 +24957,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ? `${parseFloat(invite.betAmount).toFixed(2)} $ chacun`
       : 'Gratuit';
     const roundsLabel = `${invite.rounds} manche${invite.rounds > 1 ? 's' : ''}`;
+    const totalMs = invite.timeoutMs || 30000;
     let teamSelectHtml = '';
     if (invite.gameType === 'tablefootball') {
       teamSelectHtml = `
