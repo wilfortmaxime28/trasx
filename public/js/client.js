@@ -20126,34 +20126,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Custom Radio Label Styles Toggle for Game Lobby
   const lobbyRadioLabels = document.querySelectorAll('.game-choice-option, .sub-choice-option');
-  lobbyRadioLabels.forEach(label => {
+  console.log('[DEBUG-SETUP] lobbyRadioLabels query count:', lobbyRadioLabels.length);
+  lobbyRadioLabels.forEach((label, idx) => {
     const radio = label.querySelector('input[type="radio"]');
     if (radio) {
+      console.log(`[DEBUG-SETUP] Found radio input #${idx} name="${radio.getAttribute('name')}" value="${radio.value}"`);
       label.addEventListener('click', (e) => {
+        console.log('[DEBUG-SETUP] Click event triggered on label:', label.outerHTML.substring(0, 100));
         // Prevent default browser click handling on label to avoid double firing and weird radio behaviors
         e.preventDefault();
         
         // Check the radio button
         radio.checked = true;
+        console.log('[DEBUG-SETUP] Programmatically set radio.checked = true for value:', radio.value);
         
         // Trigger visual class changes
         const name = radio.getAttribute('name');
         document.querySelectorAll(`input[name="${name}"]`).forEach(r => {
           const parentLabel = r.closest('.game-choice-option, .sub-choice-option');
-          if (parentLabel) parentLabel.classList.remove('active');
+          if (parentLabel) {
+            parentLabel.classList.remove('active');
+            console.log('[DEBUG-SETUP] Removed active class from label for value:', r.value);
+          }
         });
         label.classList.add('active');
+        console.log('[DEBUG-SETUP] Added active class to label for value:', radio.value);
         
         // Dispatch change event so any other listeners get notified
         radio.dispatchEvent(new Event('change', { bubbles: true }));
+        console.log('[DEBUG-SETUP] Dispatched change event on radio input');
         
         // Trigger visibility changes immediately
         if (name === 'setupGameType' || name === 'setupOpponent') {
           if (typeof updateTableFootballSetupVisibility === 'function') {
+            console.log('[DEBUG-SETUP] Invoking updateTableFootballSetupVisibility directly from click handler');
             updateTableFootballSetupVisibility();
+          } else {
+            console.warn('[DEBUG-SETUP] updateTableFootballSetupVisibility is not a function!');
           }
         }
       });
+    } else {
+      console.warn(`[DEBUG-SETUP] No radio input found inside label #${idx}`);
     }
   });
 
@@ -20270,18 +20284,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Toggle Table Football team choices visibility based on active game type and opponent type
   function updateTableFootballSetupVisibility() {
+    console.log('[DEBUG-SETUP] updateTableFootballSetupVisibility execution started');
     const activeGameTypeRadio = document.querySelector('input[name="setupGameType"]:checked');
+    console.log('[DEBUG-SETUP] activeGameTypeRadio selected:', activeGameTypeRadio ? { value: activeGameTypeRadio.value, checked: activeGameTypeRadio.checked } : 'none');
+    
     const isTF = activeGameTypeRadio && activeGameTypeRadio.value === 'tablefootball';
     const tfSetupOptions = document.getElementById('tableFootballSetupOptions');
+    console.log('[DEBUG-SETUP] tfSetupOptions element found:', tfSetupOptions ? 'yes' : 'no', 'isTF computed:', isTF);
+    
     if (tfSetupOptions) {
       tfSetupOptions.style.display = isTF ? 'block' : 'none';
+      console.log('[DEBUG-SETUP] tfSetupOptions display style set to:', tfSetupOptions.style.display);
     }
 
     const activeOpponentRadio = document.querySelector('input[name="setupOpponent"]:checked');
+    console.log('[DEBUG-SETUP] activeOpponentRadio selected:', activeOpponentRadio ? { value: activeOpponentRadio.value, checked: activeOpponentRadio.checked } : 'none');
+    
     const isBot = activeOpponentRadio && activeOpponentRadio.value === 'bot';
     const tfTeam2Wrapper = document.getElementById('setupTfTeam2Wrapper');
+    console.log('[DEBUG-SETUP] tfTeam2Wrapper element found:', tfTeam2Wrapper ? 'yes' : 'no', 'isBot computed:', isBot);
+    
     if (tfTeam2Wrapper) {
       tfTeam2Wrapper.style.display = isBot ? 'block' : 'none';
+      console.log('[DEBUG-SETUP] tfTeam2Wrapper display style set to:', tfTeam2Wrapper.style.display);
     }
   }
 
