@@ -16155,9 +16155,19 @@ body[data-theme="dark"] .connectfour-grid {
   width: 100%;
 }
 
-.mathduel-card,
-.table-football-card {
+.mathduel-card {
   width: min(460px, 92vw);
+  margin: 0 auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 22px;
+  padding: 18px;
+  box-shadow: var(--shadow-lg);
+}
+
+.table-football-card {
+  width: 100%;
+  max-width: 400px;
   margin: 0 auto;
   background: var(--bg-card);
   border: 1px solid var(--border-color);

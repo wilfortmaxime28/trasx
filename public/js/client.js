@@ -20129,6 +20129,12 @@ document.addEventListener('DOMContentLoaded', () => {
   lobbyRadioLabels.forEach(label => {
     const radio = label.querySelector('input[type="radio"]');
     if (radio) {
+      label.addEventListener('click', (e) => {
+        if (e.target !== radio) {
+          radio.checked = true;
+          radio.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
       radio.addEventListener('change', () => {
         const name = radio.getAttribute('name');
         document.querySelectorAll(`input[name="${name}"]`).forEach(r => {
@@ -21466,6 +21472,9 @@ document.addEventListener('DOMContentLoaded', () => {
     updateTurnIndicator();
 
     if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    // Ensure the view switches to the game screen
+    showGamesView();
   };
 
   const replayGame = () => {
@@ -22263,9 +22272,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const state = window.tfGameState;
-
-    // Apply opponent's shot if present and not yet processed
     const serverState = activeGame.tableFootballState;
+
+    // Sync positions from server when not simulating to ensure up-to-date layout (e.g. initial launch / player joins)
+    if (state && !state.isSimulating && serverState && serverState.positions) {
+      state.positions = JSON.parse(JSON.stringify(serverState.positions));
+    }
     if (serverState.lastPlay && serverState.lastPlay.type === 'shot') {
       const playSig = `${serverState.lastPlay.playerSlot}-${serverState.lastPlay.puckIndex}-${serverState.lastPlay.vx}-${serverState.lastPlay.vy}`;
       if (state.lastPlaySig !== playSig) {
