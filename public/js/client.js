@@ -22976,7 +22976,6 @@ document.addEventListener('DOMContentLoaded', () => {
       state.positions.p2.forEach((p, idx) => drawTeamPuck(p, team2, idx === 0));
 
       // 9. Draw Soccer Ball
-      const ball = state.positions.ball;
       
       // Shadow
       ctx.beginPath();
