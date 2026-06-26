@@ -11263,7 +11263,7 @@ body[data-theme="dark"] .compose-contact-chip {
   hyphens: auto;
 }
 
-.post-bg-container p {
+.post-bg-container p, .post-bg-container div {
   width: 100%;
   margin: 0;
   padding: 0;

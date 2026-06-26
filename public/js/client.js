@@ -7648,7 +7648,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       postContentHtml = `
         <div class="post-bg-container" style="background-image: url('${post.bg_image_url}'); color: ${post.text_color || '#ffffff'}; text-align: ${post.text_alignment || 'center'}; font-family: ${post.text_font || "'Outfit', sans-serif"}; align-items: ${alignVal}; justify-content: ${posVal}; font-size: ${post.text_size || '20px'}; --bg-text-size: ${post.text_size || '20px'};">
-          <p class="formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="width: 100%; text-align: ${post.text_alignment === 'justify' ? 'justify' : 'inherit'}; margin: 0; padding: 0;">${renderHashtagRichText(post.content || '')}</p>
+          <p class="formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="width: 100%; text-align: ${post.text_alignment === 'justify' ? 'justify' : 'inherit'}; margin: 0; padding: 0; white-space: pre-wrap;">${renderHashtagRichText(post.content || '')}</p>
         </div>
       `;
       if (post.challenge_type) {
@@ -8644,6 +8644,18 @@ document.addEventListener('DOMContentLoaded', () => {
           vidEl.currentTime = parseFloat(trimEndInput.value);
           updateTrimmerUI();
         };
+
+        // Loop preview video inside trimmer boundaries on playback
+        vidEl.addEventListener('timeupdate', () => {
+          if (vidEl.paused) return;
+          const start = parseFloat(trimStartInput.value);
+          const end = parseFloat(trimEndInput.value);
+          if (vidEl.currentTime < start) {
+            vidEl.currentTime = start;
+          } else if (vidEl.currentTime >= end) {
+            vidEl.currentTime = start;
+          }
+        });
       };
 
       if (vidEl.readyState >= 1) {
@@ -8701,10 +8713,16 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           const vidEl = document.createElement('video');
           vidEl.src = URL.createObjectURL(files[0]);
-          vidEl.style.cssText = 'width: 100%; height: 100%; object-fit: contain; max-height: 150px; border-radius: 8px;';
+          vidEl.style.cssText = 'width: 100%; height: 100%; object-fit: contain; max-height: 150px; border-radius: 8px; cursor: pointer;';
           vidEl.muted = true;
-          vidEl.controls = false;
-          vidEl.onloadeddata = () => URL.revokeObjectURL(vidEl.src);
+          vidEl.controls = true;
+          vidEl.autoplay = true;
+          vidEl.loop = true;
+          vidEl.playsInline = true;
+          vidEl.onloadeddata = () => {
+            URL.revokeObjectURL(vidEl.src);
+            vidEl.play().catch(() => {});
+          };
           modalPreviewBox.appendChild(vidEl);
 
           // Initialize Video Trimmer
@@ -16761,66 +16779,79 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updatePostInputPreview() {
     if (!postInputEl) return;
+    const previewBox = document.getElementById('textStylePreviewBox');
+    const previewText = document.getElementById('textStylePreviewText');
 
     if (selectedBackground) {
-      postInputEl.classList.add('post-bg-container');
-      postInputEl.style.setProperty('--bg-text-size', selectedTextSize);
-      postInputEl.style.backgroundImage = `url(${selectedBackground.image_url})`;
-      postInputEl.style.backgroundSize = 'cover';
-      postInputEl.style.backgroundPosition = 'center';
-      postInputEl.style.color = selectedTextColor;
-      postInputEl.style.textAlign = selectedTextAlignment;
-      postInputEl.style.fontFamily = selectedTextFont;
-      postInputEl.style.fontSize = selectedTextSize;
+      if (previewBox && previewText) {
+        previewBox.style.display = 'flex';
+        previewBox.style.backgroundImage = `url(${selectedBackground.image_url})`;
+        previewBox.style.backgroundSize = 'cover';
+        previewBox.style.backgroundPosition = 'center';
+        previewBox.style.minHeight = '140px';
+        previewBox.style.borderRadius = '12px';
+        previewBox.style.boxShadow = 'inset 0 0 0 1px rgba(255, 255, 255, 0.16)';
 
-      postInputEl.style.display = 'flex';
-      postInputEl.style.flexDirection = 'column';
+        const alignMap = {
+          'left': 'flex-start',
+          'right': 'flex-end',
+          'center': 'center',
+          'justify': 'stretch'
+        };
+        previewBox.style.alignItems = alignMap[selectedTextAlignment] || 'center';
 
-      const alignMap = {
-        'left': 'flex-start',
-        'right': 'flex-end',
-        'center': 'center'
-      };
-      postInputEl.style.alignItems = alignMap[selectedTextAlignment] || 'center';
+        const posMap = {
+          'top': 'flex-start',
+          'center': 'center',
+          'bottom': 'flex-end'
+        };
+        previewBox.style.justifyContent = posMap[selectedTextPosition] || 'center';
 
-      const posMap = {
-        'top': 'flex-start',
-        'center': 'center',
-        'bottom': 'flex-end'
-      };
-      postInputEl.style.justifyContent = posMap[selectedTextPosition] || 'center';
+        previewText.style.color = selectedTextColor;
+        previewText.style.textAlign = selectedTextAlignment;
+        previewText.style.fontFamily = selectedTextFont;
+        previewText.style.fontSize = selectedTextSize;
+        previewText.style.fontWeight = '600';
 
-      postInputEl.style.minHeight = '180px';
-      postInputEl.style.padding = '30px 20px';
-      postInputEl.style.borderRadius = '8px';
-      postInputEl.style.boxShadow = 'inset 0 0 0 1px var(--border-color)';
-      postInputEl.style.textShadow = '0 2px 4px rgba(0,0,0,0.6)';
-      postInputEl.style.fontWeight = '600';
+        const rawText = postInputEl.innerText.trim();
+        if (rawText) {
+          previewText.textContent = postInputEl.innerText;
+        } else {
+          previewText.textContent = typeof tText !== 'undefined' ? tText("Votre texte ici...") : "Your text here...";
+        }
+      }
 
-      document.getElementById('resetTextStyleBtn').style.display = 'flex';
+      const resetBtn = document.getElementById('resetTextStyleBtn');
+      if (resetBtn) resetBtn.style.display = 'flex';
     } else {
-      postInputEl.classList.remove('post-bg-container');
-      postInputEl.style.removeProperty('--bg-text-size');
-      postInputEl.style.backgroundImage = '';
-      postInputEl.style.backgroundSize = '';
-      postInputEl.style.backgroundPosition = '';
-      postInputEl.style.color = '';
-      postInputEl.style.textAlign = '';
-      postInputEl.style.fontFamily = '';
-      postInputEl.style.fontSize = '';
-      postInputEl.style.display = '';
-      postInputEl.style.flexDirection = '';
-      postInputEl.style.alignItems = '';
-      postInputEl.style.justifyContent = '';
-      postInputEl.style.minHeight = '';
-      postInputEl.style.padding = '';
-      postInputEl.style.borderRadius = '';
-      postInputEl.style.boxShadow = '';
-      postInputEl.style.textShadow = '';
-      postInputEl.style.fontWeight = '';
-
-      document.getElementById('resetTextStyleBtn').style.display = 'none';
+      if (previewBox) {
+        previewBox.style.display = 'none';
+        previewBox.style.backgroundImage = '';
+      }
+      const resetBtn = document.getElementById('resetTextStyleBtn');
+      if (resetBtn) resetBtn.style.display = 'none';
     }
+
+    // Always clear input element styling so the background is NOT applied to the input!
+    postInputEl.classList.remove('post-bg-container');
+    postInputEl.style.removeProperty('--bg-text-size');
+    postInputEl.style.backgroundImage = '';
+    postInputEl.style.backgroundSize = '';
+    postInputEl.style.backgroundPosition = '';
+    postInputEl.style.color = '';
+    postInputEl.style.textAlign = '';
+    postInputEl.style.fontFamily = '';
+    postInputEl.style.fontSize = '';
+    postInputEl.style.display = '';
+    postInputEl.style.flexDirection = '';
+    postInputEl.style.alignItems = '';
+    postInputEl.style.justifyContent = '';
+    postInputEl.style.minHeight = '';
+    postInputEl.style.padding = '';
+    postInputEl.style.borderRadius = '';
+    postInputEl.style.boxShadow = '';
+    postInputEl.style.textShadow = '';
+    postInputEl.style.fontWeight = '';
   }
 
   // Bind format controls inside DOMContentLoaded
@@ -16846,6 +16877,14 @@ document.addEventListener('DOMContentLoaded', () => {
     textSizeSelect.addEventListener('change', (e) => {
       selectedTextSize = e.target.value;
       updatePostInputPreview();
+    });
+  }
+
+  if (postInputEl) {
+    postInputEl.addEventListener('input', () => {
+      if (selectedBackground) {
+        updatePostInputPreview();
+      }
     });
   }
 
