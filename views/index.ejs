@@ -709,6 +709,13 @@ function getYouTubeId(url) {
                                         style="background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); font-size: 12px; padding: 6px 12px; display: none; align-items: center; justify-content: center; gap: 6px; cursor: pointer;">
                                         <i data-lucide="rotate-ccw" style="width:12px;"></i> Reset Style
                                       </button>
+
+                                      <!-- Send / Publish from Text Style modal -->
+                                      <button type="button" id="textStyleSendBtn"
+                                        style="width: 100%; background: linear-gradient(135deg, var(--primary) 0%, #00c6ff 100%); border: none; color: #fff; border-radius: 10px; padding: 12px 16px; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: opacity 0.2s, transform 0.15s; box-shadow: 0 4px 14px rgba(var(--primary-rgb, 24,119,242), 0.35); letter-spacing: 0.01em;">
+                                        <i data-lucide="send" style="width:15px; height:15px;"></i>
+                                        <%= tText("Publier") %>
+                                      </button>
                                     </div>
                                   </div>
                                 </div>

@@ -16902,6 +16902,33 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // "Publier" button inside the Text Style modal — closes the popover and triggers the main share flow
+  const textStyleSendBtn = document.getElementById('textStyleSendBtn');
+  if (textStyleSendBtn) {
+    textStyleSendBtn.addEventListener('click', () => {
+      // Close the popover
+      if (typeof hideAllPopovers === 'function') {
+        hideAllPopovers();
+      } else {
+        const modal = document.getElementById('textStyleModal');
+        if (modal) modal.style.display = 'none';
+      }
+      // Visual feedback
+      textStyleSendBtn.disabled = true;
+      textStyleSendBtn.style.opacity = '0.7';
+      // Trigger the main share button
+      const shareBtnEl = document.getElementById('sharePostBtn');
+      if (shareBtnEl) {
+        shareBtnEl.click();
+      }
+      // Re-enable in case of error
+      setTimeout(() => {
+        textStyleSendBtn.disabled = false;
+        textStyleSendBtn.style.opacity = '';
+      }, 3000);
+    });
+  }
+
   const setAlignActive = (align) => {
     document.getElementById('alignLeftBtn')?.classList.remove('active');
     document.getElementById('alignCenterBtn')?.classList.remove('active');
