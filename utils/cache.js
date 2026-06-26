@@ -12,6 +12,8 @@
 
 'use strict';
 
+const redis = require('../config/redis');
+
 // ── In-memory store (replaced by Redis in Phase 2) ────────────────────────
 const _store = new Map(); // key → { value, expiresAt }
 
@@ -46,11 +48,68 @@ const memCache = {
   }
 };
 
+const redisCache = {
+  async get(key) {
+    const raw = await redis.get(key);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  },
+
+  async set(key, value, ttlSeconds = 60) {
+    await redis.set(key, JSON.stringify(value), ttlSeconds);
+  },
+
+  async del(key) {
+    await redis.del(key);
+  },
+
+  async delPattern(pattern) {
+    const keys = await redis.keys(pattern);
+    if (!Array.isArray(keys) || !keys.length) return;
+    await Promise.all(keys.map((key) => redis.del(key)));
+  }
+};
+
+const activeCache = {
+  async get(key) {
+    if (redis.isConfigured()) {
+      const value = await redisCache.get(key);
+      if (value !== null) return value;
+    }
+    return memCache.get(key);
+  },
+
+  async set(key, value, ttlSeconds = 60) {
+    if (redis.isConfigured()) {
+      const stored = await redisCache.set(key, value, ttlSeconds);
+      if (stored !== false) return stored;
+    }
+    return memCache.set(key, value, ttlSeconds);
+  },
+
+  async del(key) {
+    if (redis.isConfigured()) {
+      await redisCache.del(key);
+    }
+    return memCache.del(key);
+  },
+
+  async delPattern(pattern) {
+    if (redis.isConfigured()) {
+      await redisCache.delPattern(pattern);
+    }
+    return memCache.delPattern(pattern);
+  }
+};
+
 // ── Recommended TTLs (seconds) ────────────────────────────────────────────
 const TTL = {
   USER_PROFILE:        300, // 5 min
   NOTIFICATION_COUNT:   30, // 30 sec (near real-time)
   FEED_STATS:          120, // 2 min
+  FEED_PAGE:           180, // 3 min
+  FEED_SEEN:          2700, // 45 min
+  POST_COMMENTS:        90, // 90 sec
   POPULAR_POSTS:       300, // 5 min
   FOLLOWERS_COUNT:     120, // 2 min
   REELS:               180, // 3 min
@@ -62,25 +121,25 @@ const cache = {
 
   /** Get a cached value. Returns null if missing or expired. */
   async get(key) {
-    try { return await memCache.get(key); }
+    try { return await activeCache.get(key); }
     catch (e) { console.warn('[cache] get error:', e.message); return null; }
   },
 
   /** Set a value with TTL in seconds. */
   async set(key, value, ttl = 60) {
-    try { await memCache.set(key, value, ttl); }
+    try { await activeCache.set(key, value, ttl); }
     catch (e) { console.warn('[cache] set error:', e.message); }
   },
 
   /** Delete a specific key. */
   async del(key) {
-    try { await memCache.del(key); }
+    try { await activeCache.del(key); }
     catch (e) { console.warn('[cache] del error:', e.message); }
   },
 
   /** Delete all keys matching a pattern prefix (e.g. 'user:*'). */
   async delPattern(pattern) {
-    try { await memCache.delPattern(pattern); }
+    try { await activeCache.delPattern(pattern); }
     catch (e) { console.warn('[cache] delPattern error:', e.message); }
   },
 

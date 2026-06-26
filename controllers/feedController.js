@@ -1,17 +1,16 @@
 const User = require('../models/User');
 const Post = require('../models/Post');
-const Comment = require('../models/Comment');
 const Reel = require('../models/Reel');
 const Message = require('../models/Message');
 const Event = require('../models/Event');
 const Status = require('../models/Status');
 const Ad = require('../models/Ad');
-const Challenge = require('../models/Challenge');
 const P2PMarket = require('../models/P2PMarket');
 const gamesManager = require('../utils/gamesManager');
 const { buildMessageInboxSections } = require('../utils/messageInbox');
 const { getNumberSetting } = require('../utils/appSettings');
 const { getSupportedCurrencyOptions, getPreferredCurrencyForCountry, getDefaultPaymentMethodsForCountry } = require('../utils/p2pCurrencies');
+const { getFeedPage } = require('../services/feedService');
 
 function isWithinPromoWindow(authorCreatedAt, promoWindowDays) {
   const createdAtMs = new Date(authorCreatedAt || 0).getTime();
@@ -366,12 +365,6 @@ class FeedController {
       const shortRevealBatchSize = 2;
       const feedMemory = getFeedMemory(req.session);
 
-      // Générer un seed stable pour la session (variété entre sessions, stabilité pendant le scroll)
-      if (!req.session.feedSeed) {
-        req.session.feedSeed = Math.floor(Math.random() * 999999) + 1;
-      }
-      const feedSeed = req.session.feedSeed;
-
       // Parallelize all independent database queries for maximum performance
       const [
         followingCount,
@@ -392,12 +385,12 @@ class FeedController {
         promoWindowDays
       ] = await Promise.all([
         User.getFollowingCount(currentUserId),
-        Post.getFeedPaginated(currentUserId, {
-          offset: 0,
-          limit: initialFeedBatchSize,
+        getFeedPage({
+          session: req.session,
+          currentUserId,
           userCountry: currentUser.country,
-          feedSeed,
-          excludedIds: [] // Première page : pas d'exclusion
+          limit: initialFeedBatchSize,
+          refreshSession: true
         }),
         Reel.getAll(currentUserId),
         User.getContactsWithFollowState(currentUserId),
@@ -417,24 +410,6 @@ class FeedController {
 
       const noFollowingMode = Number(followingCount || 0) === 0;
       let posts = feedResult.posts;
-
-      // Charger les commentaires uniquement pour les posts du premier lot
-      const commentRows = await Comment.getByPostIds(posts.map((post) => post.id));
-      const commentsByPostId = new Map();
-
-      for (const comment of commentRows) {
-        const postComments = commentsByPostId.get(comment.post_id) || [];
-        postComments.push(comment);
-        commentsByPostId.set(comment.post_id, postComments);
-      }
-
-      // Parallelize participant checks for posts with challenges
-      await Promise.all(posts.map(async (post) => {
-        post.comments = commentsByPostId.get(post.id) || [];
-        if (post.challenge_type) {
-          post.challenge_participants = await Challenge.getParticipants(post.id);
-        }
-      }));
 
       // Récupérer les shorts/reels et leurs vues aujourd'hui
       const reelViewCounts = await Reel.getTodayUniqueViewCounts(allReels.map((reel) => reel.id));
@@ -494,8 +469,8 @@ class FeedController {
         initialFeedBatchSize,
         feedRevealBatchSize,
         feedHasMore: feedResult.hasMore,
-        feedNextOffset: feedResult.nextOffset || initialFeedBatchSize,
-        feedSeed,
+        feedNextCursor: feedResult.nextCursor || null,
+        feedSeed: feedResult.feedSeed,
         initialShortBatchSize,
         shortRevealBatchSize,
         followersCount,

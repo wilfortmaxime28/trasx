@@ -1,5 +1,5 @@
-// TrasX Service Worker v9 — Network-first with offline fallback & Web Push
-const CACHE_NAME = 'trasx-v12';
+// TrasX Service Worker v10 — Network-first with offline fallback & Web Push
+const CACHE_NAME = 'trasx-v13';
 const OFFLINE_URL = '/';
 const STATIC_ASSETS = [
   '/',
@@ -15,17 +15,29 @@ const STATIC_ASSETS = [
   '/assets/avatar_placeholder.svg',
   '/assets/platform-end-chime.mp3',
   '/manifest.json',
-  'https://unpkg.com/lucide@latest'
+  '/manifest.webmanifest'
 ];
 
 // ── Install ──────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll(STATIC_ASSETS).catch((err) => {
-        console.warn('[SW] Pre-cache skipped:', err.message);
-      })
-    )
+    caches.open(CACHE_NAME).then(async (cache) => {
+      const results = await Promise.allSettled(
+        STATIC_ASSETS.map(async (assetUrl) => {
+          const response = await fetch(assetUrl, { cache: 'no-cache' });
+          if (!response || !response.ok) {
+            throw new Error(`Unable to cache ${assetUrl} (${response?.status || 'no-response'})`);
+          }
+          await cache.put(assetUrl, response.clone());
+        })
+      );
+
+      results.forEach((result) => {
+        if (result.status === 'rejected') {
+          console.warn('[SW] Pre-cache skipped:', result.reason?.message || result.reason);
+        }
+      });
+    })
   );
   self.skipWaiting();
 });

@@ -1,6 +1,7 @@
 {
   "name": "TrasX",
   "short_name": "TrasX",
+  "id": "/",
   "description": "Premium Social Dashboard with Sleek Glassmorphism Design",
   "start_url": "/",
   "scope": "/",

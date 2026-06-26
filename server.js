@@ -31,6 +31,8 @@ const { createTranslator, createSourceTextTranslator, normalizeLocale, SUPPORTED
 const { getNumberSetting } = require('./utils/appSettings');
 const { isNewUserWithinWindow, computePromoDailyTarget } = require('./utils/promoReach');
 const gamesManager = require('./utils/gamesManager');
+const { getFeedPage } = require('./services/feedService');
+const cache = require('./utils/cache');
 const QRCode = require('qrcode');
 const bscMonitor = require('./utils/bscMonitor');
 const mailer = require('./utils/mailer');
@@ -339,6 +341,23 @@ app.get('/assets/avatar_placeholder.jpg', (req, res) => {
   `);
 });
 
+app.get(['/manifest.webmanifest', '/manifest.json'], (req, res) => {
+  res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.sendFile(path.join(__dirname, 'public', 'manifest.json'));
+});
+
+app.get('/sw.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Service-Worker-Allowed', '/');
+  res.sendFile(path.join(__dirname, 'public', 'sw.js'));
+});
+
 app.use('/js/client.js', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   next();
@@ -616,7 +635,7 @@ app.get('/', feedController.getFeed);
 app.get('/api/feed/birthdays', feedController.getBirthdayCards);
 
 // ─── API Infinite Scroll Feed ────────────────────────────────────────────────
-// GET /api/feed/posts?offset=20&limit=20
+// GET /api/feed/posts?cursor=...&limit=20
 // Retourne le prochain lot de posts avec le même algorithme SQL que la page initiale.
 app.get('/api/feed/posts', requireAuth, async (req, res) => {
   try {
@@ -624,34 +643,22 @@ app.get('/api/feed/posts', requireAuth, async (req, res) => {
     const currentUser = res.locals.currentUser || await User.getById(currentUserId);
     if (!currentUser) return res.status(401).json({ success: false, error: 'Non authentifié.' });
 
-    const offset = Math.max(0, Number(req.query.offset) || 0);
-    const limit  = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
-
-    // Seed stable par session (généré lors du premier chargement du feed)
-    if (!req.session.feedSeed) req.session.feedSeed = Math.floor(Math.random() * 999999) + 1;
-    const feedSeed = req.session.feedSeed;
-
-    // IDs déjà vus côté client (anti-doublon)
-    let excludedIds = [];
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const cursorToken = typeof req.query.cursor === 'string' ? req.query.cursor : null;
+    let clientSeenIds = [];
     try {
       const raw = req.query.seen;
-      if (raw) excludedIds = String(raw).split(',').map(Number).filter(n => Number.isFinite(n) && n > 0);
+      if (raw) clientSeenIds = String(raw).split(',').map(Number).filter(n => Number.isFinite(n) && n > 0);
     } catch (_) { /* ignore */ }
 
-    const feedResult = await Post.getFeedPaginated(currentUserId, {
-      offset, limit, userCountry: currentUser.country, feedSeed, excludedIds
+    const feedResult = await getFeedPage({
+      session: req.session,
+      currentUserId,
+      userCountry: currentUser.country,
+      limit,
+      cursorToken,
+      clientSeenIds
     });
-
-    // Charger les commentaires pour ce lot de posts
-    const Comment = require('./models/Comment');
-    const commentRows = await Comment.getByPostIds(feedResult.posts.map(p => p.id));
-    const commentsByPostId = new Map();
-    for (const c of commentRows) {
-      const arr = commentsByPostId.get(c.post_id) || [];
-      arr.push(c);
-      commentsByPostId.set(c.post_id, arr);
-    }
-    feedResult.posts.forEach(p => { p.comments = commentsByPostId.get(p.id) || []; });
 
     // Enregistrer les vues du lot (exclure les posts propres de l'utilisateur)
     const postIds = feedResult.posts
@@ -664,7 +671,7 @@ app.get('/api/feed/posts', requireAuth, async (req, res) => {
       success: true,
       posts: feedResult.posts,
       hasMore: feedResult.hasMore,
-      nextOffset: feedResult.nextOffset
+      nextCursor: feedResult.nextCursor
     });
   } catch (err) {
     console.error('[/api/feed/posts]', err);
@@ -696,6 +703,34 @@ app.get('/api/posts/:postId', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Error fetching post:', error);
     return res.status(500).json({ success: false, error: 'Impossible de récupérer les détails du challenge.' });
+  }
+});
+
+app.get('/api/posts/:postId/comments', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const postId = Number(req.params.postId);
+    if (!Number.isFinite(currentUserId) || currentUserId <= 0 || !Number.isFinite(postId) || postId <= 0) {
+      return res.status(400).json({ success: false, error: 'Parametres invalides.' });
+    }
+
+    const post = await Post.getById(postId, currentUserId);
+    if (!post) {
+      return res.status(404).json({ success: false, error: 'Publication introuvable.' });
+    }
+
+    const cacheKey = `post:comments:${postId}`;
+    const comments = await cache.wrap(cacheKey, cache.TTL.POST_COMMENTS, async () => {
+      return Comment.getByPostId(postId);
+    });
+
+    return res.json({
+      success: true,
+      comments: Array.isArray(comments) ? comments : []
+    });
+  } catch (error) {
+    console.error('Error fetching post comments:', error);
+    return res.status(500).json({ success: false, error: 'Impossible de charger les commentaires.' });
   }
 });
 
@@ -2698,6 +2733,7 @@ app.post('/api/posts/upload-media', requireAuth, (req, res) => {
     const mediaOptimizer = require('./utils/mediaOptimizer');
 
     const uploadedUrls = [];
+    const uploadedVariants = [];
     let computedThumbnailUrl = null;
 
     try {
@@ -2714,13 +2750,21 @@ app.post('/api/posts/upload-media', requireAuth, (req, res) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         
         if (isImage) {
-          const optFilename = 'opt-post-' + uniqueSuffix + '.webp';
+          const baseName = 'opt-post-' + uniqueSuffix;
+          const optFilename = `${baseName}.webp`;
           const optPath = path.join(postUploadDir, optFilename);
           
           // 1. Optimize image to WebP
-          await mediaOptimizer.optimizeImage(file.path, optPath);
+          await mediaOptimizer.optimizeImage(file.path, optPath, {
+            maxWidth: 1600,
+            maxHeight: 1600,
+            quality: 82
+          });
 
-          // 2. Generate a WebP thumbnail if not already computed
+          // 2. Generate responsive image sizes for lazy/adaptive loading.
+          await mediaOptimizer.generateResponsiveImageVariants(file.path, postUploadDir, baseName);
+
+          // 3. Generate a WebP thumbnail if not already computed
           if (!computedThumbnailUrl) {
             const thumbFilename = 'thumb-post-' + uniqueSuffix + '.webp';
             const thumbPath = path.join(postUploadDir, thumbFilename);
@@ -2729,6 +2773,13 @@ app.post('/api/posts/upload-media', requireAuth, (req, res) => {
           }
 
           uploadedUrls.push('/uploads/posts/' + optFilename);
+          uploadedVariants.push({
+            original: `/uploads/posts/${optFilename}`,
+            thumbnail: `/uploads/posts/${baseName}-thumb.webp`,
+            small: `/uploads/posts/${baseName}-240.webp`,
+            medium: `/uploads/posts/${baseName}-480.webp`,
+            large: `/uploads/posts/${baseName}-720.webp`
+          });
 
           // Delete original uploaded file
           try { fs.unlinkSync(file.path); } catch (e) {}
@@ -2774,7 +2825,12 @@ app.post('/api/posts/upload-media', requireAuth, (req, res) => {
         try { fs.unlinkSync(thumbnailFile.path); } catch (e) {}
       }
 
-      return res.json({ mediaUrls: uploadedUrls, mediaType, thumbnailUrl: computedThumbnailUrl });
+      return res.json({
+        mediaUrls: uploadedUrls,
+        mediaVariants: uploadedVariants,
+        mediaType,
+        thumbnailUrl: computedThumbnailUrl
+      });
     } catch (optErr) {
       console.error('Media optimization failed:', optErr);
       
@@ -3153,6 +3209,7 @@ io.on('connection', (socket) => {
 
   if (session?.userId) {
     socket.join(`user:${session.userId}`);
+    socket.data.watchedPostRooms = new Set();
     presence.markUserOnline(session.userId).then((state) => {
       io.emit('presence-updated', {
         userId: Number(session.userId),
@@ -3164,6 +3221,29 @@ io.on('connection', (socket) => {
       console.error('Presence online error:', err);
     });
   }
+
+  socket.on('feed-posts-watch', (data) => {
+    const nextPostIds = Array.isArray(data?.postIds)
+      ? data.postIds.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0).slice(0, 240)
+      : [];
+
+    const nextRooms = new Set(nextPostIds.map((postId) => `post:${postId}`));
+    const previousRooms = socket.data.watchedPostRooms instanceof Set ? socket.data.watchedPostRooms : new Set();
+
+    previousRooms.forEach((roomName) => {
+      if (!nextRooms.has(roomName)) {
+        socket.leave(roomName);
+      }
+    });
+
+    nextRooms.forEach((roomName) => {
+      if (!previousRooms.has(roomName)) {
+        socket.join(roomName);
+      }
+    });
+
+    socket.data.watchedPostRooms = nextRooms;
+  });
 
   const emitNotificationForUser = async (recipientId, notificationData) => {
     if (!recipientId) return null;
@@ -4642,7 +4722,7 @@ io.on('connection', (socket) => {
       
       // Emettre l'événement de mise à jour à l'expéditeur et à tout le monde
       socket.emit('like-response', { postId, ...result });
-      socket.broadcast.emit('post-liked', { postId, likes_count: result.count });
+      socket.to(`post:${postId}`).emit('post-liked', { postId, likes_count: result.count });
     } catch (err) {
       console.error('Post like error:', err);
     }
@@ -4739,6 +4819,7 @@ io.on('connection', (socket) => {
         voiceUrl || null,
         voiceDuration !== undefined && voiceDuration !== null ? parseInt(voiceDuration, 10) : null
       );
+      await cache.del(`post:comments:${postId}`);
       const user = await User.getById(currentUserId);
       const post = await Post.getById(postId, currentUserId);
       const parentComment = parentId ? await Comment.getById(parentId) : null;
@@ -4800,7 +4881,7 @@ io.on('connection', (socket) => {
       }
 
       // Diffuser le commentaire à tout le monde
-      io.emit('comment-created', {
+      io.to(`post:${postId}`).emit('comment-created', {
         id: commentId,
         postId,
         user_id: user.id,
@@ -6006,6 +6087,7 @@ io.on('connection', (socket) => {
         const newRecipientWithdrawalBalance = Number((Number(recipient.withdrawal_account_balance || 0) + amount).toFixed(2));
         const commentId = commentResult.insertId;
         const createdAt = new Date().toISOString();
+        await cache.del(`post:comments:${postId}`);
 
         await emitNotificationForUser(recipientId, {
           recipientId,
@@ -6016,7 +6098,7 @@ io.on('connection', (socket) => {
           commentId
         });
 
-        io.emit('comment-created', {
+        io.to(`post:${postId}`).emit('comment-created', {
           id: commentId,
           postId,
           user_id: sender.id,

@@ -225,17 +225,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const adFormStatus = document.getElementById('adFormStatus');
 
     const bindOnce = (element, key, eventName, handler) => {
-      if (!element || element.dataset[key] === '1') return;
-      element.dataset[key] = '1';
+      if (!element) return;
+      if (element.dataset) {
+        if (element.dataset[key] === '1') return;
+        element.dataset[key] = '1';
+      } else {
+        const registryKey = `__${key}`;
+        if (element[registryKey] === true) return;
+        element[registryKey] = true;
+      }
       element.addEventListener(eventName, handler);
+    };
+
+    const mountAdModalToBody = () => {
+      if (!createAdModal || createAdModal.dataset.mountedToBody === '1') return;
+      document.body.appendChild(createAdModal);
+      createAdModal.dataset.mountedToBody = '1';
     };
 
     const openModal = (event) => {
       event?.preventDefault();
-      if (createAdModal) createAdModal.style.display = 'flex';
+      if (!createAdModal) return;
+      mountAdModalToBody();
+      document.body.classList.add('ad-modal-open');
+      createAdModal.setAttribute('aria-hidden', 'false');
+      createAdModal.style.display = 'flex';
     };
     const closeModal = () => {
-      if (createAdModal) createAdModal.style.display = 'none';
+      if (!createAdModal) return;
+      createAdModal.style.display = 'none';
+      createAdModal.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('ad-modal-open');
     };
     const setAdFormStatus = (message, type = 'error') => {
       if (!adFormStatus) return;
@@ -260,6 +280,11 @@ document.addEventListener('DOMContentLoaded', () => {
     bindOnce(closeAdModalBtn, 'adCloseBound', 'click', closeModal);
     bindOnce(createAdModal, 'adBackdropBound', 'click', (event) => {
       if (event.target === createAdModal) closeModal();
+    });
+    bindOnce(document, 'adEscapeBound', 'keydown', (event) => {
+      if (event.key === 'Escape' && createAdModal?.style.display === 'flex') {
+        closeModal();
+      }
     });
 
     const updateAdPrice = () => {
@@ -439,11 +464,49 @@ document.addEventListener('DOMContentLoaded', () => {
       ? `Reply to ${targetName}'s voice note...`
       : `Reply to ${targetName}'s text comment...`;
   };
+  const followStateCache = new Map();
+  const rememberFollowState = (targetUserId, isFollowing) => {
+    const normalizedTargetId = Number(targetUserId);
+    if (!Number.isFinite(normalizedTargetId) || normalizedTargetId <= 0) return;
+    followStateCache.set(normalizedTargetId, !!isFollowing);
+  };
+  const resolveFollowState = (targetUserId, fallback = false) => {
+    const normalizedTargetId = Number(targetUserId);
+    if (!Number.isFinite(normalizedTargetId) || normalizedTargetId <= 0) return !!fallback;
+    if (followStateCache.has(normalizedTargetId)) {
+      return !!followStateCache.get(normalizedTargetId);
+    }
+
+    const directButton = document.querySelector(`.follow-toggle-btn[data-follow-target-id="${normalizedTargetId}"]`);
+    if (directButton) {
+      const resolved = directButton.dataset.following === '1';
+      rememberFollowState(normalizedTargetId, resolved);
+      return resolved;
+    }
+
+    const reelButton = document.querySelector(`.reel-follow-toggle-btn[data-follow-target-id="${normalizedTargetId}"]`);
+    if (reelButton) {
+      const resolved = reelButton.dataset.following === '1';
+      rememberFollowState(normalizedTargetId, resolved);
+      return resolved;
+    }
+
+    const messageItem = document.querySelector(`.message-item[data-follow-target-id="${normalizedTargetId}"]`);
+    if (messageItem) {
+      const resolved = messageItem.dataset.following === '1';
+      rememberFollowState(normalizedTargetId, resolved);
+      return resolved;
+    }
+
+    rememberFollowState(normalizedTargetId, fallback);
+    return !!fallback;
+  };
   const updateFollowButtonState = (button, isFollowing) => {
     if (!button) return;
     const nextState = !!isFollowing;
     button.disabled = false;
     button.dataset.following = nextState ? '1' : '0';
+    rememberFollowState(button.getAttribute('data-follow-target-id'), nextState);
     button.title = nextState ? 'Unfollow' : 'Follow';
     button.setAttribute('aria-label', nextState ? 'Unfollow' : 'Follow');
     button.innerHTML = `<i data-lucide="${nextState ? 'user-check' : 'user-plus'}" style="width: 14px; height: 14px;"></i>`;
@@ -470,6 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
   const syncFollowButtons = (targetUserId, isFollowing) => {
+    rememberFollowState(targetUserId, isFollowing);
     document.querySelectorAll(`.follow-toggle-btn[data-follow-target-id="${targetUserId}"]`).forEach((button) => {
       updateFollowButtonState(button, isFollowing);
     });
@@ -522,6 +586,24 @@ document.addEventListener('DOMContentLoaded', () => {
     return Number.isFinite(value) && value > 0 ? formatVoiceDuration(value) : '0:00';
   };
   const getCommentTargetId = (container) => container?.getAttribute('data-comment-id') || container?.getAttribute('data-reply-id');
+  const getPostCardsById = (postId) => Array.from(document.querySelectorAll(`.post-card[data-post-id="${postId}"]`));
+  const setPostLikePendingState = (postId, pending) => {
+    getPostCardsById(postId).forEach((postCard) => {
+      const likeBtn = postCard.querySelector('.like-btn');
+      if (!likeBtn) return;
+      if (pending) {
+        likeBtn.dataset.likePending = '1';
+        likeBtn.disabled = true;
+        likeBtn.style.pointerEvents = 'none';
+        likeBtn.style.opacity = '0.7';
+      } else {
+        delete likeBtn.dataset.likePending;
+        likeBtn.disabled = false;
+        likeBtn.style.pointerEvents = '';
+        likeBtn.style.opacity = '';
+      }
+    });
+  };
 
   const getCurrentUserId = () => Number(window.currentUserId || 0);
 
@@ -1997,6 +2079,285 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     return input.replace(/[&<>"']/g, (match) => map[match]);
   };
+  const buildCommentVoicePlayerHtml = (voiceUrl, voiceDurationSeconds) => {
+    if (!voiceUrl) return '';
+    return `
+      <div class="voice-note-player" style="display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.05); padding: 4px 8px; border-radius: 20px; border: 1px solid var(--border-color); margin-top: 4px; max-width: 200px; user-select: none;">
+        <button type="button" class="voice-play-btn" style="width: 22px; height: 22px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.2s;">
+          <i data-lucide="play" style="width: 9px; height: 9px; fill: white;"></i>
+        </button>
+        <div class="voice-waveform"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="voice-timeline-wrap" style="flex: 1; display: flex; align-items: center; min-width: 0;">
+          <div class="voice-timeline" style="flex: 1; height: 3px; background: var(--border-color); border-radius: 1.5px; position: relative; cursor: pointer; min-width: 60px;">
+            <div class="voice-progress" style="width: 0%; height: 100%; background: var(--primary); border-radius: 1.5px; position: absolute; left: 0; top: 0;"></div>
+          </div>
+        </div>
+        <span class="voice-duration" style="font-size: 9px; color: var(--text-muted); font-family: monospace; min-width: 52px; text-align: right; white-space: nowrap;">${formatCommentVoiceDuration(voiceDurationSeconds)}</span>
+        <audio class="voice-audio-element" src="${voiceUrl}" preload="metadata" style="display: none;"></audio>
+      </div>
+    `;
+  };
+  const buildReplyInputRowHtml = (replyAuthorName, voiceUrl, currentAvatarSize = 24, inputPadding = '6px 84px 6px 12px', iconSize = 12) => `
+    <div class="avatar" style="width: ${currentAvatarSize}px; height: ${currentAvatarSize}px; flex-shrink: 0; overflow: hidden;">
+      <img src="${window.currentUserAvatar || '/images/default-avatar.png'}" style="width:100%; height:100%; object-fit:cover;">
+    </div>
+    <div class="input-wrapper" style="position: relative; flex: 1; display: flex; align-items: center;">
+      <input type="text" placeholder="${voiceUrl ? `Reply to ${replyAuthorName}'s voice note...` : `Reply to ${replyAuthorName}'s text comment...`}" class="reply-input" style="width: 100%; padding: ${inputPadding}; border-radius: 16px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-primary); font-size: 12px; outline: none;">
+      <div class="comment-actions-container" style="position: absolute; right: 8px; display: flex; align-items: center; gap: 4px;">
+        <button type="button" class="comment-icon-btn voice-trigger-btn" title="Record a voice note" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
+          <i data-lucide="mic" style="width: ${iconSize}px; height: ${iconSize}px;"></i>
+        </button>
+        <button type="button" class="comment-icon-btn emoji-trigger-btn" title="Add an emoji" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
+          <i data-lucide="smile" style="width: ${iconSize}px; height: ${iconSize}px;"></i>
+        </button>
+        <button class="submit-reply-btn" style="color: var(--primary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center;">
+          <i data-lucide="send" style="width: ${iconSize}px; height: ${iconSize}px;"></i>
+        </button>
+      </div>
+    </div>
+  `;
+  const appendCommentToPostCard = (postCard, commentData, options = {}) => {
+    if (!postCard || !commentData) return false;
+
+    const {
+      incrementCount = false,
+      showToastOnInsert = false
+    } = options;
+
+    const list = postCard.querySelector('.comments-list');
+    if (!list) return false;
+
+    const id = Number(commentData.id);
+    if (!Number.isFinite(id) || id <= 0) return false;
+
+    if (list.querySelector(`.comment-item-container[data-comment-id="${id}"], .reply-item[data-reply-id="${id}"]`)) {
+      return false;
+    }
+
+    const userId = Number(commentData.user_id);
+    const userName = escapeHtml(commentData.user_name || 'User');
+    const userAvatar = escapeHtml(commentData.user_avatar || '/assets/avatar_placeholder.jpg');
+    const userUsername = escapeHtml(commentData.user_username || '');
+    const certificationBadgeHtml = renderCertificationBadgeHtml(commentData.certification_type);
+    const content = escapeHtml(commentData.content || '');
+    const parentId = Number(commentData.parent_id || 0) || null;
+    const voiceUrl = commentData.voice_url || null;
+    const voiceDurationSeconds = commentData.voice_duration_seconds;
+    const createdAt = commentData.created_at || new Date().toISOString();
+
+    let inserted = false;
+
+    if (parentId) {
+      const directParentEl = list.querySelector(`.comment-item-container[data-comment-id="${parentId}"], .reply-item[data-reply-id="${parentId}"]`);
+      const parentContainer = directParentEl ? (directParentEl.closest('.comment-item-container') || directParentEl) : null;
+
+      if (parentContainer) {
+        const repliesContainer = parentContainer.querySelector('.replies-list-container');
+        if (!repliesContainer) return false;
+
+        const parentDepth = parseInt(directParentEl?.getAttribute('data-depth') || '0', 10);
+        const depth = parentDepth + 1;
+        const replyToName = directParentEl?.getAttribute('data-comment-author') || null;
+        const existingReplies = repliesContainer.querySelectorAll('.reply-item');
+        const replyIndex = existingReplies.length;
+        const readMoreBtn = repliesContainer.querySelector('.read-more-replies-btn');
+        const isCollapsed = readMoreBtn && !readMoreBtn.textContent.includes('Hide');
+
+        const replyEl = document.createElement('div');
+        replyEl.className = 'reply-item';
+        replyEl.setAttribute('data-reply-id', id);
+        replyEl.setAttribute('data-comment-id', id);
+        replyEl.setAttribute('data-comment-user-id', userId);
+        replyEl.setAttribute('data-depth', String(depth));
+        replyEl.setAttribute('data-comment-type', voiceUrl ? 'voice' : 'text');
+        replyEl.setAttribute('data-comment-author', commentData.user_name || 'User');
+        replyEl.style.display = replyIndex >= 2 && isCollapsed ? 'none' : 'flex';
+        replyEl.style.gap = '8px';
+        replyEl.style.alignItems = 'flex-start';
+        replyEl.style.width = '100%';
+
+        if (depth > 1) {
+          replyEl.style.marginLeft = `${Math.min((depth - 1) * 16, 48)}px`;
+        }
+
+        replyEl.innerHTML = `
+          <div class="avatar" style="width: 24px; height: 24px; flex-shrink: 0; overflow: hidden;">
+            <img src="${userAvatar}" style="width:100%; height:100%; object-fit:cover;">
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+            <div style="background: var(--bg-hover); padding: 8px 12px; border-radius: 12px; font-size: 12.5px; border: 1px solid var(--border-color); color: var(--text-primary); width: fit-content; max-width: 100%; word-break: break-word;">
+              <a href="/profile/u/${encodeURIComponent(userUsername)}" style="text-decoration: none; color: inherit; font-weight: bold; cursor: pointer;">
+                <strong style="color: var(--text-primary); font-size: 11.5px; display: block; margin-bottom: 2px;">${userName}${certificationBadgeHtml}</strong>
+              </a>
+              ${replyToName ? `<span class="comment-reply-to" style="color: #3b82f6; font-weight: 700; margin-right: 4px;">@${escapeHtml(replyToName)}</span>` : ''}${content}
+              ${buildCommentVoicePlayerHtml(voiceUrl, voiceDurationSeconds)}
+            </div>
+            <div style="display: flex; gap: 12px; padding-left: 8px; font-size: 10px; align-items: center;">
+              <button class="comment-action-btn reply-trigger-btn" style="background: none; border: none; padding: 0; color: var(--text-secondary); cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                <i data-lucide="reply" style="width: 12px; height: 12px;"></i> Reply
+              </button>
+              <span style="color: var(--text-muted);">${new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          </div>
+        `;
+
+        const replyInputRow = document.createElement('div');
+        replyInputRow.className = 'reply-input-row';
+        replyInputRow.style.display = 'none';
+        replyInputRow.style.marginLeft = '12px';
+        replyInputRow.style.alignItems = 'center';
+        replyInputRow.style.gap = '8px';
+        replyInputRow.style.marginTop = '4px';
+        replyInputRow.innerHTML = buildReplyInputRowHtml(commentData.user_name || 'User', voiceUrl);
+
+        if (readMoreBtn) {
+          repliesContainer.insertBefore(replyEl, readMoreBtn);
+          repliesContainer.insertBefore(replyInputRow, readMoreBtn);
+        } else {
+          repliesContainer.appendChild(replyEl);
+          repliesContainer.appendChild(replyInputRow);
+        }
+
+        refreshReplyLoadMore(repliesContainer);
+        const newVoicePlayer = replyEl.querySelector('.voice-note-player');
+        if (newVoicePlayer) setupVoiceNotePlayer(newVoicePlayer);
+        inserted = true;
+      }
+    } else {
+      list.querySelector('.comments-empty-state')?.remove();
+      list.querySelector('.comments-loading-state')?.remove();
+      list.querySelector('.comments-error-state')?.remove();
+      const commentContainer = document.createElement('div');
+      commentContainer.className = 'comment-item-container';
+      commentContainer.setAttribute('data-comment-id', id);
+      commentContainer.setAttribute('data-comment-user-id', userId);
+      commentContainer.setAttribute('data-comment-type', voiceUrl ? 'voice' : 'text');
+      commentContainer.setAttribute('data-comment-author', commentData.user_name || 'User');
+      commentContainer.style.display = 'flex';
+      commentContainer.style.flexDirection = 'column';
+      commentContainer.style.gap = '8px';
+
+      commentContainer.innerHTML = `
+        <div style="display: flex; gap: 10px; align-items: flex-start;">
+          <div class="avatar" style="width: 30px; height: 30px; flex-shrink: 0; overflow: hidden;">
+            <img src="${userAvatar}" style="width:100%; height:100%; object-fit:cover;">
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+            <div style="background: var(--bg-card); padding: 10px 14px; border-radius: 14px; font-size: 13px; border: 1px solid var(--border-color); color: var(--text-primary); width: fit-content; max-width: 100%; word-break: break-word;">
+              <a href="/profile/u/${encodeURIComponent(userUsername)}" style="text-decoration: none; color: inherit; font-weight: bold; cursor: pointer;">
+                <strong style="color: var(--text-primary); font-size: 12.5px; display: block; margin-bottom: 2px;">${userName}${certificationBadgeHtml}</strong>
+              </a>
+              ${content}
+              ${buildCommentVoicePlayerHtml(voiceUrl, voiceDurationSeconds)}
+            </div>
+            <div style="display: flex; gap: 12px; padding-left: 8px; font-size: 11px;">
+              <button class="comment-action-btn reply-trigger-btn" style="background: none; border: none; padding: 0; color: var(--text-secondary); cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                <i data-lucide="reply" style="width: 12px; height: 12px;"></i> Reply
+              </button>
+              <span style="color: var(--text-muted);">${new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+          </div>
+        </div>
+        <div class="replies-list-container" style="margin-left: 40px; display: flex; flex-direction: column; gap: 8px; border-left: 2px solid var(--border-color); padding-left: 14px;"></div>
+        <div class="reply-input-row" style="display: none; margin-left: 40px; align-items: center; gap: 8px; margin-top: 4px;">
+          ${buildReplyInputRowHtml(commentData.user_name || 'User', voiceUrl)}
+        </div>
+      `;
+
+      list.appendChild(commentContainer);
+      refreshRootCommentLoadMore(list);
+      const newVoicePlayer = commentContainer.querySelector('.voice-note-player');
+      if (newVoicePlayer) setupVoiceNotePlayer(newVoicePlayer);
+      inserted = true;
+    }
+
+    if (!inserted) return false;
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    if (incrementCount) {
+      const commentBtn = postCard.querySelector('.comment-btn');
+      if (commentBtn) {
+        const nextCount = Math.max(0, parseInt(commentBtn.getAttribute('data-comments') || '0', 10) + 1);
+        commentBtn.setAttribute('data-comments', nextCount);
+        const commentCountSpan = commentBtn.querySelector('.comment-count');
+        if (commentCountSpan) {
+          commentCountSpan.textContent = formatNumber(nextCount);
+        }
+      }
+    }
+
+    if (showToastOnInsert && Number(userId) === getCurrentUserId()) {
+      showToast('New comment posted!');
+    }
+
+    return true;
+  };
+
+  const renderCommentsIntoPostCard = (postCard, comments = []) => {
+    if (!postCard) return;
+    const commentsList = postCard.querySelector('.comments-list');
+    if (!commentsList) return;
+
+    commentsList.innerHTML = '';
+
+    const orderedComments = Array.isArray(comments)
+      ? [...comments].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
+      : [];
+
+    orderedComments.forEach((comment) => {
+      appendCommentToPostCard(postCard, {
+        ...comment,
+        certification_type: comment.certification_type || comment.user_certification_type || 'None'
+      });
+    });
+
+    if (orderedComments.length === 0) {
+      const emptyState = document.createElement('div');
+      emptyState.className = 'comments-empty-state';
+      emptyState.style.color = 'var(--text-muted)';
+      emptyState.style.fontSize = '12px';
+      emptyState.style.padding = '4px 0';
+      emptyState.textContent = 'Aucun commentaire pour le moment.';
+      commentsList.appendChild(emptyState);
+    }
+  };
+
+  const loadPostComments = async (postCard, options = {}) => {
+    if (!postCard) return [];
+
+    const { force = false } = options;
+    const commentsSection = postCard.querySelector('.post-comments-section');
+    const commentsList = postCard.querySelector('.comments-list');
+    const postId = Number(postCard.getAttribute('data-post-id'));
+    if (!commentsSection || !commentsList || !Number.isFinite(postId) || postId <= 0) return [];
+
+    if (!force && commentsSection.dataset.commentsLoaded === '1') return [];
+    if (commentsSection.dataset.commentsLoading === '1') return [];
+
+    commentsSection.dataset.commentsLoading = '1';
+    commentsList.innerHTML = '<div class="comments-loading-state" style="color: var(--text-muted); font-size: 12px; padding: 4px 0;">Chargement des commentaires...</div>';
+
+    try {
+      const response = await fetch(`/api/posts/${encodeURIComponent(postId)}/comments`, {
+        credentials: 'same-origin'
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+
+      renderCommentsIntoPostCard(postCard, payload.comments || []);
+      commentsSection.dataset.commentsLoaded = '1';
+      return payload.comments || [];
+    } catch (error) {
+      console.warn('Unable to load post comments:', error);
+      commentsList.innerHTML = '<div class="comments-error-state" style="color: var(--danger); font-size: 12px; padding: 4px 0;">Impossible de charger les commentaires.</div>';
+      return [];
+    } finally {
+      commentsSection.dataset.commentsLoading = '0';
+    }
+  };
 
   const formatStatusRemaining = (expiresAt) => {
     const expiry = new Date(expiresAt);
@@ -2943,15 +3304,23 @@ document.addEventListener('DOMContentLoaded', () => {
     entries.forEach(entry => {
       const video = entry.target;
       if (entry.isIntersecting) {
-        const targetMuted = (typeof window.feedVideosMuted !== 'undefined' ? window.feedVideosMuted : false);
-        video.muted = targetMuted;
-        video.play().catch(err => {
-          // If playing unmuted was blocked by browser autoplay policy, retry muted
-          if (!targetMuted && err.name === 'NotAllowedError') {
-            video.muted = true;
-            video.play().catch(() => {});
-          }
-        });
+        const autoplayWhenReady = () => {
+          const targetMuted = (typeof window.feedVideosMuted !== 'undefined' ? window.feedVideosMuted : false);
+          video.muted = targetMuted;
+          video.play().catch(err => {
+            // If playing unmuted was blocked by browser autoplay policy, retry muted
+            if (!targetMuted && err.name === 'NotAllowedError') {
+              video.muted = true;
+              video.play().catch(() => {});
+            }
+          });
+        };
+
+        if (typeof window.ensureLazyVideoLoaded === 'function') {
+          window.ensureLazyVideoLoaded(video).then(autoplayWhenReady).catch(() => {});
+        } else {
+          autoplayWhenReady();
+        }
       } else {
         if (!video.paused) {
           video.pause();
@@ -3312,34 +3681,7 @@ document.addEventListener('DOMContentLoaded', () => {
       video.addEventListener('volumechange', refreshMuteState);
 
       playBtn?.addEventListener('click', () => {
-        if (video.paused) {
-          if (video.ended) {
-            video.currentTime = 0;
-          }
-          video.play().catch(() => showToast("Unable to play the video."));
-          triggerPulseOverlay(true); // 'true' = was paused → now playing
-        } else {
-          video.pause();
-          triggerPulseOverlay(false); // 'false' = was playing → now paused
-        }
-      });
-
-      video.addEventListener('click', () => {
-        if (video.muted) {
-          video.muted = false;
-          window.feedVideosMuted = false;
-          triggerPulseOverlay('volume-2');
-          if (video.paused) {
-            if (video.ended) {
-              video.currentTime = 0;
-            }
-            video.play().catch(() => {});
-          }
-          
-          document.querySelectorAll('.post-video').forEach((otherVid) => {
-            otherVid.muted = false;
-          });
-        } else {
+        const togglePlayback = () => {
           if (video.paused) {
             if (video.ended) {
               video.currentTime = 0;
@@ -3350,6 +3692,47 @@ document.addEventListener('DOMContentLoaded', () => {
             video.pause();
             triggerPulseOverlay(false);
           }
+        };
+
+        if (typeof window.ensureLazyVideoLoaded === 'function') {
+          window.ensureLazyVideoLoaded(video).then(togglePlayback);
+        } else {
+          togglePlayback();
+        }
+      });
+
+      video.addEventListener('click', () => {
+        const toggleFromVideo = () => {
+          if (video.muted) {
+            video.muted = false;
+            window.feedVideosMuted = false;
+            triggerPulseOverlay('volume-2');
+            if (video.paused) {
+              if (video.ended) {
+                video.currentTime = 0;
+              }
+              video.play().catch(() => {});
+            }
+            
+            document.querySelectorAll('.post-video').forEach((otherVid) => {
+              otherVid.muted = false;
+            });
+          } else if (video.paused) {
+            if (video.ended) {
+              video.currentTime = 0;
+            }
+            video.play().catch(() => showToast("Unable to play the video."));
+            triggerPulseOverlay(true);
+          } else {
+            video.pause();
+            triggerPulseOverlay(false);
+          }
+        };
+
+        if (typeof window.ensureLazyVideoLoaded === 'function') {
+          window.ensureLazyVideoLoaded(video).then(toggleFromVideo);
+        } else {
+          toggleFromVideo();
         }
       });
 
@@ -3387,7 +3770,11 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       fullscreenBtn?.addEventListener('click', () => {
-        openVideoFullscreen(video);
+        if (typeof window.ensureLazyVideoLoaded === 'function') {
+          window.ensureLazyVideoLoaded(video).then(() => openVideoFullscreen(video));
+        } else {
+          openVideoFullscreen(video);
+        }
       });
 
       downloadBtn?.addEventListener('click', () => createWatermarkedVideoDownload(downloadBtn));
@@ -4983,6 +5370,23 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Like, Comment et Bookmark via Socket.io ---
   const postsContainer = document.getElementById('postsContainer');
 
+  const syncWatchedFeedPosts = () => {
+    if (!postsContainer || !socket || !socket.connected) return;
+    const postIds = Array.from(postsContainer.querySelectorAll('[data-post-id]'))
+      .map((el) => Number(el.getAttribute('data-post-id')))
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .slice(0, 240);
+    socket.emit('feed-posts-watch', { postIds });
+  };
+
+  socket.on('connect', () => {
+    syncWatchedFeedPosts();
+  });
+
+  if (postsContainer) {
+    window.setTimeout(syncWatchedFeedPosts, 0);
+  }
+
   // Hide skeleton loader — posts are already rendered server-side
   const skeletonFeed = document.getElementById('skeletonFeed');
   if (skeletonFeed) {
@@ -5013,6 +5417,15 @@ document.addEventListener('DOMContentLoaded', () => {
       window.addEventListener('load', hideStoriesSkeleton, { once: true });
       setTimeout(hideStoriesSkeleton, 1200);
     }
+  }
+
+  const skeletonCreatePost = document.getElementById('skeletonCreatePost');
+  const liveCreatePostCard = document.querySelector('.create-post-card.skeleton-pending');
+  if (skeletonCreatePost && liveCreatePostCard) {
+    setTimeout(() => {
+      skeletonCreatePost.classList.add('hidden');
+      liveCreatePostCard.classList.remove('skeleton-pending');
+    }, 250);
   }
 
   const feedPaginationSentinel = document.getElementById('feedPaginationSentinel');
@@ -5194,9 +5607,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!sentinel || !postsContainer) return;
 
     let isLoading = false;
-    let hasMore   = Boolean(window.feedHasMore);
-    let nextOffset = Number(window.feedNextOffset || 20);
-    const batchSize = 20;
+    const connectionAwareBatchSize = Math.max(10, Math.min(20, Number(window.__trasxFeedBatchSize || 20)));
+    let hasMore = Boolean(window.feedHasMore);
+    let nextCursor = typeof window.feedNextCursor === 'string' && window.feedNextCursor.trim()
+      ? window.feedNextCursor
+      : null;
+    const batchSize = connectionAwareBatchSize;
 
     // Track seen IDs to avoid duplicates (initialize with IDs already in DOM)
     const seenIds = new Set(
@@ -5217,7 +5633,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
         const seenParam = Array.from(seenIds).slice(-150).join(',');
-        const url = `/api/feed/posts?offset=${nextOffset}&limit=${batchSize}${seenParam ? '&seen=' + encodeURIComponent(seenParam) : ''}`;
+        const queryParams = new URLSearchParams();
+        queryParams.set('limit', String(batchSize));
+        if (nextCursor) queryParams.set('cursor', nextCursor);
+        if (seenParam) queryParams.set('seen', seenParam);
+        const url = `/api/feed/posts?${queryParams.toString()}`;
         const response = await fetch(url, { credentials: 'same-origin' });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
@@ -5237,6 +5657,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           });
           postsContainer.appendChild(fragment);
+          syncWatchedFeedPosts();
 
           // Save newly loaded posts to cache and run prefetch
           TrasxOfflineCache.savePosts(newPosts);
@@ -5253,7 +5674,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         hasMore = Boolean(data.hasMore);
-        nextOffset = Number(data.nextOffset) || (nextOffset + batchSize);
+        nextCursor = typeof data.nextCursor === 'string' && data.nextCursor.trim()
+          ? data.nextCursor
+          : null;
+        window.feedNextCursor = nextCursor;
 
         if (!hasMore) {
           if (endMsg) { endMsg.style.display = 'block'; }
@@ -5278,6 +5702,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           });
           postsContainer.appendChild(fragment);
+          syncWatchedFeedPosts();
 
           // Init lazy media on newly inserted posts
           if (typeof window.initLazyMedia === 'function') {
@@ -5288,7 +5713,6 @@ document.addEventListener('DOMContentLoaded', () => {
             try { lucide.createIcons(); } catch (_) {}
           }
 
-          nextOffset = nextOffset + offlinePosts.length;
         } else {
           if (endMsg) { endMsg.style.display = 'block'; }
           hasMore = false;
@@ -5779,6 +6203,12 @@ document.addEventListener('DOMContentLoaded', () => {
       // 1. Like button click
       const likeBtn = e.target.closest('.like-btn');
       if (likeBtn) {
+        if (likeBtn.dataset.likePending === '1') return;
+        if (!socket.connected) {
+          showToast('Connexion temps reel indisponible. Rechargez la page puis reessayez.');
+          return;
+        }
+        setPostLikePendingState(postId, true);
         socket.emit('post-like', { postId });
         return;
       }
@@ -5816,6 +6246,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (commentsSection) {
           const isHidden = commentsSection.style.display === 'none';
           commentsSection.style.display = isHidden ? 'flex' : 'none';
+          if (isHidden) {
+            loadPostComments(postCard).catch(() => {});
+          }
         }
         return;
       }
@@ -6612,8 +7045,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // 1. Response for like toggle
   socket.on('like-response', (data) => {
     const { postId, liked, count } = data;
-    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
-    if (postCard) {
+    setPostLikePendingState(postId, false);
+    getPostCardsById(postId).forEach((postCard) => {
       const likeBtn = postCard.querySelector('.like-btn');
       const likeCountSpan = postCard.querySelector('.like-count');
       if (likeBtn && likeCountSpan) {
@@ -6625,21 +7058,20 @@ document.addEventListener('DOMContentLoaded', () => {
         likeBtn.setAttribute('data-likes', count);
         likeCountSpan.textContent = formatNumber(count);
       }
-    }
+    });
   });
 
   // Broadcast updates of other users' likes
   socket.on('post-liked', (data) => {
     const { postId, likes_count } = data;
-    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
-    if (postCard) {
+    getPostCardsById(postId).forEach((postCard) => {
       const likeBtn = postCard.querySelector('.like-btn');
       const likeCountSpan = postCard.querySelector('.like-count');
       if (likeBtn && likeCountSpan) {
         likeBtn.setAttribute('data-likes', likes_count);
         likeCountSpan.textContent = formatNumber(likes_count);
       }
-    }
+    });
   });
 
   socket.on('post-shared', (data) => {
@@ -6658,8 +7090,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 2. Response for bookmark toggle
   socket.on('bookmark-response', (data) => {
     const { postId, bookmarked } = data;
-    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
-    if (postCard) {
+    getPostCardsById(postId).forEach((postCard) => {
       const bookmarkBtn = postCard.querySelector('.post-bookmark-btn');
       if (bookmarkBtn) {
         if (bookmarked) {
@@ -6706,271 +7137,17 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
       }
-    }
+    });
   });
 
   // 3. Comment append in real time
   socket.on('comment-created', (data) => {
-    const { id, postId, user_id, user_name, user_avatar, certification_type, content, parent_id, voice_url, voice_duration_seconds, created_at, user_username } = data;
-    const certificationBadgeHtml = renderCertificationBadgeHtml(certification_type);
-    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
-    if (postCard) {
-      const list = postCard.querySelector('.comments-list');
-      if (list) {
-        if (parent_id) {
-          // This is a reply to an existing comment
-          const directParentEl = list.querySelector(`.comment-item-container[data-comment-id="${parent_id}"], .reply-item[data-reply-id="${parent_id}"]`);
-          const parentContainer = directParentEl ? (directParentEl.closest('.comment-item-container') || directParentEl) : null;
-
-          if (parentContainer) {
-            const repliesContainer = parentContainer.querySelector('.replies-list-container');
-
-            // Resolve parent depth from DOM attribute
-            const parentDepth = parseInt(directParentEl?.getAttribute('data-depth') || '0', 10);
-            const depth = parentDepth + 1;
-
-            // Resolve target name of parent directly from DOM attribute
-            const replyToName = directParentEl ? directParentEl.getAttribute('data-comment-author') : null;
-
-            // Count existing replies
-            const existingReplies = repliesContainer.querySelectorAll('.reply-item');
-            const replyIndex = existingReplies.length;
-
-            // Create new reply element
-            const replyEl = document.createElement('div');
-            replyEl.className = 'reply-item';
-            replyEl.setAttribute('data-reply-id', id);
-            replyEl.setAttribute('data-comment-id', id);
-            replyEl.setAttribute('data-comment-user-id', user_id);
-            replyEl.setAttribute('data-depth', String(depth));
-            replyEl.setAttribute('data-comment-type', voice_url ? 'voice' : 'text');
-            replyEl.setAttribute('data-comment-author', user_name);
-            replyEl.style.display = 'flex';
-            replyEl.style.gap = '8px';
-            replyEl.style.alignItems = 'flex-start';
-            replyEl.style.width = '100%';
-
-            // Indent based on depth (each depth level above 1 adds 16px margin)
-            if (depth > 1) {
-              replyEl.style.marginLeft = `${Math.min((depth - 1) * 16, 48)}px`;
-            }
-
-            // Determine if it should be visible based on current expansion state
-            const readMoreBtn = repliesContainer.querySelector('.read-more-replies-btn');
-            const isCollapsed = readMoreBtn && !readMoreBtn.textContent.includes('Hide');
-
-            if (replyIndex >= 2 && isCollapsed) {
-              replyEl.style.display = 'none';
-            } else {
-              replyEl.style.display = 'flex';
-            }
-
-            replyEl.innerHTML = `
-              <div class="avatar" style="width: 24px; height: 24px; flex-shrink: 0; overflow: hidden;">
-                <img src="${user_avatar}" style="width:100%; height:100%; object-fit:cover;">
-              </div>
-              <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
-                <div style="background: var(--bg-hover); padding: 8px 12px; border-radius: 12px; font-size: 12.5px; border: 1px solid var(--border-color); color: var(--text-primary); width: fit-content; max-width: 100%; word-break: break-word;">
-                  <a href="/profile/u/${encodeURIComponent(user_username || '')}" style="text-decoration: none; color: inherit; font-weight: bold; cursor: pointer;">
-                    <strong style="color: var(--text-primary); font-size: 11.5px; display: block; margin-bottom: 2px;">${user_name}${certificationBadgeHtml}</strong>
-                  </a>
-                  ${replyToName ? `<span class="comment-reply-to" style="color: #3b82f6; font-weight: 700; margin-right: 4px;">@${escapeHtml(replyToName)}</span>` : ''}${escapeHtml(content)}
-                  
-                  ${voice_url ? `
-                    <div class="voice-note-player" style="display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.05); padding: 4px 8px; border-radius: 20px; border: 1px solid var(--border-color); margin-top: 4px; max-width: 200px; user-select: none;">
-                      <button type="button" class="voice-play-btn" style="width: 22px; height: 22px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.2s;">
-                        <i data-lucide="play" style="width: 9px; height: 9px; fill: white;"></i>
-                      </button>
-                      <div class="voice-waveform"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-                      <div class="voice-timeline-wrap" style="flex: 1; display: flex; align-items: center; min-width: 0;">
-                        <div class="voice-timeline" style="flex: 1; height: 3px; background: var(--border-color); border-radius: 1.5px; position: relative; cursor: pointer; min-width: 60px;">
-                          <div class="voice-progress" style="width: 0%; height: 100%; background: var(--primary); border-radius: 1.5px; position: absolute; left: 0; top: 0;"></div>
-                        </div>
-                      </div>
-                      <span class="voice-duration" style="font-size: 9px; color: var(--text-muted); font-family: monospace; min-width: 52px; text-align: right; white-space: nowrap;">${formatCommentVoiceDuration(voice_duration_seconds)}</span>
-                      <audio class="voice-audio-element" src="${voice_url}" preload="metadata" style="display: none;"></audio>
-                    </div>
-                  ` : ''}
-                </div>
-                <div style="display: flex; gap: 12px; padding-left: 8px; font-size: 10px; align-items: center;">
-                  <button class="comment-action-btn reply-trigger-btn" style="background: none; border: none; padding: 0; color: var(--text-secondary); cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 4px;">
-                    <i data-lucide="reply" style="width: 12px; height: 12px;"></i> Reply
-                  </button>
-                  <span style="color: var(--text-muted);">${new Date(created_at || new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-              </div>
-            `;
-
-            const replyInputRow = document.createElement('div');
-            replyInputRow.className = 'reply-input-row';
-            replyInputRow.style.display = 'none';
-            replyInputRow.style.marginLeft = '12px';
-            replyInputRow.style.alignItems = 'center';
-            replyInputRow.style.gap = '8px';
-            replyInputRow.style.marginTop = '4px';
-            replyInputRow.innerHTML = `
-              <div class="avatar" style="width: 24px; height: 24px; flex-shrink: 0; overflow: hidden;">
-                <img src="${window.currentUserAvatar || '/images/default-avatar.png'}" style="width:100%; height:100%; object-fit:cover;">
-              </div>
-              <div class="input-wrapper" style="position: relative; flex: 1; display: flex; align-items: center;">
-                <input type="text" placeholder="${voice_url ? `Reply to ${user_name}'s voice note...` : `Reply to ${user_name}'s text comment...`}" class="reply-input" style="width: 100%; padding: 6px 84px 6px 12px; border-radius: 16px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-primary); font-size: 12px; outline: none;">
-                <div class="comment-actions-container" style="position: absolute; right: 8px; display: flex; align-items: center; gap: 4px;">
-                  <button type="button" class="comment-icon-btn voice-trigger-btn" title="Record a voice note" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
-                    <i data-lucide="mic" style="width: 12px; height: 12px;"></i>
-                  </button>
-                  <button type="button" class="comment-icon-btn emoji-trigger-btn" title="Add an emoji" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
-                    <i data-lucide="smile" style="width: 12px; height: 12px;"></i>
-                  </button>
-                  <button class="submit-reply-btn" style="color: var(--primary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center;">
-                    <i data-lucide="send" style="width: 12px; height: 12px;"></i>
-                  </button>
-                </div>
-              </div>
-            `;
-
-            // Insert reply element before the "Read more" button if it exists, or just append
-            if (readMoreBtn) {
-              repliesContainer.insertBefore(replyEl, readMoreBtn);
-              repliesContainer.insertBefore(replyInputRow, readMoreBtn);
-            } else {
-              repliesContainer.appendChild(replyEl);
-              repliesContainer.appendChild(replyInputRow);
-            }
-            refreshReplyLoadMore(repliesContainer);
-
-            // Initialize voice note player if present in the new reply
-            const newVoicePlayer = replyEl.querySelector('.voice-note-player');
-            if (newVoicePlayer) setupVoiceNotePlayer(newVoicePlayer);
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-
-            // If total replies > 2, manage the "Read more" button
-            const totalReplies = replyIndex + 1;
-            if (totalReplies > 2) {
-              if (!readMoreBtn) {
-                // Create the button
-                const btn = document.createElement('button');
-                btn.className = 'read-more-replies-btn';
-                btn.style.alignSelf = 'flex-start';
-                btn.style.background = 'none';
-                btn.style.border = 'none';
-                btn.style.color = 'var(--primary)';
-                btn.style.fontSize = '11.5px';
-                btn.style.fontWeight = '600';
-                btn.style.cursor = 'pointer';
-                btn.style.padding = '4px 0';
-                btn.style.marginTop = '2px';
-                btn.style.display = 'flex';
-                btn.style.alignItems = 'center';
-                btn.style.gap = '4px';
-                btn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Show ${totalReplies - 2} more replies`;
-                repliesContainer.appendChild(btn);
-                if (typeof lucide !== 'undefined') lucide.createIcons();
-              } else {
-                // Update text
-                const remainingCount = totalReplies - 2;
-                const isExpanded = readMoreBtn.textContent.includes('Hide');
-                if (!isExpanded) {
-                  readMoreBtn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Show ${remainingCount} more replies`;
-                  if (typeof lucide !== 'undefined') lucide.createIcons();
-                }
-              }
-            }
-          }
-        } else {
-          // This is a top-level comment
-          const commentContainer = document.createElement('div');
-          commentContainer.className = 'comment-item-container';
-          commentContainer.setAttribute('data-comment-id', id);
-          commentContainer.setAttribute('data-comment-user-id', user_id);
-          commentContainer.setAttribute('data-comment-type', voice_url ? 'voice' : 'text');
-          commentContainer.setAttribute('data-comment-author', user_name);
-          commentContainer.style.display = 'flex';
-          commentContainer.style.flexDirection = 'column';
-          commentContainer.style.gap = '8px';
-
-          commentContainer.innerHTML = `
-            <div style="display: flex; gap: 10px; align-items: flex-start;">
-              <div class="avatar" style="width: 30px; height: 30px; flex-shrink: 0; overflow: hidden;">
-                <img src="${user_avatar}" style="width:100%; height:100%; object-fit:cover;">
-              </div>
-              <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
-                <div style="background: var(--bg-card); padding: 10px 14px; border-radius: 14px; font-size: 13px; border: 1px solid var(--border-color); color: var(--text-primary); width: fit-content; max-width: 100%; word-break: break-word;">
-                  <a href="/profile/u/${encodeURIComponent(user_username || '')}" style="text-decoration: none; color: inherit; font-weight: bold; cursor: pointer;">
-                    <strong style="color: var(--text-primary); font-size: 12.5px; display: block; margin-bottom: 2px;">${user_name}${certificationBadgeHtml}</strong>
-                  </a>
-                  ${escapeHtml(content)}
-                  
-                  ${voice_url ? `
-                    <div class="voice-note-player" style="display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.05); padding: 4px 8px; border-radius: 20px; border: 1px solid var(--border-color); margin-top: 4px; max-width: 200px; user-select: none;">
-                      <button type="button" class="voice-play-btn" style="width: 22px; height: 22px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.2s;">
-                        <i data-lucide="play" style="width: 9px; height: 9px; fill: white;"></i>
-                      </button>
-                      <div class="voice-waveform"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-                      <div class="voice-timeline-wrap" style="flex: 1; display: flex; align-items: center; min-width: 0;">
-                        <div class="voice-timeline" style="flex: 1; height: 3px; background: var(--border-color); border-radius: 1.5px; position: relative; cursor: pointer; min-width: 60px;">
-                          <div class="voice-progress" style="width: 0%; height: 100%; background: var(--primary); border-radius: 1.5px; position: absolute; left: 0; top: 0;"></div>
-                        </div>
-                      </div>
-                  <span class="voice-duration" style="font-size: 9px; color: var(--text-muted); font-family: monospace; min-width: 52px; text-align: right; white-space: nowrap;">${formatCommentVoiceDuration(voice_duration_seconds)}</span>
-                  <audio class="voice-audio-element" src="${voice_url}" preload="metadata" style="display: none;"></audio>
-                </div>
-              ` : ''}
-                </div>
-                <div style="display: flex; gap: 12px; padding-left: 8px; font-size: 11px;">
-                  <button class="comment-action-btn reply-trigger-btn" style="background: none; border: none; padding: 0; color: var(--text-secondary); cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 4px;">
-                    <i data-lucide="reply" style="width: 12px; height: 12px;"></i> Reply
-                  </button>
-                  <span style="color: var(--text-muted);">${new Date(created_at || new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-              </div>
-            </div>
-            <div class="replies-list-container" style="margin-left: 40px; display: flex; flex-direction: column; gap: 8px; border-left: 2px solid var(--border-color); padding-left: 14px;">
-            </div>
-            <div class="reply-input-row" style="display: none; margin-left: 40px; align-items: center; gap: 8px; margin-top: 4px;">
-              <div class="avatar" style="width: 24px; height: 24px; flex-shrink: 0; overflow: hidden;">
-                <img src="${window.currentUserAvatar || '/images/default-avatar.png'}" style="width:100%; height:100%; object-fit:cover;">
-              </div>
-              <div class="input-wrapper" style="position: relative; flex: 1; display: flex; align-items: center;">
-                <input type="text" placeholder="${voice_url ? `Reply to ${user_name}'s voice note...` : `Reply to ${user_name}'s text comment...`}" class="reply-input" style="width: 100%; padding: 6px 84px 6px 12px; border-radius: 16px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-primary); font-size: 12px; outline: none;">
-                <div class="comment-actions-container" style="position: absolute; right: 8px; display: flex; align-items: center; gap: 4px;">
-                  <button type="button" class="comment-icon-btn voice-trigger-btn" title="Record a voice note" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
-                    <i data-lucide="mic" style="width: 12px; height: 12px;"></i>
-                  </button>
-                  <button type="button" class="comment-icon-btn emoji-trigger-btn" title="Add an emoji" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
-                    <i data-lucide="smile" style="width: 12px; height: 12px;"></i>
-                  </button>
-                  <button class="submit-reply-btn" style="color: var(--primary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center;">
-                    <i data-lucide="send" style="width: 12px; height: 12px;"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-          `;
-          list.appendChild(commentContainer);
-          refreshRootCommentLoadMore(list);
-          // Initialize voice note player if present in the new comment
-          const newVoicePlayer = commentContainer.querySelector('.voice-note-player');
-          if (newVoicePlayer) setupVoiceNotePlayer(newVoicePlayer);
-          if (typeof lucide !== 'undefined') lucide.createIcons();
-        }
-      }
-
-      // Increment comment count UI
-      const commentBtn = postCard.querySelector('.comment-btn');
-      if (commentBtn) {
-        const commentLabel = commentBtn.querySelector('.action-label');
-        let count = parseInt(commentBtn.getAttribute('data-comments') || '0', 10);
-        count++;
-        commentBtn.setAttribute('data-comments', count);
-        const commentCountSpan = commentBtn.querySelector('.comment-count');
-        if (commentCountSpan) {
-          commentCountSpan.textContent = formatNumber(count);
-        } else {
-          commentLabel.innerHTML = `<span class="comment-count">${formatNumber(count)}</span><span class="btn-text-label"> Comment</span>`;
-        }
-      }
-      showToast("New comment posted!");
-    }
+    getPostCardsById(data.postId).forEach((postCard) => {
+      appendCommentToPostCard(postCard, data, {
+        incrementCount: true,
+        showToastOnInsert: true
+      });
+    });
   });
 
   socket.on('notification-created', (notification) => {
@@ -7272,6 +7449,11 @@ document.addEventListener('DOMContentLoaded', () => {
     newPost.setAttribute('data-created-at', post.created_at || new Date().toISOString());
     newPost.setAttribute('data-post-user-id', post.user_id);
     newPost.setAttribute('data-challenge-type', post.challenge_type || '');
+    const isAuthorFollowed = Number(post.user_id) !== Number(window.currentUserId)
+      ? resolveFollowState(post.user_id, Number(post.is_author_following) === 1)
+      : false;
+    const isLiked = Number(post.is_liked) === 1 || post.is_liked === true;
+    const isBookmarked = Number(post.is_bookmarked) === 1 || post.is_bookmarked === true;
 
     // Background rendering supporting bg_image_url
     let postContentHtml = '';
@@ -7368,7 +7550,7 @@ document.addEventListener('DOMContentLoaded', () => {
         postContentHtml += `
           <div class="post-single-video">
               <div class="post-video-shell">
-                <video src="${post.image_url}" class="post-video" preload="metadata" playsinline poster="${post.thumbnail_url || ''}" oncontextmenu="return false;"></video>
+                <video data-lazy-src="${post.image_url}" class="post-video" preload="none" data-load-on-play="1" playsinline poster="${post.thumbnail_url || ''}" oncontextmenu="return false;"></video>
                 <div class="custom-video-controls">
                   <div class="video-controls-left">
                     <button type="button" class="video-control-btn" data-video-control="play" aria-label="Play video" title="Play">
@@ -7447,7 +7629,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (imgCount === 1) {
           postContentHtml += `
             <div class="post-single-image" data-images="${postImages.join(',')}" style="cursor: pointer;">
-              <img src="${post.image_url}" class="post-img" alt="Post attachment">
+              <img src="${post.thumbnail_url || post.image_url}" data-lazy-src="${post.image_url}" class="post-img" alt="Post attachment" loading="lazy">
             </div>
           `;
         }
@@ -7483,8 +7665,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
           </a>
           ${Number(post.user_id) !== Number(window.currentUserId) ? `
-            <button type="button" class="follow-toggle-btn" data-follow-target-id="${post.user_id}" data-following="${Number(post.is_author_following) ? '1' : '0'}" title="${Number(post.is_author_following) ? 'Unfollow' : 'Follow'}" aria-label="${Number(post.is_author_following) ? 'Unfollow' : 'Follow'}">
-              <i data-lucide="${Number(post.is_author_following) ? 'user-check' : 'user-plus'}" style="width: 14px; height: 14px;"></i>
+            <button type="button" class="follow-toggle-btn" data-follow-target-id="${post.user_id}" data-following="${isAuthorFollowed ? '1' : '0'}" title="${isAuthorFollowed ? 'Unfollow' : 'Follow'}" aria-label="${isAuthorFollowed ? 'Unfollow' : 'Follow'}">
+              <i data-lucide="${isAuthorFollowed ? 'user-check' : 'user-plus'}" style="width: 14px; height: 14px;"></i>
             </button>
           ` : ''}
         </div>
@@ -7499,17 +7681,17 @@ document.addEventListener('DOMContentLoaded', () => {
       
       <footer class="post-footer" style="display:flex; flex-direction:row; justify-content:space-between; align-items:center; padding:12px 16px; border-top:1px solid var(--border-color);">
         <div class="post-actions" style="display:flex; flex-direction:row; align-items:center; gap:16px;">
-          <button class="post-action-btn like-btn" data-likes="${post.likes_count || 0}">
+          <button class="post-action-btn like-btn ${isLiked ? 'liked' : ''}" data-likes="${post.likes_count || 0}">
             <i data-lucide="heart"></i>
-            <span class="action-label"><span class="like-count">${post.likes_count || 0}</span><span class="btn-text-label"> Like</span></span>
+            <span class="action-label"><span class="like-count">${formatNumber(post.likes_count || 0)}</span><span class="btn-text-label"> Like</span></span>
           </button>
           <button class="post-action-btn comment-btn" data-comments="${post.comments_count || 0}">
             <i data-lucide="message-circle"></i>
-            <span class="action-label"><span class="comment-count">${post.comments_count || 0}</span><span class="btn-text-label"> Comment</span></span>
+            <span class="action-label"><span class="comment-count">${formatNumber(post.comments_count || 0)}</span><span class="btn-text-label"> Comment</span></span>
           </button>
           <button class="post-action-btn share-btn" data-shares="${post.shares_count || 0}">
             <i data-lucide="share-2"></i>
-            <span class="action-label"><span class="share-count">${post.shares_count || 0}</span><span class="btn-text-label"> Share</span></span>
+            <span class="action-label"><span class="share-count">${formatNumber(post.shares_count || 0)}</span><span class="btn-text-label"> Share</span></span>
           </button>
           <button class="post-action-btn gift-btn" type="button">
             <i data-lucide="gift"></i>
@@ -7517,7 +7699,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </button>
           ${tradeBtnHtml}
         </div>
-        <button class="post-bookmark-btn" aria-label="Bookmark post">
+        <button class="post-bookmark-btn ${isBookmarked ? 'bookmarked' : ''}" aria-label="Bookmark post">
           <i data-lucide="bookmark"></i>
         </button>
       </footer>
@@ -7585,6 +7767,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const newPost = createPostCardElement(post);
       // Prepend to feed container
       postsContainer.insertBefore(newPost, postsContainer.firstChild);
+      syncWatchedFeedPosts();
 
       // Re-create icons
       if (typeof lucide !== 'undefined') {
@@ -27580,15 +27763,19 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { once: true });
 
   // 2. Service Worker Registration
-  if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-    console.warn("[PWA] L'installation PWA et les Service Workers nécessitent une connexion HTTPS sécurisée en production. Veuillez installer un certificat SSL.");
+  const isLocalPwaHost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+  const canRegisterPwa = 'serviceWorker' in navigator && (window.isSecureContext || isLocalPwaHost);
+
+  if (!canRegisterPwa && 'serviceWorker' in navigator) {
+    console.warn("[PWA] L'installation PWA et les Service Workers nécessitent HTTPS en production.");
   }
 
-  if ('serviceWorker' in navigator) {
+  if (canRegisterPwa) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=10')
+      navigator.serviceWorker.register('/sw.js?v=13', { scope: '/' })
         .then((reg) => {
           console.log('Service Worker registered successfully:', reg.scope);
+          reg.update().catch(() => {});
           if ('Notification' in window && Notification.permission === 'granted') {
             subscribeUserToPush();
           }

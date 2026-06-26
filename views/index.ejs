@@ -180,8 +180,23 @@ function getYouTubeId(url) {
                             <% } %>
 
                               <% if (!isPartiallyBlocked && !isPaused) { %>
+                                <!-- Create Post Card Skeleton -->
+                                <div id="skeletonCreatePost" class="sk-section skeleton-create-post-card" aria-hidden="true" style="<%= currentView !== 'feed' ? 'display: none;' : '' %>">
+                                  <div class="skeleton-create-post-top">
+                                    <div class="skeleton-avatar skeleton-base"></div>
+                                    <div class="skeleton-create-post-input skeleton-base"></div>
+                                    <div class="skeleton-create-post-send skeleton-base"></div>
+                                  </div>
+                                  <div class="skeleton-create-post-bottom">
+                                    <div class="skeleton-create-post-chip skeleton-base"></div>
+                                    <div class="skeleton-create-post-chip skeleton-base"></div>
+                                    <div class="skeleton-create-post-chip skeleton-base"></div>
+                                    <div class="skeleton-create-post-chip skeleton-base"></div>
+                                  </div>
+                                </div>
+
                                 <!-- Create Post Card -->
-                                <div class="create-post-card" style="<%= currentView !== 'feed' ? 'display: none;' : '' %>">
+                                <div class="create-post-card skeleton-pending" style="<%= currentView !== 'feed' ? 'display: none;' : '' %>">
                                   <div class="create-post-upper">
                                     <div class="create-post-upper-row">
                                       <div class="avatar post-creator-avatar">
@@ -1422,8 +1437,8 @@ function getYouTubeId(url) {
                                                                 <% } else if (post.media_type==='video' ) { %>
                                                                   <div class="post-single-video">
                                                                     <div class="post-video-shell">
-                                                                      <video src="<%= post.image_url %>"
-                                                                        class="post-video" preload="metadata"
+                                                                      <video data-lazy-src="<%= post.image_url %>"
+                                                                        class="post-video" preload="none" data-load-on-play="1"
                                                                         playsinline
                                                                         poster="<%= post.thumbnail_url || '' %>"
                                                                         oncontextmenu="return false;"></video>
@@ -1549,7 +1564,7 @@ function getYouTubeId(url) {
                                                                               <div class="post-single-image"
                                                                                 data-images="<%= postImages.join(',') %>"
                                                                                 style="cursor: pointer;">
-                                                                                <img src="<%= post.image_url %>" loading="lazy"
+                                                                                <img src="<%= post.thumbnail_url || post.image_url %>" data-lazy-src="<%= post.image_url %>" loading="lazy"
                                                                                   class="post-img"
                                                                                   alt="<%= tText("Post attachment") %>">
                                                                               </div>
@@ -5202,8 +5217,15 @@ function getYouTubeId(url) {
             };
 
             const bindOnce = (element, key, eventName, handler) => {
-              if (!element || element.dataset[key] === '1') return;
-              element.dataset[key] = '1';
+              if (!element) return;
+              if (element.dataset) {
+                if (element.dataset[key] === '1') return;
+                element.dataset[key] = '1';
+              } else {
+                const registryKey = `__${key}`;
+                if (element[registryKey] === true) return;
+                element[registryKey] = true;
+              }
               element.addEventListener(eventName, handler);
             };
 
@@ -5221,12 +5243,25 @@ function getYouTubeId(url) {
             const adShowInFeedInput = document.getElementById('adShowInFeedInput');
             const adFormStatus = document.getElementById('adFormStatus');
 
+            const mountAdModalToBody = () => {
+              if (!createAdModal || createAdModal.dataset.mountedToBody === '1') return;
+              document.body.appendChild(createAdModal);
+              createAdModal.dataset.mountedToBody = '1';
+            };
+
             const openModal = (event) => {
               event?.preventDefault();
-              if (createAdModal) createAdModal.style.display = 'flex';
+              if (!createAdModal) return;
+              mountAdModalToBody();
+              document.body.classList.add('ad-modal-open');
+              createAdModal.setAttribute('aria-hidden', 'false');
+              createAdModal.style.display = 'flex';
             };
             const closeModal = () => {
-              if (createAdModal) createAdModal.style.display = 'none';
+              if (!createAdModal) return;
+              createAdModal.style.display = 'none';
+              createAdModal.setAttribute('aria-hidden', 'true');
+              document.body.classList.remove('ad-modal-open');
             };
             const resetImagePreview = () => {
               if (adImageInput) adImageInput.value = '';
@@ -5261,6 +5296,11 @@ function getYouTubeId(url) {
             bindOnce(document.getElementById('closeAdModalBtn'), 'adCloseBound', 'click', closeModal);
             bindOnce(createAdModal, 'adBackdropBound', 'click', (event) => {
               if (event.target === createAdModal) closeModal();
+            });
+            bindOnce(document, 'adEscapeBound', 'keydown', (event) => {
+              if (event.key === 'Escape' && createAdModal?.style.display === 'flex') {
+                closeModal();
+              }
             });
             bindOnce(adDaysInput, 'adPriceBound', 'input', updateAdPrice);
             bindOnce(adSendNotificationInput, 'adPriceBound', 'change', updateAdPrice);
@@ -5414,7 +5454,7 @@ function getYouTubeId(url) {
           window.initialBirthdayCelebrants = <%- JSON.stringify(birthdayCelebrants || []).replace(/</g, '\\u003c') %>;
           window.feedRevealBatchSize = <%= Number(typeof feedRevealBatchSize !== 'undefined' ? feedRevealBatchSize : 6) %>;
           window.feedHasMore = <%= typeof feedHasMore !== 'undefined' ? (feedHasMore ? 'true' : 'false') : 'false' %>;
-          window.feedNextOffset = <%= Number(typeof feedNextOffset !== 'undefined' ? feedNextOffset : 20) %>;
+          window.feedNextCursor = <%- JSON.stringify(typeof feedNextCursor !== 'undefined' ? feedNextCursor : null) %>;
           window.shortRevealBatchSize = <%= Number(typeof shortRevealBatchSize !== 'undefined' ? shortRevealBatchSize : 2) %>;
           window.initialFeedPosts = <%- JSON.stringify(posts || []).replace(/</g, '\\u003c') %>;
           window.initialReels = <%- JSON.stringify(reels || []).replace(/</g, '\\u003c') %>;
@@ -5425,7 +5465,7 @@ function getYouTubeId(url) {
           <span><%= typeof tText === 'function' ? tText("Nouveaux posts") : "Nouveaux posts" %></span>
         </div>
 
-        <script src="/js/client.js?v=216"></script>
+        <script src="/js/client.js?v=218"></script>
         </body>
 
         </html>

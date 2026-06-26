@@ -26,6 +26,7 @@
     "mysql2": "^3.9.7",
     "nodemailer": "^8.0.10",
     "qrcode": "^1.5.4",
+    "redis": "^4.7.1",
     "sharp": "^0.35.2",
     "socket.io": "^4.7.5",
     "tesseract.js": "^7.0.0",

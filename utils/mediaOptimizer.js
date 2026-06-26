@@ -18,20 +18,25 @@ ffmpeg.setFfmpegPath(ffmpegStatic);
  * @param {string} outputPath - Desired destination path (WebP)
  * @returns {Promise<string>} - Resolves to the output path
  */
-async function optimizeImage(inputPath, outputPath) {
+async function optimizeImage(inputPath, outputPath, options = {}) {
   try {
+    const {
+      maxWidth = 1920,
+      maxHeight = 1920,
+      quality = 80
+    } = options;
     if (!sharp) {
       fs.copyFileSync(inputPath, outputPath);
       return outputPath;
     }
     await sharp(inputPath)
       .resize({
-        width: 1920,
-        height: 1920,
+        width: maxWidth,
+        height: maxHeight,
         fit: 'inside',
         withoutEnlargement: true
       })
-      .webp({ quality: 80 })
+      .webp({ quality })
       .toFile(outputPath);
     return outputPath;
   } catch (error) {
@@ -65,6 +70,32 @@ async function generateImageThumbnail(inputPath, outputPath) {
     console.error('Error generating image thumbnail:', error);
     throw error;
   }
+}
+
+async function generateResponsiveImageVariants(inputPath, outputDir, baseName) {
+  const variants = {
+    thumbnail: path.join(outputDir, `${baseName}-thumb.webp`),
+    240: path.join(outputDir, `${baseName}-240.webp`),
+    480: path.join(outputDir, `${baseName}-480.webp`),
+    720: path.join(outputDir, `${baseName}-720.webp`)
+  };
+
+  if (!sharp) {
+    Object.values(variants).forEach((targetPath) => {
+      fs.copyFileSync(inputPath, targetPath);
+    });
+    return variants;
+  }
+
+  const pipeline = sharp(inputPath);
+  await Promise.all([
+    pipeline.clone().resize({ width: 160, height: 160, fit: 'cover' }).webp({ quality: 68 }).toFile(variants.thumbnail),
+    pipeline.clone().resize({ width: 240, fit: 'inside', withoutEnlargement: true }).webp({ quality: 70 }).toFile(variants[240]),
+    pipeline.clone().resize({ width: 480, fit: 'inside', withoutEnlargement: true }).webp({ quality: 74 }).toFile(variants[480]),
+    pipeline.clone().resize({ width: 720, fit: 'inside', withoutEnlargement: true }).webp({ quality: 78 }).toFile(variants[720])
+  ]);
+
+  return variants;
 }
 
 /**
@@ -178,6 +209,7 @@ function generateVideoThumbnail(videoPath, thumbnailPath) {
 module.exports = {
   optimizeImage,
   generateImageThumbnail,
+  generateResponsiveImageVariants,
   optimizeVideo,
   optimizeAndTrimVideo,
   generateVideoThumbnail

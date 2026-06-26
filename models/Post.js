@@ -3,6 +3,16 @@ const HiddenPost = require('./HiddenPost');
 const Challenge = require('./Challenge');
 
 let postSchemaPromise = null;
+
+async function ensureIndex(tableName, indexName, columnsSql) {
+  const [rows] = await db.query(
+    'SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
+    [tableName, indexName]
+  );
+  if (rows.length > 0) return;
+  await db.query(`ALTER TABLE \`${tableName}\` ADD INDEX \`${indexName}\` ${columnsSql}`);
+}
+
 async function ensurePostSchema() {
   if (!postSchemaPromise) {
     postSchemaPromise = (async () => {
@@ -83,6 +93,16 @@ async function ensurePostSchema() {
           FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
         )
       `);
+      await ensureIndex('posts', 'idx_posts_created_id', '(created_at DESC, id DESC)');
+      await ensureIndex('posts', 'idx_posts_user_created_id', '(user_id, created_at DESC, id DESC)');
+      await ensureIndex('posts', 'idx_posts_live_created_id', '(is_live, live_status, created_at DESC, id DESC)');
+      await ensureIndex('posts', 'idx_posts_promo_created_id', '(promo_paid_hashtag_count, promo_paid_background_price, created_at DESC, id DESC)');
+      await ensureIndex('comments', 'idx_comments_post_created', '(post_id, created_at DESC, id DESC)');
+      await ensureIndex('follows', 'idx_follows_follower_following', '(follower_id, following_id)');
+      await ensureIndex('follows', 'idx_follows_following_follower', '(following_id, follower_id)');
+      await ensureIndex('bookmarks', 'idx_bookmarks_user_post', '(user_id, post_id)');
+      await ensureIndex('likes', 'idx_likes_user_post', '(user_id, post_id)');
+      await ensureIndex('likes', 'idx_likes_post_user', '(post_id, user_id)');
       await Challenge.ensureSchema();
     })().catch((error) => {
       postSchemaPromise = null;
@@ -188,100 +208,203 @@ class Post {
    * Uses pre-aggregated JOINs (6x faster than correlated subqueries).
    */
   static async getFeedPaginated(currentUserId, {
-    offset = 0,
     limit = 20,
     userCountry = '',
     feedSeed = 1,
-    excludedIds = []
+    cursor = null,
+    hardExcludeIds = [],
+    softSeenIds = []
   } = {}) {
     await ensurePostSchema();
     await HiddenPost.ensureSchema();
 
-    const safeLimit  = Math.min(Math.max(1, Number(limit)  || 20), 50);
-    const safeOffset = Math.min(Math.max(0, Number(offset) || 0),  300);
-    const safeSeed   = Math.abs(Number(feedSeed) || 1);
-    const country    = String(userCountry || '').trim().toLowerCase();
+    const safeLimit = Math.min(Math.max(1, Number(limit) || 20), 50);
+    const safeSeed = Math.abs(Number(feedSeed) || 1);
+    const country = String(userCountry || '').trim().toLowerCase();
+    const normalizedCursor = cursor && Number.isFinite(Number(cursor.id))
+      ? {
+          rankingScore: Number(cursor.rankingScore || 0),
+          createdAtSort: Number(cursor.createdAtSort || 0),
+          id: Number(cursor.id || 0)
+        }
+      : null;
 
-    const safeExcluded = Array.isArray(excludedIds)
-      ? excludedIds.map(Number).filter(n => Number.isFinite(n) && n > 0).slice(0, 150)
+    const normalizedHardExcludeIds = Array.isArray(hardExcludeIds)
+      ? hardExcludeIds.map(Number).filter((value) => Number.isFinite(value) && value > 0).slice(0, 48)
       : [];
-    const excludedClause = safeExcluded.length
-      ? `AND p.id NOT IN (${safeExcluded.join(',')})`
+    const normalizedSoftSeenIds = Array.isArray(softSeenIds)
+      ? softSeenIds.map(Number).filter((value) => Number.isFinite(value) && value > 0).slice(0, 150)
+      : [];
+
+    const hardExcludeClause = normalizedHardExcludeIds.length
+      ? `AND p.id NOT IN (${normalizedHardExcludeIds.map(() => '?').join(', ')})`
+      : '';
+    const softSeenCase = normalizedSoftSeenIds.length
+      ? `CASE WHEN p.id IN (${normalizedSoftSeenIds.map(() => '?').join(', ')}) THEN 950 ELSE 0 END`
+      : '0';
+
+    const innerQuery = `
+      SELECT
+        p.id,
+        p.user_id,
+        p.content,
+        p.image_url,
+        p.image_url_2,
+        p.image_url_3,
+        p.image_url_4,
+        p.media_type,
+        p.bg_image_url,
+        p.text_color,
+        p.text_alignment,
+        p.text_position,
+        p.text_font,
+        p.text_size,
+        p.is_trade,
+        p.trade_price,
+        p.last_possession_user_id,
+        p.next_trade_payout_admin,
+        p.promo_daily_target,
+        p.promo_paid_hashtag_count,
+        p.promo_paid_background_price,
+        p.challenge_type,
+        p.challenge_title,
+        p.challenge_entry_mode,
+        p.challenge_vote_mode,
+        p.challenge_vote_price,
+        p.challenge_invited_user_id,
+        p.challenge_creator_share_percent,
+        p.challenge_participant_share_percent,
+        p.challenge_end_date,
+        p.created_at,
+        UNIX_TIMESTAMP(p.created_at) AS created_at_sort,
+        p.thumbnail_url,
+        p.allow_download,
+        p.is_live,
+        p.live_url,
+        p.live_price,
+        p.live_status,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS author_name,
+        u.avatar AS author_avatar,
+        u.username AS author_username,
+        u.country AS author_country,
+        u.certification_type AS author_certification_type,
+        u.created_at AS author_created_at,
+        COALESCE(lc.likes_count, 0) AS likes_count,
+        COALESCE(cc.comments_count, 0) AS comments_count,
+        COALESCE(fc.followers_count, 0) AS author_followers_count,
+        COALESCE(sc.shares_count, 0) AS shares_count,
+        COALESCE(vc.views_count, 0) AS views_count,
+        (ul.user_id IS NOT NULL) AS is_liked,
+        (ub.user_id IS NOT NULL) AS is_bookmarked,
+        (lu.user_id IS NOT NULL) AS is_live_unlocked,
+        (fw.follower_id IS NOT NULL) AS is_author_following,
+        ROUND((
+          CASE WHEN fw.follower_id IS NOT NULL THEN 1450 ELSE 0 END
+          + LEAST((p.promo_paid_hashtag_count * 230) + (p.promo_paid_background_price * 60), 1550)
+          + CASE WHEN LOWER(COALESCE(u.country, '')) = ? THEN 120 ELSE 0 END
+          + CASE
+              WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 6 THEN 850
+              WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 24 THEN 650
+              WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 72 THEN 420
+              WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 168 THEN 220
+              ELSE 90
+            END
+          + LEAST(COALESCE(fc.followers_count, 0), 6000) / 25
+          + CASE WHEN fw.follower_id IS NULL THEN ((CRC32(CONCAT('discover-', ?, '-', p.id)) % 520) + 130) ELSE 0 END
+          + (CRC32(CONCAT('mix-', ?, '-', p.id)) % 90)
+          - (${softSeenCase})
+        ), 4) AS ranking_score
+      FROM posts p
+      JOIN users u ON p.user_id = u.id
+      LEFT JOIN (SELECT post_id, COUNT(*) AS likes_count FROM likes GROUP BY post_id) lc ON lc.post_id = p.id
+      LEFT JOIN (SELECT post_id, COUNT(*) AS comments_count FROM comments GROUP BY post_id) cc ON cc.post_id = p.id
+      LEFT JOIN (SELECT following_id, COUNT(*) AS followers_count FROM follows GROUP BY following_id) fc ON fc.following_id = p.user_id
+      LEFT JOIN (SELECT post_id, COUNT(*) AS shares_count FROM post_shares WHERE clicked_at IS NOT NULL GROUP BY post_id) sc ON sc.post_id = p.id
+      LEFT JOIN (SELECT post_id, COUNT(*) AS views_count FROM post_daily_unique_views GROUP BY post_id) vc ON vc.post_id = p.id
+      LEFT JOIN likes ul ON ul.post_id = p.id AND ul.user_id = ?
+      LEFT JOIN bookmarks ub ON ub.post_id = p.id AND ub.user_id = ?
+      LEFT JOIN live_unlocks lu ON lu.post_id = p.id AND lu.user_id = ?
+      LEFT JOIN follows fw ON fw.follower_id = ? AND fw.following_id = p.user_id
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM hidden_posts hp
+        WHERE hp.user_id = ? AND hp.post_id = p.id
+      )
+      AND (p.is_live = 0 OR p.live_status != 'ended')
+      ${hardExcludeClause}
+    `;
+
+    const outerWhere = normalizedCursor
+      ? `
+        WHERE (
+          ranked.ranking_score < ?
+          OR (ranked.ranking_score = ? AND ranked.created_at_sort < ?)
+          OR (ranked.ranking_score = ? AND ranked.created_at_sort = ? AND ranked.id < ?)
+        )
+      `
       : '';
 
     const query = `
-      SELECT
-        p.id, p.user_id, p.content,
-        p.image_url, p.image_url_2, p.image_url_3, p.image_url_4,
-        p.media_type, p.bg_image_url, p.text_color, p.text_alignment,
-        p.text_position, p.text_font, p.text_size,
-        p.is_trade, p.trade_price, p.last_possession_user_id, p.next_trade_payout_admin,
-        p.promo_daily_target, p.promo_paid_hashtag_count, p.promo_paid_background_price,
-        p.challenge_type, p.challenge_title, p.challenge_entry_mode,
-        p.challenge_vote_mode, p.challenge_vote_price, p.challenge_invited_user_id,
-        p.challenge_creator_share_percent, p.challenge_participant_share_percent, p.challenge_end_date,
-        p.created_at, p.thumbnail_url, p.allow_download,
-        p.is_live, p.live_url, p.live_price, p.live_status,
-        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS author_name,
-        u.avatar       AS author_avatar,
-        u.username     AS author_username,
-        u.country      AS author_country,
-        u.certification_type AS author_certification_type,
-        u.created_at   AS author_created_at,
-        COALESCE(lc.likes_count, 0)     AS likes_count,
-        COALESCE(cc.comments_count, 0)  AS comments_count,
-        COALESCE(fc.followers_count, 0) AS author_followers_count,
-        COALESCE(sc.shares_count, 0)    AS shares_count,
-        COALESCE(vc.views_count, 0)     AS views_count,
-        (ul.user_id IS NOT NULL)        AS is_liked,
-        (ub.user_id IS NOT NULL)        AS is_bookmarked,
-        (lu.user_id IS NOT NULL)        AS is_live_unlocked,
-        (fw.follower_id IS NOT NULL)    AS is_author_following,
-        CASE WHEN fw.follower_id IS NOT NULL THEN 1 ELSE 0 END AS _s_follow,
-        CASE WHEN LOWER(u.country) = ? THEN 1 ELSE 0 END       AS _s_country,
-        (p.promo_paid_hashtag_count * 140 + p.promo_paid_background_price * 40) AS _s_premium,
-        LEAST(COALESCE(fc.followers_count, 0), 5000)           AS _s_popular,
-        (CRC32(CONCAT(p.id, '-', ?)) % 10000) / 10.0           AS _s_random
-      FROM posts p
-      JOIN users u ON p.user_id = u.id
-      LEFT JOIN (SELECT post_id, COUNT(*) AS likes_count    FROM likes     GROUP BY post_id) lc ON lc.post_id = p.id
-      LEFT JOIN (SELECT post_id, COUNT(*) AS comments_count FROM comments  GROUP BY post_id) cc ON cc.post_id = p.id
-      LEFT JOIN (SELECT following_id, COUNT(*) AS followers_count FROM follows GROUP BY following_id) fc ON fc.following_id = p.user_id
-      LEFT JOIN (SELECT post_id, COUNT(*) AS shares_count   FROM post_shares WHERE clicked_at IS NOT NULL GROUP BY post_id) sc ON sc.post_id = p.id
-      LEFT JOIN (SELECT post_id, COUNT(*) AS views_count    FROM post_daily_unique_views GROUP BY post_id) vc ON vc.post_id = p.id
-      LEFT JOIN likes        ul ON ul.post_id     = p.id AND ul.user_id      = ?
-      LEFT JOIN bookmarks    ub ON ub.post_id     = p.id AND ub.user_id      = ?
-      LEFT JOIN live_unlocks lu ON lu.post_id     = p.id AND lu.user_id      = ?
-      LEFT JOIN follows      fw ON fw.follower_id = ?     AND fw.following_id = p.user_id
-      WHERE NOT EXISTS (
-        SELECT 1 FROM hidden_posts hp WHERE hp.user_id = ? AND hp.post_id = p.id
-      )
-      AND (p.is_live = 0 OR p.live_status != 'ended')
-      ${excludedClause}
-      ORDER BY _s_follow DESC, _s_country DESC, _s_premium DESC, _s_popular DESC, _s_random DESC, p.created_at DESC
-      LIMIT ? OFFSET ?
+      SELECT *
+      FROM (
+        ${innerQuery}
+      ) ranked
+      ${outerWhere}
+      ORDER BY ranked.ranking_score DESC, ranked.created_at_sort DESC, ranked.id DESC
+      LIMIT ?
     `;
 
     const params = [
-      country, safeSeed,
-      currentUserId, currentUserId, currentUserId, currentUserId,
+      country,
+      safeSeed,
+      safeSeed,
+      ...normalizedSoftSeenIds,
       currentUserId,
-      safeLimit, safeOffset
+      currentUserId,
+      currentUserId,
+      currentUserId,
+      currentUserId,
+      ...normalizedHardExcludeIds
     ];
 
+    if (normalizedCursor) {
+      params.push(
+        normalizedCursor.rankingScore,
+        normalizedCursor.rankingScore,
+        normalizedCursor.createdAtSort,
+        normalizedCursor.rankingScore,
+        normalizedCursor.createdAtSort,
+        normalizedCursor.id
+      );
+    }
+
+    params.push(safeLimit + 1);
+
     const [rows] = await db.query(query, params);
-    const hasMore = rows.length === safeLimit;
+    const hasMore = rows.length > safeLimit;
+    const visibleRows = hasMore ? rows.slice(0, safeLimit) : rows;
+    const lastRow = visibleRows[visibleRows.length - 1] || null;
+
+    const posts = visibleRows.map(({ ranking_score, created_at_sort, ...row }) => ({
+      ...row,
+      ranking_score: Number(ranking_score || 0),
+      created_at_sort: Number(created_at_sort || 0),
+      is_liked: !!row.is_liked,
+      is_bookmarked: !!row.is_bookmarked,
+      is_live_unlocked: !!row.is_live_unlocked,
+      is_author_following: !!row.is_author_following
+    }));
 
     return {
-      posts: rows.map(({ _s_follow, _s_country, _s_premium, _s_popular, _s_random, ...r }) => ({
-        ...r,
-        is_liked:            !!r.is_liked,
-        is_bookmarked:       !!r.is_bookmarked,
-        is_live_unlocked:    !!r.is_live_unlocked,
-        is_author_following: !!r.is_author_following
-      })),
+      posts,
       hasMore,
-      nextOffset: hasMore ? safeOffset + safeLimit : null
+      nextCursor: hasMore && lastRow
+        ? Buffer.from(JSON.stringify({
+            rankingScore: Number(lastRow.ranking_score || 0),
+            createdAtSort: Number(lastRow.created_at_sort || 0),
+            id: Number(lastRow.id || 0)
+          })).toString('base64url')
+        : null
     };
   }
 

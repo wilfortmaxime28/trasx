@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <!-- PWA & Mobile Optimization -->
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="/manifest.webmanifest?v=13" crossorigin="use-credentials">
   <meta name="theme-color" content="#090d16">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -19,7 +19,7 @@
   <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="/css/styles.css?v=178">
   <!-- Lucide Icons CDN -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/lucide@latest" defer></script>
   <script>
     window.__APP_LOCALE__ = <%- JSON.stringify(typeof locale !== 'undefined' ? locale : 'en') %>;
     window.__APP_I18N__ = <%- JSON.stringify(typeof clientTranslations === 'object' && clientTranslations ? clientTranslations : {}) %>;
@@ -134,7 +134,7 @@
     });
   </script>
   <!-- Socket.io client -->
-  <script src="/socket.io/socket.io.js"></script>
+  <script src="/socket.io/socket.io.js" defer></script>
   <!-- Lazy loading for images and videos -->
   <script src="/js/lazyMedia.js" defer></script>
 </head>

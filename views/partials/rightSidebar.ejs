@@ -286,25 +286,25 @@
 
         <!-- Create Ad Modal (Premium Design) -->
         <div class="modal-overlay" id="createAdModal"
-          style="display: none; z-index: 3200; backdrop-filter: blur(10px); padding: 12px; box-sizing: border-box;">
+          style="display: none; z-index: 3200; backdrop-filter: blur(10px); padding: 10px; box-sizing: border-box;" aria-hidden="true">
           <div class="modal-content"
-            style="max-width: 480px; width: min(92vw, 480px); max-height: min(92vh, calc(100dvh - 24px)); padding: 0; background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-xl); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;">
+            style="max-width: 440px; width: min(92vw, 440px); max-height: min(78vh, calc(100dvh - 20px)); padding: 0; background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-xl); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;">
             <div
-              style="display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 20px; background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%); color: white; flex-shrink: 0;">
+              style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 18px; background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%); color: white; flex-shrink: 0;">
               <div>
-                <div style="font-size: 18px; font-weight: 800; font-family: 'Outfit', sans-serif;">Créer une publicité
+                <div style="font-size: 17px; font-weight: 800; font-family: 'Outfit', sans-serif;">Créer une publicité
                 </div>
-                <div style="font-size: 12px; opacity: 0.86; margin-top: 3px;">Faites la promotion de votre marque auprès
+                <div style="font-size: 11px; opacity: 0.86; margin-top: 2px;">Faites la promotion de votre marque auprès
                   de la communauté</div>
               </div>
               <button id="closeAdModalBtn" type="button"
-                style="width: 30px; height: 30px; border-radius: 50%; border: none; background: rgba(255,255,255,0.15); color: white; cursor: display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                style="width: 30px; height: 30px; border-radius: 50%; border: none; background: rgba(255,255,255,0.15); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer;">
                 <i data-lucide="x" style="width: 15px; height: 15px;"></i>
               </button>
             </div>
 
             <form id="createAdForm" novalidate
-              style="padding: 20px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; min-height: 0; flex: 1 1 auto; overscroll-behavior: contain; scrollbar-gutter: stable;">
+              style="padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-height: 0; flex: 1 1 auto; overscroll-behavior: contain; scrollbar-gutter: stable;">
               <div style="display: flex; flex-direction: column; gap: 6px;">
                 <label for="adTitleInput" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Titre
                   de la publicité</label>
@@ -317,7 +317,7 @@
                 <label for="adDescInput"
                   style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Description</label>
                 <textarea id="adDescInput" name="description" required
-                  placeholder="<%= tText("Ex. Une courte description accrocheuse qui invite au clic...") %>" rows="3"
+                  placeholder="<%= tText("Ex. Une courte description accrocheuse qui invite au clic...") %>" rows="2"
                   style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-primary); font-size: 13px; outline: none; resize: none;"></textarea>
               </div>
 
@@ -343,7 +343,7 @@
                     (600 x 315 px), max 10 Mo</div>
                 </div>
                 <div id="adImagePreviewWrapper"
-                  style="display: none; width: 100%; height: 100px; border-radius: 8px; overflow: hidden; background: #000; margin-top: 6px; position: relative;">
+                  style="display: none; width: 100%; height: 88px; border-radius: 8px; overflow: hidden; background: #000; margin-top: 6px; position: relative;">
                   <img id="adImagePreview" src="" alt="<%= tText("Aperçu") %>" style="width: 100%; height: 100%; object-fit: cover;">
                   <button id="removeAdImageBtn" type="button"
                     style="position: absolute; right: 8px; top: 8px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,0,0,0.6); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center;"><i
@@ -405,7 +405,7 @@
               </div>
 
               <button type="submit" id="submitAdBtn"
-                style="width: 100%; padding: 14px; border-radius: 10px; background: linear-gradient(to right, #2563eb, #7c3aed); color: white; border: none; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.25); position: sticky; bottom: 0; z-index: 2;">
+                style="width: 100%; padding: 12px; border-radius: 10px; background: linear-gradient(to right, #2563eb, #7c3aed); color: white; border: none; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.25); position: sticky; bottom: 0; z-index: 2;">
                 <i data-lucide="wallet"></i>
                 Payer et Publier
               </button>
