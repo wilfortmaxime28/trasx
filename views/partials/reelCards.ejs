@@ -12,12 +12,14 @@
   }
   const reelMediaFit = reel.media_fit === 'contain' ? 'contain' : 'cover';
   const reelCardIndex = Number(reelIndexOffset || 0) + reelIndex;
-  const reelThumbUrl = reel.thumbnail_url || (reel.media_type === 'image_audio' ? resolvedVideoUrl : (reel.author_avatar || '/assets/avatar_placeholder.jpg'));
+  const reelThumbUrl = reel.media_type === 'image_audio' ? resolvedVideoUrl : (reel.thumbnail_url || '');
+  const reelVisualReady = (!reel.media_type || reel.media_type === 'video') ? '0' : '1';
   %>
   <div class="reel-card" id="reel-<%= reel.id %>" data-reel-id="<%= reel.id %>"
     data-progressive-item="reel"
     data-progressive-index="<%= reelCardIndex %>"
     data-author-username="<%= reel.author_username %>" data-user-id="<%= reel.user_id %>"
+    data-visual-ready="<%= reelVisualReady %>"
     data-thumb-src="<%= reelThumbUrl ? reelThumbUrl.replace(/"/g, '&quot;') : '' %>"
     data-search-text="<%= [reel.author_name, reel.author_username, reel.caption, reel.sound_name].filter(Boolean).join(' ').replace(/"/g, '&quot;') %>"
     data-author-name="<%= reel.author_name ? reel.author_name.replace(/"/g, '&quot;') : '' %>"
@@ -25,8 +27,14 @@
     data-sound-name="<%= reel.sound_name ? reel.sound_name.replace(/"/g, '&quot;') : '' %>"
     style="position: relative; width: 100%; max-width: 440px; aspect-ratio: 9/16; border-radius: var(--border-radius-card); overflow: hidden; box-shadow: var(--shadow-lg); background: #000; border: 1px solid var(--border-color);">
     <% if (!reel.media_type || reel.media_type === 'video') { %>
+      <div class="reel-poster-shell <%= reelThumbUrl ? 'has-thumb' : 'no-thumb' %>" aria-hidden="true">
+        <% if (reelThumbUrl) { %>
+          <img src="<%= reelThumbUrl %>" class="reel-poster-image" loading="lazy" decoding="async" alt="">
+        <% } %>
+        <div class="reel-poster-scrim"></div>
+      </div>
       <video data-lazy-src="<%= resolvedVideoUrl %>" poster="<%= reelThumbUrl %>" muted playsinline preload="none" data-load-on-play="1" class="reel-video"
-        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: <%= reelMediaFit %>; z-index: 1; cursor: pointer;"
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: <%= reelMediaFit %>; z-index: 2; cursor: pointer;"
         data-media-type="video" data-media-fit="<%= reelMediaFit %>"
         data-audio-start="<%= reel.audio_start_time || 0 %>"
         data-audio-duration="<%= reel.audio_duration || 30 %>"

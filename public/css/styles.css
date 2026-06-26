@@ -6769,6 +6769,23 @@ body[data-theme="dark"] .birthday-feed-card-shell::before {
   display: block;
 }
 
+.shorts-search-result-thumb-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.12), transparent 38%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(3, 7, 18, 0.98) 100%);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.shorts-search-result-thumb-fallback i,
+.shorts-search-result-thumb-fallback svg {
+  width: 18px;
+  height: 18px;
+}
+
 .shorts-search-result-copy {
   min-width: 0;
   display: grid;
@@ -13986,6 +14003,59 @@ body[data-theme="dark"] .compose-contact-chip {
    ========================================================================== */
 
 /* 1. TikTok-like loader styling */
+.reel-card video.reel-video {
+  background: #000;
+  transition: opacity 0.2s ease;
+}
+
+.reel-poster-shell {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.1), transparent 36%),
+    linear-gradient(180deg, #111827 0%, #020617 100%);
+  transition: opacity 0.22s ease, visibility 0.22s ease;
+}
+
+.reel-poster-shell.has-thumb {
+  background: #000;
+}
+
+.reel-poster-image,
+.reel-poster-scrim {
+  position: absolute;
+  inset: 0;
+}
+
+.reel-poster-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(1.04) brightness(0.8);
+}
+
+.reel-poster-scrim {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.34) 100%),
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.04), transparent 56%);
+}
+
+.reel-card[data-visual-ready="0"] video.reel-video {
+  opacity: 0;
+}
+
+.reel-card[data-visual-ready="1"] video.reel-video {
+  opacity: 1;
+}
+
+.reel-card[data-visual-ready="1"] .reel-poster-shell {
+  opacity: 0;
+  visibility: hidden;
+}
+
 .reel-loader-container {
   display: none;
   position: absolute;
@@ -13995,6 +14065,10 @@ body[data-theme="dark"] .compose-contact-chip {
   align-items: center;
   justify-content: center;
   pointer-events: none;
+}
+
+.reel-card.active[data-visual-ready="0"] .reel-loader-container {
+  display: flex;
 }
 
 .tiktok-loader {

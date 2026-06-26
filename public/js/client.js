@@ -5620,7 +5620,6 @@ document.addEventListener('DOMContentLoaded', () => {
           if (r.media_type === 'image_audio' && r.video_url && typeof r.video_url === 'string') {
             urls.add(r.video_url);
           }
-          if (r.author_avatar && typeof r.author_avatar === 'string') urls.add(r.author_avatar);
         });
 
         const maxPrefetchCount = connectionProfile.isSlow ? 12 : 36;
@@ -10316,16 +10315,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const thumbSrc = escapeHtml(
         card.getAttribute('data-thumb-src')
         || thumbEl?.getAttribute('poster')
-        || thumbEl?.getAttribute('src')
-        || thumbEl?.getAttribute('data-lazy-src')
-        || card.querySelector('.reel-details-overlay .avatar img')?.getAttribute('src')
-        || '/assets/avatar_placeholder.jpg'
+        || (thumbEl?.tagName?.toLowerCase() === 'img' ? thumbEl.getAttribute('src') : '')
+        || ''
       );
+      const thumbHtml = thumbSrc
+        ? `<img src="${thumbSrc}" alt="${authorName}">`
+        : `<div class="shorts-search-result-thumb-fallback"><i data-lucide="play"></i></div>`;
 
       return `
         <button type="button" class="shorts-search-result-item" data-reel-id="${reelId}">
           <div class="shorts-search-result-thumb">
-            <img src="${thumbSrc}" alt="${authorName}">
+            ${thumbHtml}
           </div>
           <div class="shorts-search-result-copy">
             <strong>${authorName}</strong>
@@ -10336,6 +10336,12 @@ document.addEventListener('DOMContentLoaded', () => {
         </button>
       `;
     }).join('');
+
+    if (typeof lucide !== 'undefined') {
+      try {
+        lucide.createIcons({ nodes: shortsSearchResults.querySelectorAll('[data-lucide]') });
+      } catch (_) {}
+    }
   };
 
   const openShortsSearchOverlay = () => {
@@ -10706,6 +10712,38 @@ document.addEventListener('DOMContentLoaded', () => {
     return Promise.resolve(card);
   };
 
+  const setReelVisualReady = (card, isReady) => {
+    if (!(card instanceof Element)) return;
+    card.setAttribute('data-visual-ready', isReady ? '1' : '0');
+  };
+
+  const initReelVisualState = (card) => {
+    if (!card || card.dataset.reelVisualBound === '1') return;
+
+    const videoEl = card.querySelector('video.reel-video');
+    if (!videoEl) {
+      setReelVisualReady(card, true);
+      return;
+    }
+
+    card.dataset.reelVisualBound = '1';
+
+    const markReady = () => setReelVisualReady(card, true);
+    const markPending = () => {
+      if (!videoEl.currentSrc && !videoEl.getAttribute('src')) {
+        setReelVisualReady(card, false);
+      }
+    };
+
+    setReelVisualReady(card, videoEl.readyState >= 2 && (!!videoEl.currentSrc || !!videoEl.getAttribute('src')));
+
+    videoEl.addEventListener('loadeddata', markReady);
+    videoEl.addEventListener('canplay', markReady);
+    videoEl.addEventListener('playing', markReady);
+    videoEl.addEventListener('loadstart', markPending);
+    videoEl.addEventListener('emptied', () => setReelVisualReady(card, false));
+  };
+
   const resetReelMediaToStart = (card) => {
     const media = getMediaElements(card);
     if (!media) return;
@@ -10738,6 +10776,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const rememberedSource = rememberReelMediaSource(mediaEl);
     if (!rememberedSource) return;
     if (!mediaEl.getAttribute('src') && !mediaEl.currentSrc) return;
+
+    if (mediaEl.matches('video.reel-video')) {
+      setReelVisualReady(mediaEl.closest('.reel-card'), false);
+    }
 
     try {
       mediaEl.pause();
@@ -12077,6 +12119,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!reelCards.length) return [];
 
     reelCards.forEach((card) => {
+      initReelVisualState(card);
       initReelCardEvents(card);
       syncReelFollowButtonState(card);
     });
