@@ -5034,6 +5034,10 @@ document.addEventListener('DOMContentLoaded', () => {
       delivered_at: data.delivered_at || null,
       read_at: data.read_at || null,
       messageStatus: data.messageStatus || null,
+      parent_id: data.parent_id || null,
+      parent_content: data.parent_content || null,
+      parent_sender_username: data.parent_sender_username || null,
+      parent_attachment_type: data.parent_attachment_type || null,
       created_at: createdAt
     };
     const previewText = conversation?.preview || getChatMessagePreviewText(message);
