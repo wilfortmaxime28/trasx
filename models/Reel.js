@@ -130,6 +130,10 @@ class Reel {
         ) AS is_author_following
       FROM reels r
       JOIN users u ON r.user_id = u.id
+      WHERE r.id NOT IN (
+        SELECT reel_id FROM admin_moderation_notices
+        WHERE target_type = 'reel' AND status = 'active' AND created_at >= NOW() - INTERVAL 72 HOUR
+      )
       ORDER BY r.created_at DESC
     `;
     const [rows] = await db.query(query, [currentUserId]);
@@ -162,6 +166,10 @@ class Reel {
         r.next_trade_payout_admin
       FROM reels r
       WHERE r.user_id = ?
+        AND r.id NOT IN (
+          SELECT reel_id FROM admin_moderation_notices
+          WHERE target_type = 'reel' AND status = 'active' AND created_at >= NOW() - INTERVAL 72 HOUR
+        )
       ORDER BY r.created_at DESC
     `;
     const [rows] = await db.query(query, [userId]);
@@ -191,8 +199,10 @@ class Reel {
         r.last_possession_user_id,
         r.trim_start,
         r.trim_end,
-        r.next_trade_payout_admin
+        r.next_trade_payout_admin,
+        u.username AS author_username
       FROM reels r
+      JOIN users u ON r.user_id = u.id
       WHERE r.id = ?
     `;
     const [rows] = await db.query(query, [reelId]);

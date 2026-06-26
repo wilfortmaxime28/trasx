@@ -12,14 +12,7 @@ async function ensureNotificationSchema() {
         await db.query('ALTER TABLE notifications MODIFY COLUMN actor_id INT DEFAULT NULL');
       }
 
-      // Check the 'type' enum column to support new realtime notification kinds
-      const [typeRows] = await db.query('SHOW COLUMNS FROM notifications LIKE ?', ['type']);
-      if (typeRows && typeRows.length > 0) {
-        const typeDefine = typeRows[0].Type || '';
-        if (!typeDefine.includes('game') || !typeDefine.includes('gift') || !typeDefine.includes('market')) {
-          await db.query("ALTER TABLE notifications MODIFY COLUMN type ENUM('like', 'comment', 'share', 'follow', 'mention', 'message', 'ad-published', 'game', 'gift', 'market') NOT NULL");
-        }
-      }
+
 
       // Check the 'ad_url' column to support clickable ads in notifications
       const [adUrlRows] = await db.query('SHOW COLUMNS FROM notifications LIKE ?', ['ad_url']);
