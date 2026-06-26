@@ -896,7 +896,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (gameData && gameData.type === 'game_invitation') {
       const gameNames = {
         morpion: 'Morpion',
-        domino: 'Domino',
+        domino: 'Jeu retire',
         puissance4: 'Puissance 4',
         connect4: 'Puissance 4',
         gomoku: 'Gomoku',
@@ -1435,7 +1435,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const renderGameInvitationBubble = (gameData, msgType, messageId) => {
     const gameNames = {
       morpion: 'Morpion (Tic-Tac-Toe)',
-      domino: 'Domino',
+      domino: 'Jeu retire',
       puissance4: 'Puissance 4',
       connect4: 'Puissance 4',
       gomoku: 'Gomoku',
@@ -3603,6 +3603,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       autoplayObserver.observe(video);
       shell.dataset.videoReady = 'true';
+      if (!shell.dataset.videoState) {
+        shell.dataset.videoState = (video.readyState >= 2 || !!video.currentSrc || !!video.src) ? 'ready' : 'loading';
+      }
       const playBtn = shell.querySelector('[data-video-control="play"]');
       const muteBtn = shell.querySelector('[data-video-control="mute"]');
       const fullscreenBtn = shell.querySelector('[data-video-control="fullscreen"]');
@@ -3620,6 +3623,16 @@ document.addEventListener('DOMContentLoaded', () => {
           || 'user'
       );
       const videoEndOverlayController = createMediaEndOverlayController(endOverlay);
+
+      const markVideoReady = () => {
+        if (shell.dataset.videoState !== 'playing') {
+          shell.dataset.videoState = 'ready';
+        }
+      };
+
+      const markVideoError = () => {
+        shell.dataset.videoState = 'error';
+      };
 
       // Pulse overlay helper – shows a brief play/pause/volume icon animation
       const triggerPulseOverlay = (iconNameOrIsPaused) => {
@@ -3656,8 +3669,12 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       video.addEventListener('loadedmetadata', () => {
+        markVideoReady();
         if (duration) duration.textContent = formatVideoTime(video.duration);
       });
+      video.addEventListener('loadeddata', markVideoReady);
+      video.addEventListener('canplay', markVideoReady);
+      video.addEventListener('error', markVideoError);
 
       video.addEventListener('timeupdate', () => {
         if (video.currentTime < Math.max(0, (video.duration || 0) - 0.25)) {
@@ -3670,11 +3687,16 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       video.addEventListener('play', () => {
+        shell.dataset.videoState = 'playing';
         videoEndOverlayController.hide();
         refreshPlayState();
       });
-      video.addEventListener('pause', refreshPlayState);
+      video.addEventListener('pause', () => {
+        markVideoReady();
+        refreshPlayState();
+      });
       video.addEventListener('ended', () => {
+        markVideoReady();
         videoEndOverlayController.show();
         refreshPlayState();
       });
@@ -4000,7 +4022,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const shareCountEl = reelCard.querySelector('.reel-share-btn .share-count');
     const mediaTag = visualEl?.tagName?.toLowerCase() || '';
     const mediaType = mediaTag === 'video' ? 'video' : 'image';
-    const mediaSource = visualEl?.getAttribute('src') || '';
+    const mediaSource = visualEl?.getAttribute('src')
+      || visualEl?.getAttribute('poster')
+      || visualEl?.getAttribute('data-lazy-src')
+      || reelCard.getAttribute('data-thumb-src')
+      || '';
 
     return {
       type: 'shared_reel',
@@ -4039,7 +4065,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!targetCard || !cards.length) {
       if (attempt < 12) {
-        window.setTimeout(() => focusSharedReelTarget(numericReelId, attempt + 1), 160);
+        const tryLoadMore = typeof window.loadNextReelsBatch === 'function'
+          && Boolean(window.reelsHasMore)
+          && attempt < 8;
+
+        if (tryLoadMore) {
+          window.loadNextReelsBatch({ reason: 'focus-target', retryCount: 0 })
+            .finally(() => {
+              window.setTimeout(() => focusSharedReelTarget(numericReelId, attempt + 1), 180);
+            });
+        } else {
+          window.setTimeout(() => focusSharedReelTarget(numericReelId, attempt + 1), 160);
+        }
       }
       return false;
     }
@@ -4047,7 +4084,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const targetIndex = cards.indexOf(targetCard);
     if (targetIndex === -1) {
       if (attempt < 12) {
-        window.setTimeout(() => focusSharedReelTarget(numericReelId, attempt + 1), 160);
+        const tryLoadMore = typeof window.loadNextReelsBatch === 'function'
+          && Boolean(window.reelsHasMore)
+          && attempt < 8;
+
+        if (tryLoadMore) {
+          window.loadNextReelsBatch({ reason: 'focus-target', retryCount: 0 })
+            .finally(() => {
+              window.setTimeout(() => focusSharedReelTarget(numericReelId, attempt + 1), 180);
+            });
+        } else {
+          window.setTimeout(() => focusSharedReelTarget(numericReelId, attempt + 1), 160);
+        }
       }
       return false;
     }
@@ -5544,6 +5592,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const posts = JSON.parse(localStorage.getItem('offline_posts_cache') || '[]');
         const reels = JSON.parse(localStorage.getItem('offline_reels_cache') || '[]');
+        const connectionProfile = window.__trasxConnectionProfile || {};
         const urls = new Set();
 
         // Gather post media
@@ -5554,28 +5603,20 @@ document.addEventListener('DOMContentLoaded', () => {
           if (p.author_avatar && typeof p.author_avatar === 'string') urls.add(p.author_avatar);
         });
 
-        // Gather reels media
+        // Gather lightweight reels media only.
+        // Full reel videos/audio stay on-demand to keep Shorts responsive.
         reels.forEach(r => {
-          if (r.video_url && typeof r.video_url === 'string') {
-            let resolvedUrl = r.video_url;
-            if (resolvedUrl.includes('unsplash.com')) {
-              const videoUrls = [
-                'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-                'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-                'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-                'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-                'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4'
-              ];
-              const videoIdx = (Number(r.id) - 1) % videoUrls.length;
-              resolvedUrl = videoUrls[videoIdx >= 0 ? videoIdx : 0];
-            }
-            urls.add(resolvedUrl);
+          if (r.thumbnail_url && typeof r.thumbnail_url === 'string') urls.add(r.thumbnail_url);
+          if (r.media_type === 'image_audio' && r.video_url && typeof r.video_url === 'string') {
+            urls.add(r.video_url);
           }
-          if (r.audio_url && typeof r.audio_url === 'string') urls.add(r.audio_url);
           if (r.author_avatar && typeof r.author_avatar === 'string') urls.add(r.author_avatar);
         });
 
-        const urlList = Array.from(urls).filter(url => !this.prefetchedUrls.has(url));
+        const maxPrefetchCount = connectionProfile.isSlow ? 12 : 36;
+        const urlList = Array.from(urls)
+          .filter(url => !this.prefetchedUrls.has(url))
+          .slice(0, maxPrefetchCount);
         if (!urlList.length) return;
 
         console.log(`[OfflineCache] Prefetching ${urlList.length} media assets...`);
@@ -7551,6 +7592,14 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="post-single-video">
               <div class="post-video-shell">
                 <video data-lazy-src="${post.image_url}" class="post-video" preload="none" data-load-on-play="1" playsinline poster="${post.thumbnail_url || ''}" oncontextmenu="return false;"></video>
+                <div class="post-video-loading-overlay" aria-hidden="true">
+                  <div class="post-video-loading-icon">
+                    <i data-lucide="play"></i>
+                  </div>
+                </div>
+                <div class="video-pulse-overlay" aria-hidden="true">
+                  <i data-lucide="play"></i>
+                </div>
                 <div class="custom-video-controls">
                   <div class="video-controls-left">
                     <button type="button" class="video-control-btn" data-video-control="play" aria-label="Play video" title="Play">
@@ -10211,6 +10260,12 @@ document.addEventListener('DOMContentLoaded', () => {
       updateNavActiveStates('shorts');
       updateUrlView('shorts');
 
+      if (typeof window.refreshShortsPlayback === 'function') {
+        window.requestAnimationFrame(() => {
+          window.refreshShortsPlayback();
+        });
+      }
+
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
       window.location.href = '/?view=shorts';
@@ -10248,7 +10303,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const caption = escapeHtml(card.getAttribute('data-caption') || '');
       const soundName = escapeHtml(card.getAttribute('data-sound-name') || '');
       const thumbEl = card.querySelector('.reel-video');
-      const thumbSrc = escapeHtml(thumbEl?.getAttribute('poster') || thumbEl?.getAttribute('src') || '/assets/avatar_placeholder.jpg');
+      const thumbSrc = escapeHtml(
+        card.getAttribute('data-thumb-src')
+        || thumbEl?.getAttribute('poster')
+        || thumbEl?.getAttribute('src')
+        || thumbEl?.getAttribute('data-lazy-src')
+        || card.querySelector('.reel-details-overlay .avatar img')?.getAttribute('src')
+        || '/assets/avatar_placeholder.jpg'
+      );
 
       return `
         <button type="button" class="shorts-search-result-item" data-reel-id="${reelId}">
@@ -10324,6 +10386,9 @@ document.addEventListener('DOMContentLoaded', () => {
       window.currentView = 'bookmarks';
       updateNavActiveStates('bookmarks');
       updateUrlView('bookmarks');
+      if (typeof window.stopShortsPlayback === 'function') {
+        window.stopShortsPlayback();
+      }
 
       const bookmarksHeader = document.getElementById('bookmarksHeader');
       if (bookmarksHeader) bookmarksHeader.style.display = 'flex';
@@ -10384,6 +10449,9 @@ document.addEventListener('DOMContentLoaded', () => {
       window.currentView = 'feed';
       updateNavActiveStates('feed');
       updateUrlView('feed');
+      if (typeof window.stopShortsPlayback === 'function') {
+        window.stopShortsPlayback();
+      }
 
       const bookmarksHeader = document.getElementById('bookmarksHeader');
       if (bookmarksHeader) bookmarksHeader.style.display = 'none';
@@ -10441,6 +10509,9 @@ document.addEventListener('DOMContentLoaded', () => {
       window.currentView = 'messages';
       updateNavActiveStates('messages');
       updateUrlView('messages');
+      if (typeof window.stopShortsPlayback === 'function') {
+        window.stopShortsPlayback();
+      }
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
@@ -10471,6 +10542,9 @@ document.addEventListener('DOMContentLoaded', () => {
       window.currentView = 'market';
       updateNavActiveStates('market');
       updateUrlView('market');
+      if (typeof window.stopShortsPlayback === 'function') {
+        window.stopShortsPlayback();
+      }
 
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -10544,6 +10618,165 @@ document.addEventListener('DOMContentLoaded', () => {
     return null;
   };
 
+  const rememberReelMediaSource = (mediaEl) => {
+    if (!mediaEl) return '';
+    const rememberedSource = mediaEl.getAttribute('data-original-src');
+    if (rememberedSource) return rememberedSource;
+    const resolvedSource = mediaEl.getAttribute('data-lazy-src') || mediaEl.getAttribute('src') || mediaEl.currentSrc || '';
+    if (resolvedSource) {
+      mediaEl.setAttribute('data-original-src', resolvedSource);
+    }
+    return resolvedSource;
+  };
+
+  const ensureLazyAudioLoaded = (audioEl) => {
+    if (!audioEl) return Promise.resolve(audioEl);
+
+    const rememberedSource = rememberReelMediaSource(audioEl);
+    if (audioEl.src || audioEl.currentSrc) return Promise.resolve(audioEl);
+    const lazySource = audioEl.getAttribute('data-lazy-src') || rememberedSource;
+    if (!lazySource) return Promise.resolve(audioEl);
+
+    return new Promise((resolve) => {
+      let completed = false;
+      const finalize = () => {
+        if (completed) return;
+        completed = true;
+        audioEl.setAttribute('data-original-src', lazySource);
+        if (audioEl.getAttribute('data-lazy-src') === lazySource) {
+          audioEl.removeAttribute('data-lazy-src');
+        }
+        audioEl.removeEventListener('loadedmetadata', finalize);
+        audioEl.removeEventListener('loadeddata', finalize);
+        audioEl.removeEventListener('canplay', finalize);
+        resolve(audioEl);
+      };
+
+      audioEl.addEventListener('loadedmetadata', finalize, { once: true });
+      audioEl.addEventListener('loadeddata', finalize, { once: true });
+      audioEl.addEventListener('canplay', finalize, { once: true });
+      audioEl.src = lazySource;
+      audioEl.load();
+      window.setTimeout(finalize, 1500);
+    });
+  };
+
+  const getShortsConnectionProfile = () => window.__trasxConnectionProfile || {};
+
+  const getShortsPrefetchCount = () => {
+    const profile = getShortsConnectionProfile();
+    return profile.isSlow ? 1 : 2;
+  };
+
+  const getShortsBatchSize = () => {
+    const connectionBatch = Number(window.__trasxFeedBatchSize || 0);
+    if (Number.isFinite(connectionBatch) && connectionBatch > 0) {
+      return Math.max(3, Math.min(6, Math.ceil(connectionBatch / 4)));
+    }
+    return getShortsConnectionProfile().isSlow ? 3 : 5;
+  };
+
+  const ensureReelCardMediaLoaded = (card) => {
+    const media = getMediaElements(card);
+    if (!media) return Promise.resolve(card);
+
+    if (media.type === 'video') {
+      rememberReelMediaSource(media.main);
+      if (typeof window.ensureLazyVideoLoaded === 'function') {
+        return window.ensureLazyVideoLoaded(media.main).then(() => card);
+      }
+      return Promise.resolve(card);
+    }
+
+    if (media.audio) {
+      rememberReelMediaSource(media.audio);
+      return ensureLazyAudioLoaded(media.audio).then(() => card);
+    }
+
+    return Promise.resolve(card);
+  };
+
+  const resetReelMediaToStart = (card) => {
+    const media = getMediaElements(card);
+    if (!media) return;
+    const startValue = Number.isFinite(media.start) ? media.start : 0;
+
+    try {
+      if (media.type === 'video') {
+        media.main.currentTime = startValue;
+      } else if (media.audio) {
+        media.audio.currentTime = startValue;
+      }
+    } catch (_) {
+      // Ignore seek reset failures on not-yet-buffered media.
+    }
+  };
+
+  const closeReelCommentsDrawer = (card) => {
+    if (!card) return;
+    const reelId = card.getAttribute('data-reel-id');
+    const drawer = getReelCommentsDrawer(reelId, card);
+    if (drawer && drawer.classList.contains('open')) {
+      drawer.classList.remove('open');
+      document.body.classList.remove('comments-drawer-open');
+      socket.emit('reel-comments-leave', { reelId });
+    }
+  };
+
+  const unloadMediaElementSource = (mediaEl) => {
+    if (!mediaEl) return;
+    const rememberedSource = rememberReelMediaSource(mediaEl);
+    if (!rememberedSource) return;
+    if (!mediaEl.getAttribute('src') && !mediaEl.currentSrc) return;
+
+    try {
+      mediaEl.pause();
+    } catch (_) {}
+
+    mediaEl.setAttribute('data-lazy-src', rememberedSource);
+    mediaEl.removeAttribute('src');
+    try {
+      mediaEl.load();
+    } catch (_) {}
+  };
+
+  const unloadReelCardMedia = (card) => {
+    if (!card || card.classList.contains('active')) return;
+    const media = getMediaElements(card);
+    if (!media) return;
+
+    if (media.type === 'video') {
+      unloadMediaElementSource(media.main);
+      return;
+    }
+
+    if (media.audio) {
+      unloadMediaElementSource(media.audio);
+    }
+  };
+
+  const maintainReelMediaWindow = (centerCard) => {
+    const reelsFeed = document.querySelector('.reels-feed');
+    if (!reelsFeed || !centerCard) return;
+
+    const cards = Array.from(reelsFeed.querySelectorAll('.reel-card'));
+    const centerIndex = cards.indexOf(centerCard);
+    if (centerIndex === -1) return;
+
+    const keepPreviousCount = 1;
+    const keepNextCount = getShortsPrefetchCount();
+    const keepStart = Math.max(0, centerIndex - keepPreviousCount);
+    const keepEnd = Math.min(cards.length - 1, centerIndex + keepNextCount);
+
+    cards.forEach((card, index) => {
+      if (index >= keepStart && index <= keepEnd) {
+        ensureReelCardMediaLoaded(card).catch(() => {});
+      } else {
+        unloadReelCardMedia(card);
+      }
+    });
+  };
+
   const getReelEndOverlayController = (card) => {
     if (!card) return null;
     if (card.__reelEndOverlayController) return card.__reelEndOverlayController;
@@ -10583,15 +10816,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }, resumeDelayMs);
   };
 
-  const playMedia = (card) => {
-    const media = getMediaElements(card);
+  const playMedia = async (card) => {
+    let media = getMediaElements(card);
+    if (!media) return Promise.reject("No media");
+
+    await ensureReelCardMediaLoaded(card);
+    media = getMediaElements(card);
     if (!media) return Promise.reject("No media");
 
     const playOverlay = card.querySelector('.reel-play-overlay');
     const reelEndOverlayController = getReelEndOverlayController(card);
     reelEndOverlayController?.hide();
 
-    // Mute or pause all other background audio tracks
     document.querySelectorAll('.reel-audio-track').forEach(aud => {
       if (!media.audio || aud !== media.audio) {
         aud.pause();
@@ -10600,23 +10836,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (media.type === 'video') {
       media.main.loop = false;
+      media.main.dataset.loopEndCueActive = '0';
       const start = media.start;
       if (media.main.currentTime < start) {
         media.main.currentTime = start;
       }
 
-      // Set up loop boundary watcher
       if (!media.main.dataset.hasTimeupdate) {
         media.main.dataset.hasTimeupdate = "true";
         media.main.addEventListener('timeupdate', () => {
-          const startVal = media.start;
-          const loopEndVal = media.end !== null ? media.end : (startVal + media.duration);
+          const currentMedia = getMediaElements(card);
+          if (!currentMedia) return;
+          const startVal = currentMedia.start;
+          const loopEndVal = currentMedia.end !== null ? currentMedia.end : (startVal + currentMedia.duration);
           if (media.main.currentTime <= startVal + 0.12) {
             media.main.dataset.loopEndCueActive = '0';
           }
           if (media.main.currentTime >= loopEndVal - 0.08 && media.main.dataset.loopEndCueActive !== '1') {
             media.main.dataset.loopEndCueActive = '1';
-            scheduleReelLoopResume(card, media);
+            scheduleReelLoopResume(card, currentMedia);
           }
         });
       }
@@ -10628,7 +10866,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
 
-      // Unmute the video for sound
       media.main.muted = false;
 
       return media.main.play().then(() => {
@@ -10640,51 +10877,53 @@ document.addEventListener('DOMContentLoaded', () => {
           if (playOverlay) playOverlay.style.opacity = '0';
         });
       });
-    } else {
-      if (media.audio) {
-        media.audio.loop = false;
-        const start = media.start;
-        if (media.audio.currentTime < start) {
-          media.audio.currentTime = start;
-        }
+    }
 
-        // Set up loop boundary watcher
-        if (!media.audio.dataset.hasTimeupdate) {
-          media.audio.dataset.hasTimeupdate = "true";
-          media.audio.addEventListener('timeupdate', () => {
-            const startVal = media.start;
-            const loopEndVal = media.end !== null ? media.end : (startVal + media.duration);
-            if (media.audio.currentTime <= startVal + 0.12) {
-              media.audio.dataset.loopEndCueActive = '0';
-            }
-            if (media.audio.currentTime >= loopEndVal - 0.08 && media.audio.dataset.loopEndCueActive !== '1') {
-              media.audio.dataset.loopEndCueActive = '1';
-              scheduleReelLoopResume(card, media);
-            }
-          });
-        }
+    if (media.audio) {
+      media.audio.loop = false;
+      media.audio.dataset.loopEndCueActive = '0';
+      const start = media.start;
+      if (media.audio.currentTime < start) {
+        media.audio.currentTime = start;
+      }
 
-        if (!media.audio.dataset.hasEndedOverlay) {
-          media.audio.dataset.hasEndedOverlay = 'true';
-          media.audio.addEventListener('ended', () => {
-            reelEndOverlayController?.show();
-          });
-        }
-
-        // Start animation states
-        if (media.type === 'audio') {
-          const vinyl = media.main.querySelector('.spinning-vinyl');
-          if (vinyl) vinyl.style.animationPlayState = 'running';
-          media.main.classList.add('is-playing');
-        } else if (media.type === 'voice') {
-          media.main.querySelectorAll('.voice-bar').forEach(bar => bar.classList.add('animating'));
-        }
-
-        return media.audio.play().then(() => {
-          if (playOverlay) playOverlay.style.opacity = '0';
+      if (!media.audio.dataset.hasTimeupdate) {
+        media.audio.dataset.hasTimeupdate = "true";
+        media.audio.addEventListener('timeupdate', () => {
+          const currentMedia = getMediaElements(card);
+          if (!currentMedia || !currentMedia.audio) return;
+          const startVal = currentMedia.start;
+          const loopEndVal = currentMedia.end !== null ? currentMedia.end : (startVal + currentMedia.duration);
+          if (media.audio.currentTime <= startVal + 0.12) {
+            media.audio.dataset.loopEndCueActive = '0';
+          }
+          if (media.audio.currentTime >= loopEndVal - 0.08 && media.audio.dataset.loopEndCueActive !== '1') {
+            media.audio.dataset.loopEndCueActive = '1';
+            scheduleReelLoopResume(card, currentMedia);
+          }
         });
       }
+
+      if (!media.audio.dataset.hasEndedOverlay) {
+        media.audio.dataset.hasEndedOverlay = 'true';
+        media.audio.addEventListener('ended', () => {
+          reelEndOverlayController?.show();
+        });
+      }
+
+      if (media.type === 'audio') {
+        const vinyl = media.main.querySelector('.spinning-vinyl');
+        if (vinyl) vinyl.style.animationPlayState = 'running';
+        media.main.classList.add('is-playing');
+      } else if (media.type === 'voice') {
+        media.main.querySelectorAll('.voice-bar').forEach(bar => bar.classList.add('animating'));
+      }
+
+      return media.audio.play().then(() => {
+        if (playOverlay) playOverlay.style.opacity = '0';
+      });
     }
+
     return Promise.resolve();
   };
 
@@ -10699,81 +10938,151 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (media.type === 'video') {
       media.main.pause();
-    } else {
-      if (media.audio) {
-        media.audio.pause();
-        if (media.type === 'audio') {
-          const vinyl = media.main.querySelector('.spinning-vinyl');
-          if (vinyl) vinyl.style.animationPlayState = 'paused';
-          media.main.classList.remove('is-playing');
-        } else if (media.type === 'voice') {
-          media.main.querySelectorAll('.voice-bar').forEach(bar => bar.classList.remove('animating'));
-        }
+      return;
+    }
+
+    if (media.audio) {
+      media.audio.pause();
+      if (media.type === 'audio') {
+        const vinyl = media.main.querySelector('.spinning-vinyl');
+        if (vinyl) vinyl.style.animationPlayState = 'paused';
+        media.main.classList.remove('is-playing');
+      } else if (media.type === 'voice') {
+        media.main.querySelectorAll('.voice-bar').forEach(bar => bar.classList.remove('animating'));
       }
     }
+  };
+
+  let activeReelCard = null;
+  const reelVisibilityRatios = new Map();
+
+  const stopReelCardPlayback = (card) => {
+    if (!card) return;
+    card.classList.remove('active');
+    pauseMedia(card);
+    resetReelMediaToStart(card);
+    closeReelCommentsDrawer(card);
+  };
+
+  const clearActiveReelCard = () => {
+    if (!activeReelCard) return;
+    const previousCard = activeReelCard;
+    activeReelCard = null;
+    stopReelCardPlayback(previousCard);
+  };
+
+  const activateReelCard = (card) => {
+    if (!card) return;
+
+    if (activeReelCard && activeReelCard !== card) {
+      stopReelCardPlayback(activeReelCard);
+    }
+
+    activeReelCard = card;
+    card.classList.add('active');
+    maintainReelMediaWindow(card);
+    playMedia(card).catch(err => {
+      console.log('Autoplay blocked (waiting for user click):', err);
+      const playOverlay = card.querySelector('.reel-play-overlay');
+      if (playOverlay) playOverlay.style.opacity = '1';
+    });
+  };
+
+  const refreshActiveReelCard = () => {
+    let candidateCard = null;
+    let candidateRatio = 0;
+
+    reelVisibilityRatios.forEach((ratio, card) => {
+      if (ratio > candidateRatio) {
+        candidateRatio = ratio;
+        candidateCard = card;
+      }
+    });
+
+    if (!candidateCard || candidateRatio < 0.55) {
+      clearActiveReelCard();
+      return;
+    }
+
+    if (activeReelCard === candidateCard) {
+      maintainReelMediaWindow(candidateCard);
+      return;
+    }
+
+    activateReelCard(candidateCard);
   };
 
   // 1. Vertical autoplay IntersectionObserver
   const reelObserverOptions = {
     root: document.querySelector('.reels-feed'),
     rootMargin: '0px',
-    threshold: 0.65 // Card must be at least 65% visible to autoplay
+    threshold: [0, 0.2, 0.45, 0.65, 0.85]
   };
 
   const reelObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
-      const card = entry.target;
-      const playOverlay = card.querySelector('.reel-play-overlay');
-      const media = getMediaElements(card);
-      if (!media) return;
-
-      if (entry.isIntersecting) {
-        card.classList.add('active');
-        // Autoplay the video or background audio track
-        playMedia(card).catch(err => {
-          console.log('Autoplay blocked (waiting for user click):', err);
-          if (playOverlay) playOverlay.style.opacity = '1';
-        });
-
-        // Proactive preloading of the next reel's media elements
-        const nextCard = card.nextElementSibling;
-        if (nextCard && nextCard.classList.contains('reel-card')) {
-          const nextVideo = nextCard.querySelector('video.reel-video');
-          if (nextVideo && nextVideo.getAttribute('preload') !== 'auto') {
-            nextVideo.setAttribute('preload', 'auto');
-          }
-          const nextAudio = nextCard.querySelector('audio.reel-audio-track');
-          if (nextAudio && nextAudio.getAttribute('preload') !== 'auto') {
-            nextAudio.setAttribute('preload', 'auto');
-          }
-        }
-      } else {
-        card.classList.remove('active');
-        // Pause out-of-viewport media
-        pauseMedia(card);
-        if (media.type === 'video') {
-          media.main.currentTime = media.start;
-        } else if (media.audio) {
-          media.audio.currentTime = media.start;
-        }
-
-        // Make sure to close any comments drawer if it was left open
-        const reelId = card.getAttribute('data-reel-id');
-        const drawer = getReelCommentsDrawer(reelId, card);
-        if (drawer && drawer.classList.contains('open')) {
-          drawer.classList.remove('open');
-          document.body.classList.remove('comments-drawer-open');
-          socket.emit('reel-comments-leave', { reelId });
-        }
-      }
+      reelVisibilityRatios.set(entry.target, entry.isIntersecting ? entry.intersectionRatio : 0);
     });
+    refreshActiveReelCard();
   }, reelObserverOptions);
 
+  const normalizeReelCardCollection = (cardsOrRoot = document) => {
+    if (!cardsOrRoot) return [];
+    if (cardsOrRoot instanceof Element) {
+      if (cardsOrRoot.classList.contains('reel-card')) return [cardsOrRoot];
+      return Array.from(cardsOrRoot.querySelectorAll('.reel-card'));
+    }
+    if (typeof cardsOrRoot.querySelectorAll === 'function') {
+      return Array.from(cardsOrRoot.querySelectorAll('.reel-card'));
+    }
+    if (NodeList.prototype.isPrototypeOf(cardsOrRoot) || Array.isArray(cardsOrRoot)) {
+      return Array.from(cardsOrRoot).filter((card) => card instanceof Element && card.classList.contains('reel-card'));
+    }
+    return [];
+  };
+
   // Bind observer to all reels cards
-  const observeReels = () => {
-    document.querySelectorAll('.reel-card').forEach(card => {
+  const observeReels = (cardsOrRoot = document) => {
+    normalizeReelCardCollection(cardsOrRoot).forEach(card => {
+      if (card.dataset.reelObserved === '1') return;
+      card.dataset.reelObserved = '1';
+      reelVisibilityRatios.set(card, 0);
       reelObserver.observe(card);
     });
+  };
+
+  window.stopShortsPlayback = () => {
+    clearActiveReelCard();
+    document.querySelectorAll('.reel-card').forEach((card) => {
+      if (card !== activeReelCard) {
+        pauseMedia(card);
+      }
+    });
+    document.querySelectorAll('.reel-comments-drawer.open').forEach((drawer) => {
+      drawer.classList.remove('open');
+      const reelId = drawer.getAttribute('data-reel-id');
+      if (reelId) {
+        socket.emit('reel-comments-leave', { reelId });
+      }
+    });
+    document.body.classList.remove('comments-drawer-open');
+  };
+
+  window.refreshShortsPlayback = () => {
+    const visibleCards = normalizeReelCardCollection(document).filter((card) => {
+      const rect = card.getBoundingClientRect();
+      return rect.bottom > 0 && rect.top < window.innerHeight;
+    });
+
+    if (visibleCards[0]) {
+      maintainReelMediaWindow(visibleCards[0]);
+      if (!activeReelCard) {
+        activateReelCard(visibleCards[0]);
+        return;
+      }
+    }
+
+    refreshActiveReelCard();
   };
 
   // Run initial observation
@@ -10850,12 +11159,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const videoEl = card.querySelector('video.reel-video');
     let fileUrl = "";
     if (videoEl) {
-      fileUrl = videoEl.src;
+      fileUrl = videoEl.src || videoEl.currentSrc || videoEl.getAttribute('data-lazy-src') || videoEl.getAttribute('data-original-src') || videoEl.getAttribute('poster') || '';
     } else {
       // fallback to audio track or other media elements if any
       const audioEl = card.querySelector('audio.reel-audio-track');
       if (audioEl) {
-        fileUrl = audioEl.src;
+        fileUrl = audioEl.src || audioEl.currentSrc || audioEl.getAttribute('data-lazy-src') || audioEl.getAttribute('data-original-src') || '';
       } else {
         const imgEl = card.querySelector('img.reel-video');
         if (imgEl) fileUrl = imgEl.src;
@@ -11395,6 +11704,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const isPaused = media.type === 'video' ? media.main.paused : (media.audio ? media.audio.paused : true);
 
     if (isPaused) {
+      if (activeReelCard !== card) {
+        activateReelCard(card);
+        showPlayPauseFlash(card, 'play');
+        return;
+      }
       playMedia(card).then(() => {
         showPlayPauseFlash(card, 'play');
       }).catch(err => console.error(err));
@@ -11522,6 +11836,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const initReelSeekbar = (card) => {
+    if (!card || card.dataset.reelSeekbarBound === '1') return;
+    card.dataset.reelSeekbarBound = '1';
+
     const media = getMediaElements(card);
     if (!media) return;
 
@@ -11601,9 +11918,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  const syncReelFollowButtonState = (card) => {
+    const reelFollowBtn = card?.querySelector('.reel-follow-toggle-btn');
+    if (!reelFollowBtn) return;
+    const targetUserId = Number(reelFollowBtn.getAttribute('data-follow-target-id') || 0);
+    const fallbackState = reelFollowBtn.dataset.following === '1';
+    const resolvedState = resolveFollowState(targetUserId, fallbackState);
+    reelFollowBtn.dataset.following = resolvedState ? '1' : '0';
+    reelFollowBtn.textContent = `• ${resolvedState ? 'Following' : 'Follow'}`;
+  };
+
   // Direct Event Listeners for Reels Action Buttons and Drawer interactions
   const initReelCardEvents = (card) => {
+    if (!card || card.dataset.reelBound === '1') return;
+    card.dataset.reelBound = '1';
+
     initReelSeekbar(card);
+    syncReelFollowButtonState(card);
     const reelId = card.getAttribute('data-reel-id');
     const likeBtn = card.querySelector('.reel-like-btn');
     const commentBtn = card.querySelector('.reel-comment-btn');
@@ -11731,12 +12062,158 @@ document.addEventListener('DOMContentLoaded', () => {
   handleResponsiveDrawers();
   window.addEventListener('resize', handleResponsiveDrawers);
 
+  const hydrateReelCards = (cardsOrRoot) => {
+    const reelCards = normalizeReelCardCollection(cardsOrRoot);
+    if (!reelCards.length) return [];
+
+    reelCards.forEach((card) => {
+      initReelCardEvents(card);
+      syncReelFollowButtonState(card);
+    });
+
+    observeReels(reelCards);
+    handleResponsiveDrawers();
+
+    if (typeof window.initLazyMedia === 'function') {
+      window.initLazyMedia(reelCards[0]?.parentElement || document);
+    }
+    if (typeof lucide !== 'undefined') {
+      try { lucide.createIcons(); } catch (_) {}
+    }
+
+    return reelCards;
+  };
+
   // Initialize events for all reel cards
   const cardsToInit = document.querySelectorAll('.reel-card');
   console.log("[DEBUG Share Sheet] Nombre de cartes .reel-card trouvées au chargement :", cardsToInit.length);
-  cardsToInit.forEach(card => {
-    initReelCardEvents(card);
-  });
+  hydrateReelCards(cardsToInit);
+  if (cardsToInit.length) {
+    maintainReelMediaWindow(cardsToInit[0]);
+    window.requestAnimationFrame(() => {
+      refreshActiveReelCard();
+    });
+  }
+
+  (function initReelsInfiniteScroll() {
+    const reelsFeed = document.querySelector('.reels-feed');
+    const sentinel = document.getElementById('shortsPaginationSentinel');
+    if (!reelsFeed || !sentinel) return;
+
+    let isLoading = false;
+    let hasMore = Boolean(window.reelsHasMore);
+    let nextCursor = typeof window.reelsNextCursor === 'string' && window.reelsNextCursor.trim()
+      ? window.reelsNextCursor
+      : null;
+    const seenIds = new Set(
+      Array.from(reelsFeed.querySelectorAll('.reel-card[data-reel-id]'))
+        .map((card) => Number(card.getAttribute('data-reel-id')))
+        .filter(Boolean)
+    );
+
+    const appendReelsFromHtml = (html, serverReels = []) => {
+      if (!html) return 0;
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+
+      const nextCards = Array.from(temp.querySelectorAll('.reel-card')).filter((card) => {
+        const reelId = Number(card.getAttribute('data-reel-id') || 0);
+        return reelId > 0 && !seenIds.has(reelId);
+      });
+
+      if (!nextCards.length) return 0;
+
+      const fragment = document.createDocumentFragment();
+      const appendedIds = new Set();
+      nextCards.forEach((card) => {
+        const reelId = Number(card.getAttribute('data-reel-id') || 0);
+        if (!reelId || seenIds.has(reelId)) return;
+        seenIds.add(reelId);
+        appendedIds.add(reelId);
+        fragment.appendChild(card);
+      });
+
+      reelsFeed.insertBefore(fragment, sentinel);
+      hydrateReelCards(nextCards);
+
+      const reelsToCache = Array.isArray(serverReels)
+        ? serverReels.filter((reel) => appendedIds.has(Number(reel.id)))
+        : [];
+      if (reelsToCache.length) {
+        TrasxOfflineCache.saveReels(reelsToCache);
+      }
+
+      if (shortsSearchInput?.value || shortsSearchOverlay?.getAttribute('aria-hidden') === 'false') {
+        renderShortsSearchResults(shortsSearchInput?.value || '');
+      }
+
+      maintainReelMediaWindow(activeReelCard || nextCards[0]);
+      return appendedIds.size;
+    };
+
+    const loadNextReelsBatch = async (options = {}) => {
+      if (isLoading || !hasMore) return { appended: 0, hasMore };
+
+      const retryCount = Number(options.retryCount || 0);
+      const batchSize = getShortsBatchSize();
+      isLoading = true;
+      sentinel.setAttribute('data-loading', '1');
+
+      try {
+        const seenParam = Array.from(seenIds).slice(-160).join(',');
+        const queryParams = new URLSearchParams();
+        queryParams.set('limit', String(batchSize));
+        if (nextCursor) queryParams.set('cursor', nextCursor);
+        if (seenParam) queryParams.set('seen', seenParam);
+
+        const response = await fetch(`/api/feed/reels?${queryParams.toString()}`, {
+          credentials: 'same-origin'
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Reels load failed');
+
+        const appended = appendReelsFromHtml(data.html, data.reels || []);
+        hasMore = Boolean(data.hasMore);
+        nextCursor = typeof data.nextCursor === 'string' && data.nextCursor.trim()
+          ? data.nextCursor
+          : null;
+        window.reelsHasMore = hasMore;
+        window.reelsNextCursor = nextCursor;
+
+        if (!appended && hasMore && retryCount < 2) {
+          isLoading = false;
+          sentinel.removeAttribute('data-loading');
+          return loadNextReelsBatch({ retryCount: retryCount + 1, reason: options.reason || 'dedupe-skip' });
+        }
+
+        return { appended, hasMore, nextCursor };
+      } catch (err) {
+        console.warn('[ShortsInfiniteScroll] Error loading reels:', err);
+        return { appended: 0, hasMore, error: err };
+      } finally {
+        isLoading = false;
+        sentinel.removeAttribute('data-loading');
+      }
+    };
+
+    window.loadNextReelsBatch = loadNextReelsBatch;
+
+    if (!hasMore) return;
+
+    const reelsScrollObserver = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry || !entry.isIntersecting || isLoading || !hasMore) return;
+      loadNextReelsBatch({ reason: 'scroll' }).catch(() => {});
+    }, {
+      root: reelsFeed,
+      rootMargin: '540px 0px',
+      threshold: 0.01
+    });
+
+    reelsScrollObserver.observe(sentinel);
+  })();
 
   let reelCommentRecorder = null;
   let reelCommentChunks = [];
@@ -16996,6 +17473,8 @@ document.addEventListener('DOMContentLoaded', () => {
     isScrollingReels = true;
 
     const targetCard = cards[targetIndex];
+    ensureReelCardMediaLoaded(targetCard).catch(() => {});
+    maintainReelMediaWindow(targetCard);
     const computedStyleFeed = getComputedStyle(reelsFeed);
     const paddingTop = parseFloat(computedStyleFeed.paddingTop) || 0;
     const targetScrollTop = reelsFeed.scrollTop + (targetCard.getBoundingClientRect().top - (reelsFeed.getBoundingClientRect().top + paddingTop));
@@ -17014,6 +17493,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
       reelsFeed.style.scrollSnapType = originalSnapType;
       isScrollingReels = false;
+      if (typeof window.refreshShortsPlayback === 'function') {
+        window.refreshShortsPlayback();
+      }
     }, 750);
   };
 
@@ -20033,8 +20515,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <div style="display: flex; flex-direction: column; gap: 6px;">
             <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">Sélectionnez le jeu</label>
             <select name="game" id="inviteGameSelect" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 14px; outline: none;">
-              <option value="gomoku">🎮 Morpion / Gomoku</option>
               <option value="connect4">🔴 Puissance 4</option>
+              <option value="gomoku">🎮 Morpion / Gomoku</option>
               <option value="tablefootball">⚽ Football Table</option>
             </select>
           </div>
@@ -20420,6 +20902,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const boneyardCount = document.getElementById('boneyardCount');
   const dominoDrawBtn = document.getElementById('dominoDrawBtn');
   const dominoPassBtn = document.getElementById('dominoPassBtn');
+  const dominoOpponentScore = document.getElementById('dominoOpponentScore');
+  const dominoOpponentAvatar = document.getElementById('dominoOpponentAvatar');
+  const dominoOpponentName = document.getElementById('dominoOpponentName');
+  const dominoOpponentMeta = document.getElementById('dominoOpponentMeta');
+  const dominoOpponentBanner = document.getElementById('dominoOpponentBanner');
+  const dominoOpponentTurnEmblem = document.getElementById('dominoOpponentTurnEmblem');
+  const dominoOpponentRack = document.getElementById('dominoOpponentRack');
+  const dominoActionHint = document.getElementById('dominoActionHint');
+  const dominoStockFill = document.getElementById('dominoStockFill');
+  const dominoPlayerScore = document.getElementById('dominoPlayerScore');
+  const dominoPlayerAvatar = document.getElementById('dominoPlayerAvatar');
+  const dominoPlayerName = document.getElementById('dominoPlayerName');
+  const dominoPlayerMeta = document.getElementById('dominoPlayerMeta');
+  const dominoPlayerBanner = document.getElementById('dominoPlayerBanner');
+  const dominoPlayerTurnEmblem = document.getElementById('dominoPlayerTurnEmblem');
   const connectFourBoardContainer = document.getElementById('connectFourBoardContainer');
   const connectFourGrid = document.getElementById('connectFourGrid');
   const gomokuBoardContainer = document.getElementById('gomokuBoardContainer');
@@ -20460,7 +20957,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Map of human readable game types
   const gameNames = {
-    domino: 'Domino',
     connect4: 'Puissance 4',
     gomoku: 'Gomoku',
     tablefootball: 'Football Table'
@@ -21750,7 +22246,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const p2ScoreEl = document.getElementById('gamePlayer2Score');
     if (!p1ScoreEl || !p2ScoreEl) return;
 
-    if (activeGame.rounds && Number(activeGame.rounds) > 1) {
+    if (activeGame.gameType === 'domino' && activeGame.dominoScores) {
+      p1ScoreEl.textContent = String(activeGame.dominoScores.player1 || 0);
+      p2ScoreEl.textContent = String(activeGame.dominoScores.player2 || 0);
+    } else if (activeGame.rounds && Number(activeGame.rounds) > 1) {
       const player1Rounds = activeGame.roundWins ? Number(activeGame.roundWins.player1 || 0) : 0;
       const player2Rounds = activeGame.roundWins ? Number(activeGame.roundWins.player2 || 0) : 0;
       p1ScoreEl.textContent = String(player1Rounds);
@@ -21950,6 +22449,14 @@ document.addEventListener('DOMContentLoaded', () => {
       isSpectating,
       tableFootballBoardContainerExists: !!tableFootballBoardContainer
     });
+    if (game?.gameType === 'domino') {
+      showToast("Le jeu Domino n'est plus disponible.");
+      activeGame = null;
+      if (activeGameArea) activeGameArea.style.display = 'none';
+      if (gamesLobby) gamesLobby.style.display = 'flex';
+      loadGamesLobby();
+      return;
+    }
     activeGame = game;
     window.isSpectatingActiveGame = isSpectating;
     // Reset scores for new game sessions (non-rematch)
@@ -21982,6 +22489,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (gamesLobby) gamesLobby.style.display = 'none';
     if (activeGameArea) activeGameArea.style.display = 'grid';
+    if (activeGameArea) {
+      activeGameArea.classList.toggle('domino-mode', game.gameType === 'domino');
+    }
 
     // Show/Hide active game info button depending on rules support
     const activeGameInfoBtn = document.getElementById('activeGameInfoBtn');
@@ -22293,50 +22803,147 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 1. DOMINOES
   let selectedTileIndex = null;
-  const getDominoImgHtml = (v1, v2, vertical = false) => {
-    const num1 = Math.min(v1, v2);
-    const num2 = Math.max(v1, v2);
-    const src = `/assets/dominoes/tile_${num1}_${num2}.svg`;
 
+  // Mapping: numeric values to French names for domino assets
+  const DOMINO_NUM_TO_FR = { 0: 'blanc', 1: 'as', 2: 'deux', 3: 'trois', 4: 'quatre', 5: 'cinq', 6: 'six' };
+  const DOMINO_PIP_LAYOUTS = {
+    0: [],
+    1: [[50, 50]],
+    2: [[28, 28], [72, 72]],
+    3: [[28, 28], [50, 50], [72, 72]],
+    4: [[28, 28], [28, 72], [72, 28], [72, 72]],
+    5: [[28, 28], [28, 72], [50, 50], [72, 28], [72, 72]],
+    6: [[28, 24], [28, 50], [28, 76], [72, 24], [72, 50], [72, 76]]
+  };
+
+  const getDominoImgSrc = (v1, v2) => {
+    const high = Math.max(v1, v2);
+    const low = Math.min(v1, v2);
+    const highFr = DOMINO_NUM_TO_FR[high];
+    const lowFr = DOMINO_NUM_TO_FR[low];
+    if (high === low) {
+      return `/assets/domino/double_${highFr}.png`;
+    }
+    return `/assets/domino/${highFr}_${lowFr}.png`;
+  };
+
+  const getDominoImgHtml = (v1, v2, vertical = false) => {
+    const src = getDominoImgSrc(v1, v2);
+
+    // Rotation logic: the PNG images are stored as high|low left-to-right.
+    // We need to orient the tile so the "connection end" faces the right side.
+    // For horizontal tiles: if v1 > v2, image is already oriented high|low → rotate 0.
+    //   But if v1 < v2 (so v1=low, v2=high), the image shows high on right, we need low on left → rotate 0 if v1 is left end.
+    // Actually, the image always shows higher value on the left. So:
+    //   - Horizontal, v1 on left end: if v1=high → rotate 0; if v1=low → rotate 180 to flip
+    //   - Vertical doubles rotate 90 or 270
     let rotation = 0;
-    if (!vertical) {
-      if (v1 > v2) {
-        rotation = 180;
+    const isDouble = v1 === v2;
+
+    if (!isDouble) {
+      if (!vertical) {
+        // Horizontal: image has high on left. v1 is on the "connection" end (left side on table).
+        // We want v1 on the left → if v1 is the low value, rotate 180
+        if (v1 < v2) rotation = 180;
+      } else {
+        // Vertical: rotate 90 so the higher end faces up if v1=high, or 270 if v1=low
+        if (v1 >= v2) rotation = 90;
+        else rotation = 270;
       }
     } else {
-      if (v1 <= v2) {
-        rotation = 90;
-      } else {
-        rotation = 270;
-      }
+      // Doubles are symmetric, just rotate for orientation
+      if (vertical) rotation = 90;
     }
 
-    const style = `display: block; width: 100%; height: 100%; border-radius: inherit; transform: rotate(${rotation}deg); pointer-events: none;`;
-    return `<img src="${src}" alt="[${v1}|${v2}]" style="${style}">`;
+    const style = `display: block; width: 100%; height: 100%; border-radius: inherit; transform: rotate(${rotation}deg); pointer-events: none; object-fit: contain;`;
+    return `<img src="${src}" alt="[${v1}|${v2}]" style="${style}" onerror="this.style.opacity='0.3'">`;
   };
 
-  const createTileEl = (tile, index, isClickable = false, forceVertical = null) => {
+  const renderDominoPipsSvg = (value, offsetX, offsetY) => {
+    const pips = DOMINO_PIP_LAYOUTS[value] || [];
+    return pips.map(([x, y]) => `
+      <circle cx="${offsetX + x}" cy="${offsetY + y}" r="6.7" fill="#0f1114"></circle>
+    `).join('');
+  };
+
+  const getDominoSvgMarkup = (v1, v2, orientation = 'horizontal') => {
+    const isHorizontal = orientation === 'horizontal';
+    const viewBox = isHorizontal ? '0 0 200 100' : '0 0 100 200';
+    const half1OffsetX = 0;
+    const half1OffsetY = 0;
+    const half2OffsetX = isHorizontal ? 100 : 0;
+    const half2OffsetY = isHorizontal ? 0 : 100;
+    const divider = isHorizontal
+      ? `
+        <line x1="100" y1="8" x2="100" y2="92" stroke="#c8c4b9" stroke-width="2"></line>
+        <circle cx="100" cy="50" r="6.3" fill="#c89031" stroke="#8c5a1a" stroke-width="1.5"></circle>
+      `
+      : `
+        <line x1="8" y1="100" x2="92" y2="100" stroke="#c8c4b9" stroke-width="2"></line>
+        <circle cx="50" cy="100" r="6.3" fill="#c89031" stroke="#8c5a1a" stroke-width="1.5"></circle>
+      `;
+
+    return `
+      <svg class="domino-face-svg" viewBox="${viewBox}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" preserveAspectRatio="none">
+        <rect x="1" y="1" width="${isHorizontal ? 198 : 98}" height="${isHorizontal ? 98 : 198}" rx="8" fill="#fbfaf6" stroke="rgba(10, 10, 10, 0.18)" stroke-width="1.5"></rect>
+        <path d="${isHorizontal ? 'M6 16 Q24 8 38 24' : 'M16 10 Q8 28 24 42'}" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="4" stroke-linecap="round"></path>
+        ${divider}
+        ${renderDominoPipsSvg(v1, half1OffsetX, half1OffsetY)}
+        ${renderDominoPipsSvg(v2, half2OffsetX, half2OffsetY)}
+      </svg>
+    `;
+  };
+
+  const getDominoLayoutMetrics = (tableWidth) => {
+    const safeWidth = Math.max(280, Number(tableWidth || 800));
+    const tileWidth = Math.round(Math.max(66, Math.min(96, safeWidth * 0.118)));
+    const tileHeight = Math.round(tileWidth / 2);
+
+    return {
+      tileWidth,
+      tileHeight,
+      edgePadding: Math.max(18, Math.round(tileWidth * 0.3)),
+      indicatorOffset: Math.max(46, Math.round(tileWidth * 0.6)),
+      indicatorHalfWidth: Math.max(56, Math.round(tileWidth * 0.75)),
+      indicatorHalfHeight: 36,
+      topPadding: Math.max(24, Math.round(tileHeight * 0.72)),
+      bottomPadding: Math.max(22, Math.round(tileHeight * 0.5))
+    };
+  };
+
+
+  const createTileEl = (tile, index, isClickable = false, forceVertical = null, isSelected = false) => {
     const [v1, v2] = tile;
-    const tileDiv = document.createElement('div');
-    
-    const isDouble = v1 === v2;
-    const vertical = forceVertical !== null ? forceVertical : isDouble;
-    
-    tileDiv.className = `domino-tile${vertical ? ' double' : ''}${isClickable ? ' playable' : ''}`;
-    if (isClickable) {
-      tileDiv.dataset.index = index;
-    }
+    const src = getDominoImgSrc(v1, v2);
 
-    tileDiv.innerHTML = getDominoImgHtml(v1, v2, vertical);
-    return tileDiv;
+    const isDouble = v1 === v2;
+    // For HAND tiles (index !== null, no forceVertical from path): always horizontal PNG display
+    // For TABLE tiles (forceVertical explicitly set from path data): rotation applied externally
+    const vertical = forceVertical !== null ? forceVertical : false;
+
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = `[${v1}|${v2}]`;
+    img.className = 'domino-img-tile' + (isClickable ? ' playable' : '') + (isSelected ? ' selected' : '');
+    img.draggable = false;
+    if (isClickable) {
+      img.dataset.index = index;
+    }
+    return img;
   };
+
+
 
   const calculateDominoPath = (table, tableWidth, showIndicators, selectedTileMatchesLeft, selectedTileMatchesRight) => {
-    const L_limit = 35; // marge gauche
-    const R_limit = tableWidth - 35; // marge droite
+    const metrics = getDominoLayoutMetrics(tableWidth);
+    const TILE_W = metrics.tileWidth;
+    const TILE_H = metrics.tileHeight;
 
-    let cx = L_limit + 30; // initial x
-    let cy = 50; // initial y (centre de la ligne 0)
+    const L_limit = metrics.edgePadding;
+    const R_limit = tableWidth - metrics.edgePadding;
+
+    let cx = L_limit + TILE_W / 2;
+    let cy = TILE_H;
     let currentDir = 'right';
     let nextHorizontalDir = 'left';
 
@@ -22346,41 +22953,40 @@ document.addEventListener('DOMContentLoaded', () => {
       const tile = table[i];
       const isDouble = tile[0] === tile[1];
 
-      // Récupération des dimensions selon la direction et si c'est un double
+      // Dimensions: double = carré, normal = rectangle 2:1
       let w, h;
       if (currentDir === 'right' || currentDir === 'left') {
-        w = isDouble ? 30 : 60;
-        h = isDouble ? 60 : 30;
+        w = isDouble ? TILE_H : TILE_W;
+        h = isDouble ? TILE_W : TILE_H;
       } else { // 'down'
-        w = isDouble ? 60 : 30;
-        h = isDouble ? 30 : 60;
+        w = isDouble ? TILE_W : TILE_H;
+        h = isDouble ? TILE_H : TILE_W;
       }
 
-      // Vérification des limites pour changer de direction
+      // Changement de direction si on dépasse les limites
       if (currentDir === 'right') {
-        let prev_w = i > 0 ? positions[i-1].width : 0;
-        let next_cx = i > 0 ? (positions[i-1].cx + prev_w / 2 + w / 2) : cx;
+        const prev_cx = i > 0 ? positions[i-1].cx + positions[i-1].width / 2 : (cx - w / 2);
+        const next_cx = prev_cx + w;
         if (next_cx + w / 2 > R_limit) {
           currentDir = 'down';
-          w = isDouble ? 60 : 30;
-          h = isDouble ? 30 : 60;
+          w = isDouble ? TILE_W : TILE_H;
+          h = isDouble ? TILE_H : TILE_W;
         }
       } else if (currentDir === 'left') {
-        let prev_w = i > 0 ? positions[i-1].width : 0;
-        let next_cx = i > 0 ? (positions[i-1].cx - prev_w / 2 - w / 2) : cx;
+        const prev_cx = i > 0 ? positions[i-1].cx - positions[i-1].width / 2 : (cx + w / 2);
+        const next_cx = prev_cx - w;
         if (next_cx - w / 2 < L_limit) {
           currentDir = 'down';
-          w = isDouble ? 60 : 30;
-          h = isDouble ? 30 : 60;
+          w = isDouble ? TILE_W : TILE_H;
+          h = isDouble ? TILE_H : TILE_W;
         }
       } else if (currentDir === 'down') {
-        // Après un tournant vers le bas, on repart à l'horizontal dans le sens opposé
         currentDir = nextHorizontalDir;
-        w = isDouble ? 30 : 60;
-        h = isDouble ? 60 : 30;
+        w = isDouble ? TILE_H : TILE_W;
+        h = isDouble ? TILE_W : TILE_H;
       }
 
-      // Calcul des coordonnées du centre
+      // Calcul du centre
       if (i > 0) {
         const prev = positions[i-1];
         if (currentDir === 'right') {
@@ -22396,17 +23002,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } else {
         cx = L_limit + w / 2;
-        cy = 50;
+        cy = TILE_H;
       }
 
-      positions.push({
-        cx,
-        cy,
-        width: w,
-        height: h,
-        flow: currentDir,
-        isDouble
-      });
+      positions.push({ cx, cy, width: w, height: h, flow: currentDir, isDouble });
     }
 
     // Calcul des positions des indicateurs de pose
@@ -22416,32 +23015,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (table.length > 0) {
       const first = positions[0];
       const last = positions[positions.length - 1];
+      const offset = metrics.indicatorOffset;
 
       if (showIndicators && selectedTileMatchesLeft) {
-        let ind_cx = first.cx;
-        let ind_cy = first.cy;
-        const offset = 55;
-        if (first.flow === 'right') {
-          ind_cx = first.cx - first.width / 2 - offset;
-        } else if (first.flow === 'left') {
-          ind_cx = first.cx + first.width / 2 + offset;
-        } else if (first.flow === 'down') {
-          ind_cy = first.cy - first.height / 2 - offset;
-        }
+        let ind_cx = first.cx, ind_cy = first.cy;
+        if (first.flow === 'right')       ind_cx = first.cx - first.width / 2 - offset;
+        else if (first.flow === 'left')   ind_cx = first.cx + first.width / 2 + offset;
+        else if (first.flow === 'down')   ind_cy = first.cy - first.height / 2 - offset;
         leftIndicatorPos = { cx: ind_cx, cy: ind_cy };
       }
 
       if (showIndicators && selectedTileMatchesRight) {
-        let ind_cx = last.cx;
-        let ind_cy = last.cy;
-        const offset = 55;
-        if (last.flow === 'right') {
-          ind_cx = last.cx + last.width / 2 + offset;
-        } else if (last.flow === 'left') {
-          ind_cx = last.cx - last.width / 2 - offset;
-        } else if (last.flow === 'down') {
-          ind_cy = last.cy + last.height / 2 + offset;
-        }
+        let ind_cx = last.cx, ind_cy = last.cy;
+        if (last.flow === 'right')        ind_cx = last.cx + last.width / 2 + offset;
+        else if (last.flow === 'left')    ind_cx = last.cx - last.width / 2 - offset;
+        else if (last.flow === 'down')    ind_cy = last.cy + last.height / 2 + offset;
         rightIndicatorPos = { cx: ind_cx, cy: ind_cy };
       }
     }
@@ -22458,16 +23046,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     if (leftIndicatorPos) {
-      allCoordsX.push(leftIndicatorPos.cx - 60);
-      allCoordsX.push(leftIndicatorPos.cx + 60);
-      allCoordsY.push(leftIndicatorPos.cy - 25);
-      allCoordsY.push(leftIndicatorPos.cy + 25);
+      allCoordsX.push(leftIndicatorPos.cx - metrics.indicatorHalfWidth);
+      allCoordsX.push(leftIndicatorPos.cx + metrics.indicatorHalfWidth);
+      allCoordsY.push(leftIndicatorPos.cy - metrics.indicatorHalfHeight);
+      allCoordsY.push(leftIndicatorPos.cy + metrics.indicatorHalfHeight);
     }
     if (rightIndicatorPos) {
-      allCoordsX.push(rightIndicatorPos.cx - 60);
-      allCoordsX.push(rightIndicatorPos.cx + 60);
-      allCoordsY.push(rightIndicatorPos.cy - 25);
-      allCoordsY.push(rightIndicatorPos.cy + 25);
+      allCoordsX.push(rightIndicatorPos.cx - metrics.indicatorHalfWidth);
+      allCoordsX.push(rightIndicatorPos.cx + metrics.indicatorHalfWidth);
+      allCoordsY.push(rightIndicatorPos.cy - metrics.indicatorHalfHeight);
+      allCoordsY.push(rightIndicatorPos.cy + metrics.indicatorHalfHeight);
     }
 
     let minX = allCoordsX.length > 0 ? Math.min(...allCoordsX) : 0;
@@ -22486,7 +23074,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (rightIndicatorPos) rightIndicatorPos.cx += shiftX;
 
     // Ajustement vertical (Y commence à 30px du haut)
-    const shiftY = 30 - minY;
+    const shiftY = metrics.topPadding - minY;
     positions.forEach(p => {
       p.cy += shiftY;
     });
@@ -22499,59 +23087,134 @@ document.addEventListener('DOMContentLoaded', () => {
       positions,
       leftIndicatorPos,
       rightIndicatorPos,
-      height: maxY + 30
+      height: maxY + metrics.bottomPadding
     };
   };
 
   const buildDominoBoard = () => {
     if (!dominoBoardContainer || !dominoTable || !dominoPlayerHand || !boneyardCount) return;
 
-    // Render Boneyard Count
-    const bCount = typeof activeGame.boneyardCount !== 'undefined' ? activeGame.boneyardCount : activeGame.boneyard.length;
-    boneyardCount.textContent = `Pioche : ${bCount}`;
+    const isPlayer1 = String(activeGame.player1?.id) === String(window.currentUserId);
+    const isPlayer2 = activeGame.player2 && String(activeGame.player2.id) === String(window.currentUserId);
+    const usePlayer1AsBottom = !isPlayer2;
+    const bottomPlayer = usePlayer1AsBottom ? activeGame.player1 : (activeGame.player2 || activeGame.player1);
+    const topPlayer = usePlayer1AsBottom ? (activeGame.player2 || null) : activeGame.player1;
+    const myHand = isPlayer1 ? (activeGame.player1Hand || []) : (isPlayer2 ? (activeGame.player2Hand || []) : []);
+    const bottomHandCount = usePlayer1AsBottom
+      ? Number(activeGame.player1HandCount ?? (activeGame.player1Hand ? activeGame.player1Hand.length : myHand.length || 0))
+      : Number(activeGame.player2HandCount ?? (activeGame.player2Hand ? activeGame.player2Hand.length : myHand.length || 0));
+    const topHandCount = usePlayer1AsBottom
+      ? Number(activeGame.player2HandCount ?? (activeGame.player2Hand ? activeGame.player2Hand.length : 0))
+      : Number(activeGame.player1HandCount ?? (activeGame.player1Hand ? activeGame.player1Hand.length : 0));
+    const dominoScores = activeGame.dominoScores || { player1: 0, player2: 0 };
+    const bottomScore = usePlayer1AsBottom ? Number(dominoScores.player1 || 0) : Number(dominoScores.player2 || 0);
+    const topScore = usePlayer1AsBottom ? Number(dominoScores.player2 || 0) : Number(dominoScores.player1 || 0);
+    const bCount = typeof activeGame.boneyardCount !== 'undefined'
+      ? Number(activeGame.boneyardCount || 0)
+      : Number(activeGame.boneyard?.length || 0);
+    const left = activeGame.leftEnd;
+    const right = activeGame.rightEnd;
+    const isMyTurn = activeGame.status === 'playing'
+      && !window.isSpectatingActiveGame
+      && ((activeGame.currentPlayer === 1 && isPlayer1) || (activeGame.currentPlayer === 2 && isPlayer2));
 
-    // Get active hand and details
-    const isP1 = activeGame.player1.id === window.currentUserId;
-    const myHand = isP1 ? activeGame.player1Hand : activeGame.player2Hand;
-    const isMyTurn = activeGame.status === 'playing' && 
-                     ((activeGame.currentPlayer === 1 && isP1) || (activeGame.currentPlayer === 2 && !isP1)) && 
-                     !window.isSpectatingActiveGame;
+    if (!isMyTurn && selectedTileIndex !== null) {
+      selectedTileIndex = null;
+    }
 
-    // Draw / Pass buttons state
+    if (selectedTileIndex !== null && !myHand[selectedTileIndex]) {
+      selectedTileIndex = null;
+    }
+
+    const hasMoves = myHand.some(tile =>
+      left === null
+      || right === null
+      || tile[0] === left
+      || tile[1] === left
+      || tile[0] === right
+      || tile[1] === right
+    );
+
+    if (dominoOpponentAvatar) dominoOpponentAvatar.src = topPlayer?.avatar || '/assets/avatar_placeholder.jpg';
+    if (dominoOpponentName) dominoOpponentName.textContent = topPlayer?.name || 'Adversaire';
+    if (dominoOpponentMeta) {
+      dominoOpponentMeta.textContent = topPlayer
+        ? `${topHandCount} tuile${topHandCount > 1 ? 's' : ''}`
+        : 'En attente';
+    }
+    if (dominoOpponentScore) dominoOpponentScore.textContent = String(topScore);
+    if (dominoOpponentBanner) dominoOpponentBanner.classList.toggle('is-active', activeGame.status === 'playing' && activeGame.currentPlayer === (usePlayer1AsBottom ? 2 : 1));
+    if (dominoOpponentTurnEmblem) dominoOpponentTurnEmblem.classList.toggle('is-active', activeGame.status === 'playing' && activeGame.currentPlayer === (usePlayer1AsBottom ? 2 : 1));
+
+    if (dominoPlayerAvatar) dominoPlayerAvatar.src = bottomPlayer?.avatar || '/assets/avatar_placeholder.jpg';
+    if (dominoPlayerName) dominoPlayerName.textContent = bottomPlayer?.name || 'Vous';
+    if (dominoPlayerMeta) {
+      dominoPlayerMeta.textContent = bottomPlayer
+        ? `${bottomHandCount} tuile${bottomHandCount > 1 ? 's' : ''}`
+        : '0 tuile';
+    }
+    if (dominoPlayerScore) dominoPlayerScore.textContent = String(bottomScore);
+    if (dominoPlayerBanner) dominoPlayerBanner.classList.toggle('is-active', activeGame.status === 'playing' && activeGame.currentPlayer === (usePlayer1AsBottom ? 1 : 2));
+    if (dominoPlayerTurnEmblem) dominoPlayerTurnEmblem.classList.toggle('is-active', activeGame.status === 'playing' && activeGame.currentPlayer === (usePlayer1AsBottom ? 1 : 2));
+
+    if (dominoOpponentRack) {
+      dominoOpponentRack.innerHTML = '';
+      if (topPlayer) {
+        const visibleBacks = Math.min(Math.max(topHandCount, 0), 10);
+        for (let i = 0; i < visibleBacks; i++) {
+          const backTile = document.createElement('span');
+          backTile.className = 'domino-opponent-back-tile';
+          dominoOpponentRack.appendChild(backTile);
+        }
+      }
+    }
+
+    boneyardCount.textContent = String(bCount);
+    if (dominoStockFill) {
+      const fillPercent = Math.max(0, Math.min(100, (bCount / 14) * 100));
+      dominoStockFill.style.width = `${fillPercent}%`;
+    }
+
     if (dominoDrawBtn && dominoPassBtn) {
       dominoDrawBtn.style.display = 'none';
       dominoPassBtn.style.display = 'none';
-
-      if (isMyTurn) {
-        // Check if player has legal moves
-        const left = activeGame.leftEnd;
-        const right = activeGame.rightEnd;
-        
-        const hasMoves = myHand && myHand.some(t => left === null || right === null || t[0] === left || t[1] === left || t[0] === right || t[1] === right);
-
-        if (!hasMoves) {
-          if (bCount > 0) {
-            dominoDrawBtn.style.display = 'inline-block';
-            dominoDrawBtn.removeAttribute('disabled');
-          } else {
-            dominoPassBtn.style.display = 'inline-block';
-            dominoPassBtn.removeAttribute('disabled');
-          }
+    }
+    if (dominoActionHint) {
+      dominoActionHint.style.display = 'inline-flex';
+      if (window.isSpectatingActiveGame) {
+        dominoActionHint.textContent = 'Mode spectateur';
+      } else if (activeGame.status === 'waiting') {
+        dominoActionHint.textContent = "En attente d'un adversaire";
+      } else if (activeGame.status !== 'playing') {
+        dominoActionHint.textContent = 'Préparation de la manche';
+      } else if (isMyTurn && hasMoves) {
+        dominoActionHint.textContent = selectedTileIndex !== null ? 'Choisissez un côté' : 'Jouez une tuile';
+      } else if (isMyTurn && bCount > 0) {
+        dominoActionHint.style.display = 'none';
+        if (dominoDrawBtn) {
+          dominoDrawBtn.style.display = 'inline-flex';
+          dominoDrawBtn.removeAttribute('disabled');
         }
+      } else if (isMyTurn) {
+        dominoActionHint.style.display = 'none';
+        if (dominoPassBtn) {
+          dominoPassBtn.style.display = 'inline-flex';
+          dominoPassBtn.removeAttribute('disabled');
+        }
+      } else {
+        const activePlayer = activeGame.currentPlayer === 1 ? activeGame.player1 : activeGame.player2;
+        dominoActionHint.textContent = activePlayer ? `Tour de ${activePlayer.name}` : 'Tour adverse';
       }
     }
 
     // Render table
     dominoTable.innerHTML = '';
-    
-    const left = activeGame.leftEnd;
-    const right = activeGame.rightEnd;
 
     const showIndicators = isMyTurn && selectedTileIndex !== null;
     let selectedTileMatchesLeft = false;
     let selectedTileMatchesRight = false;
 
-    if (showIndicators && myHand && myHand[selectedTileIndex]) {
+    if (showIndicators && myHand[selectedTileIndex]) {
       const tile = myHand[selectedTileIndex];
       if (left === null || right === null) {
         selectedTileMatchesLeft = true;
@@ -22562,8 +23225,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Calcul de la largeur réelle pour le tracé serpentin
-    const wrapperWidth = dominoTable.parentElement ? dominoTable.parentElement.clientWidth : 0;
-    const tableWidth = wrapperWidth > 0 ? (wrapperWidth - 48) : 800;
+    const tableWidth = dominoTable.clientWidth || (dominoTable.parentElement ? dominoTable.parentElement.clientWidth : 0) || 800;
 
     const pathData = calculateDominoPath(
       activeGame.table || [],
@@ -22593,32 +23255,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // Rendu des dominos sur la table
     if (activeGame.table && activeGame.table.length > 0) {
       activeGame.table.forEach((tile, idx) => {
-        const isLastPlayed = activeGame.lastMove && 
-                             activeGame.lastMove.gameType === 'domino' && 
+        const isLastPlayed = activeGame.lastMove &&
+                             activeGame.lastMove.gameType === 'domino' &&
                              activeGame.lastMove.index === idx;
         const p = pathData.positions[idx];
-        const tileEl = createTileEl(tile, null, false, p ? p.width < p.height : null);
-        if (isLastPlayed) {
-          tileEl.classList.add('last-played');
-        }
-        if (p) {
-          tileEl.style.left = p.cx + 'px';
-          tileEl.style.top = p.cy + 'px';
-          tileEl.style.width = p.width + 'px';
-          tileEl.style.height = p.height + 'px';
-          if (p.width < p.height) {
-            tileEl.classList.add('vertical');
-          }
-          if (p.flow === 'left') {
-            tileEl.style.flexDirection = 'row-reverse';
-          } else if (p.flow === 'right') {
-            tileEl.style.flexDirection = 'row';
-          } else if (p.flow === 'down') {
-            tileEl.style.flexDirection = 'column';
-          }
-        }
+        if (!p) return;
 
-        dominoTable.appendChild(tileEl);
+        const [v1, v2] = tile;
+        const isDouble = v1 === v2;
+        const slotW = p.width;
+        const slotH = p.height;
+        const isVertical = slotH > slotW; // portrait slot
+
+        // Wrapper : la boîte positionnée exactement dans le chemin
+        const wrapper = document.createElement('div');
+        wrapper.className = 'domino-tile-wrapper' + (isLastPlayed ? ' last-played' : '');
+        wrapper.style.cssText = `
+          position: absolute;
+          left: ${Math.round(p.cx - slotW / 2)}px;
+          top: ${Math.round(p.cy - slotH / 2)}px;
+          width: ${slotW}px;
+          height: ${slotH}px;
+          overflow: hidden;
+          border-radius: 4px;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+        `;
+
+        // Image : toujours en format paysage (PNG source est paysage)
+        // Pour un slot portrait : on met l'img en largeur = slotH, hauteur = slotW
+        // puis on la centre et on la tourne de 90°
+        wrapper.innerHTML = getDominoSvgMarkup(v1, v2, isVertical ? 'vertical' : 'horizontal');
+        dominoTable.appendChild(wrapper);
       });
     } else {
       const emptyMsg = document.createElement('div');
@@ -22650,20 +23317,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (myHand && myHand.length > 0) {
       myHand.forEach((tile, index) => {
         const isSelected = selectedTileIndex === index;
-        const tileEl = createTileEl(tile, index, isMyTurn);
-        if (isSelected) {
-          tileEl.classList.add('selected');
-        }
+        const tileMatchesLeft = left === null || tile[0] === left || tile[1] === left;
+        const tileMatchesRight = right === null || tile[0] === right || tile[1] === right;
+        const tileIsPlayable = isMyTurn && (left === null || right === null || tileMatchesLeft || tileMatchesRight);
+        const tileEl = createTileEl(tile, index, tileIsPlayable, null, isSelected);
 
-        if (isMyTurn) {
+        if (tileIsPlayable) {
           tileEl.addEventListener('click', () => {
             if (isSelected) {
               selectedTileIndex = null;
               buildDominoBoard();
             } else {
-              const tileMatchesLeft = left === null || tile[0] === left || tile[1] === left;
-              const tileMatchesRight = right === null || tile[0] === right || tile[1] === right;
-
               if (left === null || right === null) {
                 // Table empty, play immediately
                 socket.emit('game-move', { gameId: activeGame.id, r: index, c: 'left' });
@@ -22690,7 +23354,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     } else {
       if (window.isSpectatingActiveGame) {
-        dominoPlayerHand.innerHTML = `<div class="hand-spectating-msg">Vous observez le match en direct.</div>`;
+        dominoPlayerHand.innerHTML = `<div class="hand-spectating-msg">Vous observez la partie en direct.</div>`;
       } else {
         dominoPlayerHand.innerHTML = `<div class="hand-spectating-msg">Pas de dominos dans votre main.</div>`;
       }
@@ -25176,8 +25840,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const existing = document.getElementById('gameInviteReceivedModal');
     if (existing) existing.remove();
 
+    if (invite && invite.gameType === 'domino') {
+      showToast("Le jeu Domino n'est plus disponible.");
+      if (socket && invite.gameId) {
+        socket.emit('game-invite-decline', { gameId: invite.gameId }, () => {});
+      }
+      return;
+    }
+
     const localGameNames = {
-      domino: 'Domino',
       connect4: 'Puissance 4',
       gomoku: 'Gomoku',
       tablefootball: 'Football Table'
@@ -25552,7 +26223,11 @@ document.addEventListener('DOMContentLoaded', () => {
       winnerEl.style.marginTop = '5px';
 
       let scoreDisplay = '';
-      if (activeGame.rounds && Number(activeGame.rounds) > 1) {
+      if (activeGame.gameType === 'domino' && activeGame.dominoScores) {
+        const s1 = activeGame.dominoScores.player1 || 0;
+        const s2 = activeGame.dominoScores.player2 || 0;
+        scoreDisplay = `${p1Name}   ${s1}  —  ${s2}   ${p2Name}`;
+      } else if (activeGame.rounds && Number(activeGame.rounds) > 1) {
         const p1Rounds = activeGame.roundWins ? Number(activeGame.roundWins.player1 || 0) : 0;
         const p2Rounds = activeGame.roundWins ? Number(activeGame.roundWins.player2 || 0) : 0;
         scoreDisplay = `${p1Name}   ${p1Rounds}  —  ${p2Rounds}   ${p2Name}`;
@@ -27861,11 +28536,10 @@ document.addEventListener('DOMContentLoaded', () => {
     postsContainer.querySelectorAll('.active-match-card').forEach(el => el.remove());
     
     // Filter games currently being played
-    const playingGames = games.filter(g => g.status === 'playing');
+    const playingGames = games.filter(g => g.status === 'playing' && g.gameType !== 'domino');
     if (playingGames.length === 0) return;
     
     const gameNamesMap = {
-      domino: 'Domino',
       connect4: 'Puissance 4',
       gomoku: 'Gomoku',
       tablefootball: 'Football Table'
@@ -28489,7 +29163,7 @@ document.addEventListener('DOMContentLoaded', () => {
       {
         element: '.nav-item[data-view="games"]',
         title: 'Lobby de Jeux',
-        text: 'Jouez à des jeux passionnants (comme les dominos) en solo ou contre des robots et gagnez des tokens.',
+        text: 'Jouez à des jeux passionnants comme Puissance 4, Gomoku ou Football Table en solo ou contre des robots et gagnez des tokens.',
         pos: 'right'
       },
       {

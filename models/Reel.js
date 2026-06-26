@@ -1,5 +1,14 @@
 const db = require('../config/db');
 
+async function ensureIndex(tableName, indexName, columnsSql) {
+  const [rows] = await db.query(
+    'SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
+    [tableName, indexName]
+  );
+  if (rows.length > 0) return;
+  await db.query(`ALTER TABLE \`${tableName}\` ADD INDEX \`${indexName}\` ${columnsSql}`);
+}
+
 class Reel {
   static async ensureReelSchema() {
     if (Reel._schemaReady) return;
@@ -82,6 +91,12 @@ class Reel {
       )
     `);
 
+    await ensureIndex('reels', 'idx_reels_created_id', '(created_at DESC, id DESC)');
+    await ensureIndex('reels', 'idx_reels_user_created_id', '(user_id, created_at DESC, id DESC)');
+    await ensureIndex('reels', 'idx_reels_promo_created_id', '(promo_paid_hashtag_count, promo_daily_target, created_at DESC, id DESC)');
+    await ensureIndex('follows', 'idx_follows_follower_following', '(follower_id, following_id)');
+    await ensureIndex('follows', 'idx_follows_following_follower', '(following_id, follower_id)');
+
     Reel._schemaReady = true;
   }
 
@@ -134,6 +149,182 @@ class Reel {
     `;
     const [rows] = await db.query(query, [currentUserId]);
     return rows;
+  }
+
+  static async getFeedPaginated(currentUserId, {
+    limit = 6,
+    userCountry = '',
+    feedSeed = 1,
+    cursor = null,
+    hardExcludeIds = [],
+    softSeenIds = []
+  } = {}) {
+    await Reel.ensureReelSchema();
+
+    const safeLimit = Math.min(Math.max(1, Number(limit) || 6), 12);
+    const safeSeed = Math.abs(Number(feedSeed) || 1);
+    const country = String(userCountry || '').trim().toLowerCase();
+    const normalizedCursor = cursor && Number.isFinite(Number(cursor.id))
+      ? {
+          rankingScore: Number(cursor.rankingScore || 0),
+          createdAtSort: Number(cursor.createdAtSort || 0),
+          id: Number(cursor.id || 0)
+        }
+      : null;
+
+    const normalizedHardExcludeIds = Array.isArray(hardExcludeIds)
+      ? hardExcludeIds.map(Number).filter((value) => Number.isFinite(value) && value > 0).slice(0, 48)
+      : [];
+    const normalizedSoftSeenIds = Array.isArray(softSeenIds)
+      ? softSeenIds.map(Number).filter((value) => Number.isFinite(value) && value > 0).slice(0, 150)
+      : [];
+
+    const hardExcludeClause = normalizedHardExcludeIds.length
+      ? `AND r.id NOT IN (${normalizedHardExcludeIds.map(() => '?').join(', ')})`
+      : '';
+    const softSeenCase = normalizedSoftSeenIds.length
+      ? `CASE WHEN r.id IN (${normalizedSoftSeenIds.map(() => '?').join(', ')}) THEN 1100 ELSE 0 END`
+      : '0';
+
+    const innerQuery = `
+      SELECT
+        r.id,
+        r.user_id,
+        r.video_url,
+        r.sound_name,
+        r.caption,
+        r.likes_count,
+        r.comments_count,
+        r.shares_count,
+        COALESCE(vc.views_count, 0) AS views_count,
+        r.created_at,
+        UNIX_TIMESTAMP(r.created_at) AS created_at_sort,
+        r.media_type,
+        r.audio_url,
+        r.audio_start_time,
+        r.audio_duration,
+        r.media_fit,
+        r.is_trade,
+        r.trade_price,
+        r.last_possession_user_id,
+        r.trim_start,
+        r.trim_end,
+        r.next_trade_payout_admin,
+        r.promo_daily_target,
+        r.promo_paid_hashtag_count,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS author_name,
+        u.avatar AS author_avatar,
+        u.username AS author_username,
+        u.country AS author_country,
+        u.certification_type AS author_certification_type,
+        u.created_at AS author_created_at,
+        COALESCE(fc.followers_count, 0) AS author_followers_count,
+        (fw.follower_id IS NOT NULL) AS is_author_following,
+        ROUND((
+          CASE WHEN fw.follower_id IS NOT NULL THEN 1500 ELSE 0 END
+          + LEAST((r.promo_paid_hashtag_count * 240) + (LEAST(r.promo_daily_target, 5000) / 10), 1700)
+          + CASE WHEN LOWER(COALESCE(u.country, '')) = ? THEN 90 ELSE 0 END
+          + CASE
+              WHEN TIMESTAMPDIFF(HOUR, r.created_at, UTC_TIMESTAMP()) <= 6 THEN 880
+              WHEN TIMESTAMPDIFF(HOUR, r.created_at, UTC_TIMESTAMP()) <= 24 THEN 670
+              WHEN TIMESTAMPDIFF(HOUR, r.created_at, UTC_TIMESTAMP()) <= 72 THEN 450
+              WHEN TIMESTAMPDIFF(HOUR, r.created_at, UTC_TIMESTAMP()) <= 168 THEN 250
+              ELSE 120
+            END
+          + LEAST(
+              (COALESCE(r.likes_count, 0) * 4)
+              + (COALESCE(r.comments_count, 0) * 6)
+              + (COALESCE(r.shares_count, 0) * 10)
+              + (COALESCE(vc.views_count, 0) / 8)
+              + (COALESCE(fc.followers_count, 0) / 20),
+              1800
+            )
+          + CASE WHEN fw.follower_id IS NULL THEN ((CRC32(CONCAT('reel-discover-', ?, '-', r.id)) % 620) + 140) ELSE 0 END
+          + (CRC32(CONCAT('reel-mix-', ?, '-', r.id)) % 95)
+          - (${softSeenCase})
+        ), 4) AS ranking_score
+      FROM reels r
+      JOIN users u ON r.user_id = u.id
+      LEFT JOIN (
+        SELECT reel_id, COUNT(*) AS views_count
+        FROM reel_daily_unique_views
+        GROUP BY reel_id
+      ) vc ON vc.reel_id = r.id
+      LEFT JOIN (
+        SELECT following_id, COUNT(*) AS followers_count
+        FROM follows
+        GROUP BY following_id
+      ) fc ON fc.following_id = r.user_id
+      LEFT JOIN follows fw ON fw.follower_id = ? AND fw.following_id = r.user_id
+      WHERE 1 = 1
+      ${hardExcludeClause}
+    `;
+
+    const outerWhere = normalizedCursor
+      ? `
+        WHERE (
+          ranked.ranking_score < ?
+          OR (ranked.ranking_score = ? AND ranked.created_at_sort < ?)
+          OR (ranked.ranking_score = ? AND ranked.created_at_sort = ? AND ranked.id < ?)
+        )
+      `
+      : '';
+
+    const query = `
+      SELECT *
+      FROM (
+        ${innerQuery}
+      ) ranked
+      ${outerWhere}
+      ORDER BY ranked.ranking_score DESC, ranked.created_at_sort DESC, ranked.id DESC
+      LIMIT ?
+    `;
+
+    const params = [
+      country,
+      safeSeed,
+      safeSeed,
+      ...normalizedSoftSeenIds,
+      currentUserId,
+      ...normalizedHardExcludeIds
+    ];
+
+    if (normalizedCursor) {
+      params.push(
+        normalizedCursor.rankingScore,
+        normalizedCursor.rankingScore,
+        normalizedCursor.createdAtSort,
+        normalizedCursor.rankingScore,
+        normalizedCursor.createdAtSort,
+        normalizedCursor.id
+      );
+    }
+
+    params.push(safeLimit + 1);
+
+    const [rows] = await db.query(query, params);
+    const hasMore = rows.length > safeLimit;
+    const visibleRows = hasMore ? rows.slice(0, safeLimit) : rows;
+    const lastRow = visibleRows[visibleRows.length - 1] || null;
+
+    const reels = visibleRows.map(({ ranking_score, created_at_sort, ...row }) => ({
+      ...row,
+      ranking_score: Number(ranking_score || 0),
+      created_at_sort: Number(created_at_sort || 0),
+      is_author_following: !!row.is_author_following
+    }));
+
+    return {
+      reels,
+      hasMore,
+      nextCursor: hasMore && lastRow
+        ? Buffer.from(JSON.stringify({
+            rankingScore: Number(lastRow.ranking_score || 0),
+            createdAtSort: Number(lastRow.created_at_sort || 0),
+            id: Number(lastRow.id || 0)
+          })).toString('base64url')
+        : null
+    };
   }
 
   static async getByUserId(userId) {
@@ -335,6 +526,8 @@ class Reel {
     if (!columnNames.has('voice_duration_seconds')) {
       await db.query('ALTER TABLE reel_comments ADD COLUMN voice_duration_seconds INT DEFAULT NULL');
     }
+
+    await ensureIndex('reel_comments', 'idx_reel_comments_reel_created', '(reel_id, created_at DESC, id DESC)');
   }
 
   static async getComments(reelId) {

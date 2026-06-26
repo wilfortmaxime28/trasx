@@ -1,0 +1,256 @@
+<% (reels || []).forEach((reel, reelIndex) => { %>
+  <% let resolvedVideoUrl = reel.video_url; if (resolvedVideoUrl && resolvedVideoUrl.includes('unsplash.com')) {
+    const videoUrls = [
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4'
+    ];
+    const videoIdx = (reel.id - 1) % videoUrls.length;
+    resolvedVideoUrl = videoUrls[videoIdx >= 0 ? videoIdx : 0];
+  }
+  const reelMediaFit = reel.media_fit === 'contain' ? 'contain' : 'cover';
+  const reelCardIndex = Number(reelIndexOffset || 0) + reelIndex;
+  const reelThumbUrl = reel.thumbnail_url || (reel.media_type === 'image_audio' ? resolvedVideoUrl : (reel.author_avatar || '/assets/avatar_placeholder.jpg'));
+  %>
+  <div class="reel-card" id="reel-<%= reel.id %>" data-reel-id="<%= reel.id %>"
+    data-progressive-item="reel"
+    data-progressive-index="<%= reelCardIndex %>"
+    data-author-username="<%= reel.author_username %>" data-user-id="<%= reel.user_id %>"
+    data-thumb-src="<%= reelThumbUrl ? reelThumbUrl.replace(/"/g, '&quot;') : '' %>"
+    data-search-text="<%= [reel.author_name, reel.author_username, reel.caption, reel.sound_name].filter(Boolean).join(' ').replace(/"/g, '&quot;') %>"
+    data-author-name="<%= reel.author_name ? reel.author_name.replace(/"/g, '&quot;') : '' %>"
+    data-caption="<%= reel.caption ? reel.caption.replace(/"/g, '&quot;') : '' %>"
+    data-sound-name="<%= reel.sound_name ? reel.sound_name.replace(/"/g, '&quot;') : '' %>"
+    style="position: relative; width: 100%; max-width: 440px; aspect-ratio: 9/16; border-radius: var(--border-radius-card); overflow: hidden; box-shadow: var(--shadow-lg); background: #000; border: 1px solid var(--border-color);">
+    <% if (!reel.media_type || reel.media_type === 'video') { %>
+      <video data-lazy-src="<%= resolvedVideoUrl %>" poster="<%= reelThumbUrl %>" muted playsinline preload="none" data-load-on-play="1" class="reel-video"
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: <%= reelMediaFit %>; z-index: 1; cursor: pointer;"
+        data-media-type="video" data-media-fit="<%= reelMediaFit %>"
+        data-audio-start="<%= reel.audio_start_time || 0 %>"
+        data-audio-duration="<%= reel.audio_duration || 30 %>"
+        data-trim-start="<%= reel.trim_start %>"
+        data-trim-end="<%= reel.trim_end %>"></video>
+    <% } else if (reel.media_type === 'image_audio') { %>
+      <div class="reel-video-container"
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;">
+        <img src="<%= resolvedVideoUrl %>" class="reel-video" loading="lazy"
+          style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: <%= reelMediaFit %>; cursor: pointer;"
+          data-media-type="image_audio" data-media-fit="<%= reelMediaFit %>"
+          data-audio-start="<%= reel.audio_start_time || 0 %>"
+          data-audio-duration="<%= reel.audio_duration || 30 %>">
+        <audio data-lazy-src="<%= reel.audio_url %>" class="reel-audio-track" preload="none" style="display:none;"></audio>
+      </div>
+    <% } else if (reel.media_type === 'voice') { %>
+      <div class="reel-video"
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; cursor: pointer; background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: white;"
+        data-media-type="voice" data-audio-start="<%= reel.audio_start_time || 0 %>"
+        data-audio-duration="<%= reel.audio_duration || 30 %>">
+        <div
+          style="width: 80px; height: 80px; border-radius: 50%; background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); display: grid; place-items: center; box-shadow: 0 8px 32px rgba(0,0,0,0.3); border: 1.5px solid rgba(255,255,255,0.25);">
+          <i data-lucide="mic" style="width: 32px; height: 32px;"></i>
+        </div>
+        <div class="voice-wave-container"
+          style="display: flex; gap: 4px; align-items: center; height: 40px; margin-top: 10px;">
+          <span class="voice-bar animated" style="width: 4px; height: 20px; background: white; border-radius: 2px;"></span>
+          <span class="voice-bar animated" style="width: 4px; height: 36px; background: white; border-radius: 2px;"></span>
+          <span class="voice-bar animated" style="width: 4px; height: 15px; background: white; border-radius: 2px;"></span>
+          <span class="voice-bar animated" style="width: 4px; height: 30px; background: white; border-radius: 2px;"></span>
+          <span class="voice-bar animated" style="width: 4px; height: 25px; background: white; border-radius: 2px;"></span>
+        </div>
+        <span
+          style="font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 700; opacity: 0.95; letter-spacing: 0.5px;">VOICE
+          NOTE SHORT</span>
+        <audio data-lazy-src="<%= reel.audio_url %>" class="reel-audio-track" preload="none" style="display:none;"></audio>
+      </div>
+    <% } else if (reel.media_type === 'audio') { %>
+      <div class="reel-video"
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; cursor: pointer; background: linear-gradient(135deg, #1e1b4b 0%, #311042 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: white;"
+        data-media-type="audio" data-audio-start="<%= reel.audio_start_time || 0 %>"
+        data-audio-duration="<%= reel.audio_duration || 30 %>">
+        <div class="reel-turntable">
+          <div class="reel-turntable-plinth"></div>
+          <div class="reel-turntable-platter-ring"></div>
+          <div class="spinning-vinyl">
+            <span class="vinyl-groove vinyl-groove--outer"></span>
+            <span class="vinyl-groove vinyl-groove--mid"></span>
+            <span class="vinyl-groove vinyl-groove--inner"></span>
+            <span class="vinyl-highlight"></span>
+            <div class="vinyl-label">
+              <span class="vinyl-label-core"></span>
+            </div>
+          </div>
+          <div class="reel-tonearm">
+            <span class="reel-tonearm-base"></span>
+            <span class="reel-tonearm-bar"></span>
+            <span class="reel-tonearm-head"></span>
+            <span class="reel-tonearm-needle"></span>
+          </div>
+        </div>
+        <div
+          style="text-align: center; padding: 0 20px; width: 100%; max-width: 200px; margin: 0 auto; overflow: hidden;">
+          <div class="reel-music-scroller-wrap"
+            style="max-width: 100% !important; justify-content: center; margin: 0 auto;">
+            <div class="reel-music-scroller-track">
+              <h4 class="reel-music-scroller-text"
+                style="font-size: 15px !important; font-weight: 800; font-family: 'Outfit', sans-serif; margin: 0;">
+                <%= reel.sound_name %>
+              </h4>
+              <h4 class="reel-music-scroller-text" aria-hidden="true"
+                style="font-size: 15px !important; font-weight: 800; font-family: 'Outfit', sans-serif; margin: 0;">
+                <%= reel.sound_name %>
+              </h4>
+            </div>
+          </div>
+          <p style="font-size: 11px; opacity: 0.7; margin-top: 4px;"><%= tText("Music Track Short") %></p>
+        </div>
+        <audio data-lazy-src="<%= reel.audio_url %>" class="reel-audio-track" preload="none" style="display:none;"></audio>
+      </div>
+    <% } %>
+    <div class="reel-loader-container">
+      <div class="tiktok-loader">
+        <div class="loader-dot dot-1"></div>
+        <div class="loader-dot dot-2"></div>
+      </div>
+    </div>
+    <div class="reel-play-overlay"
+      style="position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 2; transition: opacity 0.2s; opacity: 0;">
+      <div
+        style="width: 56px; height: 56px; border-radius: 50%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: grid; place-items: center; border: 1.5px solid rgba(255,255,255,0.4);">
+        <i data-lucide="play"
+          style="color: white; fill: white; width: 20px; height: 20px; margin-left: 3px;"></i>
+      </div>
+    </div>
+    <div class="reel-details-overlay"
+      style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.38) 40%, transparent 65%); padding: 24px 20px; color: white; display: flex; flex-direction: column; gap: 12px; pointer-events: auto; z-index: 4;">
+      <div class="reel-progress-container"
+        style="display: flex; align-items: center; gap: 8px; width: 100%; margin-bottom: -5px;">
+        <span class="reel-current-time"
+          style="font-size: 10px; font-family: monospace; opacity: 0.8; min-width: 28px;">0:00</span>
+        <input type="range" class="reel-progress-slider" min="0" max="100" value="0"
+          step="0.1"
+          style="flex: 1; -webkit-appearance: none; height: 3px; border-radius: 999px; background: rgba(255,255,255,0.3); outline: none; cursor: pointer;">
+        <span class="reel-duration"
+          style="font-size: 10px; font-family: monospace; opacity: 0.8; min-width: 28px; text-align: right;">0:00</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%;">
+        <div class="avatar"
+          style="width: 36px; height: 36px; border: 2px solid white; overflow: hidden; flex-shrink: 0;">
+          <img src="<%= reel.author_avatar %>" style="width:100%; height:100%; object-fit:cover;"></div>
+        <div style="min-width: 0; flex: 1;">
+          <h4 style="font-size: 13.5px; font-weight: 700; color: white; margin: 0;">
+            <%= reel.author_name %>
+            <% if ((reel.author_certification_type || 'None') !== 'None') { %>
+              <span class="verified-badge-small" title="<%= reel.author_certification_type %>" data-type="<%= reel.author_certification_type %>" style="display: inline-flex; margin-left: 4px;">
+                <i data-lucide="badge-check"></i>
+              </span>
+            <% } %>
+            <% if (Number(currentUser.id) !== Number(reel.user_id)) { %>
+              <span class="reel-follow-toggle-btn"
+                data-follow-target-id="<%= reel.user_id %>"
+                data-following="<%= reel.is_author_following ? '1' : '0' %>"
+                style="font-size: 11px; font-weight: 700; color: #3b82f6; margin-left: 6px; cursor: pointer;">
+                • <%= reel.is_author_following ? 'Following' : 'Follow' %>
+              </span>
+            <% } %>
+            <span style="font-size: 11px; color: rgba(255,255,255,0.6); margin-left: 6px;">
+              • <%= new Date(reel.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' }) %>
+            </span>
+          </h4>
+          <div class="reel-music-scroller-wrap">
+            <i data-lucide="music" style="width: 10px; height: 10px; flex-shrink: 0;"></i>
+            <div class="reel-music-scroller-track">
+              <span class="reel-music-scroller-text"><%= reel.sound_name %></span>
+              <span class="reel-music-scroller-text" aria-hidden="true"><%= reel.sound_name %></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="formatted-hashtag-text reel-caption-text"
+        style="font-size: 13px; color: rgba(255,255,255,0.95); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0;">
+        <%= reel.caption %>
+      </p>
+    </div>
+    <div class="reel-actions-container"
+      style="position: absolute; right: 16px; bottom: 90px; display: flex; flex-direction: column; gap: 10px; align-items: center; color: white; z-index: 5;">
+      <button type="button" class="reel-action-btn reel-like-btn" data-reel-id="<%= reel.id %>" data-likes="<%= Number(reel.likes_count || 0) %>"
+        style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
+        <div style="width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.35); display: grid; place-items: center;">
+          <i data-lucide="heart" style="width: 10px; height: 10px;"></i>
+        </div>
+        <span class="like-count" style="font-size: 9px; font-weight: 600; line-height: 1.1;"><%= formatNumber(reel.likes_count) %></span>
+      </button>
+      <button type="button" class="reel-action-btn reel-comment-btn" data-reel-id="<%= reel.id %>" data-comments="<%= Number(reel.comments_count || 0) %>"
+        style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
+        <div style="width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.35); display: grid; place-items: center;">
+          <i data-lucide="message-square" style="width: 10px; height: 10px;"></i>
+        </div>
+        <span class="comment-count" style="font-size: 9px; font-weight: 600; line-height: 1.1;"><%= formatNumber(reel.comments_count) %></span>
+      </button>
+      <button type="button" class="reel-action-btn reel-share-btn" data-reel-id="<%= reel.id %>" data-shares="<%= Number(reel.shares_count || 0) %>"
+        style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
+        <div style="width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.35); display: grid; place-items: center;">
+          <i data-lucide="share-2" style="width: 10px; height: 10px;"></i>
+        </div>
+        <span class="share-count" style="font-size: 9px; font-weight: 600; line-height: 1.1;"><%= formatNumber(reel.shares_count) %></span>
+      </button>
+      <% if (reel.is_trade) { %>
+        <% const isReelPossessor = Number(reel.last_possession_user_id) === Number(currentUser.id); const reelTradePrice = Number(reel.trade_price || 0); %>
+        <button type="button"
+          class="reel-action-btn reel-trade-btn <%= isReelPossessor ? 'disabled' : '' %>"
+          data-reel-id="<%= reel.id %>" data-price="<%= reelTradePrice %>"
+          data-possessor-id="<%= reel.last_possession_user_id %>"
+          aria-disabled="<%= isReelPossessor ? 'true' : 'false' %>"
+          onclick="window.handleReelTradeClick && window.handleReelTradeClick(this)"
+          onpointerup="window.handleReelTradeClick && window.handleReelTradeClick(this)"
+          style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
+          <div style="width: 18px; height: 18px; border-radius: 50%; background: rgba(124, 58, 237, 0.85); display: grid; place-items: center;">
+            <i data-lucide="repeat" style="width: 10px; height: 10px;"></i>
+          </div>
+          <span style="font-size: 9px; font-weight: 600; line-height: 1.1;">Trade</span>
+          <strong class="reel-trade-price-val" style="font-size: 8px; line-height: 1.1; margin-top: -1px;">$<%= reelTradePrice.toFixed(2) %></strong>
+        </button>
+      <% } %>
+    </div>
+
+    <div class="reel-comments-drawer" data-reel-id="<%= reel.id %>">
+      <div class="reel-comments-header">
+        <span class="reel-comments-title"><%= tText("Comments (") %><span class="drawer-comments-count" data-count="<%= Number(reel.comments_count || 0) %>"><%= formatNumber(reel.comments_count) %></span>)</span>
+        <button class="close-comments-drawer-btn" type="button"><i data-lucide="x"></i></button>
+      </div>
+      <div class="reel-comments-list"></div>
+      <form class="reel-comment-form" data-reel-id="<%= reel.id %>">
+        <div class="reel-reply-context" style="display: none;">
+          <span class="reel-reply-context-text"></span>
+          <button type="button" class="reel-cancel-reply-btn" title="<%= tText("Annuler la reponse") %>"
+            aria-label="<%= tText("Annuler la reponse") %>"><i data-lucide="x"></i></button>
+        </div>
+        <div class="reel-comment-input-wrap">
+          <input type="text" placeholder="<%= tText("Add comment...") %>" class="reel-comment-input" autocomplete="off">
+          <div class="reel-comment-tools">
+            <button type="button" class="reel-comment-tool-btn emoji-trigger-btn"
+              title="<%= tText("Ajouter un emoji") %>" aria-label="<%= tText("Ajouter un emoji") %>"><i
+                data-lucide="smile"></i></button>
+            <button type="button" class="reel-comment-tool-btn reel-voice-trigger-btn"
+              title="<%= tText("Enregistrer une note vocale") %>"
+              aria-label="<%= tText("Enregistrer une note vocale") %>"><i data-lucide="mic"></i></button>
+          </div>
+          <div class="reel-voice-recording-overlay" style="display: none;">
+            <div class="reel-recording-status">
+              <span class="recording-indicator"></span>
+              <span class="recording-timer">00:00</span>
+            </div>
+            <div class="reel-recording-actions">
+              <button type="button" class="reel-cancel-recording-btn" title="Annuler" aria-label="Annuler"><i data-lucide="trash-2"></i></button>
+              <button type="button" class="reel-stop-recording-btn"
+                title="<%= tText("Envoyer la note vocale") %>" aria-label="<%= tText("Envoyer la note vocale") %>"><i
+                  data-lucide="check"></i></button>
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="reel-comment-submit-btn"><i data-lucide="send"></i></button>
+      </form>
+    </div>
+  </div>
+<% }) %>

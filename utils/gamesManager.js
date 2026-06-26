@@ -17,7 +17,7 @@ class GamesManager {
   // Retrieve active games (waiting or playing)
   getLiveGames() {
     return Object.values(this.games)
-      .filter(game => game.status !== 'finished' && game.status !== 'invited')
+      .filter(game => game.gameType !== 'domino' && game.status !== 'finished' && game.status !== 'invited')
       .map(game => ({
         id: game.id,
         gameType: game.gameType,
@@ -57,6 +57,9 @@ class GamesManager {
     }
     if (gameType === 'morpion') {
       gameType = 'gomoku';
+    }
+    if (gameType === 'domino') {
+      throw new Error('Le jeu Domino a été retiré de la plateforme.');
     }
     if (gameType === 'echecs' || gameType === 'mathduel') {
       throw new Error('Ce jeu n est plus disponible.');
@@ -123,6 +126,7 @@ class GamesManager {
     let leftEnd = null;
     let rightEnd = null;
     let table = [];
+    let dominoScores = { player1: 0, player2: 0 };
     let mathState = null;
     let tableFootballState = null;
     let chessState = null;
@@ -230,6 +234,7 @@ class GamesManager {
       player2Hand,
       boneyard,
       table,
+      dominoScores,
       mathState,
       tableFootballState,
       chessState,
@@ -281,6 +286,7 @@ class GamesManager {
     }
     const game = this.games[gameId];
     if (!game) throw new Error('Partie introuvable.');
+    if (game.gameType === 'domino') throw new Error('Le jeu Domino a été retiré de la plateforme.');
     if (game.status !== 'waiting') throw new Error('Cette partie n\'est plus disponible.');
     if (game.player1.id === player2Id) throw new Error('Vous ne pouvez pas jouer contre vous-même.');
 
@@ -1083,6 +1089,21 @@ class GamesManager {
   async endGame(gameId, winnerId, winningStones = null, isForfeit = false) {
     const game = this.games[gameId];
     if (!game) return;
+
+    if (game.gameType === 'domino' && !game.dominoScores) {
+      game.dominoScores = { player1: 0, player2: 0 };
+    }
+
+    if (game.gameType === 'domino' && winnerId !== 'draw' && winnerId !== 'cancelled' && !isForfeit) {
+      const player1Remaining = (game.player1Hand || []).reduce((acc, tile) => acc + Number(tile[0] || 0) + Number(tile[1] || 0), 0);
+      const player2Remaining = (game.player2Hand || []).reduce((acc, tile) => acc + Number(tile[0] || 0) + Number(tile[1] || 0), 0);
+
+      if (String(winnerId) === String(game.player1?.id)) {
+        game.dominoScores.player1 = Number(game.dominoScores.player1 || 0) + player2Remaining;
+      } else if (String(winnerId) === String(game.player2?.id)) {
+        game.dominoScores.player2 = Number(game.dominoScores.player2 || 0) + player1Remaining;
+      }
+    }
 
     if (game.rounds && game.rounds > 1 && !isForfeit) {
       if (!game.roundWins) {

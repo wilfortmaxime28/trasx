@@ -7419,6 +7419,18 @@ body[data-theme="dark"] .chat-icon-btn:hover {
   object-fit: cover;
 }
 
+.chat-shared-feed-card .post-video-shell {
+  height: 150px;
+  min-height: 150px;
+  border-radius: 8px;
+}
+
+.chat-shared-feed-card .post-video-loading-overlay,
+.chat-shared-feed-card .video-pulse-overlay,
+.chat-shared-feed-card .custom-video-controls {
+  display: none !important;
+}
+
 .chat-shared-feed-card .post-single-video,
 .chat-shared-feed-card .post-single-live,
 .chat-shared-feed-card .challenge-post-card {
@@ -7687,6 +7699,11 @@ body[data-theme="dark"] .chat-icon-btn:hover {
   .chat-shared-feed-card .post-images-grid img,
   .chat-shared-feed-card .post-video-shell video {
     max-height: 132px;
+  }
+
+  .chat-shared-feed-card .post-video-shell {
+    height: 132px;
+    min-height: 132px;
   }
 
   .chat-shared-feed-card .post-footer {
@@ -12038,6 +12055,9 @@ body[data-theme="dark"] .compose-contact-chip {
 
 .post-video-shell {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   border-radius: 0;
   background-color: #0b0f19;
@@ -12046,6 +12066,9 @@ body[data-theme="dark"] .compose-contact-chip {
   border-top: 1px solid var(--border-color);
   border-bottom: 1px solid var(--border-color);
   box-shadow: none;
+  height: clamp(250px, 46vw, 420px);
+  min-height: clamp(250px, 46vw, 420px);
+  isolation: isolate;
 }
 
 /* ——— Native browser fullscreen: clean black shell ——— */
@@ -12089,10 +12112,55 @@ body[data-theme="dark"] .compose-contact-chip {
 
 .post-video {
   width: 100%;
-  max-height: 480px;
+  height: 100%;
   background-color: #0b0f19;
   display: block;
   outline: none;
+  object-fit: contain;
+  transition: opacity 0.22s ease, filter 0.22s ease;
+}
+
+.post-video-shell[data-video-state="loading"] .post-video {
+  opacity: 0.88;
+}
+
+.post-video-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.post-video-shell[data-video-state="loading"] .post-video-loading-overlay,
+.post-video-shell[data-video-state="ready"] .post-video-loading-overlay {
+  opacity: 1;
+}
+
+.post-video-loading-icon {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 20, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.post-video-loading-icon i,
+.post-video-loading-icon svg {
+  width: 30px;
+  height: 30px;
+  color: #ffffff;
+  margin-left: 3px;
 }
 
 /* ——— Custom video fullscreen overlay (Facebook-style) ——— */
@@ -12414,6 +12482,24 @@ body[data-theme="dark"] .compose-contact-chip {
 .post-video-shell:focus-within .custom-video-controls {
   opacity: 1;
   pointer-events: auto;
+}
+
+@media (max-width: 768px) {
+  .post-video-shell {
+    height: clamp(220px, 62vw, 360px);
+    min-height: clamp(220px, 62vw, 360px);
+  }
+
+  .post-video-loading-icon {
+    width: 60px;
+    height: 60px;
+  }
+
+  .post-video-loading-icon i,
+  .post-video-loading-icon svg {
+    width: 24px;
+    height: 24px;
+  }
 }
 
 .video-controls-left,
@@ -13892,6 +13978,7 @@ body.viewing-shorts .reel-card .reel-actions-container {
   pointer-events: auto !important;
   z-index: 20 !important;
   bottom: 80px !important; /* Raised actions a bit higher */
+  gap: 14px !important;
 }
 
 .reel-actions-container .reel-trade-btn {
@@ -13917,30 +14004,36 @@ body.viewing-shorts .reel-card .reel-actions-container {
   -webkit-backdrop-filter: none !important;
 }
 
+body.viewing-shorts .reel-actions-container .reel-action-btn,
+body.viewing-shorts .reel-actions-container .reel-trade-btn {
+  min-width: 60px !important;
+  gap: 0 !important;
+}
+
 body.viewing-shorts .reel-actions-container .reel-action-btn > div {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  width: 24px !important;
-  height: 24px !important;
+  width: 46px !important;
+  height: 46px !important;
 }
 
 body.viewing-shorts .reel-actions-container .reel-action-btn svg,
 body.viewing-shorts .reel-actions-container .reel-action-btn i {
-  width: 10px !important;
-  height: 10px !important;
+  width: 22px !important;
+  height: 22px !important;
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.8));
   stroke-width: 2px !important;
 }
 
 body.viewing-shorts .reel-actions-container .reel-action-btn span {
-  font-size: 9px !important;
+  font-size: 13px !important;
   font-weight: 600 !important;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-  margin-top: 2px;
-  line-height: 1.1 !important;
+  margin-top: -1px !important;
+  line-height: 1 !important;
 }
 
 body.viewing-shorts .reel-actions-container .reel-trade-btn > div {
@@ -13948,16 +14041,23 @@ body.viewing-shorts .reel-actions-container .reel-trade-btn > div {
   border: 1px solid rgba(255, 255, 255, 0.3) !important;
   border-radius: 50% !important;
   box-shadow: 0 4px 10px rgba(124, 58, 237, 0.4) !important;
-  width: 20px !important;
-  height: 20px !important;
+  width: 46px !important;
+  height: 46px !important;
   display: grid !important;
   place-items: center !important;
 }
 
 body.viewing-shorts .reel-actions-container .reel-trade-btn svg,
 body.viewing-shorts .reel-actions-container .reel-trade-btn i {
-  width: 10px !important;
-  height: 10px !important;
+  width: 22px !important;
+  height: 22px !important;
+}
+
+body.viewing-shorts .reel-actions-container .reel-trade-price-val {
+  font-size: 11px !important;
+  line-height: 1 !important;
+  margin-top: -1px !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
 /* Ensure vinyl still spins smoothly */
@@ -15538,323 +15638,546 @@ body[data-theme="dark"] .game-board-wrapper {
 }
 
 /* Domino Board & Pieces Styling */
+.active-game-area.domino-mode .game-scoreboard,
+.active-game-area.domino-mode .game-turn-status-bar {
+  display: none;
+}
+
+.active-game-area.domino-mode .game-arena-left {
+  gap: 0;
+}
+
+.active-game-area.domino-mode .game-board-wrapper,
+body[data-theme="dark"] .active-game-area.domino-mode .game-board-wrapper {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
 .domino-board-container {
   width: 100%;
-  max-width: 900px;
+  max-width: 980px;
   margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
   animation: fadeIn 0.3s ease;
 }
 
-/* Action Bar */
-.domino-action-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--bg-card);
-  padding: 12px 18px;
-  border-radius: 16px;
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-sm);
-  gap: 12px;
-}
-
-.boneyard-badge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--text-primary);
-  background: var(--bg-hover);
-  padding: 6px 14px;
-  border-radius: 99px;
-  border: 1px solid var(--border-color);
-}
-
-.boneyard-badge i {
-  color: var(--primary);
-  width: 16px;
-  height: 16px;
-}
-
-.domino-btn-primary {
-  background: var(--primary);
-  color: white;
-  border: none;
-  font-weight: 700;
-  font-size: 13px;
-  padding: 8px 18px;
-  border-radius: 10px;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.25);
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.domino-btn-primary:hover {
-  background: var(--primary-dark);
-  transform: translateY(-1.5px);
-  box-shadow: 0 6px 16px rgba(24, 119, 242, 0.35);
-}
-
-.domino-btn-primary:active {
-  transform: translateY(0);
-}
-
-.domino-btn-primary:disabled {
-  background: var(--bg-hover);
-  color: var(--text-muted);
-  border: 1px solid var(--border-color);
-  box-shadow: none;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.domino-btn-secondary {
-  background: #f43f5e;
-  color: white;
-  border: none;
-  font-weight: 700;
-  font-size: 13px;
-  padding: 8px 18px;
-  border-radius: 10px;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(244, 63, 94, 0.25);
-  transition: all 0.2s ease;
-}
-
-.domino-btn-secondary:hover {
-  background: #e11d48;
-  transform: translateY(-1.5px);
-  box-shadow: 0 6px 16px rgba(244, 63, 94, 0.35);
-}
-
-.domino-btn-secondary:active {
-  transform: translateY(0);
-}
-
-/* Scrollable Domino Table wrapper */
-.domino-table-wrapper {
+.domino-table-surface {
   position: relative;
   width: 100%;
-  background: #0f5132; /* Classic Green Salon Felt Tapis */
-  background-image: radial-gradient(#157347 25%, #0f5132 85%);
-  border-radius: 20px;
-  padding: 50px 24px;
-  border: 6px solid #5c3d2e; /* Luxury Wooden Table Frame border */
-  box-shadow: inset 0 4px 20px rgba(0, 0, 0, 0.5), var(--shadow-md);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  padding: clamp(14px, 2.8vw, 18px) clamp(10px, 3vw, 28px) clamp(16px, 3vw, 24px);
+  border-radius: 30px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.08), transparent 34%),
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.045), transparent 55%),
+    linear-gradient(180deg, #0f7614 0%, #09620d 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 0 100px rgba(0, 0, 0, 0.22),
+    0 24px 50px rgba(0, 0, 0, 0.28);
 }
 
-/* Horizontal line-up of played dominoes */
-/* Plateau de dominos avec support du tracé absolu (serpentin) */
+.domino-table-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.12;
+  pointer-events: none;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.18) 0.8px, transparent 0.8px),
+    radial-gradient(rgba(0, 0, 0, 0.12) 0.8px, transparent 0.8px);
+  background-position: 0 0, 8px 8px;
+  background-size: 16px 16px;
+}
+
+.domino-opponent-zone,
+.domino-player-footer {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.domino-opponent-zone {
+  margin-top: 2px;
+}
+
+.domino-score-pill {
+  min-width: 70px;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Outfit', sans-serif;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  background: linear-gradient(180deg, #dce7d5 0%, #b8c7af 100%);
+  color: #122e6d;
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.7),
+    0 3px 10px rgba(0, 0, 0, 0.28);
+}
+
+.domino-score-pill--bottom {
+  color: #7b2215;
+}
+
+.domino-player-banner {
+  min-width: 0;
+  max-width: min(72vw, 320px);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px 6px 10px;
+  border-radius: 10px;
+  background: rgba(4, 86, 12, 0.68);
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 4px 12px rgba(0, 0, 0, 0.22);
+}
+
+.domino-player-banner.is-active {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 0 2px rgba(97, 165, 255, 0.9),
+    0 8px 18px rgba(0, 0, 0, 0.26);
+}
+
+.domino-player-banner-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.domino-player-banner-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.domino-player-banner-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.domino-player-banner-name {
+  font-family: 'Outfit', sans-serif;
+  font-size: 19px;
+  line-height: 1;
+  font-weight: 700;
+  color: #f7faf2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.domino-player-banner-meta {
+  font-size: 11px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(241, 245, 239, 0.8);
+}
+
+.domino-turn-emblem {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #fff7b4 0%, #e9d870 100%);
+  color: #121212;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.domino-turn-emblem.is-active {
+  display: inline-flex;
+}
+
+.domino-turn-emblem svg,
+.domino-turn-emblem i {
+  width: 17px;
+  height: 17px;
+}
+
+.domino-opponent-rack {
+  position: relative;
+  z-index: 2;
+  min-height: 66px;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.domino-opponent-back-tile {
+  width: 28px;
+  height: 56px;
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, #181818 0%, #050505 100%);
+  border: 1px solid rgba(236, 236, 236, 0.38);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 4px 8px rgba(0, 0, 0, 0.28);
+}
+
+.domino-table-wrapper {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-height: clamp(250px, 46vw, 440px);
+  margin-top: 12px;
+  padding: clamp(18px, 4vw, 34px) clamp(6px, 2vw, 14px) clamp(16px, 3vw, 24px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  background: transparent;
+}
+
+.domino-table-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
 .domino-table {
   position: relative;
   width: 100%;
-  min-height: 160px;
+  min-height: 0;
   margin: 0 auto;
-  padding: 0;
+  overflow: visible;
+}
+
+.domino-tile-wrapper {
+  position: absolute;
+  background: #ffffff;
+  border-radius: 4px;
   overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow:
+    0 2px 9px rgba(0, 0, 0, 0.32),
+    0 1px 3px rgba(0, 0, 0, 0.18);
+  transition: filter 0.2s ease;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+.domino-tile-wrapper svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  shape-rendering: geometricPrecision;
+  text-rendering: geometricPrecision;
+}
+
+.domino-tile-wrapper.last-played {
+  box-shadow:
+    0 0 0 2px rgba(212, 156, 59, 0.95),
+    0 0 12px rgba(212, 156, 59, 0.5),
+    0 2px 9px rgba(0, 0, 0, 0.32);
+  animation: tileLastPlayedGlow 1.8s infinite ease-in-out;
+}
+
+@keyframes tileLastPlayedGlow {
+  0%   { box-shadow: 0 0 0 2px rgba(212, 156, 59, 0.85), 0 0 8px rgba(212, 156, 59, 0.35), 0 2px 9px rgba(0,0,0,0.32); }
+  50%  { box-shadow: 0 0 0 2px rgba(212, 156, 59, 1), 0 0 14px rgba(212, 156, 59, 0.6), 0 2px 9px rgba(0,0,0,0.32); }
+  100% { box-shadow: 0 0 0 2px rgba(212, 156, 59, 0.85), 0 0 8px rgba(212, 156, 59, 0.35), 0 2px 9px rgba(0,0,0,0.32); }
 }
 
 .domino-empty-table-msg {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 13px;
-  font-weight: 600;
+  color: rgba(247, 250, 242, 0.88);
+  font-size: 14px;
+  font-weight: 700;
   font-style: italic;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/* Indicateurs de placement positionnés de manière absolue */
 .domino-table-indicator {
   position: absolute;
   transform: translate(-50%, -50%);
   z-index: 10;
   display: flex;
-  flex-direction: row;
   align-items: center;
-  gap: 6px;
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.18);
-  border: 2px dashed #10b981;
-  border-radius: 12px;
-  padding: 8px 12px;
+  gap: 7px;
+  color: #ffffff;
+  background: rgba(219, 163, 60, 0.92);
+  border: 1px solid rgba(120, 73, 16, 0.65);
+  border-radius: 999px;
+  padding: 8px 14px;
   cursor: pointer;
   font-size: 11px;
   font-weight: 800;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: all 0.2s ease;
-  animation: pulseGreen 1.5s infinite ease-in-out;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+  transition: transform 0.2s ease, filter 0.2s ease;
 }
 
 .domino-table-indicator:hover {
-  background: rgba(16, 185, 129, 0.3);
   transform: translate(-50%, -50%) scale(1.05);
+  filter: brightness(1.06);
 }
 
-.domino-table-indicator i {
-  width: 18px;
-  height: 18px;
+.domino-table-indicator i,
+.domino-table-indicator svg {
+  width: 16px;
+  height: 16px;
 }
 
-@keyframes pulseGreen {
-  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
-  70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-}
-
-/* Design des dominos standards (Main du joueur) */
-.domino-tile {
+.domino-player-zone {
   position: relative;
-  display: flex;
-  background: transparent;
-  border-radius: 6px;
-  border: none;
-  box-shadow: 0 6px 0 #cfcaa9, 0 8px 12px rgba(0, 0, 0, 0.25); /* Tranche 3D de l'ivoire */
-  width: 90px;
-  height: 45px;
-  cursor: default;
-  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  flex-shrink: 0;
-  user-select: none;
-}
-
-/* Double vertical standard (Main du joueur) */
-.domino-tile.double {
-  flex-direction: column;
-  width: 45px;
-  height: 90px;
-  box-shadow: 0 6px 0 #cfcaa9, 0 8px 12px rgba(0, 0, 0, 0.25);
-}
-
-/* Dominos sur la table (Taille réduite, positionnement absolu) */
-.domino-table .domino-tile {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  transition: none; /* Pas d'animation de transition de position pendant le jeu */
-  background: transparent !important;
-  border: none !important;
-  box-shadow: 0 3px 0 #cfcaa9, 0 4px 8px rgba(0, 0, 0, 0.3); /* Tranche 3D plus fine sur la table */
-}
-
-/* Ajustements pour les pips et séparateurs des dominos de la table */
-.domino-table .domino-tile .domino-half-pips {
-  width: 20px;
-  height: 20px;
-  gap: 1.5px;
-}
-
-.domino-table .domino-tile .pip {
-  width: 5px;
-  height: 5px;
-  box-shadow: inset 0.5px 0.5px 1px rgba(0, 0, 0, 0.85);
-}
-
-.domino-table .domino-tile.vertical .domino-divider {
-  width: 100%;
-  height: 2px;
-}
-
-.domino-table .domino-tile:not(.vertical) .domino-divider {
-  width: 2px;
-  height: 100%;
-}
-
-/* Playable hand styling */
-.domino-tile.playable {
-  cursor: pointer;
-}
-
-.domino-tile.playable:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 12px 18px rgba(0, 0, 0, 0.25), 
-              0 0 12px rgba(24, 119, 242, 0.4);
-  border-color: var(--primary);
-}
-
-.domino-tile.selected {
-  transform: translateY(-12px);
-  border-color: var(--primary);
-  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.3), 
-              0 0 18px rgba(24, 119, 242, 0.7);
-  animation: floatTile 2s infinite ease-in-out;
-}
-
-@keyframes floatTile {
-  0% { transform: translateY(-12px); }
-  50% { transform: translateY(-16px); }
-  100% { transform: translateY(-12px); }
-}
-
-/* Dividers with metallic center spindle pin (Pivot) */
-.domino-divider {
-  position: relative;
-  background: #64748b; /* Slate divider groove */
-  box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.4), 0.5px 0.5px 0.5px rgba(255, 255, 255, 0.7);
-}
-
-/* Les séparateurs, points (pips) et moitiés de dominos sont maintenant rendus de manière réaliste et vectorielle directement par l'image SVG générée en ligne dans JS. */
-
-/* Hand Section */
-.domino-player-hand-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  background: var(--bg-card);
-  padding: 18px 22px;
-  border-radius: 20px;
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-md);
+  z-index: 2;
   margin-top: 8px;
 }
 
-.domino-player-hand-section h4 {
-  font-size: 13.5px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-primary);
-  margin: 0;
+.domino-action-stage {
+  min-height: 52px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+}
+
+.domino-action-hint,
+.domino-float-action {
+  min-height: 38px;
+  padding: 9px 18px;
+  border-radius: 12px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.2);
+}
+
+.domino-action-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #281a04;
+  background: linear-gradient(180deg, #fff7b6 0%, #efd86d 100%);
+  border: 1px solid rgba(121, 85, 18, 0.45);
+}
+
+.domino-btn-primary,
+.domino-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(121, 85, 18, 0.45);
+  cursor: pointer;
+  transition: transform 0.18s ease, filter 0.18s ease;
+}
+
+.domino-btn-primary {
+  color: #281a04;
+  background: linear-gradient(180deg, #fff7b6 0%, #efd86d 100%);
+}
+
+.domino-btn-secondary {
+  color: #ffffff;
+  background: linear-gradient(180deg, #d13a62 0%, #a61540 100%);
+  border-color: rgba(82, 8, 32, 0.55);
+}
+
+.domino-btn-primary:hover,
+.domino-btn-secondary:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.domino-btn-primary:disabled,
+.domino-btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
+.domino-player-hand-shell {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.domino-player-hand-section {
+  width: min(430px, 100%);
+  background: rgba(115, 175, 98, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: 6px 10px 4px;
+}
+
+.domino-player-hand-section h4 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .domino-player-hand {
   display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
+  flex-wrap: nowrap;
+  gap: 10px;
   justify-content: center;
-  padding: 16px 0;
-  min-height: 80px;
+  align-items: flex-end;
+  min-height: 108px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 2px 2px;
+  scrollbar-width: none;
+}
+
+.domino-player-hand::-webkit-scrollbar {
+  display: none;
+}
+
+.domino-bottom-bar {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.domino-stock-shell {
+  width: min(620px, 92%);
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.domino-stock-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232, 243, 224, 0.72);
+}
+
+.domino-stock-count {
+  min-width: 34px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #4873ff 0%, #2a4acf 100%);
+  color: #eff4ff;
+  font-family: 'Outfit', sans-serif;
+  font-size: 17px;
+  font-weight: 800;
+  box-shadow: 0 6px 10px rgba(14, 32, 90, 0.28);
+}
+
+.domino-stock-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(35, 41, 35, 0.78);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.08),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.domino-stock-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #3b50ff 0%, #3850cb 50%, #2c4f9d 100%);
+  transition: width 0.25s ease;
+}
+
+.domino-stock-marker {
+  position: absolute;
+  top: -2px;
+  left: 56%;
+  width: 2px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.42);
+}
+
+.domino-player-footer {
+  gap: 10px;
+}
+
+.domino-img-tile {
+  display: block;
+  object-fit: contain;
+  width: 102px;
+  height: 51px;
+  flex-shrink: 0;
+  user-select: none;
+  cursor: default;
+  border-radius: 4px;
+  transition: transform 0.2s ease, filter 0.2s ease;
+  -webkit-user-drag: none;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.24));
+}
+
+.domino-img-tile.vertical {
+  width: 51px;
+  height: 102px;
+}
+
+.domino-img-tile.playable {
+  cursor: pointer;
+  filter: drop-shadow(0 0 0 rgba(0, 0, 0, 0)) drop-shadow(0 6px 14px rgba(38, 73, 255, 0.24));
+}
+
+.domino-img-tile.playable:hover {
+  transform: translateY(-7px) !important;
+  filter: drop-shadow(0 10px 18px rgba(18, 54, 255, 0.42));
+}
+
+.domino-img-tile.selected {
+  transform: translateY(-10px) !important;
+  filter: drop-shadow(0 12px 18px rgba(204, 150, 45, 0.46));
+}
+
+.domino-img-tile.last-played {
+  filter: drop-shadow(0 0 10px rgba(204, 150, 45, 0.7));
 }
 
 .hand-spectating-msg {
-  color: var(--text-muted);
+  color: rgba(243, 247, 238, 0.78);
   font-size: 12.5px;
   font-style: italic;
   font-weight: 600;
-  padding: 14px;
+  padding: 18px;
+  margin: 0 auto;
 }
 
-/* Last Played Highlights for ALL Games */
-/* Domino last tile played - soft pulsing gold border and drop shadow */
-.domino-tile.last-played {
-  outline: 3px solid #eab308;
-  outline-offset: 2px;
-  box-shadow: 0 0 14px rgba(234, 179, 8, 0.85), 0 5px 8px rgba(0, 0, 0, 0.3) !important;
-  animation: lastPlayedPulse 2s infinite ease-in-out;
-}
+/* Last Played Highlights for Connect 4 and Gomoku */
+/* (Domino last-played handled via .domino-img-tile.last-played above) */
 
 /* Connect 4 last cell dropped - clean inner white highlight on disc */
 .c4-cell.last-played .c4-disc {
@@ -15880,80 +16203,151 @@ body[data-theme="dark"] .game-board-wrapper {
   box-shadow: 0 0 6px #eab308;
 }
 
-@keyframes lastPlayedPulse {
-  0% { transform: scale(1); box-shadow: 0 0 14px rgba(234, 179, 8, 0.85); }
-  50% { transform: scale(1.03); box-shadow: 0 0 20px rgba(234, 179, 8, 1); }
-  100% { transform: scale(1); box-shadow: 0 0 14px rgba(234, 179, 8, 0.85); }
-}
-
-/* Responsiveness overrides for Mobile & Tablet views */
 @media (max-width: 768px) {
-  .domino-tile {
-    width: 72px;
-    height: 36px;
-    border-radius: 8px;
+  .active-game-area.domino-mode .active-game-header {
+    padding: 12px 16px;
   }
-  .domino-tile.double {
-    width: 36px;
-    height: 72px;
+
+  .domino-table-surface {
+    padding: 16px 14px 18px;
+    border-radius: 24px;
   }
-  .domino-half-pips {
+
+  .domino-score-pill {
+    min-width: 56px;
+    height: 30px;
+    font-size: 24px;
+    padding: 0 12px;
+  }
+
+  .domino-player-banner {
+    max-width: min(78vw, 260px);
+    padding: 6px 10px 6px 8px;
+  }
+
+  .domino-player-banner-name {
+    font-size: 17px;
+  }
+
+  .domino-opponent-back-tile {
     width: 24px;
-    height: 24px;
+    height: 48px;
   }
-  .pip {
-    width: 6px;
-    height: 6px;
-  }
+
   .domino-table-wrapper {
-    padding: 30px 16px;
-    border-width: 5px;
+    min-height: clamp(220px, 52vw, 380px);
+    padding: 26px 8px 18px;
+  }
+
+  .domino-player-hand-section {
+    width: min(100%, 380px);
+  }
+
+  .domino-img-tile {
+    width: 82px;
+    height: 41px;
+  }
+
+  .domino-img-tile.vertical {
+    width: 41px;
+    height: 82px;
+  }
+
+  .domino-player-hand {
+    gap: 8px;
+    min-height: 90px;
+  }
+
+  .domino-stock-shell {
+    width: 100%;
+    grid-template-columns: auto auto 1fr;
   }
 }
 
 @media (max-width: 480px) {
-  .domino-tile {
-    width: 56px;
+  .domino-table-surface {
+    padding: 14px 10px 16px;
+  }
+
+  .domino-opponent-zone,
+  .domino-player-footer {
+    gap: 8px;
+  }
+
+  .domino-score-pill {
+    min-width: 48px;
     height: 28px;
-    border-radius: 6px;
-    box-shadow: 0 3px 4px rgba(0, 0, 0, 0.15), 
-                inset 0 1px 2px rgba(255, 255, 255, 0.8),
-                inset 0 -2px 0 #e6e2d3;
+    font-size: 21px;
+    padding: 0 10px;
   }
-  .domino-tile.double {
-    width: 28px;
-    height: 56px;
-    box-shadow: 3px 0 4px rgba(0, 0, 0, 0.15), 
-                inset 1px 0 2px rgba(255, 255, 255, 0.8),
-                inset -2px 0 0 #e6e2d3;
+
+  .domino-player-banner {
+    max-width: min(76vw, 216px);
   }
-  .domino-half-pips {
-    width: 18px;
-    height: 18px;
-    gap: 2px;
+
+  .domino-player-banner-avatar {
+    width: 30px;
+    height: 30px;
   }
-  .pip {
-    width: 4px;
-    height: 4px;
+
+  .domino-player-banner-name {
+    font-size: 16px;
   }
-  .domino-table-wrapper {
-    padding: 20px 10px;
-    border-width: 4px;
+
+  .domino-player-banner-meta,
+  .domino-stock-label {
+    font-size: 10px;
   }
-  .domino-table {
-    min-height: 100px;
-    gap: 8px;
+
+  .domino-opponent-rack {
+    gap: 6px;
+    min-height: 58px;
   }
+
+  .domino-opponent-back-tile {
+    width: 20px;
+    height: 42px;
+  }
+
+  .domino-action-hint,
+  .domino-float-action {
+    min-height: 34px;
+    padding: 8px 14px;
+    font-size: 12.5px;
+  }
+
+  .domino-img-tile {
+    width: 70px;
+    height: 35px;
+  }
+
+  .domino-img-tile.vertical {
+    width: 35px;
+    height: 70px;
+  }
+
   .domino-player-hand {
+    gap: 6px;
+    min-height: 78px;
+  }
+
+  .domino-stock-shell {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .domino-stock-track {
+    width: 100%;
+  }
+
+  .domino-stock-shell {
     gap: 8px;
   }
-  .domino-action-bar {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 10px;
-  }
-  .boneyard-badge {
-    justify-content: center;
+
+  .domino-stock-count {
+    min-width: 30px;
+    height: 22px;
+    font-size: 15px;
   }
 }
 

@@ -32,6 +32,7 @@ const { getNumberSetting } = require('./utils/appSettings');
 const { isNewUserWithinWindow, computePromoDailyTarget } = require('./utils/promoReach');
 const gamesManager = require('./utils/gamesManager');
 const { getFeedPage } = require('./services/feedService');
+const { getReelFeedPage } = require('./services/reelFeedService');
 const cache = require('./utils/cache');
 const QRCode = require('qrcode');
 const bscMonitor = require('./utils/bscMonitor');
@@ -676,6 +677,62 @@ app.get('/api/feed/posts', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[/api/feed/posts]', err);
     return res.status(500).json({ success: false, error: 'Erreur lors du chargement du feed.' });
+  }
+});
+
+// GET /api/feed/reels?cursor=...&limit=6
+// Retourne le prochain lot de shorts avec le meme algorithme SQL que la page initiale.
+app.get('/api/feed/reels', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const currentUser = res.locals.currentUser || await User.getById(currentUserId);
+    if (!currentUser) return res.status(401).json({ success: false, error: 'Non authentifie.' });
+
+    const limit = Math.min(12, Math.max(1, Number(req.query.limit) || 6));
+    const cursorToken = typeof req.query.cursor === 'string' ? req.query.cursor : null;
+    let clientSeenIds = [];
+    try {
+      const raw = req.query.seen;
+      if (raw) clientSeenIds = String(raw).split(',').map(Number).filter((n) => Number.isFinite(n) && n > 0);
+    } catch (_) { /* ignore */ }
+
+    const reelFeedResult = await getReelFeedPage({
+      session: req.session,
+      currentUserId,
+      userCountry: currentUser.country,
+      limit,
+      cursorToken,
+      clientSeenIds
+    });
+
+    const reelIds = reelFeedResult.reels
+      .filter((reel) => Number(reel.user_id) !== currentUserId)
+      .map((reel) => Number(reel.id))
+      .filter(Boolean);
+    if (reelIds.length) await Reel.recordDailyViews(reelIds, currentUserId);
+
+    req.app.render('partials/reelCards', {
+      ...res.locals,
+      reels: reelFeedResult.reels,
+      currentUser,
+      reelIndexOffset: 0
+    }, (renderError, html) => {
+      if (renderError) {
+        console.error('[/api/feed/reels] render error:', renderError);
+        return res.status(500).json({ success: false, error: 'Erreur lors du rendu des shorts.' });
+      }
+
+      return res.json({
+        success: true,
+        reels: reelFeedResult.reels,
+        html,
+        hasMore: reelFeedResult.hasMore,
+        nextCursor: reelFeedResult.nextCursor
+      });
+    });
+  } catch (err) {
+    console.error('[/api/feed/reels]', err);
+    return res.status(500).json({ success: false, error: 'Erreur lors du chargement des shorts.' });
   }
 });
 
@@ -3046,6 +3103,7 @@ const sanitizeGame = (game, userId) => {
     createdAt: game.createdAt,
     winningStones: game.winningStones,
     lastMove: game.lastMove,
+    dominoScores: game.dominoScores,
     rounds: game.rounds,
     currentRound: game.currentRound,
     roundWins: game.roundWins,
@@ -5638,6 +5696,10 @@ io.on('connection', (socket) => {
       const { gameId, team } = data || {};
       const game = gamesManager.games[gameId];
       if (!game) throw new Error('Invitation introuvable ou expirée.');
+      if (game.gameType === 'domino') {
+        delete gamesManager.games[gameId];
+        throw new Error('Le jeu Domino a été retiré de la plateforme.');
+      }
       if (game.status !== 'invited') throw new Error('Cette invitation n\'est plus active.');
       if (Number(game.player2.id) !== Number(currentUserId)) throw new Error('Vous n\'êtes pas le destinataire de cette invitation.');
 

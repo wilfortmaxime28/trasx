@@ -11,6 +11,7 @@ const { buildMessageInboxSections } = require('../utils/messageInbox');
 const { getNumberSetting } = require('../utils/appSettings');
 const { getSupportedCurrencyOptions, getPreferredCurrencyForCountry, getDefaultPaymentMethodsForCountry } = require('../utils/p2pCurrencies');
 const { getFeedPage } = require('../services/feedService');
+const { getReelFeedPage } = require('../services/reelFeedService');
 
 function isWithinPromoWindow(authorCreatedAt, promoWindowDays) {
   const createdAtMs = new Date(authorCreatedAt || 0).getTime();
@@ -361,15 +362,15 @@ class FeedController {
 
       const initialFeedBatchSize = 20; // Nombre de posts chargés côté serveur pour le premier rendu
       const feedRevealBatchSize = 20;   // Taille des lots pour l'infinite scroll
-      const initialShortBatchSize = 4;
-      const shortRevealBatchSize = 2;
+      const initialShortBatchSize = 3;
+      const shortRevealBatchSize = 1;
       const feedMemory = getFeedMemory(req.session);
 
       // Parallelize all independent database queries for maximum performance
       const [
         followingCount,
         feedResult,
-        allReels,
+        reelFeedResult,
         contacts,
         followingShareTargets,
         friendShareTargets,
@@ -381,8 +382,7 @@ class FeedController {
         marketData,
         followersCount,
         postLikes,
-        reelLikes,
-        promoWindowDays
+        reelLikes
       ] = await Promise.all([
         User.getFollowingCount(currentUserId),
         getFeedPage({
@@ -392,7 +392,13 @@ class FeedController {
           limit: initialFeedBatchSize,
           refreshSession: true
         }),
-        Reel.getAll(currentUserId),
+        getReelFeedPage({
+          session: req.session,
+          currentUserId,
+          userCountry: currentUser.country,
+          limit: initialShortBatchSize,
+          refreshSession: true
+        }),
         User.getContactsWithFollowState(currentUserId),
         User.getFollowingForShare(currentUserId),
         User.getFriendsForShare(currentUserId),
@@ -404,21 +410,11 @@ class FeedController {
         P2PMarket.getSnapshot(currentUserId),
         User.getFollowersCount(currentUserId),
         Post.getTotalLikesForUser(currentUserId),
-        Reel.getTotalLikesForUser(currentUserId),
-        getNumberSetting('new_user_promo_days', 30)
+        Reel.getTotalLikesForUser(currentUserId)
       ]);
 
-      const noFollowingMode = Number(followingCount || 0) === 0;
       let posts = feedResult.posts;
-
-      // Récupérer les shorts/reels et leurs vues aujourd'hui
-      const reelViewCounts = await Reel.getTodayUniqueViewCounts(allReels.map((reel) => reel.id));
-      let reels = sortForDiscovery(allReels, reelViewCounts, promoWindowDays, {
-        includeBackgroundPremium: false,
-        recentIds: feedMemory.reels,
-        currentUserCountry: currentUser.country,
-        noFollowingMode
-      });
+      let reels = reelFeedResult.reels;
 
       const messageInbox = buildMessageInboxSections(currentUserId, contacts, messages);
       const marketCurrencyOptions = getSupportedCurrencyOptions();
@@ -471,6 +467,9 @@ class FeedController {
         feedHasMore: feedResult.hasMore,
         feedNextCursor: feedResult.nextCursor || null,
         feedSeed: feedResult.feedSeed,
+        reelsHasMore: reelFeedResult.hasMore,
+        reelsNextCursor: reelFeedResult.nextCursor || null,
+        reelFeedSeed: reelFeedResult.feedSeed,
         initialShortBatchSize,
         shortRevealBatchSize,
         followersCount,
