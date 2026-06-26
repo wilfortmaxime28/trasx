@@ -160,7 +160,8 @@ class StatusController {
           recipientId: status.user_id,
           actorId: currentUserId,
           type: 'comment',
-          message: notificationMessage
+          message: notificationMessage,
+          statusId: statusId
         });
 
         // Emit real-time notification via socket
@@ -174,7 +175,12 @@ class StatusController {
             actor_avatar: currentUser?.avatar || '/assets/avatar_placeholder.jpg',
             type: 'comment',
             message: notificationMessage,
-            created_at: new Date()
+            created_at: new Date(),
+            status_id: statusId,
+            status_media_url: status.media_url,
+            status_media_type: status.media_type,
+            status_caption: status.caption,
+            status_bg_color: status.bg_color
           });
 
           const unreadCount = await Notification.getUnreadCount(status.user_id);
@@ -261,6 +267,22 @@ class StatusController {
     } catch (err) {
       console.error('getViewers error:', err);
       return res.status(500).json({ error: 'Failed to retrieve viewers.' });
+    }
+  }
+  static async getStatusById(req, res) {
+    try {
+      const statusId = parseInt(req.params.id, 10);
+      if (!statusId) {
+        return res.status(400).json({ error: 'Status ID is required.' });
+      }
+      const status = await Status.getById(statusId);
+      if (!status) {
+        return res.status(404).json({ error: 'Status not found.' });
+      }
+      return res.json({ success: true, status });
+    } catch (err) {
+      console.error('getStatusById error:', err);
+      return res.status(500).json({ error: 'Failed to retrieve status.' });
     }
   }
 }

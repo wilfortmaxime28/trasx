@@ -92,7 +92,7 @@
           <div id="notificationItemsList" style="max-height: 250px; overflow-y: auto;">
             <% if (notificationItems.length > 0) { %>
               <% notificationItems.forEach((notification) => { %>
-                <div class="notification-item <%= notification.is_read ? '' : 'is-unread' %>" data-notification-id="<%= notification.id %>" data-ad-url="<%= notification.ad_url || '' %>" data-post-id="<%= notification.post_id || '' %>" data-comment-id="<%= notification.comment_id || '' %>" data-post-content="<%= notification.post_content || '' %>" data-type="<%= notification.type %>" data-actor-username="<%= notification.actor_username || '' %>" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; <%= notification.is_read ? '' : 'background: rgba(59, 130, 246, 0.06);' %>">
+                <div class="notification-item <%= notification.is_read ? '' : 'is-unread' %>" data-notification-id="<%= notification.id %>" data-ad-url="<%= notification.ad_url || '' %>" data-post-id="<%= notification.post_id || '' %>" data-comment-id="<%= notification.comment_id || '' %>" data-post-content="<%= notification.post_content || '' %>" data-status-id="<%= notification.status_id || '' %>" data-type="<%= notification.type %>" data-actor-username="<%= notification.actor_username || '' %>" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; <%= notification.is_read ? '' : 'background: rgba(59, 130, 246, 0.06);' %>">
                   <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0; overflow: hidden;">
                     <img src="<%= notification.actor_avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= notification.actor_name %>" style="width: 100%; height: 100%; object-fit: cover;">
                   </div>
@@ -102,6 +102,32 @@
                     <% if (notification.post_id && notification.post_content) { %>
                       <div class="notification-post-quote" style="margin-top: 6px; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid var(--primary, #3b82f6); border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<%= notification.post_content %>">
                         <strong>Statut :</strong> <span><%= notification.post_content %></span>
+                      </div>
+                    <% } %>
+                    <% if (notification.status_id) { %>
+                      <% 
+                        let sCaption = notification.status_caption || '';
+                        let sMediaType = notification.status_media_type || 'text';
+                        let sMediaUrl = notification.status_media_url || '';
+                        let sBgColor = notification.status_bg_color || 'var(--primary)';
+                        let previewStr = sMediaType !== 'text' ? (sCaption || '[Statut média]') : sCaption;
+                      %>
+                      <div class="notification-status-quote" style="margin-top: 6px; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid #10b981; border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; box-sizing: border-box;">
+                        <div style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                          <strong>Statut :</strong> <span><%= previewStr %></span>
+                        </div>
+                        <% if (sMediaType === 'image' && sMediaUrl) { %>
+                          <img src="<%= sMediaUrl %>" style="width: 24px; height: 24px; object-fit: cover; border-radius: 3px; flex-shrink: 0;" />
+                        <% } else if (sMediaType === 'video' && sMediaUrl) { %>
+                          <div style="position: relative; width: 24px; height: 24px; border-radius: 3px; background: #000; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                            <video src="<%= sMediaUrl %>" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;"></video>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="position: absolute; color: white;"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                          </div>
+                        <% } else if (sMediaType === 'text') { %>
+                          <div style="width: 24px; height: 24px; border-radius: 3px; background: <%= sBgColor %>; color: #fff; font-size: 6px; line-height: 1.1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 1px; text-align: center; font-weight: bold; flex-shrink: 0; word-break: break-all;">
+                            <%= sCaption.substring(0, 8) %>
+                          </div>
+                        <% } %>
                       </div>
                     <% } %>
                     <% if (notification.ad_image_url) { %>

@@ -75,7 +75,7 @@ class Message {
     return rows;
   }
 
-  static async create(senderId, receiverId, content, attachment = {}, parentId = null) {
+  static async create(senderId, receiverId, content, attachment = {}, parentId = null, statusId = null) {
     const normalizedContent = String(content ?? '');
     const {
       attachmentUrl = null,
@@ -87,6 +87,7 @@ class Message {
     const normalizedAttachmentSize = Message.normalizeNullableInt(attachmentSize);
     const normalizedVoiceDurationSeconds = Message.normalizeNullableInt(voiceDurationSeconds);
     const normalizedParentId = Message.normalizeNullableInt(parentId);
+    const normalizedStatusId = Message.normalizeNullableInt(statusId);
     const [result] = await db.query(
       `
         INSERT INTO messages (
@@ -98,8 +99,9 @@ class Message {
           attachment_name,
           attachment_size,
           voice_duration_seconds,
-          parent_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          parent_id,
+          status_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         senderId,
@@ -110,7 +112,8 @@ class Message {
         attachmentName,
         normalizedAttachmentSize,
         normalizedVoiceDurationSeconds,
-        normalizedParentId
+        normalizedParentId,
+        normalizedStatusId
       ]
     );
     return result.insertId;
@@ -140,11 +143,19 @@ class Message {
         u.username AS sender_username,
         pm.content AS parent_content,
         pmu.username AS parent_sender_username,
-        pm.attachment_type AS parent_attachment_type
+        pm.attachment_type AS parent_attachment_type,
+        m.status_id,
+        s.media_url AS status_media_url,
+        s.media_type AS status_media_type,
+        s.caption AS status_caption,
+        s.bg_color AS status_bg_color,
+        su.username AS status_author_username
       FROM messages m
       JOIN users u ON m.sender_id = u.id
       LEFT JOIN messages pm ON m.parent_id = pm.id
       LEFT JOIN users pmu ON pm.sender_id = pmu.id
+      LEFT JOIN statuses s ON m.status_id = s.id
+      LEFT JOIN users su ON s.user_id = su.id
       WHERE (
         (m.sender_id = ? AND m.receiver_id = ?)
         OR (m.sender_id = ? AND m.receiver_id = ?)

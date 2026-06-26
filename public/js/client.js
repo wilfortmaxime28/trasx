@@ -1379,6 +1379,53 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
     }
 
+    let statusHtml = '';
+    if (message?.status_id && !isDeleted) {
+      const sUsername = escapeHtml(message.status_author_username || 'Utilisateur');
+      const mediaUrl = message.status_media_url || '';
+      const mediaType = message.status_media_type || 'text';
+      const caption = escapeHtml(message.status_caption || '');
+      const bgColor = message.status_bg_color || 'var(--primary)';
+
+      const quoteBg = isOutgoing ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.05)';
+      const quoteBorder = isOutgoing ? '3.5px solid #ffffff' : '3.5px solid #10b981';
+      const quoteTitleColor = isOutgoing ? '#ffffff' : '#10b981';
+      const quoteTextColor = isOutgoing ? 'rgba(255, 255, 255, 0.9)' : 'var(--text-secondary)';
+      const quoteIconColor = isOutgoing ? '#ffffff' : '#10b981';
+
+      let mediaPreview = '';
+      if (mediaType === 'image' && mediaUrl) {
+        mediaPreview = `<img src="${mediaUrl}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px; margin-left: auto; flex-shrink: 0;" />`;
+      } else if (mediaType === 'video' && mediaUrl) {
+        mediaPreview = `
+          <div style="position: relative; width: 32px; height: 32px; border-radius: 4px; background: #000; overflow: hidden; margin-left: auto; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+            <video src="${mediaUrl}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;"></video>
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="position: absolute; color: white;"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          </div>
+        `;
+      } else if (mediaType === 'text') {
+        mediaPreview = `
+          <div style="width: 32px; height: 32px; border-radius: 4px; background: ${bgColor}; color: #fff; font-size: 8px; line-height: 1.1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 2px; text-align: center; font-weight: bold; flex-shrink: 0; margin-left: auto; word-break: break-all;">
+            ${caption.substring(0, 10)}
+          </div>
+        `;
+      }
+
+      statusHtml = `
+        <div class="chat-message-status-preview" data-status-id="${escapeHtml(message.status_id)}" style="display: flex; gap: 8px; padding: 6px 10px; border-radius: 6px; margin-bottom: 6px; font-size: 11px; cursor: pointer; width: 100%; min-width: 180px; max-width: 100%; box-sizing: border-box; background: ${quoteBg}; border-left: ${quoteBorder}; transition: background-color 0.2s ease; align-items: center;">
+          <div style="flex: 1; min-width: 0;">
+            <strong style="display: flex; align-items: center; gap: 4px; font-size: 10px; margin-bottom: 2px; color: ${quoteTitleColor};">
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${quoteIconColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-reply" style="display: inline-block; vertical-align: middle;"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg> Statut de @${sUsername}
+            </strong>
+            <span style="color: ${quoteTextColor}; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; display: block;">
+              ${mediaType !== 'text' ? caption || '[Statut média]' : caption}
+            </span>
+          </div>
+          ${mediaPreview}
+        </div>
+      `;
+    }
+
     let bubbleContentHtml = '';
     if (isDeleted) {
       bubbleContentHtml = `<div class="chat-msg-bubble deleted">Ce message a été supprimé.</div>`;
@@ -1388,7 +1435,7 @@ document.addEventListener('DOMContentLoaded', () => {
       bubbleContentHtml = renderSharedContentBubble(structuredContent);
     } else {
       const text = escapeHtml(message?.content || '').trim();
-      bubbleContentHtml = text || parentHtml ? `<div class="chat-msg-bubble">${parentHtml}${text}</div>` : '';
+      bubbleContentHtml = text || parentHtml || statusHtml ? `<div class="chat-msg-bubble">${parentHtml}${statusHtml}${text}</div>` : '';
     }
 
     const timestamp = new Date(message?.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -2464,6 +2511,30 @@ document.addEventListener('DOMContentLoaded', () => {
   let isStoryPaused = false;
   let activeStatusCardElement = null;
   let statusViewerVolumeOn = true;
+  const openStatusViewerById = (statusId) => {
+    if (!statusId) return;
+    fetch(`/statuses/${statusId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.success && data.status) {
+          const status = data.status;
+          const mockCard = document.createElement('div');
+          mockCard.dataset.userId = status.user_id;
+          mockCard.dataset.userName = status.user_name || status.username || 'Utilisateur';
+          mockCard.dataset.username = status.username || '';
+          mockCard.dataset.avatar = status.avatar || '/assets/avatar_placeholder.jpg';
+          mockCard.dataset.statuses = JSON.stringify([status]);
+          openStatusViewer(mockCard);
+        } else {
+          showToast(getPageLocale() === 'fr' ? 'Statut introuvable ou expiré.' : 'Status not found or expired.');
+        }
+      })
+      .catch(err => {
+        console.error('Error fetching status by id:', err);
+        showToast(getPageLocale() === 'fr' ? 'Impossible de charger le statut.' : 'Could not load status.');
+      });
+  };
+
   const openStatusViewer = (card) => {
     if (!statusViewerModal || !card) return;
     activeStatusCardElement = card;
@@ -5038,6 +5109,12 @@ document.addEventListener('DOMContentLoaded', () => {
       parent_content: data.parent_content || null,
       parent_sender_username: data.parent_sender_username || null,
       parent_attachment_type: data.parent_attachment_type || null,
+      status_id: data.status_id || null,
+      status_media_url: data.status_media_url || null,
+      status_media_type: data.status_media_type || null,
+      status_caption: data.status_caption || null,
+      status_bg_color: data.status_bg_color || null,
+      status_author_username: data.status_author_username || null,
       created_at: createdAt
     };
     const previewText = conversation?.preview || getChatMessagePreviewText(message);
@@ -5184,6 +5261,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Main Chat: message actions – dropdown toggle, reply, delete
   // -------------------------------------------------------------------
   document.addEventListener('click', (e) => {
+    // Check if clicked on a status preview within a chat bubble
+    const statusPreview = e.target.closest('.chat-message-status-preview');
+    if (statusPreview) {
+      e.stopPropagation();
+      const statusId = statusPreview.getAttribute('data-status-id');
+      if (statusId) {
+        openStatusViewerById(statusId);
+      }
+      return;
+    }
+
     // Toggle dropdown
     const trigger = e.target.closest('.message-actions-trigger');
     if (trigger) {
@@ -9632,6 +9720,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (notification.post_content) {
       item.setAttribute('data-post-content', notification.post_content);
     }
+    if (notification.status_id) {
+      item.setAttribute('data-status-id', notification.status_id);
+      if (notification.status_media_url) item.setAttribute('data-status-media-url', notification.status_media_url);
+      if (notification.status_media_type) item.setAttribute('data-status-media-type', notification.status_media_type);
+      if (notification.status_caption) item.setAttribute('data-status-caption', notification.status_caption);
+      if (notification.status_bg_color) item.setAttribute('data-status-bg-color', notification.status_bg_color);
+    }
     if (notification.type) {
       item.setAttribute('data-type', notification.type);
     }
@@ -9658,6 +9753,40 @@ document.addEventListener('DOMContentLoaded', () => {
             <strong>Statut :</strong> <span>${escapeHtml(notification.post_content)}</span>
           </div>
         ` : ''}
+        ${notification.status_id ? (() => {
+          const sCaption = escapeHtml(notification.status_caption || '');
+          const sMediaType = notification.status_media_type || 'text';
+          const sMediaUrl = notification.status_media_url || '';
+          const sBgColor = notification.status_bg_color || 'var(--primary)';
+          const previewStr = sMediaType !== 'text' ? (sCaption || '[Statut média]') : sCaption;
+          
+          let mediaThumbnail = '';
+          if (sMediaType === 'image' && sMediaUrl) {
+            mediaThumbnail = `<img src="${sMediaUrl}" style="width: 24px; height: 24px; object-fit: cover; border-radius: 3px; flex-shrink: 0;" />`;
+          } else if (sMediaType === 'video' && sMediaUrl) {
+            mediaThumbnail = `
+              <div style="position: relative; width: 24px; height: 24px; border-radius: 3px; background: #000; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                <video src="${sMediaUrl}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;"></video>
+                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="position: absolute; color: white;"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+              </div>
+            `;
+          } else if (sMediaType === 'text') {
+            mediaThumbnail = `
+              <div style="width: 24px; height: 24px; border-radius: 3px; background: ${sBgColor}; color: #fff; font-size: 6px; line-height: 1.1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 1px; text-align: center; font-weight: bold; flex-shrink: 0; word-break: break-all;">
+                ${sCaption.substring(0, 8)}
+              </div>
+            `;
+          }
+          
+          return `
+            <div class="notification-status-quote" style="margin-top: 6px; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid #10b981; border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; box-sizing: border-box;">
+              <div style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <strong>Statut :</strong> <span>${previewStr}</span>
+              </div>
+              ${mediaThumbnail}
+            </div>
+          `;
+        })() : ''}
         ${notification.ad_image_url ? `
           <div style="margin-top: 6px; width: 100%; max-width: 180px; height: 55px; border-radius: 6px; overflow: hidden; background: #000;">
             <img src="${notification.ad_image_url}" alt="Banner" style="width: 100%; height: 100%; object-fit: cover;">
@@ -9692,7 +9821,7 @@ document.addEventListener('DOMContentLoaded', () => {
     notificationItemsList.innerHTML = notifications.map((notification) => {
       const unread = Number(notification.is_read) === 0;
       return `
-        <div class="notification-item ${unread ? 'is-unread' : ''}" data-notification-id="${notification.id}" data-ad-url="${notification.ad_url || ''}" data-post-id="${notification.post_id || ''}" data-comment-id="${notification.comment_id || ''}" data-post-content="${escapeHtml(notification.post_content || '')}" data-type="${notification.type || ''}" data-actor-username="${notification.actor_username || ''}" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; ${unread ? 'background: rgba(59, 130, 246, 0.06);' : ''}">
+        <div class="notification-item ${unread ? 'is-unread' : ''}" data-notification-id="${notification.id}" data-ad-url="${notification.ad_url || ''}" data-post-id="${notification.post_id || ''}" data-comment-id="${notification.comment_id || ''}" data-post-content="${escapeHtml(notification.post_content || '')}" data-status-id="${notification.status_id || ''}" data-status-media-url="${notification.status_media_url || ''}" data-status-media-type="${notification.status_media_type || ''}" data-status-caption="${escapeHtml(notification.status_caption || '')}" data-status-bg-color="${notification.status_bg_color || ''}" data-type="${notification.type || ''}" data-actor-username="${notification.actor_username || ''}" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; ${unread ? 'background: rgba(59, 130, 246, 0.06);' : ''}">
           <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0; overflow: hidden;">
         <img src="${notification.actor_avatar || '/assets/avatar_placeholder.jpg'}" alt="${escapeHtml(notification.actor_name || '')}" style="width: 100%; height: 100%; object-fit: cover;">
           </div>
@@ -9704,6 +9833,40 @@ document.addEventListener('DOMContentLoaded', () => {
             <strong>Statut :</strong> <span>${escapeHtml(notification.post_content)}</span>
           </div>
         ` : ''}
+        ${notification.status_id ? (() => {
+          const sCaption = escapeHtml(notification.status_caption || '');
+          const sMediaType = notification.status_media_type || 'text';
+          const sMediaUrl = notification.status_media_url || '';
+          const sBgColor = notification.status_bg_color || 'var(--primary)';
+          const previewStr = sMediaType !== 'text' ? (sCaption || '[Statut média]') : sCaption;
+          
+          let mediaThumbnail = '';
+          if (sMediaType === 'image' && sMediaUrl) {
+            mediaThumbnail = `<img src="${sMediaUrl}" style="width: 24px; height: 24px; object-fit: cover; border-radius: 3px; flex-shrink: 0;" />`;
+          } else if (sMediaType === 'video' && sMediaUrl) {
+            mediaThumbnail = `
+              <div style="position: relative; width: 24px; height: 24px; border-radius: 3px; background: #000; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                <video src="${sMediaUrl}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;"></video>
+                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="position: absolute; color: white;"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+              </div>
+            `;
+          } else if (sMediaType === 'text') {
+            mediaThumbnail = `
+              <div style="width: 24px; height: 24px; border-radius: 3px; background: ${sBgColor}; color: #fff; font-size: 6px; line-height: 1.1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 1px; text-align: center; font-weight: bold; flex-shrink: 0; word-break: break-all;">
+                ${sCaption.substring(0, 8)}
+              </div>
+            `;
+          }
+          
+          return `
+            <div class="notification-status-quote" style="margin-top: 6px; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid #10b981; border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; box-sizing: border-box;">
+              <div style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <strong>Statut :</strong> <span>${previewStr}</span>
+              </div>
+              ${mediaThumbnail}
+            </div>
+          `;
+        })() : ''}
         ${notification.ad_image_url ? `
           <div style="margin-top: 6px; width: 100%; max-width: 180px; height: 55px; border-radius: 6px; overflow: hidden; background: #000;">
             <img src="${notification.ad_image_url}" alt="Banner" style="width: 100%; height: 100%; object-fit: cover;">
@@ -9817,11 +9980,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const actorUsername = item.getAttribute('data-actor-username');
         const postId = item.getAttribute('data-post-id');
         const commentId = item.getAttribute('data-comment-id');
+        const statusId = item.getAttribute('data-status-id');
 
         // Close notifications dropdown
         const notificationsDropdown = document.getElementById('notificationsDropdown');
         if (notificationsDropdown) {
           notificationsDropdown.style.display = 'none';
+        }
+
+        if (statusId) {
+          openStatusViewerById(statusId);
+          return;
         }
 
         if (type === 'follow' && actorUsername) {
@@ -13532,7 +13701,8 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.emit('chat-message', {
       receiverId: receiverId,
       content: content,
-      parentId: null
+      parentId: null,
+      statusId: statusId ? parseInt(statusId, 10) : null
     });
 
     // Record as status comment and trigger notification

@@ -50,6 +50,7 @@ class Notification {
     postId = null,
     shareId = null,
     commentId = null,
+    statusId = null,
     adUrl = null,
     adImageUrl = null,
     connection = db
@@ -66,11 +67,12 @@ class Notification {
           post_id,
           share_id,
           comment_id,
+          status_id,
           ad_url,
           ad_image_url
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      [recipientId, actorId, type, truncatedMessage, postId, shareId, commentId, adUrl, adImageUrl]
+      [recipientId, actorId, type, truncatedMessage, postId, shareId, commentId, statusId, adUrl, adImageUrl]
     );
 
     const insertId = result.insertId;
@@ -130,6 +132,7 @@ class Notification {
           n.post_id,
           n.share_id,
           n.comment_id,
+          n.status_id,
           n.ad_url,
           n.ad_image_url,
           n.is_read,
@@ -142,10 +145,15 @@ class Notification {
             WHEN p.content IS NOT NULL AND TRIM(p.content) != '' THEN p.content
             WHEN p.media_type IS NOT NULL AND p.media_type != '' THEN CONCAT('[', p.media_type, ']')
             ELSE NULL
-          END AS post_content
+          END AS post_content,
+          s2.media_url AS status_media_url,
+          s2.media_type AS status_media_type,
+          s2.caption AS status_caption,
+          s2.bg_color AS status_bg_color
         FROM notifications n
         LEFT JOIN users u ON n.actor_id = u.id
         LEFT JOIN posts p ON n.post_id = p.id
+        LEFT JOIN statuses s2 ON n.status_id = s2.id
         WHERE n.recipient_id = ?
         ORDER BY n.created_at DESC
         LIMIT ?

@@ -43,5 +43,6 @@ router.post('/view/:id', requireAuth, statusController.recordView);
 router.post('/comment/:id', requireAuth, statusController.createComment);
 router.post('/share/:id', requireAuth, statusController.recordShare);
 router.get('/viewers/:id', requireAuth, statusController.getViewers);
+router.get('/:id', requireAuth, statusController.getStatusById);
 
 module.exports = router;

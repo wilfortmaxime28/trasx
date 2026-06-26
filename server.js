@@ -3340,6 +3340,25 @@ io.on('connection', (socket) => {
       }
     }
 
+    let statusMediaUrl = null;
+    let statusMediaType = null;
+    let statusCaption = null;
+    let statusBgColor = null;
+    if (notificationData.statusId) {
+      try {
+        const Status = require('./models/Status');
+        const status = await Status.getById(notificationData.statusId);
+        if (status) {
+          statusMediaUrl = status.media_url;
+          statusMediaType = status.media_type;
+          statusCaption = status.caption;
+          statusBgColor = status.bg_color;
+        }
+      } catch (err) {
+        console.error('Failed to get status content for notification:', err);
+      }
+    }
+
     const payload = {
       id: notificationId,
       recipient_id: recipientId,
@@ -3350,6 +3369,11 @@ io.on('connection', (socket) => {
       post_content: postContent,
       share_id: notificationData.shareId || null,
       comment_id: notificationData.commentId || null,
+      status_id: notificationData.statusId || null,
+      status_media_url: statusMediaUrl,
+      status_media_type: statusMediaType,
+      status_caption: statusCaption,
+      status_bg_color: statusBgColor,
       is_read: 0,
       read_at: null,
       created_at: new Date().toISOString(),
@@ -5021,7 +5045,8 @@ io.on('connection', (socket) => {
         attachmentName = null,
         attachmentSize = null,
         voiceDurationSeconds = null,
-        parentId = null
+        parentId = null,
+        statusId = null
       } = data || {};
 
       const numericReceiverId = parseInt(receiverId, 10);
@@ -5053,7 +5078,7 @@ io.on('connection', (socket) => {
         attachmentName: attachmentName || null,
         attachmentSize: normalizedAttachmentSize,
         voiceDurationSeconds: normalizedVoiceDuration
-      }, parentId);
+      }, parentId, statusId);
 
       const [sender, receiver] = await Promise.all([
         User.getById(currentUserId),
@@ -5063,6 +5088,27 @@ io.on('connection', (socket) => {
       let parentMessage = null;
       if (parentId) {
         parentMessage = await Message.getById(parentId);
+      }
+
+      let statusMediaUrl = null;
+      let statusMediaType = null;
+      let statusCaption = null;
+      let statusBgColor = null;
+      let statusAuthorUsername = null;
+      if (statusId) {
+        try {
+          const Status = require('./models/Status');
+          const status = await Status.getById(statusId);
+          if (status) {
+            statusMediaUrl = status.media_url;
+            statusMediaType = status.media_type;
+            statusCaption = status.caption;
+            statusBgColor = status.bg_color;
+            statusAuthorUsername = status.username;
+          }
+        } catch (err) {
+          console.error('Failed to get status info for chat message:', err);
+        }
       }
 
       const messagePayload = {
@@ -5079,6 +5125,12 @@ io.on('connection', (socket) => {
         parent_content: parentMessage ? parentMessage.content : null,
         parent_sender_username: parentMessage ? parentMessage.sender_username : null,
         parent_attachment_type: parentMessage ? parentMessage.attachment_type : null,
+        status_id: statusId || null,
+        status_media_url: statusMediaUrl,
+        status_media_type: statusMediaType,
+        status_caption: statusCaption,
+        status_bg_color: statusBgColor,
+        status_author_username: statusAuthorUsername,
         delivered_at: null,
         read_at: null,
         created_at: new Date().toISOString(),
@@ -5106,6 +5158,12 @@ io.on('connection', (socket) => {
         parent_content: messagePayload.parent_content,
         parent_sender_username: messagePayload.parent_sender_username,
         parent_attachment_type: messagePayload.parent_attachment_type,
+        status_id: messagePayload.status_id,
+        status_media_url: messagePayload.status_media_url,
+        status_media_type: messagePayload.status_media_type,
+        status_caption: messagePayload.status_caption,
+        status_bg_color: messagePayload.status_bg_color,
+        status_author_username: messagePayload.status_author_username,
         delivered_at: deliveredAt,
         read_at: null,
         messageStatus: 'sent',
@@ -5132,6 +5190,12 @@ io.on('connection', (socket) => {
         parent_content: messagePayload.parent_content,
         parent_sender_username: messagePayload.parent_sender_username,
         parent_attachment_type: messagePayload.parent_attachment_type,
+        status_id: messagePayload.status_id,
+        status_media_url: messagePayload.status_media_url,
+        status_media_type: messagePayload.status_media_type,
+        status_caption: messagePayload.status_caption,
+        status_bg_color: messagePayload.status_bg_color,
+        status_author_username: messagePayload.status_author_username,
         delivered_at: deliveredAt,
         read_at: null,
         messageStatus: 'incoming',
@@ -6918,8 +6982,20 @@ server.listen(PORT, async () => {
       await ensureBscDepositsSchema();
       console.log('Database bsc_deposits table check complete.');
       await ensureWithdrawalsSchema();
-      console.log('Database bsc_withdrawals table and user PIN check complete.');
-      
+      // Ensure status_id column exists in messages table
+      try {
+        await db.query('ALTER TABLE messages ADD COLUMN status_id INT DEFAULT NULL');
+        await db.query('ALTER TABLE messages ADD FOREIGN KEY (status_id) REFERENCES statuses(id) ON DELETE SET NULL');
+        console.log('Database messages table status_id column check/update complete.');
+      } catch (_) {}
+
+      // Ensure status_id column exists in notifications table
+      try {
+        await db.query('ALTER TABLE notifications ADD COLUMN status_id INT DEFAULT NULL');
+        await db.query('ALTER TABLE notifications ADD FOREIGN KEY (status_id) REFERENCES statuses(id) ON DELETE SET NULL');
+        console.log('Database notifications table status_id column check/update complete.');
+      } catch (_) {}
+
       // Initialize push notifications
       try {
         initializeVapidKeys();
