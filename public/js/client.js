@@ -2130,6 +2130,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const id = Number(commentData.id);
     if (!Number.isFinite(id) || id <= 0) return false;
 
+    const postId = Number(postCard.getAttribute('data-post-id'));
+
     if (list.querySelector(`.comment-item-container[data-comment-id="${id}"], .reply-item[data-reply-id="${id}"]`)) {
       return false;
     }
@@ -2190,6 +2192,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <strong style="color: var(--text-primary); font-size: 11.5px; display: block; margin-bottom: 2px;">${userName}${certificationBadgeHtml}</strong>
               </a>
               ${replyToName ? `<span class="comment-reply-to" style="color: #3b82f6; font-weight: 700; margin-right: 4px;">@${escapeHtml(replyToName)}</span>` : ''}${content}
+              <span class="comment-status-tag" style="background: rgba(59, 130, 246, 0.1); color: var(--primary, #3b82f6); border-radius: 4px; padding: 1px 5px; font-size: 10px; margin-left: 6px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle;" data-post-id="${postId}">
+                <i data-lucide="link" style="width: 10px; height: 10px;"></i>statut
+              </span>
               ${buildCommentVoicePlayerHtml(voiceUrl, voiceDurationSeconds)}
             </div>
             <div style="display: flex; gap: 12px; padding-left: 8px; font-size: 10px; align-items: center;">
@@ -2248,6 +2253,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 <strong style="color: var(--text-primary); font-size: 12.5px; display: block; margin-bottom: 2px;">${userName}${certificationBadgeHtml}</strong>
               </a>
               ${content}
+              <span class="comment-status-tag" style="background: rgba(59, 130, 246, 0.1); color: var(--primary, #3b82f6); border-radius: 4px; padding: 1px 5px; font-size: 10px; margin-left: 6px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle;" data-post-id="${postId}">
+                <i data-lucide="link" style="width: 10px; height: 10px;"></i>statut
+              </span>
               ${buildCommentVoicePlayerHtml(voiceUrl, voiceDurationSeconds)}
             </div>
             <div style="display: flex; gap: 12px; padding-left: 8px; font-size: 11px;">
@@ -6238,6 +6246,32 @@ document.addEventListener('DOMContentLoaded', () => {
       const postCard = e.target.closest('.post-card');
       if (!postCard) return;
 
+      // Comment status tag click handling
+      const statusTag = e.target.closest('.comment-status-tag');
+      if (statusTag) {
+        const targetPostId = statusTag.getAttribute('data-post-id');
+        const targetPostCard = document.querySelector(`.post-card[data-post-id="${targetPostId}"]`);
+        if (targetPostCard) {
+          scrollToAndHighlightPost(targetPostCard);
+        }
+        return;
+      }
+
+      // Comment item container click handling
+      const commentItem = e.target.closest('.comment-item-container, .reply-item');
+      if (commentItem) {
+        if (
+          !e.target.closest('a') &&
+          !e.target.closest('button') &&
+          !e.target.closest('input') &&
+          !e.target.closest('.voice-note-player') &&
+          !e.target.closest('.reply-input-row')
+        ) {
+          scrollToAndHighlightPost(postCard);
+          return;
+        }
+      }
+
       const birthdayGiftBtn = e.target.closest('.birthday-gift-btn');
       if (birthdayGiftBtn) {
         const birthdayCard = birthdayGiftBtn.closest('.birthday-feed-card');
@@ -6603,10 +6637,14 @@ document.addEventListener('DOMContentLoaded', () => {
       targetInput.addEventListener('blur', saveSelection);
 
       const picker = document.createElement('div');
+      const isGameChatPicker = !!anchorEl.closest('.game-chat-form');
       if (anchorEl.classList.contains('header-search-emoji-btn') || targetInput.id === 'postInput') {
         picker.className = 'emoji-picker-popover picker-down';
       } else {
         picker.className = 'emoji-picker-popover';
+      }
+      if (isGameChatPicker) {
+        picker.classList.add('picker-game-chat');
       }
 
       picker.cleanup = () => {
@@ -6719,7 +6757,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       renderPicker();
 
-      const wrapper = anchorEl.closest('.input-wrapper') || anchorEl.closest('.reel-comment-input-wrap') || anchorEl.closest('.create-post-input-wrapper') || anchorEl.closest('.search-bar');
+      const wrapper = anchorEl.closest('.input-wrapper') || anchorEl.closest('.reel-comment-input-wrap') || anchorEl.closest('.create-post-input-wrapper') || anchorEl.closest('.search-bar') || anchorEl.closest('.game-chat-input-wrapper');
       if (wrapper) {
         wrapper.style.position = 'relative';
         wrapper.appendChild(picker);
@@ -6743,11 +6781,14 @@ document.addEventListener('DOMContentLoaded', () => {
           const wrapper = emojiBtn.closest('.create-post-input-wrapper');
           input = wrapper ? wrapper.querySelector('#postInput') : null;
         } else {
-          const wrapper = emojiBtn.closest('.input-wrapper') || emojiBtn.closest('.comment-input-row') || emojiBtn.closest('.reply-input-row');
+          const wrapper = emojiBtn.closest('.input-wrapper') || emojiBtn.closest('.comment-input-row') || emojiBtn.closest('.reply-input-row') || emojiBtn.closest('.game-chat-input-wrapper');
           input = wrapper ? (wrapper.querySelector('.comment-input') || wrapper.querySelector('.reply-input')) : null;
           if (!input) {
             const reelForm = emojiBtn.closest('.reel-comment-form');
             input = reelForm ? reelForm.querySelector('.reel-comment-input') : null;
+          }
+          if (!input && wrapper?.classList.contains('game-chat-input-wrapper')) {
+            input = wrapper.querySelector('#gameChatInput');
           }
         }
 
@@ -8545,100 +8586,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!previewContainer) return;
 
       previewContainer.innerHTML = '';
+      previewContainer.dataset.hasMediaSelection = files.length ? '1' : '0';
+      previewContainer.style.display = 'none';
+      previewContainer.style.maxHeight = '';
       const downloadSetting = document.getElementById('videoDownloadSetting');
       if (downloadSetting) downloadSetting.classList.toggle('is-visible', type === 'video');
-
-      if (type === 'image') {
-        if (files.length === 1) {
-          const mediaEl = document.createElement('img');
-          const objectUrl = URL.createObjectURL(files[0]);
-          mediaEl.src = objectUrl;
-          mediaEl.onload = () => URL.revokeObjectURL(objectUrl);
-
-          // Add close button (individual or clear all)
-          const closeBtn = document.createElement('button');
-          closeBtn.className = 'cancel-media-btn';
-          closeBtn.type = 'button';
-          closeBtn.innerHTML = '<i data-lucide="x" style="width:16px; height:16px;"></i>';
-          closeBtn.onclick = (e) => {
-            e.stopPropagation();
-            clearSelectedMedia();
-          };
-
-          previewContainer.appendChild(mediaEl);
-          previewContainer.appendChild(closeBtn);
-          previewContainer.style.maxHeight = '';
-        } else {
-          // grid layout
-          previewContainer.style.maxHeight = 'none';
-          const gridDiv = document.createElement('div');
-          gridDiv.className = 'post-images-grid';
-          gridDiv.style.cssText = 'display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; width:100%; padding:8px; box-sizing:border-box;';
-
-          files.forEach((file, idx) => {
-            const wrapper = document.createElement('div');
-            wrapper.className = 'grid-image-wrapper';
-            wrapper.style.cssText = 'aspect-ratio:1.15; border-radius:8px; overflow:hidden; background-color:var(--bg-input); position:relative;';
-
-            const imgEl = document.createElement('img');
-            imgEl.className = 'post-img';
-            imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
-            const objectUrl = URL.createObjectURL(file);
-            imgEl.src = objectUrl;
-            imgEl.onload = () => URL.revokeObjectURL(objectUrl);
-
-            // Individual image delete button
-            const delBtn = document.createElement('button');
-            delBtn.type = 'button';
-            delBtn.style.cssText = 'position:absolute; top:6px; right:6px; background:rgba(15, 23, 42, 0.7); border:none; border-radius:50%; width:22px; height:22px; color:white; display:flex; align-items:center; justify-content:center; cursor:pointer; font-weight:bold; z-index:10; transition:background 0.2s;';
-            delBtn.innerHTML = '<i data-lucide="x" style="width:12px; height:12px;"></i>';
-            delBtn.onclick = (e) => {
-              e.stopPropagation();
-              window.removeSelectedImage(idx);
-            };
-
-            wrapper.appendChild(imgEl);
-            wrapper.appendChild(delBtn);
-            gridDiv.appendChild(wrapper);
-          });
-          previewContainer.appendChild(gridDiv);
-
-          // Add close button (clear all)
-          const closeBtn = document.createElement('button');
-          closeBtn.className = 'cancel-media-btn';
-          closeBtn.type = 'button';
-          closeBtn.innerHTML = '<i data-lucide="x" style="width:16px; height:16px;"></i>';
-          closeBtn.onclick = (e) => {
-            e.stopPropagation();
-            clearSelectedMedia();
-          };
-          previewContainer.appendChild(closeBtn);
-        }
-      } else {
-        const mediaEl = document.createElement('video');
-        const objectUrl = URL.createObjectURL(files[0]);
-        mediaEl.src = objectUrl;
-        mediaEl.controls = true;
-        mediaEl.autoplay = false;
-        mediaEl.muted = true;
-        mediaEl.onloadeddata = () => URL.revokeObjectURL(objectUrl);
-
-        // Add close button
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'cancel-media-btn';
-        closeBtn.type = 'button';
-        closeBtn.innerHTML = '<i data-lucide="x" style="width:16px; height:16px;"></i>';
-        closeBtn.onclick = (e) => {
-          e.stopPropagation();
-          clearSelectedMedia();
-        };
-
-        previewContainer.appendChild(mediaEl);
-        previewContainer.appendChild(closeBtn);
-        previewContainer.style.maxHeight = '';
-      }
-
-      previewContainer.style.display = 'flex';
 
       if (typeof lucide !== 'undefined') {
         lucide.createIcons();
@@ -8720,6 +8672,7 @@ document.addEventListener('DOMContentLoaded', () => {
         previewContainer.innerHTML = '';
         previewContainer.style.display = 'none';
         previewContainer.style.maxHeight = '';
+        delete previewContainer.dataset.hasMediaSelection;
       }
       const photoVideoInput = document.getElementById('photoVideoInput');
       if (photoVideoInput) photoVideoInput.value = '';
@@ -8808,11 +8761,6 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast("Shorts upload is not configured on this page.");
         }
       } else {
-        if (postInput) {
-          postInput.innerText = captionText;
-          postInput.dispatchEvent(new Event('input'));
-        }
-
         const photoVideoModal = document.getElementById('photoVideoModal');
         if (photoVideoModal) photoVideoModal.style.display = 'none';
 
@@ -9674,6 +9622,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (notification.post_id) {
       item.setAttribute('data-post-id', notification.post_id);
     }
+    if (notification.comment_id) {
+      item.setAttribute('data-comment-id', notification.comment_id);
+    }
     if (notification.type) {
       item.setAttribute('data-type', notification.type);
     }
@@ -9729,7 +9680,7 @@ document.addEventListener('DOMContentLoaded', () => {
     notificationItemsList.innerHTML = notifications.map((notification) => {
       const unread = Number(notification.is_read) === 0;
       return `
-        <div class="notification-item ${unread ? 'is-unread' : ''}" data-notification-id="${notification.id}" data-ad-url="${notification.ad_url || ''}" data-post-id="${notification.post_id || ''}" data-type="${notification.type || ''}" data-actor-username="${notification.actor_username || ''}" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; ${unread ? 'background: rgba(59, 130, 246, 0.06);' : ''}">
+        <div class="notification-item ${unread ? 'is-unread' : ''}" data-notification-id="${notification.id}" data-ad-url="${notification.ad_url || ''}" data-post-id="${notification.post_id || ''}" data-comment-id="${notification.comment_id || ''}" data-type="${notification.type || ''}" data-actor-username="${notification.actor_username || ''}" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; ${unread ? 'background: rgba(59, 130, 246, 0.06);' : ''}">
           <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0; overflow: hidden;">
         <img src="${notification.actor_avatar || '/assets/avatar_placeholder.jpg'}" alt="${escapeHtml(notification.actor_name || '')}" style="width: 100%; height: 100%; object-fit: cover;">
           </div>
@@ -9848,6 +9799,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const type = item.getAttribute('data-type');
         const actorUsername = item.getAttribute('data-actor-username');
         const postId = item.getAttribute('data-post-id');
+        const commentId = item.getAttribute('data-comment-id');
 
         // Close notifications dropdown
         const notificationsDropdown = document.getElementById('notificationsDropdown');
@@ -9901,6 +9853,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (typeof scrollToAndHighlightPost === 'function') {
                   scrollToAndHighlightPost(postCard);
                 }
+                if (commentId && typeof scrollToAndHighlightComment === 'function') {
+                  scrollToAndHighlightComment(postCard, commentId);
+                }
                 const video = postCard.querySelector('video');
                 if (video) {
                   video.muted = false;
@@ -9931,6 +9886,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (typeof scrollToAndHighlightPost === 'function') {
                               scrollToAndHighlightPost(newPostCard);
                             }
+                            if (commentId && typeof scrollToAndHighlightComment === 'function') {
+                              scrollToAndHighlightComment(newPostCard, commentId);
+                            }
                             const video = newPostCard.querySelector('video');
                             if (video) {
                               video.muted = false;
@@ -9945,8 +9903,12 @@ document.addEventListener('DOMContentLoaded', () => {
               }
             }, 100);
           } else {
-            // Redirect to feed page with post_id param
-            window.location.href = `/?post_id=${postId}`;
+            // Redirect to feed page with post_id and comment_id param
+            if (commentId) {
+              window.location.href = `/?post_id=${postId}&comment_id=${commentId}`;
+            } else {
+              window.location.href = `/?post_id=${postId}`;
+            }
           }
         }
       }
@@ -10305,6 +10267,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const pendingThumbCards = [];
+
     shortsSearchResults.innerHTML = matches.map((card) => {
       const reelId = Number(card.getAttribute('data-reel-id') || 0);
       const authorName = escapeHtml(card.getAttribute('data-author-name') || card.getAttribute('data-author-username') || 'Utilisateur');
@@ -10322,9 +10286,13 @@ document.addEventListener('DOMContentLoaded', () => {
         ? `<img src="${thumbSrc}" alt="${authorName}">`
         : `<div class="shorts-search-result-thumb-fallback"><i data-lucide="play"></i></div>`;
 
+      if (!thumbSrc && card.querySelector('video.reel-video')) {
+        pendingThumbCards.push({ reelId, authorName, card });
+      }
+
       return `
         <button type="button" class="shorts-search-result-item" data-reel-id="${reelId}">
-          <div class="shorts-search-result-thumb">
+          <div class="shorts-search-result-thumb" data-reel-thumb-slot="${reelId}">
             ${thumbHtml}
           </div>
           <div class="shorts-search-result-copy">
@@ -10342,6 +10310,15 @@ document.addEventListener('DOMContentLoaded', () => {
         lucide.createIcons({ nodes: shortsSearchResults.querySelectorAll('[data-lucide]') });
       } catch (_) {}
     }
+
+    pendingThumbCards.forEach(({ reelId, authorName, card }) => {
+      ensureReelCardThumbnail(card).then((resolvedThumbSrc) => {
+        if (!resolvedThumbSrc || !shortsSearchResults?.isConnected) return;
+        const thumbSlot = shortsSearchResults.querySelector(`[data-reel-thumb-slot="${reelId}"]`);
+        if (!thumbSlot) return;
+        thumbSlot.innerHTML = `<img src="${escapeHtml(resolvedThumbSrc)}" alt="${authorName}">`;
+      }).catch(() => {});
+    });
   };
 
   const openShortsSearchOverlay = () => {
@@ -10712,6 +10689,179 @@ document.addEventListener('DOMContentLoaded', () => {
     return Promise.resolve(card);
   };
 
+  const reelThumbnailPromises = new WeakMap();
+
+  const getExistingReelThumbnailSource = (card) => {
+    if (!(card instanceof Element)) return '';
+    const attrThumb = String(card.getAttribute('data-thumb-src') || '').trim();
+    if (attrThumb) return attrThumb;
+
+    const posterImage = card.querySelector('.reel-poster-image');
+    const posterThumb = String(posterImage?.getAttribute('src') || '').trim();
+    if (posterThumb) {
+      card.setAttribute('data-thumb-src', posterThumb);
+      return posterThumb;
+    }
+
+    const videoEl = card.querySelector('video.reel-video');
+    const videoPoster = String(videoEl?.getAttribute('poster') || '').trim();
+    if (videoPoster) {
+      card.setAttribute('data-thumb-src', videoPoster);
+      return videoPoster;
+    }
+
+    const visualEl = card.querySelector('.reel-video');
+    if (visualEl?.tagName?.toLowerCase() === 'img') {
+      const imageThumb = String(visualEl.getAttribute('src') || visualEl.getAttribute('data-lazy-src') || '').trim();
+      if (imageThumb) {
+        card.setAttribute('data-thumb-src', imageThumb);
+        return imageThumb;
+      }
+    }
+
+    return '';
+  };
+
+  const captureReelThumbnailFromVideoElement = (card, videoEl) => {
+    if (!(card instanceof Element) || !(videoEl instanceof HTMLVideoElement)) return '';
+    if (!videoEl.videoWidth || !videoEl.videoHeight) return '';
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoEl.videoWidth;
+      canvas.height = videoEl.videoHeight;
+      const context = canvas.getContext('2d');
+      if (!context) return '';
+      context.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+      if (!dataUrl) return '';
+      card.setAttribute('data-thumb-src', dataUrl);
+      if (!card.querySelector('.reel-poster-image')) {
+        const posterShell = card.querySelector('.reel-poster-shell');
+        if (posterShell) {
+          const posterImg = document.createElement('img');
+          posterImg.className = 'reel-poster-image';
+          posterImg.loading = 'lazy';
+          posterImg.decoding = 'async';
+          posterImg.alt = '';
+          posterImg.src = dataUrl;
+          posterShell.prepend(posterImg);
+          posterShell.classList.remove('no-thumb');
+          posterShell.classList.add('has-thumb');
+        }
+      }
+      if (!videoEl.getAttribute('poster')) {
+        videoEl.setAttribute('poster', dataUrl);
+      }
+      return dataUrl;
+    } catch (_) {
+      return '';
+    }
+  };
+
+  const ensureReelCardThumbnail = (card) => {
+    if (!(card instanceof Element)) return Promise.resolve('');
+
+    const existingThumb = getExistingReelThumbnailSource(card);
+    if (existingThumb) return Promise.resolve(existingThumb);
+
+    const videoEl = card.querySelector('video.reel-video');
+    if (!(videoEl instanceof HTMLVideoElement)) return Promise.resolve('');
+
+    if (videoEl.readyState >= 2) {
+      const immediateThumb = captureReelThumbnailFromVideoElement(card, videoEl);
+      if (immediateThumb) return Promise.resolve(immediateThumb);
+    }
+
+    const cachedPromise = reelThumbnailPromises.get(card);
+    if (cachedPromise) return cachedPromise;
+
+    const source = rememberReelMediaSource(videoEl);
+    if (!source) return Promise.resolve('');
+
+    const thumbnailPromise = new Promise((resolve) => {
+      const ghostVideo = document.createElement('video');
+      let settled = false;
+      let seekTimeout = null;
+      let overallTimeout = null;
+
+      const cleanup = () => {
+        if (seekTimeout) {
+          window.clearTimeout(seekTimeout);
+          seekTimeout = null;
+        }
+        if (overallTimeout) {
+          window.clearTimeout(overallTimeout);
+          overallTimeout = null;
+        }
+        ghostVideo.pause();
+        ghostVideo.removeAttribute('src');
+        ghostVideo.load();
+        ghostVideo.remove();
+        reelThumbnailPromises.delete(card);
+      };
+
+      const finish = (thumbSrc = '') => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(thumbSrc || '');
+      };
+
+      const captureAndFinish = () => {
+        const capturedThumb = captureReelThumbnailFromVideoElement(card, ghostVideo)
+          || captureReelThumbnailFromVideoElement(card, videoEl);
+        finish(capturedThumb || '');
+      };
+
+      const onLoadedData = () => {
+        const startValue = parseFloat(videoEl.getAttribute('data-trim-start') || videoEl.getAttribute('data-audio-start') || '0');
+        const seekTarget = Number.isFinite(startValue) && startValue > 0.05 ? startValue : 0.1;
+
+        if (!Number.isFinite(ghostVideo.duration) || ghostVideo.duration <= 0 || seekTarget >= ghostVideo.duration) {
+          captureAndFinish();
+          return;
+        }
+
+        const onSeeked = () => captureAndFinish();
+        ghostVideo.addEventListener('seeked', onSeeked, { once: true });
+
+        seekTimeout = window.setTimeout(() => {
+          ghostVideo.removeEventListener('seeked', onSeeked);
+          captureAndFinish();
+        }, 1200);
+
+        try {
+          ghostVideo.currentTime = seekTarget;
+        } catch (_) {
+          ghostVideo.removeEventListener('seeked', onSeeked);
+          captureAndFinish();
+        }
+      };
+
+      overallTimeout = window.setTimeout(() => finish(''), 2500);
+
+      ghostVideo.muted = true;
+      ghostVideo.playsInline = true;
+      ghostVideo.preload = 'metadata';
+      ghostVideo.crossOrigin = 'anonymous';
+      ghostVideo.style.position = 'fixed';
+      ghostVideo.style.left = '-9999px';
+      ghostVideo.style.top = '-9999px';
+      ghostVideo.style.width = '1px';
+      ghostVideo.style.height = '1px';
+      ghostVideo.style.opacity = '0';
+      ghostVideo.src = source;
+      ghostVideo.addEventListener('loadeddata', onLoadedData, { once: true });
+      ghostVideo.addEventListener('error', () => finish(''), { once: true });
+      document.body.appendChild(ghostVideo);
+      ghostVideo.load();
+    });
+
+    reelThumbnailPromises.set(card, thumbnailPromise);
+    return thumbnailPromise;
+  };
+
   const setReelVisualReady = (card, isReady) => {
     if (!(card instanceof Element)) return;
     card.setAttribute('data-visual-ready', isReady ? '1' : '0');
@@ -10728,7 +10878,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     card.dataset.reelVisualBound = '1';
 
-    const markReady = () => setReelVisualReady(card, true);
+    const markReady = () => {
+      setReelVisualReady(card, true);
+      if (!card.getAttribute('data-thumb-src')) {
+        captureReelThumbnailFromVideoElement(card, videoEl);
+      }
+    };
     const markPending = () => {
       if (!videoEl.currentSrc && !videoEl.getAttribute('src')) {
         setReelVisualReady(card, false);
@@ -15753,7 +15908,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!clickedInsideCard && !clickedInsideModal) {
         const hasText = postInputEl.innerText && postInputEl.innerText.trim().length > 0;
-        const hasMedia = postMediaPreview && postMediaPreview.children.length > 0;
+        const hasMedia = postMediaPreview && (postMediaPreview.children.length > 0 || postMediaPreview.dataset.hasMediaSelection === '1');
         if (!hasText && !hasMedia) {
           createPostCard.classList.remove('expanded');
         }
@@ -19355,6 +19510,63 @@ document.addEventListener('DOMContentLoaded', () => {
       }, 3000);
     };
     window.scrollToAndHighlightPost = scrollToAndHighlightPost;
+
+    // Helper to scroll and highlight comment
+    const scrollToAndHighlightComment = (postCard, commentId) => {
+      if (!postCard || !commentId) return;
+      const commentsSection = postCard.querySelector('.post-comments-section');
+      if (!commentsSection) return;
+
+      commentsSection.style.display = 'flex';
+      
+      loadPostComments(postCard, { force: false }).then(() => {
+        setTimeout(() => {
+          // Expand root comment list if needed
+          const rootCommentEl = postCard.querySelector(`.comment-item-container[data-comment-id="${commentId}"]`);
+          if (rootCommentEl) {
+            const commentsList = rootCommentEl.closest('.comments-list');
+            if (commentsList) {
+              const comments = Array.from(commentsList.children).filter(child => child.classList?.contains('comment-item-container'));
+              comments.forEach(item => {
+                item.style.display = 'flex';
+              });
+              const readMoreCommentsBtn = commentsList.querySelector('.read-more-comments-btn');
+              if (readMoreCommentsBtn) {
+                readMoreCommentsBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Hide comments`;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+              }
+            }
+          }
+
+          // Expand reply list if needed
+          const replyEl = postCard.querySelector(`.reply-item[data-reply-id="${commentId}"]`);
+          if (replyEl) {
+            const repliesContainer = replyEl.closest('.replies-list-container');
+            if (repliesContainer) {
+              repliesContainer.querySelectorAll('.reply-item').forEach(item => {
+                item.style.display = 'flex';
+              });
+              const readMoreRepliesBtn = repliesContainer.querySelector('.read-more-replies-btn');
+              if (readMoreRepliesBtn) {
+                readMoreRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Hide replies`;
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+              }
+            }
+          }
+
+          const commentEl = postCard.querySelector(`.comment-item-container[data-comment-id="${commentId}"], .reply-item[data-reply-id="${commentId}"]`);
+          if (commentEl) {
+            commentEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            commentEl.style.transition = 'background-color 0.5s ease';
+            commentEl.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+            setTimeout(() => {
+              commentEl.style.backgroundColor = '';
+            }, 3000);
+          }
+        }, 300);
+      }).catch(err => console.warn('Failed to load comments for highlight:', err));
+    };
+    window.scrollToAndHighlightComment = scrollToAndHighlightComment;
 
     // Hash navigation on feed/shorts page
     const handleHashNavigation = () => {
@@ -28303,11 +28515,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // On page load, check if there is a post_id to scroll to
   const urlParamsScroll = new URLSearchParams(window.location.search);
   const scrollPostId = urlParamsScroll.get('post_id');
+  const scrollCommentId = urlParamsScroll.get('comment_id');
   if (scrollPostId) {
     setTimeout(() => {
       const postCard = document.querySelector(`.post-card[data-post-id="${scrollPostId}"]`);
       if (postCard) {
         scrollToAndHighlightPost(postCard);
+        if (scrollCommentId && typeof scrollToAndHighlightComment === 'function') {
+          scrollToAndHighlightComment(postCard, scrollCommentId);
+        }
         const video = postCard.querySelector('video');
         if (video) {
           video.muted = false;
@@ -28338,6 +28554,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const newPostCard = document.querySelector(`.post-card[data-post-id="${scrollPostId}"]`);
                     if (newPostCard) {
                       scrollToAndHighlightPost(newPostCard);
+                      if (scrollCommentId && typeof scrollToAndHighlightComment === 'function') {
+                        scrollToAndHighlightComment(newPostCard, scrollCommentId);
+                      }
                       const video = newPostCard.querySelector('video');
                       if (video) {
                         video.muted = false;

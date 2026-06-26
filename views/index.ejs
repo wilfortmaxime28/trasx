@@ -1706,6 +1706,9 @@ function getYouTubeId(url) {
                                                                       </strong>
                                                                     </a>
                                                                     <%= comment.content %>
+                                                                    <span class="comment-status-tag" style="background: rgba(59, 130, 246, 0.1); color: var(--primary, #3b82f6); border-radius: 4px; padding: 1px 5px; font-size: 10px; margin-left: 6px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle;" data-post-id="<%= post.id %>">
+                                                                      <i data-lucide="link" style="width: 10px; height: 10px;"></i>statut
+                                                                    </span>
 
                                                                       <% if (comment.voice_url) { %>
                                                                         <div class="voice-note-player"
@@ -1812,6 +1815,9 @@ function getYouTubeId(url) {
                                                                                 <%= replyToName %></span>
                                                                               <% } %>
                                                                                 <%= reply.content %>
+                                                                                <span class="comment-status-tag" style="background: rgba(59, 130, 246, 0.1); color: var(--primary, #3b82f6); border-radius: 4px; padding: 1px 5px; font-size: 10px; margin-left: 6px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle;" data-post-id="<%= post.id %>">
+                                                                                  <i data-lucide="link" style="width: 10px; height: 10px;"></i>statut
+                                                                                </span>
 
                                                                                   <% if (reply.voice_url) { %>
                                                                                     <div class="voice-note-player"
@@ -3366,9 +3372,9 @@ function getYouTubeId(url) {
                            <input type="hidden" id="gameChatParentContent" value="">
                          </div>
                          <div class="game-chat-input-wrapper" style="display: flex; width: 100%; align-items: center; background: var(--bg-hover); border-radius: 8px; border: 1px solid var(--border-color); padding-right: 8px; box-sizing: border-box;">
-                           <button type="button" class="emoji-trigger-btn" id="gameChatEmojiBtn" style="background: none; border: none; padding: 8px; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="smile" style="width: 16px; height: 16px;"></i></button>
-                           <input type="text" id="gameChatInput" placeholder="<%= tText("Tapez un message...") %>" autocomplete="off" style="flex: 1; border: none; background: none; outline: none; padding: 10px; color: var(--text-primary); font-size: 12px; font-family: inherit;">
-                           <button type="submit" style="background: none; border: none; padding: 8px; color: var(--primary); cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="send" style="width: 16px; height: 16px;"></i></button>
+                           <button type="button" class="emoji-trigger-btn game-chat-emoji-btn" id="gameChatEmojiBtn" style="background: none; border: none; padding: 8px; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="smile" style="width: 16px; height: 16px;"></i></button>
+                           <input type="text" id="gameChatInput" class="game-chat-input-field" placeholder="<%= tText("Tapez un message...") %>" autocomplete="off" style="flex: 1; border: none; background: none; outline: none; padding: 10px; color: var(--text-primary); font-size: 12px; font-family: inherit;">
+                           <button type="submit" class="game-chat-send-btn" style="background: none; border: none; padding: 8px; color: var(--primary); cursor: pointer; display: flex; align-items: center; justify-content: center;"><i data-lucide="send" style="width: 16px; height: 16px;"></i></button>
                          </div>
                        </form>
                     </div>

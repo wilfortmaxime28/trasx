@@ -3456,6 +3456,28 @@ io.on('connection', (socket) => {
         return;
       }
 
+      const normalizedBgImageUrl = typeof bgImageUrl === 'string' && bgImageUrl.trim()
+        ? bgImageUrl.trim()
+        : null;
+      const hasStyledBackground = Boolean(normalizedBgImageUrl);
+      const allowedTextAlignments = new Set(['left', 'center', 'right', 'justify']);
+      const allowedTextPositions = new Set(['top', 'center', 'bottom']);
+      const normalizedTextAlignment = hasStyledBackground && allowedTextAlignments.has(String(textAlignment || '').trim().toLowerCase())
+        ? String(textAlignment).trim().toLowerCase()
+        : (hasStyledBackground ? 'center' : null);
+      const normalizedTextPosition = hasStyledBackground && allowedTextPositions.has(String(textPosition || '').trim().toLowerCase())
+        ? String(textPosition).trim().toLowerCase()
+        : (hasStyledBackground ? 'center' : null);
+      const normalizedTextColor = hasStyledBackground
+        ? (typeof textColor === 'string' && textColor.trim() ? textColor.trim() : '#ffffff')
+        : null;
+      const normalizedTextFont = hasStyledBackground
+        ? (typeof textFont === 'string' && textFont.trim() ? textFont.trim() : "'Outfit', sans-serif")
+        : null;
+      const normalizedTextSize = hasStyledBackground && typeof textSize === 'string' && /^\d+(?:\.\d+)?(?:px|rem|em|%)$/i.test(textSize.trim())
+        ? textSize.trim()
+        : (hasStyledBackground ? '20px' : null);
+
       const db = require('./config/db');
       const currentUser = await User.getById(currentUserId);
       if (!currentUser) {
@@ -3467,9 +3489,9 @@ io.on('connection', (socket) => {
       let postBaseIncrement = 0;
 
       // Process paid background financial transfer if applicable
-      if (bgImageUrl) {
+      if (normalizedBgImageUrl) {
         await ensurePostBackgroundSchema();
-        const [bgRows] = await db.query('SELECT * FROM post_backgrounds WHERE image_url = ?', [bgImageUrl]);
+        const [bgRows] = await db.query('SELECT * FROM post_backgrounds WHERE image_url = ?', [normalizedBgImageUrl]);
         if (bgRows.length > 0 && bgRows[0].is_paid) {
           const price = parseFloat(bgRows[0].price);
           paidBackgroundPriceUsed = Number.isFinite(price) ? price : 0;
@@ -3661,12 +3683,12 @@ io.on('connection', (socket) => {
         currentUserId, 
         finalContent, 
         imageUrl, 
-        bgImageUrl, 
-        textColor, 
-        textAlignment, 
-        textPosition, 
-        textFont, 
-        textSize,
+        normalizedBgImageUrl, 
+        normalizedTextColor, 
+        normalizedTextAlignment, 
+        normalizedTextPosition, 
+        normalizedTextFont, 
+        normalizedTextSize, 
         finalIsTrade,
         finalTradePrice,
         finalLastPossessionUserId,
