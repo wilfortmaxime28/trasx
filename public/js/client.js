@@ -16784,6 +16784,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (selectedBackground) {
       if (previewBox && previewText) {
+        const wasHidden = previewBox.style.display === 'none' || !previewBox.style.display;
+
+        // On first background selection: transfer any text already in postInputEl into the editable preview
+        if (wasHidden) {
+          const existingText = postInputEl.innerText.trim();
+          if (existingText && !previewText.innerText.trim()) {
+            previewText.innerText = existingText;
+          }
+          postInputEl.innerText = previewText.innerText;
+        }
+
         previewBox.style.display = 'flex';
         previewBox.style.backgroundImage = `url(${selectedBackground.image_url})`;
         previewBox.style.backgroundSize = 'cover';
@@ -16812,19 +16823,20 @@ document.addEventListener('DOMContentLoaded', () => {
         previewText.style.fontFamily = selectedTextFont;
         previewText.style.fontSize = selectedTextSize;
         previewText.style.fontWeight = '600';
-
-        const rawText = postInputEl.innerText.trim();
-        if (rawText) {
-          previewText.textContent = postInputEl.innerText;
-        } else {
-          previewText.textContent = typeof tText !== 'undefined' ? tText("Votre texte ici...") : "Your text here...";
-        }
       }
 
       const resetBtn = document.getElementById('resetTextStyleBtn');
       if (resetBtn) resetBtn.style.display = 'flex';
     } else {
-      if (previewBox) {
+      if (previewBox && previewText) {
+        // Return text from the editable preview back to the main postInputEl on reset
+        const previewContent = previewText.innerText.trim();
+        if (previewContent) {
+          postInputEl.innerText = previewContent;
+          // Trigger placeholder check on postInputEl
+          postInputEl.dispatchEvent(new Event('input'));
+        }
+        previewText.innerText = '';
         previewBox.style.display = 'none';
         previewBox.style.backgroundImage = '';
       }
@@ -16880,10 +16892,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (postInputEl) {
-    postInputEl.addEventListener('input', () => {
-      if (selectedBackground) {
-        updatePostInputPreview();
+  // When the user types in the contenteditable preview box, sync text back to the main postInputEl
+  const _previewTextEl = document.getElementById('textStylePreviewText');
+  if (_previewTextEl) {
+    _previewTextEl.addEventListener('input', () => {
+      if (postInputEl) {
+        postInputEl.innerText = _previewTextEl.innerText;
       }
     });
   }

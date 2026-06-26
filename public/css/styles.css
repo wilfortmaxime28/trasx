@@ -11279,6 +11279,17 @@ body[data-theme="dark"] .compose-contact-chip {
   text-align-last: left;
 }
 
+/* Contenteditable preview text inside Text Style modal */
+#textStylePreviewText[contenteditable]:empty::before {
+  content: attr(data-placeholder);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+#textStylePreviewBox:focus-within {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.4) !important;
+}
+
 @media screen and (max-width: 768px) {
   .post-bg-container {
     margin: 0 12px !important;

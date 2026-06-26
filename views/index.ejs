@@ -599,7 +599,10 @@ function getYouTubeId(url) {
 
                                       <!-- Text Post Preview Box -->
                                       <div id="textStylePreviewBox" style="display: none; width: 100%; min-height: 140px; border-radius: 12px; align-items: center; justify-content: center; background-size: cover; background-position: center; padding: 20px 16px; box-sizing: border-box; text-shadow: 0 2px 4px rgba(0,0,0,0.6); overflow: hidden; position: relative;">
-                                        <div id="textStylePreviewText" style="width: 100%; white-space: pre-wrap; font-weight: 600; overflow-wrap: break-word; word-break: normal;"></div>
+                                        <div id="textStylePreviewText"
+                                          contenteditable="true"
+                                          data-placeholder="<%= tText("Votre texte ici...") %>"
+                                          style="width: 100%; white-space: pre-wrap; font-weight: 600; overflow-wrap: break-word; word-break: normal; outline: none; cursor: text; min-height: 1em;"></div>
                                       </div>
 
                                       <!-- Background Grid Selector -->
