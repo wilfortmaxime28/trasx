@@ -257,10 +257,6 @@ class Post {
         SELECT 1 FROM hidden_posts hp WHERE hp.user_id = ? AND hp.post_id = p.id
       )
       AND (p.is_live = 0 OR p.live_status != 'ended')
-      AND p.id NOT IN (
-        SELECT post_id FROM admin_moderation_notices
-        WHERE target_type = 'post' AND status = 'active' AND created_at >= NOW() - INTERVAL 72 HOUR
-      )
       ${excludedClause}
       ORDER BY _s_follow DESC, _s_country DESC, _s_premium DESC, _s_popular DESC, _s_random DESC, p.created_at DESC
       LIMIT ? OFFSET ?
@@ -565,10 +561,6 @@ class Post {
       FROM posts p
       WHERE p.user_id = ?
         AND (p.is_live = 0 OR p.live_status != 'ended')
-        AND p.id NOT IN (
-          SELECT post_id FROM admin_moderation_notices
-          WHERE target_type = 'post' AND status = 'active' AND created_at >= NOW() - INTERVAL 72 HOUR
-        )
       ORDER BY p.created_at DESC
     `;
     const [rows] = await db.query(query, [checkViewerId, checkViewerId, checkViewerId, checkViewerId, userId]);
