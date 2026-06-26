@@ -327,12 +327,14 @@ app.disable('view cache');
 
 // Fichiers statiques
 app.get('/favicon.ico', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=2592000, stale-while-revalidate=86400');
   res.sendFile(path.join(__dirname, 'public', 'assets', 'trasx-logo-mark.png'));
 });
 
 // Route spéciale pour l'icône de profil par défaut (avatar manquant)
 app.get('/assets/avatar_placeholder.jpg', (req, res) => {
   res.setHeader('Content-Type', 'image/svg+xml');
+  res.setHeader('Cache-Control', 'public, max-age=2592000, stale-while-revalidate=86400');
   res.send(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100%" height="100%" fill="#334155" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
       <rect width="24" height="24" fill="#1e293b" stroke="none" />
@@ -363,6 +365,15 @@ app.use('/js/client.js', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, max-age=0');
   next();
 });
+app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    if (/\.(png|jpe?g|svg|webp|gif|ico)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=2592000, stale-while-revalidate=86400');
+    }
+  }
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/vendor/tfjs', express.static(path.join(__dirname, 'node_modules/@tensorflow/tfjs/dist')));
 app.use('/vendor/face-api', express.static(path.join(__dirname, 'node_modules/face-api.js/dist')));
@@ -740,6 +751,7 @@ app.get('/api/feed/reels', requireAuth, async (req, res) => {
 app.use('/profile', profileRoutes);
 app.use('/settings', settingsRoutes);
 app.use('/events', eventsRoutes);
+app.use('/status', statusRoutes);
 app.use('/statuses', statusRoutes);
 
 // Routes API Hashtags

@@ -4,22 +4,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <!-- PWA & Mobile Optimization -->
-  <link rel="manifest" href="/manifest.webmanifest?v=13" crossorigin="use-credentials">
+  <link rel="manifest" href="/manifest.webmanifest?v=14" crossorigin="use-credentials">
   <meta name="theme-color" content="#090d16">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/assets/trasx-logo-mark.png">
+  <link rel="preload" href="/assets/trasx-logo-mark.png" as="image" fetchpriority="high">
+  <link rel="preload" href="/assets/trasx-logo.png" as="image">
+  <link rel="preload" href="/assets/avatar_placeholder.jpg" as="image">
   <title>TrasX</title>
   <!-- SEO Meta Tags -->
   <meta name="description" content="<%= tText('TrasX is a responsive premium social media dashboard featuring stories, feed, messages, and events with sleek glassmorphism and modern UI design.') %>">
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
   <!-- CSS Stylesheet -->
-  <link rel="stylesheet" href="/css/styles.css?v=178">
+  <link rel="stylesheet" href="/css/styles.css?v=179">
   <!-- Lucide Icons CDN -->
-  <script src="https://unpkg.com/lucide@latest" defer></script>
+  <link rel="preload" href="https://unpkg.com/lucide@latest" as="script" crossorigin>
+  <script src="https://unpkg.com/lucide@latest" defer crossorigin></script>
   <script>
     window.__APP_LOCALE__ = <%- JSON.stringify(typeof locale !== 'undefined' ? locale : 'en') %>;
     window.__APP_I18N__ = <%- JSON.stringify(typeof clientTranslations === 'object' && clientTranslations ? clientTranslations : {}) %>;

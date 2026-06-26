@@ -4355,10 +4355,18 @@ select:-webkit-autofill {
 
 .status-viewer-overlay {
   overflow: hidden !important;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 100dvh;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 .status-viewer-outer-container {
   overflow: hidden;
   max-width: 100%;
+  width: 100%;
+  height: 100%;
 }
 .status-viewer-content {
   position: relative;
@@ -4373,6 +4381,7 @@ select:-webkit-autofill {
   aspect-ratio: 9/16;
   display: flex;
   flex-direction: column;
+  margin: 0 !important;
 }/* Story Progress Bar Indicator */
 .status-viewer-progress-container {
   display: flex;
@@ -12304,6 +12313,10 @@ body[data-theme="dark"] .compose-contact-chip {
   overflow: hidden;
 }
 
+.reel-end-overlay {
+  background: transparent;
+}
+
 .post-video-end-overlay.is-visible,
 .reel-end-overlay.is-visible {
   opacity: 1;
@@ -12329,6 +12342,17 @@ body[data-theme="dark"] .compose-contact-chip {
   z-index: 2;
 }
 
+.reel-end-card {
+  min-width: min(54vw, 188px);
+  max-width: min(62vw, 220px);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  gap: 10px;
+}
+
 .post-video-end-card {
   min-width: 92px;
   max-width: min(44vw, 128px);
@@ -12339,6 +12363,10 @@ body[data-theme="dark"] .compose-contact-chip {
 .post-video-end-overlay.is-visible .post-video-end-card,
 .reel-end-overlay.is-visible .reel-end-card {
   animation: mediaEndCardRise 1.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.reel-end-overlay.is-visible .reel-end-card {
+  animation: reelEndCardFloat 1.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .post-video-end-logo,
@@ -12361,10 +12389,13 @@ body[data-theme="dark"] .compose-contact-chip {
 }
 
 .reel-end-logo {
-  width: 24px !important;
-  height: 24px !important;
-  max-width: 24px !important;
-  max-height: 24px !important;
+  width: 56px !important;
+  height: 56px !important;
+  max-width: 56px !important;
+  max-height: 56px !important;
+  border-radius: 24%;
+  box-shadow: none;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.34));
 }
 
 .post-video-end-username,
@@ -12379,6 +12410,32 @@ body[data-theme="dark"] .compose-contact-chip {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.reel-end-username-shell {
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(9, 14, 24, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: translateY(8px) scale(0.94);
+}
+
+.reel-end-username {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.98);
+  letter-spacing: 0.01em;
 }
 
 .post-video-end-overlay::before,
@@ -12401,9 +12458,7 @@ body[data-theme="dark"] .compose-contact-chip {
 }
 
 .reel-end-overlay::before {
-  width: 58px;
-  height: 58px;
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08);
+  display: none;
 }
 
 .post-video-end-overlay.is-visible::before,
@@ -12414,6 +12469,14 @@ body[data-theme="dark"] .compose-contact-chip {
 .post-video-end-overlay.is-visible .post-video-end-logo,
 .reel-end-overlay.is-visible .reel-end-logo {
   animation: postVideoEndLogoPulse 1.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.reel-end-overlay.is-visible .reel-end-logo {
+  animation: reelEndLogoPulse 1.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.reel-end-overlay.is-visible .reel-end-username-shell {
+  animation: reelEndUsernameReveal 1.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes mediaEndCardRise {
@@ -12461,6 +12524,60 @@ body[data-theme="dark"] .compose-contact-chip {
   }
 }
 
+@keyframes reelEndCardFloat {
+  0% {
+    transform: translateY(14px) scale(0.92);
+    opacity: 0;
+  }
+  34% {
+    transform: translateY(-4px) scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes reelEndLogoPulse {
+  0% {
+    transform: scale(0.54) rotate(-14deg);
+    opacity: 0;
+  }
+  30% {
+    transform: scale(1.12) rotate(4deg);
+    opacity: 1;
+  }
+  55% {
+    transform: scale(0.96) rotate(-2deg);
+    opacity: 1;
+  }
+  78% {
+    transform: scale(1.04) rotate(1deg) translateY(-2px);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes reelEndUsernameReveal {
+  0%,
+  22% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.92);
+  }
+  48% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .custom-video-controls {
   position: absolute;
   bottom: 0;
@@ -12499,6 +12616,27 @@ body[data-theme="dark"] .compose-contact-chip {
   .post-video-loading-icon svg {
     width: 24px;
     height: 24px;
+  }
+
+  .reel-end-card {
+    min-width: min(60vw, 204px);
+    max-width: min(72vw, 232px);
+    gap: 8px;
+  }
+
+  .reel-end-logo {
+    width: 48px !important;
+    height: 48px !important;
+    max-width: 48px !important;
+    max-height: 48px !important;
+  }
+
+  .reel-end-username-shell {
+    padding: 7px 12px;
+  }
+
+  .reel-end-username {
+    font-size: 11px;
   }
 }
 
@@ -13666,9 +13804,15 @@ body[data-theme="dark"] .compose-contact-chip {
     background: #000000 !important;
     backdrop-filter: none !important;
     overflow: hidden !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
   }
 
   .status-viewer-outer-container {
+    position: fixed !important;
+    inset: 0 !important;
+    display: block !important;
     width: 100% !important;
     height: 100% !important;
     max-width: 100% !important;
@@ -13677,15 +13821,24 @@ body[data-theme="dark"] .compose-contact-chip {
   }
 
   .status-viewer-content {
+    position: fixed !important;
+    inset: 0 !important;
     width: 100vw !important;
     height: 100dvh !important;
+    min-height: 100dvh !important;
     max-width: 100% !important;
-    max-height: 100% !important;
+    max-height: none !important;
     border-radius: 0 !important;
     border: none !important;
     aspect-ratio: auto !important;
     overflow: hidden !important;
     box-sizing: border-box !important;
+  }
+
+  .status-viewer-media-shell {
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
   }
 
   .status-viewer-nav-btn {
@@ -13977,6 +14130,7 @@ body.viewing-shorts .reel-card .reel-actions-container {
   transform: none !important;
   pointer-events: auto !important;
   z-index: 20 !important;
+  right: max(8px, env(safe-area-inset-right, 0px)) !important;
   bottom: 80px !important; /* Raised actions a bit higher */
   gap: 14px !important;
 }

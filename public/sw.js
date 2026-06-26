@@ -1,22 +1,33 @@
-// TrasX Service Worker v10 — Network-first with offline fallback & Web Push
-const CACHE_NAME = 'trasx-v13';
+// TrasX Service Worker v14 — Network-first with offline fallback & Web Push
+const CACHE_NAME = 'trasx-v14';
 const OFFLINE_URL = '/';
-const STATIC_ASSETS = [
-  '/',
-  '/css/styles.css',
-  '/js/client.js',
+const APP_BRAND_ASSETS = [
+  '/favicon.ico',
   '/assets/trasx-logo-mark.png',
   '/assets/trasx-logo.png',
+  '/assets/trasx-logo-mark-old.png',
   '/assets/trasx-logo-mark-v2.png',
   '/assets/trasx-logo-mark-v3.png',
   '/assets/trasx-logo-mark-v4.png',
   '/assets/trasx-logo-mark-v5.png',
   '/assets/avatar_placeholder.jpg',
   '/assets/avatar_placeholder.svg',
+  '/assets/headset_3d.png',
+  '/assets/winner_trophy.png',
+  '/assets/winner_trophy1.png',
+  '/assets/loser_donkey.png',
+  '/assets/loser_donkey1.png'
+];
+const STATIC_ASSETS = Array.from(new Set([
+  '/',
+  '/css/styles.css',
+  '/js/client.js',
   '/assets/platform-end-chime.mp3',
   '/manifest.json',
-  '/manifest.webmanifest'
-];
+  '/manifest.webmanifest',
+  'https://unpkg.com/lucide@latest',
+  ...APP_BRAND_ASSETS
+]));
 
 // ── Install ──────────────────────────────────────────────────
 self.addEventListener('install', (event) => {

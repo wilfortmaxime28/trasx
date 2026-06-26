@@ -2569,7 +2569,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ownerStatsBar.style.display = 'flex';
         const ownerViewsSpan = document.getElementById('statusViewerOwnerViewsCount');
         if (ownerViewsSpan && status.id) {
-          fetch(`/status/viewers/${status.id}`)
+          fetch(`/statuses/viewers/${status.id}`)
             .then(res => res.json())
             .then(data => {
               if (data.success) {
@@ -2584,7 +2584,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (replyBar) replyBar.style.display = 'flex';
 
       if (status.id) {
-        fetch(`/status/view/${status.id}`, { method: 'POST' }).catch(err => console.error("Error recording status view:", err));
+        fetch(`/statuses/view/${status.id}`, { method: 'POST' }).catch(err => console.error("Error recording status view:", err));
       }
     }
 
@@ -3398,9 +3398,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!overlay) {
       overlay = document.createElement('div');
       overlay.className = overlayClass;
-      const cardClass = overlayClass === 'reel-end-overlay' ? 'reel-end-card' : 'post-video-end-card';
-      const usernameClass = overlayClass === 'reel-end-overlay' ? 'reel-end-username' : 'post-video-end-username';
-      overlay.innerHTML = `
+      const isReelOverlay = overlayClass === 'reel-end-overlay';
+      const cardClass = isReelOverlay ? 'reel-end-card' : 'post-video-end-card';
+      const usernameClass = isReelOverlay ? 'reel-end-username' : 'post-video-end-username';
+      overlay.innerHTML = isReelOverlay
+        ? `
+        <div class="${cardClass}">
+          <img src="/assets/trasx-logo-mark.png" alt="TrasX" class="${logoClass}">
+          <div class="reel-end-username-shell">
+            <div class="${usernameClass}">@user</div>
+          </div>
+        </div>
+      `
+        : `
         <div class="${cardClass}">
           <img src="/assets/trasx-logo-mark.png" alt="TrasX" class="${logoClass}">
           <div class="${usernameClass}">@user</div>
@@ -9290,7 +9300,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 content: JSON.stringify(sharedPayload)
               });
 
-              fetch(`/status/share/${activeShareStatusData.id}`, {
+              fetch(`/statuses/share/${activeShareStatusData.id}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ recipientUserId })
@@ -13055,7 +13065,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Record as status comment and trigger notification
     if (statusId) {
-      fetch(`/status/comment/${statusId}`, {
+      fetch(`/statuses/comment/${statusId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: reaction })
@@ -13196,7 +13206,7 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
     
-    fetch(`/status/viewers/${statusId}`)
+    fetch(`/statuses/viewers/${statusId}`)
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -13312,7 +13322,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Record as status comment and trigger notification
     if (statusId) {
-      fetch(`/status/comment/${statusId}`, {
+      fetch(`/statuses/comment/${statusId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content })
@@ -28447,7 +28457,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (canRegisterPwa) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=13', { scope: '/' })
+      navigator.serviceWorker.register('/sw.js?v=14', { scope: '/' })
         .then((reg) => {
           console.log('Service Worker registered successfully:', reg.scope);
           reg.update().catch(() => {});
