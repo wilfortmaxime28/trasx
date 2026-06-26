@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const AdminModerationNotice = require('../models/AdminModerationNotice');
 const db = require('../config/db');
 const ActivityLog = require('../models/ActivityLog');
 const mailer = require('../utils/mailer');
@@ -242,8 +243,26 @@ exports.postLogin = async (req, res) => {
 
     if (user.account_status === 'Blocked') {
       const allowDispute = !!user.allow_dispute;
+      let blockedMessage = "Votre compte a été bloqué par l'administration. Veuillez contacter le support.";
+
+      if (allowDispute) {
+        blockedMessage = 'Votre compte a été bloqué pour cause de conflit de KYC avec un autre utilisateur.';
+      } else {
+        const moderationNotices = await AdminModerationNotice.getActiveForUser(user.id);
+        const restrictionNotice = moderationNotices.find((notice) => (
+          notice.target_type === 'profile' && notice.notice_kind === 'restriction'
+        ));
+
+        if (restrictionNotice?.reason) {
+          blockedMessage = `Votre compte a été bloqué par l'administration. Raison : ${restrictionNotice.reason}.`;
+          if (restrictionNotice.details) {
+            blockedMessage += ` Détail : ${restrictionNotice.details}`;
+          }
+        }
+      }
+
       return res.render('login', {
-        error: "Votre compte a été bloqué pour cause de conflit de KYC avec un autre utilisateur.",
+        error: blockedMessage,
         verified: null,
         allowDispute,
         userId: user.id

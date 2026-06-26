@@ -1912,6 +1912,12 @@
       'Contenu inapproprié répété',
       'Autre'
     ];
+    const accountRestrictionReasons = Array.isArray(typeof adminAccountRestrictionReasons !== 'undefined' ? adminAccountRestrictionReasons : [])
+      ? (typeof adminAccountRestrictionReasons !== 'undefined' ? adminAccountRestrictionReasons : [])
+      : [];
+    const blockedAccountsList = Array.isArray(typeof blockedAccounts !== 'undefined' ? blockedAccounts : [])
+      ? (typeof blockedAccounts !== 'undefined' ? blockedAccounts : [])
+      : [];
   %>
 
   <!-- Sidebar -->
@@ -2944,10 +2950,29 @@
                             <strong><%= Number(user.is_verified || 0) === 1 ? 'Oui' : 'Non' %></strong>
                           </div>
                         </div>
+                        <% if (user.account_restriction_reason) { %>
+                          <div style="margin-top: 14px; padding: 14px; border-radius: 14px; border: 1px solid rgba(239, 90, 90, 0.18); background: rgba(239, 90, 90, 0.06);">
+                            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--danger); margin-bottom: 8px;">Restriction active</div>
+                            <div style="font-weight: 700; color: var(--text-main);"><%= user.account_restriction_reason %></div>
+                            <% if (user.account_restriction_details) { %>
+                              <div style="margin-top: 6px; font-size: 12px; line-height: 1.45; color: var(--text-muted);"><%= user.account_restriction_details %></div>
+                            <% } %>
+                            <% if (user.account_restriction_updated_at) { %>
+                              <div style="margin-top: 8px; font-size: 11px; color: var(--text-soft);">
+                                Mis à jour le <%= new Date(user.account_restriction_updated_at).toLocaleString('fr-FR') %>
+                              </div>
+                            <% } %>
+                          </div>
+                        <% } %>
                       </div>
 
                       <div class="admin-user-sheet-card">
                         <h4>Actions administrateur</h4>
+                        <%
+                          const currentRestrictionReason = String(user.account_restriction_reason || '').trim();
+                          const currentRestrictionReasonIsPreset = accountRestrictionReasons.includes(currentRestrictionReason);
+                          const currentStatusUsesRestriction = ['Paused', 'Partially Blocked', 'Blocked'].includes(user.account_status);
+                        %>
 
                         <%# --- FREEZE / UNFREEZE per user --- %>
                         <div style="margin-bottom: 14px; padding: 12px; border-radius: 12px; border: 1px solid rgba(14, 165, 233, 0.2); background: rgba(14, 165, 233, 0.05);">
@@ -2973,15 +2998,48 @@
                           <% } %>
                         </div>
 
-                        <form action="/admin/user-status" method="POST" class="action-form" style="margin-bottom: 14px;">
+                        <form action="/admin/user-status" method="POST" class="mini-form" data-account-status-form style="margin-bottom: 14px;">
                           <input type="hidden" name="userId" value="<%= user.id %>">
-                          <select name="status" style="flex: 1 1 180px;">
+                          <input type="hidden" name="redirectTo" value="<%= adminPaths.users || '/admin/users' %>">
+                          <div class="mini-label">Statut du compte et motif visible côté utilisateur</div>
+                          <select name="status" class="compact-select" data-account-status-select>
                             <option value="Active" <%= user.account_status === 'Active' ? 'selected' : '' %>>Actif</option>
                             <option value="Paused" <%= user.account_status === 'Paused' ? 'selected' : '' %>>En pause</option>
                             <option value="Partially Blocked" <%= user.account_status === 'Partially Blocked' ? 'selected' : '' %>>Partiellement bloqué</option>
                             <option value="Blocked" <%= user.account_status === 'Blocked' ? 'selected' : '' %>>Bloqué</option>
                           </select>
-                          <button type="submit" class="btn">Appliquer</button>
+                          <div data-account-restriction-fields style="display: <%= currentStatusUsesRestriction ? 'grid' : 'none' %>; gap: 8px;">
+                            <select name="reason" class="compact-select" data-account-reason-select>
+                              <option value="">Choisir une raison</option>
+                              <% accountRestrictionReasons.forEach((reason) => { %>
+                                <option
+                                  value="<%= reason %>"
+                                  <%= (currentRestrictionReasonIsPreset && currentRestrictionReason === reason) || (!currentRestrictionReasonIsPreset && currentRestrictionReason && reason === 'Autre') ? 'selected' : '' %>
+                                >
+                                  <%= reason %>
+                                </option>
+                              <% }) %>
+                            </select>
+                            <input
+                              type="text"
+                              name="custom_reason"
+                              class="compact-input"
+                              data-account-custom-reason
+                              maxlength="120"
+                              placeholder="Raison personnalisée"
+                              value="<%= !currentRestrictionReasonIsPreset ? currentRestrictionReason : '' %>"
+                              style="display: <%= !currentRestrictionReasonIsPreset && currentRestrictionReason ? 'block' : 'none' %>;"
+                            >
+                            <input
+                              type="text"
+                              name="details"
+                              class="compact-input"
+                              maxlength="500"
+                              placeholder="Détail visible par l'utilisateur"
+                              value="<%= user.account_restriction_details || '' %>"
+                            >
+                          </div>
+                          <button type="submit" class="btn" style="width: fit-content;">Appliquer</button>
                         </form>
 
                         <% if (canManageUserCertification) { %>
@@ -3023,15 +3081,17 @@
                         </form>
                         <% } %>
 
-                        <form action="/admin/moderation/report-profile" method="POST" class="mini-form" style="margin-bottom: 14px;">
+                        <form action="/admin/moderation/report-profile" method="POST" class="mini-form" data-moderation-reason-form style="margin-bottom: 14px;">
                           <input type="hidden" name="userId" value="<%= user.id %>">
+                          <input type="hidden" name="redirectTo" value="<%= adminPaths.users || '/admin/users' %>">
                           <div class="mini-label">Alerte profil</div>
-                          <select name="reason" class="compact-select" required>
+                          <select name="reason" class="compact-select" data-moderation-reason-select required>
                             <option value="">Choisir une raison</option>
                             <% profileModerationReasons.forEach((reason) => { %>
                               <option value="<%= reason %>"><%= reason %></option>
                             <% }) %>
                           </select>
+                          <input type="text" name="custom_reason" class="compact-input" data-moderation-custom-reason maxlength="120" placeholder="Raison personnalisée" style="display: none;">
                           <input type="text" name="details" class="compact-input" maxlength="500" placeholder="Détail visible par l'utilisateur">
                           <button type="submit" class="btn" style="background: var(--warning); color: #0f172a; width: fit-content;">Signaler le profil</button>
                         </form>
@@ -3475,11 +3535,23 @@
                   </thead>
                   <tbody>
                     <% moderationNoticesList.forEach((notice) => { %>
+                      <%
+                        const noticeTypeLabel = notice.target_type === 'post'
+                          ? 'Post'
+                          : notice.notice_kind === 'restriction'
+                            ? 'Restriction compte'
+                            : 'Profil';
+                        const noticeBadgeClass = notice.target_type === 'post'
+                          ? 'blocked'
+                          : notice.notice_kind === 'restriction'
+                            ? 'blocked'
+                            : 'paused';
+                      %>
                       <tr>
                         <td><%= new Date(notice.updated_at || notice.created_at).toLocaleString() %></td>
                         <td>
-                          <span class="badge <%= notice.target_type === 'profile' ? 'paused' : 'blocked' %>">
-                            <%= notice.target_type === 'profile' ? 'Profil' : 'Post' %>
+                          <span class="badge <%= noticeBadgeClass %>">
+                            <%= noticeTypeLabel %>
                           </span>
                         </td>
                         <td>
@@ -3611,15 +3683,17 @@
                     <% } %>
                   </div>
 
-                  <form action="/admin/moderation/report-post" method="POST" class="mini-form" style="margin-top: 0; padding-top: 0; border-top: none;">
+                  <form action="/admin/moderation/report-post" method="POST" class="mini-form" data-moderation-reason-form style="margin-top: 0; padding-top: 0; border-top: none;">
                     <input type="hidden" name="postId" value="<%= post.id %>">
+                    <input type="hidden" name="redirectTo" value="<%= adminPaths.moderation || '/admin/moderation' %>">
                     <div class="mini-label">Signaler ce post</div>
-                    <select name="reason" class="compact-select" required>
+                    <select name="reason" class="compact-select" data-moderation-reason-select required>
                       <option value="">Choisir une raison</option>
                       <% postModerationReasons.forEach((reason) => { %>
                         <option value="<%= reason %>"><%= reason %></option>
                       <% }) %>
                     </select>
+                    <input type="text" name="custom_reason" class="compact-input" data-moderation-custom-reason maxlength="120" placeholder="Raison personnalisée" style="display: none;">
                     <input type="text" name="details" class="compact-input" maxlength="500" placeholder="Detail visible par l utilisateur">
                     <button type="submit" class="btn" style="background: var(--danger); width: fit-content;">Signaler le post</button>
                   </form>
@@ -4058,11 +4132,8 @@
           <button onclick="switchDisputeTab('p2p-disputes')" id="tabBtn-p2p-disputes" class="tab-button" style="flex: 1; min-width: 150px; padding: 14px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 14px;">
             Litiges Marché P2P (<%= p2pDisputes ? p2pDisputes.length : 0 %>)
           </button>
-          <% 
-            const allBlockedUsers = users.filter(u => u.account_status === 'Blocked' || u.account_status === 'Partially Blocked');
-          %>
           <button onclick="switchDisputeTab('all-blocked-accounts')" id="tabBtn-all-blocked-accounts" class="tab-button" style="flex: 1; min-width: 150px; padding: 14px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 14px;">
-            Tous les Comptes Bloqués (<%= allBlockedUsers.length %>)
+            Tous les Comptes Bloqués (<%= blockedAccountsList.length %>)
           </button>
         </div>
 
@@ -4255,40 +4326,68 @@
 
           <!-- Tab 3: All Blocked Accounts (General) -->
           <div id="disputeTab-all-blocked-accounts" class="dispute-tab-content" style="display: none;">
-            <% if (allBlockedUsers && allBlockedUsers.length > 0) { %>
-              <div style="display: grid; gap: 16px;">
-                <% allBlockedUsers.forEach((user) => { %>
-                  <div style="border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 12px;">
-                    <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 8px;">
-                      <div class="user-info" style="display: flex; align-items: center; gap: 10px; cursor: pointer;" onclick="openAdminUserModal('admin-user-detail-template-<%= user.id %>')">
-                        <img src="<%= user.avatar || 'https://via.placeholder.com/150' %>" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" alt="Avatar">
-                        <div>
-                          <div style="font-weight: 700; font-size: 15px;"><%= user.first_name %> <%= user.last_name %></div>
-                          <div style="font-size: 12px; color: var(--text-muted);">@<%= user.username %> · <%= user.email %></div>
-                        </div>
-                      </div>
-                      <span class="badge" style="background: rgba(239, 68, 68, 0.12); color: #ef4444; font-size: 11px;">
-                        <%= user.account_status === 'Blocked' ? 'Bloqué' : 'Partiellement bloqué' %>
-                      </span>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; background: rgba(255,255,255,0.01); padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 12px;">
-                      <div><strong>Dépôt :</strong> <%= formatUsd(user.deposit_account_balance) %></div>
-                      <div><strong>Retrait :</strong> <%= formatUsd(user.withdrawal_account_balance) %></div>
-                      <div><strong>Bonus :</strong> <%= formatUsd(user.bonus_account_balance) %></div>
-                      <div><strong>Jetons :</strong> <%= formatTokenBalance(user.token_balance) %></div>
-                    </div>
-
-                    <div style="display: flex; gap: 10px; margin-top: 4px; flex-wrap: wrap;">
-                      <form action="/admin/user-status" method="POST">
-                        <input type="hidden" name="userId" value="<%= user.id %>">
-                        <input type="hidden" name="status" value="Active">
-                        <button type="submit" class="btn">Débloquer (Activer)</button>
-                      </form>
-                      <button type="button" class="btn btn-secondary" onclick="openAdminUserModal('admin-user-detail-template-<%= user.id %>')">Fiche Détail</button>
-                    </div>
-                  </div>
-                <% }) %>
+            <% if (blockedAccountsList && blockedAccountsList.length > 0) { %>
+              <div class="table-search-row" style="padding-left: 0; padding-right: 0; padding-bottom: 14px; justify-content: flex-start;">
+                <label class="search-field">
+                  <i data-lucide="search"></i>
+                  <input type="search" data-table-search-input data-table-target="adminBlockedAccountsTable" placeholder="Rechercher dans les comptes bloqués...">
+                </label>
+              </div>
+              <div style="overflow-x: auto;">
+                <table id="adminBlockedAccountsTable">
+                  <thead>
+                    <tr>
+                      <th>Utilisateur</th>
+                      <th>Statut</th>
+                      <th>Raison</th>
+                      <th>Détail</th>
+                      <th>Dernière mise à jour</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% blockedAccountsList.forEach((user) => { %>
+                      <tr data-table-search-row="<%= `${user.first_name || ''} ${user.last_name || ''} ${user.username || ''} ${user.email || ''} ${user.account_restriction_reason || ''} ${user.account_restriction_details || ''}`.toLowerCase() %>">
+                        <td>
+                          <div class="user-info" style="display: flex; align-items: center; gap: 10px;">
+                            <img src="<%= user.avatar || 'https://via.placeholder.com/150' %>" style="width: 42px; height: 42px; border-radius: 50%; object-fit: cover;" alt="Avatar">
+                            <div>
+                              <div style="font-weight: 700; cursor: pointer;" onclick="openAdminUserModal('admin-user-detail-template-<%= user.id %>')">
+                                <%= user.first_name %> <%= user.last_name %>
+                              </div>
+                              <div style="font-size: 12px; color: var(--text-muted);">@<%= user.username %> · <%= user.email %></div>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <span class="badge <%= user.account_status === 'Blocked' ? 'blocked' : 'partially' %>">
+                            <%= user.account_status === 'Blocked' ? 'Bloqué' : 'Partiellement bloqué' %>
+                          </span>
+                        </td>
+                        <td style="font-weight: 600;">
+                          <%= user.account_restriction_reason || 'Raison non renseignée' %>
+                        </td>
+                        <td style="color: var(--text-muted);">
+                          <%= user.account_restriction_details || 'Aucun détail visible.' %>
+                        </td>
+                        <td>
+                          <%= user.account_restriction_updated_at ? new Date(user.account_restriction_updated_at).toLocaleString('fr-FR') : '—' %>
+                        </td>
+                        <td>
+                          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <form action="/admin/user-status" method="POST">
+                              <input type="hidden" name="userId" value="<%= user.id %>">
+                              <input type="hidden" name="status" value="Active">
+                              <input type="hidden" name="redirectTo" value="<%= adminPaths.disputes || '/admin/disputes' %>">
+                              <button type="submit" class="btn">Débloquer</button>
+                            </form>
+                            <button type="button" class="btn btn-secondary" onclick="openAdminUserModal('admin-user-detail-template-<%= user.id %>')">Fiche détail</button>
+                          </div>
+                        </td>
+                      </tr>
+                    <% }) %>
+                  </tbody>
+                </table>
               </div>
             <% } else { %>
               <p style="color: var(--text-muted); margin: 0; text-align: center; padding: 20px;">Aucun compte bloqué sur la plateforme.</p>
@@ -4767,6 +4866,71 @@
       });
     };
 
+    const initializeAdminReasonForms = (root = document) => {
+      const restrictedStatuses = new Set(['Paused', 'Partially Blocked', 'Blocked']);
+
+      root.querySelectorAll('[data-account-status-form]').forEach((form) => {
+        if (form.dataset.reasonBound === '1') return;
+        form.dataset.reasonBound = '1';
+
+        const statusSelect = form.querySelector('[data-account-status-select]');
+        const restrictionFields = form.querySelector('[data-account-restriction-fields]');
+        const reasonSelect = form.querySelector('[data-account-reason-select]');
+        const customReasonInput = form.querySelector('[data-account-custom-reason]');
+
+        const toggleCustomReasonField = () => {
+          const shouldShowCustomReason = statusSelect
+            && restrictedStatuses.has(statusSelect.value)
+            && reasonSelect
+            && reasonSelect.value === 'Autre';
+          if (!customReasonInput) return;
+          customReasonInput.style.display = shouldShowCustomReason ? 'block' : 'none';
+          customReasonInput.required = !!shouldShowCustomReason;
+        };
+
+        const toggleRestrictionFields = () => {
+          const shouldShowRestrictionFields = statusSelect && restrictedStatuses.has(statusSelect.value);
+          if (restrictionFields) {
+            restrictionFields.style.display = shouldShowRestrictionFields ? 'grid' : 'none';
+          }
+          if (reasonSelect) {
+            reasonSelect.required = !!shouldShowRestrictionFields;
+          }
+          if (!shouldShowRestrictionFields && customReasonInput) {
+            customReasonInput.required = false;
+          }
+          toggleCustomReasonField();
+        };
+
+        if (statusSelect) {
+          statusSelect.addEventListener('change', toggleRestrictionFields);
+        }
+        if (reasonSelect) {
+          reasonSelect.addEventListener('change', toggleCustomReasonField);
+        }
+
+        toggleRestrictionFields();
+      });
+
+      root.querySelectorAll('[data-moderation-reason-form]').forEach((form) => {
+        if (form.dataset.reasonBound === '1') return;
+        form.dataset.reasonBound = '1';
+
+        const reasonSelect = form.querySelector('[data-moderation-reason-select]');
+        const customReasonInput = form.querySelector('[data-moderation-custom-reason]');
+        if (!reasonSelect || !customReasonInput) return;
+
+        const toggleCustomReasonField = () => {
+          const shouldShowCustomReason = reasonSelect.value === 'Autre';
+          customReasonInput.style.display = shouldShowCustomReason ? 'block' : 'none';
+          customReasonInput.required = shouldShowCustomReason;
+        };
+
+        reasonSelect.addEventListener('change', toggleCustomReasonField);
+        toggleCustomReasonField();
+      });
+    };
+
     const openAdminUserModal = (templateId, options = {}) => {
       if (!adminUserModal || !adminUserModalBody || !templateId) return;
       const template = document.getElementById(templateId);
@@ -4781,6 +4945,7 @@
       adminUserModal.classList.add('is-open');
       adminUserModal.setAttribute('aria-hidden', 'false');
       document.body.style.overflow = 'hidden';
+      initializeAdminReasonForms(adminUserModalBody);
       if (typeof lucide !== 'undefined') lucide.createIcons();
     };
 
@@ -4795,6 +4960,8 @@
     if (userSearchInput) {
       userSearchInput.addEventListener('input', applyUserTableFilters);
     }
+
+    initializeAdminReasonForms(document);
 
     if (userStatusFilter) {
       userStatusFilter.addEventListener('change', applyUserTableFilters);

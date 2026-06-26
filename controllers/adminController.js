@@ -45,6 +45,20 @@ const PROFILE_MODERATION_REASONS = new Set([
   'Contenu inapproprié répété',
   'Autre'
 ]);
+const ACCOUNT_RESTRICTION_REASON_OPTIONS = [
+  'Documents ou identité non conformes',
+  'Conflit KYC ou vérification en attente',
+  'Activité suspecte ou fraude présumée',
+  'Spam ou automatisation abusive',
+  'Harcèlement ou non-respect des règles',
+  'Signalements multiples en cours d examen',
+  'Risque de sécurité pour la plateforme',
+  'Demande légale ou conformité interne',
+  'Autre'
+];
+const ACCOUNT_RESTRICTION_REASONS = new Set(ACCOUNT_RESTRICTION_REASON_OPTIONS);
+const RESTRICTED_ACCOUNT_STATUSES = new Set(['Paused', 'Partially Blocked', 'Blocked']);
+const MANUAL_ACCOUNT_STATUSES = new Set(['Active', 'Paused', 'Partially Blocked', 'Blocked']);
 
 const ADMIN_PAGE_PATHS = {
   overview: '/admin',
@@ -257,6 +271,27 @@ function normalizeModerationDetails(value) {
   const details = String(value || '').trim().replace(/\s+/g, ' ');
   if (!details) return null;
   return details.slice(0, 500);
+}
+
+function normalizeCustomReason(value) {
+  const reason = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!reason) return null;
+  return reason.slice(0, 120);
+}
+
+function resolveModerationReasonInput({ reason, customReason, allowedReasons }) {
+  const normalizedReason = normalizeModerationReason(reason, allowedReasons);
+  const normalizedCustomReason = normalizeCustomReason(customReason);
+
+  if (normalizedReason && normalizedReason !== 'Autre') {
+    return normalizedReason;
+  }
+
+  if (normalizedCustomReason) {
+    return normalizedCustomReason;
+  }
+
+  return null;
 }
 
 function getUserBalanceAccountConfig(accountType) {
@@ -696,6 +731,7 @@ exports.getAdminDashboard = async (req, res) => {
     let followingMap = new Map();
     let postReachMap = new Map();
     let reelReachMap = new Map();
+    let restrictionNoticeByUserId = new Map();
 
     if (userIds.length > 0) {
       const placeholders = userIds.map(() => '?').join(', ');
@@ -740,15 +776,49 @@ exports.getAdminDashboard = async (req, res) => {
       followingMap = new Map(followingRows.map((row) => [Number(row.user_id), Number(row.total || 0)]));
       postReachMap = new Map(postReachRows.map((row) => [Number(row.user_id), Number(row.total || 0)]));
       reelReachMap = new Map(reelReachRows.map((row) => [Number(row.user_id), Number(row.total || 0)]));
+
+      const restrictionNoticeRows = await AdminModerationNotice.getLatestActiveProfileNoticesByUserIds(userIds, {
+        noticeKind: 'restriction'
+      });
+      restrictionNoticeByUserId = restrictionNoticeRows.reduce((map, row) => {
+        const targetUserId = Number(row.target_user_id);
+        if (!map.has(targetUserId)) {
+          map.set(targetUserId, row);
+        }
+        return map;
+      }, new Map());
     }
 
-    const enrichedUsers = users.map((user) => ({
-      ...user,
-      followers_count: followersMap.get(Number(user.id)) || 0,
-      following_count: followingMap.get(Number(user.id)) || 0,
-      post_daily_reach_target: postReachMap.get(Number(user.id)) || 0,
-      reel_daily_reach_target: reelReachMap.get(Number(user.id)) || 0
-    }));
+    const enrichedUsers = users.map((user) => {
+      const activeRestrictionNotice = restrictionNoticeByUserId.get(Number(user.id)) || null;
+      const kycConflictFallback = !activeRestrictionNotice
+        && String(user.account_status || '') === 'Blocked'
+        && Number(user.allow_dispute || 0) === 1
+        ? 'Conflit KYC avec un autre utilisateur'
+        : null;
+
+      return {
+        ...user,
+        followers_count: followersMap.get(Number(user.id)) || 0,
+        following_count: followingMap.get(Number(user.id)) || 0,
+        post_daily_reach_target: postReachMap.get(Number(user.id)) || 0,
+        reel_daily_reach_target: reelReachMap.get(Number(user.id)) || 0,
+        account_restriction_reason: activeRestrictionNotice?.reason || kycConflictFallback,
+        account_restriction_details: activeRestrictionNotice?.details || null,
+        account_restriction_updated_at: activeRestrictionNotice?.updated_at || null,
+        account_restriction_notice_kind: activeRestrictionNotice?.notice_kind || (kycConflictFallback ? 'restriction' : null)
+      };
+    });
+    const blockedAccounts = enrichedUsers
+      .filter((user) => user.account_status === 'Blocked' || user.account_status === 'Partially Blocked')
+      .sort((left, right) => {
+        const leftTime = left.account_restriction_updated_at ? new Date(left.account_restriction_updated_at).getTime() : 0;
+        const rightTime = right.account_restriction_updated_at ? new Date(right.account_restriction_updated_at).getTime() : 0;
+        if (rightTime !== leftTime) {
+          return rightTime - leftTime;
+        }
+        return Number(right.id || 0) - Number(left.id || 0);
+      });
     const [settings] = await db.query('SELECT * FROM app_settings');
     const [backgrounds] = await db.query(`
       SELECT
@@ -957,6 +1027,8 @@ exports.getAdminDashboard = async (req, res) => {
       adminActionPermissions: ADMIN_ACTION_PERMISSIONS,
       userCertificationOptions: USER_CERTIFICATION_OPTIONS,
       users: enrichedUsers, 
+      blockedAccounts,
+      adminAccountRestrictionReasons: ACCOUNT_RESTRICTION_REASON_OPTIONS,
       settings, 
       backgrounds, 
       kycRequests,
@@ -1002,11 +1074,67 @@ exports.getAdminDashboard = async (req, res) => {
 
 exports.updateUserStatus = async (req, res) => {
   try {
-    const { userId, status } = req.body;
+    const userId = Number.parseInt(req.body.userId, 10);
+    const status = String(req.body.status || '').trim();
+
+    if (!Number.isFinite(userId)) {
+      return adminRedirect(req, res, { error: 'Utilisateur introuvable.', fallbackPage: 'users' });
+    }
+
+    if (!MANUAL_ACCOUNT_STATUSES.has(status)) {
+      return adminRedirect(req, res, { error: 'Statut de compte invalide.', fallbackPage: 'users' });
+    }
+
+    const targetUser = await User.getById(userId);
+    if (!targetUser) {
+      return adminRedirect(req, res, { error: 'Utilisateur introuvable.', fallbackPage: 'users' });
+    }
+
+    const restrictionReason = resolveModerationReasonInput({
+      reason: req.body.reason,
+      customReason: req.body.custom_reason,
+      allowedReasons: ACCOUNT_RESTRICTION_REASONS
+    });
+    const restrictionDetails = normalizeModerationDetails(req.body.details);
+
+    if (RESTRICTED_ACCOUNT_STATUSES.has(status) && !restrictionReason) {
+      return adminRedirect(req, res, {
+        error: 'Choisissez une raison valide ou personnalisez le motif du blocage.',
+        fallbackPage: 'users'
+      });
+    }
+
     await User.updateStatus(userId, status);
-    adminRedirect(req, res, { success: 'Status updated', fallbackPage: 'users' });
+    await db.query('UPDATE users SET allow_dispute = 0 WHERE id = ?', [userId]);
+
+    if (RESTRICTED_ACCOUNT_STATUSES.has(status)) {
+      await AdminModerationNotice.createOrUpdateActive({
+        adminId: req.session.adminId,
+        targetUserId: userId,
+        targetType: 'profile',
+        noticeKind: 'restriction',
+        reason: restrictionReason,
+        details: restrictionDetails
+      });
+    } else {
+      await AdminModerationNotice.resolveActiveProfileForUser(userId, { noticeKind: 'restriction' });
+      await db.query('UPDATE disputes SET status = "resolved" WHERE user_id = ? AND status = "pending"', [userId]);
+    }
+
+    await ActivityLog.log(req.session.adminId, 'admin', 'update_user_status', 'user', userId, {
+      username: targetUser.username,
+      status,
+      reason: restrictionReason,
+      details: restrictionDetails
+    }, req);
+
+    const successMessage = status === 'Active'
+      ? 'Compte réactivé et motif de restriction retiré.'
+      : `Statut du compte mis à jour sur "${status}" avec un motif visible côté utilisateur.`;
+    return adminRedirect(req, res, { success: successMessage, fallbackPage: 'users' });
   } catch (error) {
-    adminRedirect(req, res, { error: 'Failed to update status', fallbackPage: 'users' });
+    console.error(error);
+    return adminRedirect(req, res, { error: 'Impossible de mettre à jour le statut du compte.', fallbackPage: 'users' });
   }
 };
 
@@ -1569,9 +1697,13 @@ exports.reportPost = async (req, res) => {
       return adminRedirect(req, res, { error: 'Post invalide.', fallbackPage: 'moderation' });
     }
 
-    const reason = normalizeModerationReason(req.body.reason, POST_MODERATION_REASONS);
+    const reason = resolveModerationReasonInput({
+      reason: req.body.reason,
+      customReason: req.body.custom_reason,
+      allowedReasons: POST_MODERATION_REASONS
+    });
     if (!reason) {
-      return adminRedirect(req, res, { error: 'Choisissez une raison valide pour le post.', fallbackPage: 'moderation' });
+      return adminRedirect(req, res, { error: 'Choisissez une raison valide pour le post ou saisissez un motif personnalisé.', fallbackPage: 'moderation' });
     }
 
     const post = await Post.getByIdForAdmin(postId);
@@ -1584,6 +1716,7 @@ exports.reportPost = async (req, res) => {
       targetUserId: post.user_id,
       targetType: 'post',
       postId: post.id,
+      noticeKind: 'warning',
       reason,
       details: normalizeModerationDetails(req.body.details)
     });
@@ -1605,9 +1738,13 @@ exports.reportProfile = async (req, res) => {
       return adminRedirect(req, res, { error: 'Utilisateur invalide.', fallbackPage: 'users' });
     }
 
-    const reason = normalizeModerationReason(req.body.reason, PROFILE_MODERATION_REASONS);
+    const reason = resolveModerationReasonInput({
+      reason: req.body.reason,
+      customReason: req.body.custom_reason,
+      allowedReasons: PROFILE_MODERATION_REASONS
+    });
     if (!reason) {
-      return adminRedirect(req, res, { error: 'Choisissez une raison valide pour le profil.', fallbackPage: 'users' });
+      return adminRedirect(req, res, { error: 'Choisissez une raison valide pour le profil ou saisissez un motif personnalisé.', fallbackPage: 'users' });
     }
 
     const targetUser = await User.getById(userId);
@@ -1619,6 +1756,7 @@ exports.reportProfile = async (req, res) => {
       adminId: req.session.adminId,
       targetUserId: targetUser.id,
       targetType: 'profile',
+      noticeKind: 'warning',
       reason,
       details: normalizeModerationDetails(req.body.details)
     });
@@ -1937,12 +2075,14 @@ exports.resolveAccountDispute = async (req, res) => {
       // Approve dispute: unlock user account, clear allow_dispute, resolve dispute
       await User.updateStatus(dispute.user_id, 'Active');
       await db.query('UPDATE users SET allow_dispute = 0 WHERE id = ?', [dispute.user_id]);
+      await AdminModerationNotice.resolveActiveProfileForUser(dispute.user_id, { noticeKind: 'restriction' });
       await db.query('UPDATE disputes SET status = "resolved" WHERE id = ?', [disputeId]);
       return adminRedirect(req, res, { success: 'Compte débloqué et litige résolu.', fallbackPage: 'disputes' });
     } else if (action === 'reverify') {
       // Reverify: unlock account (status Active), set kyc requests to draft and clear details, clear allow_dispute, resolve dispute
       await User.updateStatus(dispute.user_id, 'Active');
       await db.query('UPDATE users SET allow_dispute = 0 WHERE id = ?', [dispute.user_id]);
+      await AdminModerationNotice.resolveActiveProfileForUser(dispute.user_id, { noticeKind: 'restriction' });
       await db.query(
         `UPDATE kyc_requests 
          SET status = 'draft', 
@@ -1960,6 +2100,14 @@ exports.resolveAccountDispute = async (req, res) => {
       // Reject dispute: keep user status as Blocked, clear allow_dispute, resolve dispute
       await User.updateStatus(dispute.user_id, 'Blocked');
       await db.query('UPDATE users SET allow_dispute = 0 WHERE id = ?', [dispute.user_id]);
+      await AdminModerationNotice.createOrUpdateActive({
+        adminId: req.session.adminId,
+        targetUserId: dispute.user_id,
+        targetType: 'profile',
+        noticeKind: 'restriction',
+        reason: 'Conflit KYC ou vérification en attente',
+        details: 'Après examen du litige, le blocage du compte est maintenu.'
+      });
       await db.query('UPDATE disputes SET status = "resolved" WHERE id = ?', [disputeId]);
       return adminRedirect(req, res, { success: 'Litige rejeté. Le compte reste bloqué.', fallbackPage: 'disputes' });
     }
@@ -2090,9 +2238,52 @@ exports.blockReportedUser = async (req, res) => {
     if (!Number.isFinite(userId)) {
       return res.status(400).json({ success: false, message: 'Utilisateur ID invalide.' });
     }
+
+    const targetUser = await User.getById(userId);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
+    }
+
+    const [reportRows] = await db.query(
+      `
+        SELECT
+          pr.reason,
+          pr.details,
+          pr.updated_at,
+          p.content AS post_content
+        FROM post_reports pr
+        JOIN posts p ON p.id = pr.post_id
+        WHERE p.user_id = ?
+          AND pr.status = 'pending'
+        ORDER BY pr.updated_at DESC, pr.created_at DESC, pr.id DESC
+        LIMIT 1
+      `,
+      [userId]
+    );
+    const latestReport = reportRows[0] || null;
+    const restrictionReason = normalizeCustomReason(latestReport?.reason) || 'Signalements multiples en cours d examen';
+    const restrictionDetails = normalizeModerationDetails(latestReport?.details)
+      || normalizeModerationDetails(
+        latestReport?.post_content
+          ? `Publication concernée : ${String(latestReport.post_content).slice(0, 180)}`
+          : 'Blocage administrateur appliqué après examen des signalements reçus.'
+      );
+
     await User.updateStatus(userId, 'Blocked');
+    await db.query('UPDATE users SET allow_dispute = 0 WHERE id = ?', [userId]);
+    await AdminModerationNotice.createOrUpdateActive({
+      adminId: req.session.adminId,
+      targetUserId: userId,
+      targetType: 'profile',
+      noticeKind: 'restriction',
+      reason: restrictionReason,
+      details: restrictionDetails
+    });
     await PostReport.updateStatusByUser(userId, 'actioned');
-    await ActivityLog.log(req.session.adminId, 'admin', 'block_reported_user', 'user', userId, null, req);
+    await ActivityLog.log(req.session.adminId, 'admin', 'block_reported_user', 'user', userId, {
+      username: targetUser.username,
+      reason: restrictionReason
+    }, req);
     return res.json({ success: true, message: 'Utilisateur bloqué.' });
   } catch (error) {
     console.error(error);
