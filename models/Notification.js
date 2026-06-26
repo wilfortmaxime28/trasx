@@ -137,9 +137,15 @@ class Notification {
           n.created_at,
           COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name), 'TrasX') AS actor_name,
           COALESCE(u.username, 'trasx') AS actor_username,
-          COALESCE(u.avatar, '/assets/avatar_placeholder.jpg') AS actor_avatar
+          COALESCE(u.avatar, '/assets/avatar_placeholder.jpg') AS actor_avatar,
+          CASE 
+            WHEN p.content IS NOT NULL AND TRIM(p.content) != '' THEN p.content
+            WHEN p.media_type IS NOT NULL AND p.media_type != '' THEN CONCAT('[', p.media_type, ']')
+            ELSE NULL
+          END AS post_content
         FROM notifications n
         LEFT JOIN users u ON n.actor_id = u.id
+        LEFT JOIN posts p ON n.post_id = p.id
         WHERE n.recipient_id = ?
         ORDER BY n.created_at DESC
         LIMIT ?

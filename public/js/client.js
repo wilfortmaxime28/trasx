@@ -9629,6 +9629,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (notification.comment_id) {
       item.setAttribute('data-comment-id', notification.comment_id);
     }
+    if (notification.post_content) {
+      item.setAttribute('data-post-content', notification.post_content);
+    }
     if (notification.type) {
       item.setAttribute('data-type', notification.type);
     }
@@ -9650,6 +9653,11 @@ document.addEventListener('DOMContentLoaded', () => {
       <div style="font-size: 12.5px; line-height: 1.35; color: var(--text-secondary); flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
         <strong style="color: var(--text-primary);">${escapeHtml(notification.actor_name || 'Quelqu\'un')}</strong>
         <span>${escapeHtml(notification.message || '')}</span>
+        ${notification.post_id && notification.post_content ? `
+          <div class="notification-post-quote" style="margin-top: 6px; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid var(--primary, #3b82f6); border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(notification.post_content)}">
+            <strong>Statut :</strong> <span>${escapeHtml(notification.post_content)}</span>
+          </div>
+        ` : ''}
         ${notification.ad_image_url ? `
           <div style="margin-top: 6px; width: 100%; max-width: 180px; height: 55px; border-radius: 6px; overflow: hidden; background: #000;">
             <img src="${notification.ad_image_url}" alt="Banner" style="width: 100%; height: 100%; object-fit: cover;">
@@ -9684,13 +9692,18 @@ document.addEventListener('DOMContentLoaded', () => {
     notificationItemsList.innerHTML = notifications.map((notification) => {
       const unread = Number(notification.is_read) === 0;
       return `
-        <div class="notification-item ${unread ? 'is-unread' : ''}" data-notification-id="${notification.id}" data-ad-url="${notification.ad_url || ''}" data-post-id="${notification.post_id || ''}" data-comment-id="${notification.comment_id || ''}" data-type="${notification.type || ''}" data-actor-username="${notification.actor_username || ''}" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; ${unread ? 'background: rgba(59, 130, 246, 0.06);' : ''}">
+        <div class="notification-item ${unread ? 'is-unread' : ''}" data-notification-id="${notification.id}" data-ad-url="${notification.ad_url || ''}" data-post-id="${notification.post_id || ''}" data-comment-id="${notification.comment_id || ''}" data-post-content="${escapeHtml(notification.post_content || '')}" data-type="${notification.type || ''}" data-actor-username="${notification.actor_username || ''}" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; ${unread ? 'background: rgba(59, 130, 246, 0.06);' : ''}">
           <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0; overflow: hidden;">
         <img src="${notification.actor_avatar || '/assets/avatar_placeholder.jpg'}" alt="${escapeHtml(notification.actor_name || '')}" style="width: 100%; height: 100%; object-fit: cover;">
           </div>
           <div style="font-size: 12.5px; line-height: 1.35; color: var(--text-secondary); flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
         <strong style="color: var(--text-primary);">${escapeHtml(notification.actor_name || 'Quelqu\'un')}</strong>
         <span>${escapeHtml(notification.message || '')}</span>
+        ${notification.post_id && notification.post_content ? `
+          <div class="notification-post-quote" style="margin-top: 6px; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid var(--primary, #3b82f6); border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(notification.post_content)}">
+            <strong>Statut :</strong> <span>${escapeHtml(notification.post_content)}</span>
+          </div>
+        ` : ''}
         ${notification.ad_image_url ? `
           <div style="margin-top: 6px; width: 100%; max-width: 180px; height: 55px; border-radius: 6px; overflow: hidden; background: #000;">
             <img src="${notification.ad_image_url}" alt="Banner" style="width: 100%; height: 100%; object-fit: cover;">

@@ -3325,6 +3325,21 @@ io.on('connection', (socket) => {
     const actorUsername = actor?.username || notificationData.actorUsername || 'trasx';
     const actorAvatar = actor?.avatar || notificationData.actorAvatar || '/assets/avatar_placeholder.jpg';
     const unreadCount = await Notification.getUnreadCount(recipientId);
+
+    let postContent = null;
+    if (notificationData.postId) {
+      try {
+        const post = await Post.getById(notificationData.postId, recipientId);
+        if (post) {
+          postContent = (post.content && post.content.trim()) 
+            ? post.content 
+            : (post.media_type ? `[${post.media_type}]` : null);
+        }
+      } catch (err) {
+        console.error('Failed to get post content for notification:', err);
+      }
+    }
+
     const payload = {
       id: notificationId,
       recipient_id: recipientId,
@@ -3332,6 +3347,7 @@ io.on('connection', (socket) => {
       type: notificationData.type,
       message: notificationData.message,
       post_id: notificationData.postId || null,
+      post_content: postContent,
       share_id: notificationData.shareId || null,
       comment_id: notificationData.commentId || null,
       is_read: 0,
