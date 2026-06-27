@@ -73,6 +73,8 @@ CREATE TABLE users (
   premium_followers_threshold INT DEFAULT 1000,
   premium_paid_at TIMESTAMP NULL DEFAULT NULL,
   premium_activated_at TIMESTAMP NULL DEFAULT NULL,
+  game_matches_played INT DEFAULT 0,
+  game_matches_won INT DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -491,4 +493,3 @@ CREATE TABLE IF NOT EXISTS kyc_requests (
 
 -- Réactiver les contraintes de clés étrangères
 SET FOREIGN_KEY_CHECKS = 1;
-

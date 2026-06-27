@@ -1,10 +1,13 @@
 const db = require('../config/db');
 const Bot = require('../models/Bot');
+const User = require('../models/User');
+const { attachBotGameStats, attachUserGameStats } = require('./gameLevel');
 
 class GamesManager {
   constructor() {
     this.games = {};
     this.nextGameId = 1;
+    this.supportedGameTypes = new Set(['connect4', 'gomoku', 'tablefootball', 'echecs']);
   }
 
   normalizeRounds(rounds) {
@@ -12,6 +15,90 @@ class GamesManager {
     if (!Number.isFinite(parsedRounds)) return 1;
     const clamped = Math.max(1, Math.min(7, parsedRounds));
     return clamped % 2 === 0 ? Math.max(1, clamped - 1) : clamped;
+  }
+
+  buildHumanPlayer(user, symbol) {
+    const enrichedUser = attachUserGameStats(user || {});
+    return {
+      id: enrichedUser.id,
+      username: enrichedUser.username,
+      name: enrichedUser.name || [enrichedUser.first_name, enrichedUser.last_name].filter(Boolean).join(' ').trim(),
+      avatar: enrichedUser.avatar || '/assets/avatar_placeholder.jpg',
+      symbol,
+      isBot: false,
+      matchesPlayed: enrichedUser.matchesPlayed || 0,
+      matchesWon: enrichedUser.matchesWon || 0,
+      winRate: enrichedUser.winRate || 0,
+      level: enrichedUser.level || 1,
+      levelTitle: enrichedUser.levelTitle || 'Debutant'
+    };
+  }
+
+  buildBotPlayer(bot, symbol) {
+    const enrichedBot = attachBotGameStats(bot || {});
+    return {
+      id: `bot_${enrichedBot.id}`,
+      username: enrichedBot.username,
+      name: enrichedBot.name || [enrichedBot.first_name, enrichedBot.last_name].filter(Boolean).join(' ').trim(),
+      avatar: enrichedBot.avatar || '/assets/avatar_placeholder.jpg',
+      symbol,
+      isBot: true,
+      wins: enrichedBot.matchesWon || 0,
+      matchesPlayed: enrichedBot.matchesPlayed || 0,
+      matchesWon: enrichedBot.matchesWon || 0,
+      winRate: enrichedBot.winRate || 0,
+      level: enrichedBot.level || 1,
+      levelTitle: enrichedBot.levelTitle || 'Debutant'
+    };
+  }
+
+  async recordMatchStatsForPlayer(player, didWin = false) {
+    if (!player || !player.id) return;
+
+    if (player.isBot) {
+      const botId = parseInt(String(player.id).replace('bot_', ''), 10);
+      if (!botId) return;
+
+      await db.execute(
+        'UPDATE bots SET matches_played = matches_played + 1, wins = wins + ? WHERE id = ?',
+        [didWin ? 1 : 0, botId]
+      );
+
+      const nextStats = attachBotGameStats({
+        ...player,
+        matches_played: Number(player.matchesPlayed || 0) + 1,
+        wins: Number(player.matchesWon || player.wins || 0) + (didWin ? 1 : 0)
+      });
+
+      Object.assign(player, nextStats, { wins: nextStats.matchesWon });
+      return;
+    }
+
+    const userId = parseInt(player.id, 10);
+    if (!userId) return;
+
+    await db.execute(
+      'UPDATE users SET game_matches_played = game_matches_played + 1, game_matches_won = game_matches_won + ? WHERE id = ?',
+      [didWin ? 1 : 0, userId]
+    );
+
+    const nextStats = attachUserGameStats({
+      ...player,
+      game_matches_played: Number(player.matchesPlayed || 0) + 1,
+      game_matches_won: Number(player.matchesWon || 0) + (didWin ? 1 : 0)
+    });
+
+    Object.assign(player, nextStats);
+  }
+
+  async recordCompletedMatchStats(game, winnerId) {
+    if (!game || winnerId === 'cancelled') return;
+
+    const participants = [game.player1, game.player2].filter(Boolean);
+    for (const player of participants) {
+      const didWin = winnerId !== 'draw' && String(player.id) === String(winnerId);
+      await this.recordMatchStatsForPlayer(player, didWin);
+    }
   }
 
   // Retrieve active games (waiting or playing)
@@ -58,10 +145,13 @@ class GamesManager {
     if (gameType === 'morpion') {
       gameType = 'gomoku';
     }
+    if (gameType === 'chess' || gameType === 'echec' || gameType === 'echecsmat') {
+      gameType = 'echecs';
+    }
     if (gameType === 'domino') {
       throw new Error('Le jeu Domino a été retiré de la plateforme.');
     }
-    if (gameType === 'echecs' || gameType === 'mathduel') {
+    if (!this.supportedGameTypes.has(gameType)) {
       throw new Error('Ce jeu n est plus disponible.');
     }
     const isP2PInvite = opponentType === 'player' && opponentId && !String(opponentId).startsWith('bot_');
@@ -193,17 +283,9 @@ class GamesManager {
 
     let opponentInfo = null;
     if (isP2PInvite) {
-      const [oppRows] = await db.query('SELECT id, username, first_name, last_name, avatar FROM users WHERE id = ?', [opponentId]);
-      if (oppRows.length > 0) {
-        const row = oppRows[0];
-        opponentInfo = {
-          id: row.id,
-          username: row.username,
-          name: row.first_name + ' ' + row.last_name,
-          avatar: row.avatar || '/assets/avatar_placeholder.jpg',
-          symbol: 2,
-          isBot: false
-        };
+      const opponentUser = await User.getById(opponentId);
+      if (opponentUser) {
+        opponentInfo = this.buildHumanPlayer(opponentUser, 2);
       } else {
         throw new Error('Adversaire introuvable.');
       }
@@ -221,13 +303,7 @@ class GamesManager {
       roundWins: { player1: 0, player2: 0 },
       liveMode: liveMode || 'free',
       livePrice: liveMode === 'paid' ? Math.max(0.10, parseFloat(livePrice || 0.50)) : 0,
-      player1: {
-        id: creatorId,
-        username: creatorInfo.username,
-        name: creatorInfo.name || (creatorInfo.first_name + ' ' + creatorInfo.last_name),
-        avatar: creatorInfo.avatar || '/assets/avatar_placeholder.jpg',
-        symbol: 1
-      },
+      player1: this.buildHumanPlayer(creatorInfo, 1),
       player2: opponentInfo,
       board,
       player1Hand,
@@ -240,7 +316,7 @@ class GamesManager {
       chessState,
       leftEnd,
       rightEnd,
-      currentPlayer: 1, // always player 1 goes first
+      currentPlayer: 1,
       winner: null,
       spectators: [],
       createdAt: Date.now(),
@@ -261,18 +337,7 @@ class GamesManager {
       if (!bot) {
         bot = await Bot.getRandomBot();
       }
-      const rawLevel = bot.level || 1;
-      const finalLevel = isPaid ? (rawLevel * 100) : rawLevel;
-      game.player2 = {
-        id: 'bot_' + bot.id,
-        username: bot.username,
-        name: bot.name,
-        avatar: bot.avatar,
-        symbol: 2,
-        isBot: true,
-        wins: bot.wins || 0,
-        level: finalLevel
-      };
+      game.player2 = this.buildBotPlayer(bot, 2);
     }
 
     this.games[gameId] = game;
@@ -303,14 +368,7 @@ class GamesManager {
       await db.execute('UPDATE users SET deposit_account_balance = deposit_account_balance - ? WHERE id = ?', [betAmount, player2Id]);
     }
 
-    game.player2 = {
-      id: player2Id,
-      username: player2Info.username,
-      name: player2Info.name || (player2Info.first_name + ' ' + player2Info.last_name),
-      avatar: player2Info.avatar || '/assets/avatar_placeholder.jpg',
-      symbol: 2,
-      isBot: false
-    };
+    game.player2 = this.buildHumanPlayer(player2Info, 2);
     if (team) {
       game.team2 = team;
     }
@@ -1130,19 +1188,7 @@ class GamesManager {
         game.status = 'finished';
         game.winner = matchWinnerId;
         game.winningStones = winningStones;
-
-        if (matchWinnerId !== 'draw') {
-          const isPlayer1MatchWinner = game.player1.id === matchWinnerId;
-          const winner = isPlayer1MatchWinner ? game.player1 : game.player2;
-          
-          if (winner && winner.isBot) {
-            const botId = parseInt(String(winner.id).replace('bot_', ''), 10);
-            if (botId) {
-              await db.execute('UPDATE bots SET wins = wins + 1 WHERE id = ?', [botId]);
-              winner.wins = (winner.wins || 0) + 1;
-            }
-          }
-        }
+        await this.recordCompletedMatchStats(game, matchWinnerId);
 
         const isPaid = game.mode === 'paid';
         if (isPaid) {
@@ -1218,19 +1264,7 @@ class GamesManager {
       game.status = 'finished';
       game.winner = winnerId;
       game.winningStones = winningStones;
-
-      if (winnerId !== 'draw') {
-        const isPlayer1Winner = game.player1.id === winnerId;
-        const winner = isPlayer1Winner ? game.player1 : game.player2;
-        
-        if (winner && winner.isBot) {
-          const botId = parseInt(String(winner.id).replace('bot_', ''), 10);
-          if (botId) {
-            await db.execute('UPDATE bots SET wins = wins + 1 WHERE id = ?', [botId]);
-            winner.wins = (winner.wins || 0) + 1;
-          }
-        }
-      }
+      await this.recordCompletedMatchStats(game, winnerId);
 
       const isPaid = game.mode === 'paid';
       if (isPaid) {

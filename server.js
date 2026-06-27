@@ -3853,7 +3853,12 @@ io.on('connection', (socket) => {
       const normalizedBgImageUrl = typeof bgImageUrl === 'string' && bgImageUrl.trim()
         ? bgImageUrl.trim()
         : null;
-      const hasStyledBackground = Boolean(normalizedBgImageUrl);
+      const hasStyledBackground = Boolean(normalizedBgImageUrl) ||
+                                  Boolean(textColor) ||
+                                  Boolean(textAlignment) ||
+                                  Boolean(textPosition) ||
+                                  Boolean(textFont) ||
+                                  Boolean(textSize);
       const allowedTextAlignments = new Set(['left', 'center', 'right', 'justify']);
       const allowedTextPositions = new Set(['top', 'center', 'bottom']);
       const normalizedTextAlignment = hasStyledBackground && allowedTextAlignments.has(String(textAlignment || '').trim().toLowerCase())
@@ -6116,7 +6121,11 @@ io.on('connection', (socket) => {
             id: user.id,
             username: user.username,
             name: user.first_name + ' ' + user.last_name,
-            avatar: user.avatar || '/assets/avatar_placeholder.jpg'
+            avatar: user.avatar || '/assets/avatar_placeholder.jpg',
+            level: user.level || 1,
+            levelTitle: user.levelTitle || 'Debutant',
+            matchesPlayed: user.matchesPlayed || 0,
+            matchesWon: user.matchesWon || 0
           },
           gameType: game.gameType,
           mode: game.mode,
@@ -6839,8 +6848,20 @@ io.on('connection', (socket) => {
       const currentUserId = session.userId;
       if (!currentUserId) throw new Error('Non authentifié.');
 
-      const { gameId, r, c, toR, toC, promotion, finalState, nextPlayer } = data || {};
-      const result = await gamesManager.makeMove(gameId, currentUserId, r, c, { toR, toC, promotion, finalState, nextPlayer });
+      const { gameId, r, c, toR, toC, promotion, extraMove, finalState, nextPlayer } = data || {};
+      const effectiveToR = extraMove && extraMove.toR !== undefined ? extraMove.toR : toR;
+      const effectiveToC = extraMove && extraMove.toC !== undefined ? extraMove.toC : toC;
+      const effectivePromotion = extraMove && extraMove.promotion !== undefined ? extraMove.promotion : promotion;
+      const effectiveFinalState = extraMove && extraMove.finalState !== undefined ? extraMove.finalState : finalState;
+      const effectiveNextPlayer = extraMove && extraMove.nextPlayer !== undefined ? extraMove.nextPlayer : nextPlayer;
+
+      const result = await gamesManager.makeMove(gameId, currentUserId, r, c, {
+        toR: effectiveToR,
+        toC: effectiveToC,
+        promotion: effectivePromotion,
+        finalState: effectiveFinalState,
+        nextPlayer: effectiveNextPlayer
+      });
 
       if (result && result.success) {
         // Broadcast the player's move state

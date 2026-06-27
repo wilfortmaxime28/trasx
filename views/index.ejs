@@ -345,7 +345,7 @@ function getYouTubeId(url) {
 
                                       <!-- Media Setup (Caption & Destination) Section (WhatsApp / Facebook style) -->
                                       <div id="photoVideoMediaSetupSection" style="display: none; flex-direction: column; gap: 12px; margin-top: 12px;">
-                                        <div id="photoVideoMediaPreviewBox" style="width: 100%; border-radius: 8px; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; position: relative; max-height: 180px;">
+                                        <div id="photoVideoMediaPreviewBox" style="width: 100%; border-radius: 8px; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; position: relative; min-height: 220px; max-height: min(62vh, 520px); padding: 8px; box-sizing: border-box;">
                                           <!-- Selected media (img or video) will be placed here dynamically -->
                                         </div>
 
@@ -2920,6 +2920,13 @@ function getYouTubeId(url) {
                                 <span><%= tText("Football Table") %></span>
                               </div>
                             </label>
+                            <label class="game-choice-option" style="position: relative;">
+                              <input type="radio" name="setupGameType" value="echecs">
+                              <div class="choice-card-content">
+                                <i data-lucide="crown"></i>
+                                <span><%= tText("Echecs") %></span>
+                              </div>
+                            </label>
                           </div>
                         </div>
 
@@ -3192,6 +3199,7 @@ function getYouTubeId(url) {
                               <i data-lucide="gift" style="width: 12px; height: 12px; color: #fbbf24;"></i>
                             </button>
                           </div>
+                          <span id="gamePlayer1Level" class="player-level-label"><%= tText("Niveau 1 • 0 match • 0 victoire") %></span>
                           <span class="player-symbol-badge badge-p1"><%= tText("Pions Noirs (X)") %></span>
                         </div>
                         <span id="gamePlayer1Score" class="player-score-badge">0</span>
@@ -3213,6 +3221,7 @@ function getYouTubeId(url) {
                               <i data-lucide="gift" style="width: 12px; height: 12px; color: #fbbf24;"></i>
                             </button>
                           </div>
+                          <span id="gamePlayer2Level" class="player-level-label"><%= tText("Niveau 1 • 0 match • 0 victoire") %></span>
                           <span id="gamePlayer2SymbolLabel" class="player-symbol-badge badge-p2"><%= tText("Pions Blancs (O)") %></span>
                         </div>
                         <span id="gamePlayer2Score" class="player-score-badge">0</span>
@@ -3247,6 +3256,35 @@ function getYouTubeId(url) {
                       <!-- Gomoku Board (Uses original styles) -->
                       <div id="gomokuBoardContainer" class="gomoku-board-container">
                         <div id="gomokuBoard" class="gomoku-board"></div>
+                      </div>
+
+                      <!-- Chess Board Container -->
+                      <div id="chessBoardContainer" class="chess-board-container" style="display: none; width: 100%;">
+                        <div class="chess-card" style="width: 100%; max-width: 400px; margin: 0 auto; background: var(--bg-card); border: 1.5px solid var(--border-color); border-radius: 20px; padding: 12px; box-shadow: var(--shadow-xl); overflow: hidden; position: relative;">
+                          <!-- Scoreboard/Timer/Warning header -->
+                          <div class="chess-info-header" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-hover); border-radius: 12px; margin-bottom: 10px; color: var(--text-primary); font-family: 'Outfit', sans-serif;">
+                            <div class="chess-info-left" style="display: flex; flex-direction: column; gap: 2px;">
+                              <span id="chessTurnLabel" style="font-size: 13px; font-weight: 700; color: var(--primary);">Traits aux Blancs</span>
+                              <span id="chessCheckStatus" style="font-size: 10px; color: #ef4444; font-weight: 600; display: none;">⚠️ ÉCHEC !</span>
+                            </div>
+                            <div class="chess-info-right">
+                              <span id="chessOpponentInfo" style="font-size: 11px; color: var(--text-secondary);"></span>
+                            </div>
+                          </div>
+                          <!-- Chess Board Wrapper -->
+                          <div class="chess-grid-wrapper" style="position: relative; width: 100%; aspect-ratio: 1; background: var(--bg-hover); border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color);">
+                            <div id="chessBoard" class="chess-board-grid"></div>
+                            <!-- Promotion Overlay Modal -->
+                            <div id="chessPromotionOverlay" style="position: absolute; inset: 0; background: rgba(0, 0, 0, 0.7); display: none; align-items: center; justify-content: center; z-index: 10; border-radius: 8px;">
+                              <div style="background: var(--bg-card); border: 1.5px solid var(--border-color); border-radius: 12px; padding: 14px; text-align: center; max-width: 280px; width: 80%;">
+                                <h4 style="margin: 0 0 12px 0; font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--text-primary);">Promotion du Pion</h4>
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;" id="chessPromoOptions">
+                                  <!-- Options populated dynamically (Q, N, R, B) -->
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
                       <div id="tableFootballBoardContainer" class="table-football-board-container" style="display: none; width: 100%;">
@@ -5178,7 +5216,7 @@ function getYouTubeId(url) {
           <span><%= typeof tText === 'function' ? tText("Nouveaux posts") : "Nouveaux posts" %></span>
         </div>
 
-        <script src="/js/client.js?v=219"></script>
+        <script src="/js/client.js?v=220"></script>
         </body>
 
         </html>

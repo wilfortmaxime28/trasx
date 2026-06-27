@@ -7669,8 +7669,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const textWidth = textAlignment === 'justify' ? '100%' : 'auto';
     const textDisplay = textAlignment === 'justify' ? 'block' : 'inline-block';
 
+    const bgImageStyle = post.bg_image_url ? `background-image: url('${post.bg_image_url}');` : 'background-color: var(--bg-hover);';
     return `
-      <div class="post-bg-container" style="background-image: url('${post.bg_image_url}'); color: ${textColor}; font-family: ${textFont}; align-items: stretch; justify-content: ${verticalJustify}; font-size: ${textSize}; --bg-text-size: ${textSize};">
+      <div class="post-bg-container" style="${bgImageStyle} color: ${textColor}; font-family: ${textFont}; align-items: stretch; justify-content: ${verticalJustify}; font-size: ${textSize}; --bg-text-size: ${textSize};">
         <div class="post-bg-text-shell" data-text-align="${textAlignment}" style="width: 100%; display: flex; justify-content: ${horizontalJustify};">
           <p class="formatted-hashtag-text post-bg-text" data-raw-text="${escapeHtml(post.content || '')}" style="max-width: 100%; width: ${textWidth}; display: ${textDisplay}; text-align: ${textAlignment}; color: ${textColor}; margin: 0; padding: 0; white-space: pre-wrap;">${renderHashtagRichText(post.content || '')}</p>
         </div>
@@ -7694,9 +7695,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const isLiked = Number(post.is_liked) === 1 || post.is_liked === true;
     const isBookmarked = Number(post.is_bookmarked) === 1 || post.is_bookmarked === true;
 
-    // Background rendering supporting bg_image_url
+    // Background rendering supporting bg_image_url OR text customizations
     let postContentHtml = '';
-    if (post.bg_image_url) {
+    const hasTextCustomizations = post.text_color || post.text_alignment || post.text_position || post.text_font || post.text_size;
+    if (post.bg_image_url || (hasTextCustomizations && !post.media_type && (!post.image_url || post.image_url === ''))) {
       postContentHtml = renderStyledBackgroundPostHtml(post);
       if (post.challenge_type) {
         postContentHtml += renderChallengeCardHtml(post);
@@ -7704,7 +7706,20 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       postContentHtml = '';
       if (post.content && post.content.trim() && !post.challenge_type) {
-        postContentHtml += `<p class="post-text formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="display:block; padding: 0 20px 16px 20px; color: var(--text-primary); font-size:14px; line-height:1.6; white-space:pre-wrap; word-break:break-word;">${renderHashtagRichText(post.content || '')}</p>`;
+        const textAlignment = ['left', 'center', 'right', 'justify'].includes(String(post.text_alignment || '').trim().toLowerCase())
+          ? String(post.text_alignment).trim().toLowerCase()
+          : 'left';
+        const textColor = typeof post.text_color === 'string' && post.text_color.trim()
+          ? post.text_color.trim()
+          : 'var(--text-primary)';
+        const textFont = typeof post.text_font === 'string' && post.text_font.trim()
+          ? post.text_font.trim()
+          : 'inherit';
+        const textSize = typeof post.text_size === 'string' && post.text_size.trim()
+          ? post.text_size.trim()
+          : '14px';
+
+        postContentHtml += `<p class="post-text formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="display:block; padding: 0 20px 16px 20px; color: ${textColor}; text-align: ${textAlignment}; font-family: ${textFont}; font-size: ${textSize}; line-height:1.6; white-space:pre-wrap; word-break:break-word;">${renderHashtagRichText(post.content || '')}</p>`;
       }
       if (post.challenge_type) {
         postContentHtml += renderChallengeCardHtml(post);
@@ -8751,23 +8766,40 @@ document.addEventListener('DOMContentLoaded', () => {
       const modalPreviewBox = document.getElementById('photoVideoMediaPreviewBox');
       if (modalPreviewBox) {
         modalPreviewBox.innerHTML = '';
+        modalPreviewBox.classList.remove('is-portrait');
+
+        const applyPreviewOrientation = (width, height) => {
+          if (!width || !height) return;
+          const isPortrait = height > width;
+          modalPreviewBox.classList.toggle('is-portrait', isPortrait);
+        };
+
         if (type === 'image') {
           const imgEl = document.createElement('img');
-          imgEl.src = URL.createObjectURL(files[0]);
-          imgEl.style.cssText = 'width: 100%; height: 100%; object-fit: cover; max-height: 150px; border-radius: 8px;';
-          imgEl.onload = () => URL.revokeObjectURL(imgEl.src);
+          const imageObjectUrl = URL.createObjectURL(files[0]);
+          imgEl.src = imageObjectUrl;
+          imgEl.style.cssText = 'display: block; width: auto; height: auto; max-width: 100%; max-height: min(58vh, 500px); object-fit: contain; border-radius: 8px;';
+          imgEl.onload = () => {
+            applyPreviewOrientation(imgEl.naturalWidth, imgEl.naturalHeight);
+            URL.revokeObjectURL(imageObjectUrl);
+          };
           modalPreviewBox.appendChild(imgEl);
         } else {
           const vidEl = document.createElement('video');
-          vidEl.src = URL.createObjectURL(files[0]);
-          vidEl.style.cssText = 'width: 100%; height: 100%; object-fit: contain; max-height: 150px; border-radius: 8px; cursor: pointer;';
+          const videoObjectUrl = URL.createObjectURL(files[0]);
+          vidEl.src = videoObjectUrl;
+          vidEl.style.cssText = 'display: block; width: auto; height: auto; max-width: 100%; max-height: min(58vh, 500px); object-fit: contain; border-radius: 8px; cursor: pointer; background: #000;';
           vidEl.muted = true;
           vidEl.controls = true;
           vidEl.autoplay = true;
           vidEl.loop = true;
           vidEl.playsInline = true;
+          vidEl.preload = 'metadata';
+          vidEl.onloadedmetadata = () => {
+            applyPreviewOrientation(vidEl.videoWidth, vidEl.videoHeight);
+          };
           vidEl.onloadeddata = () => {
-            URL.revokeObjectURL(vidEl.src);
+            URL.revokeObjectURL(videoObjectUrl);
             vidEl.play().catch(() => {});
           };
           modalPreviewBox.appendChild(vidEl);
@@ -8809,7 +8841,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (setupSection) setupSection.style.display = 'none';
       if (uploadZone) uploadZone.style.display = 'block';
       if (captionInput) captionInput.value = '';
-      if (previewBox) previewBox.innerHTML = '';
+      if (previewBox) {
+        previewBox.innerHTML = '';
+        previewBox.classList.remove('is-portrait');
+      }
       if (trimmerContainer) trimmerContainer.style.display = 'none';
       if (photoVideoModal) {
         photoVideoModal.classList.remove('setup-active');
@@ -9006,11 +9041,11 @@ document.addEventListener('DOMContentLoaded', () => {
           const capturedText = text;
           const capturedPaidHashtags = [...acceptedPaidHashtags];
           const capturedBgImageUrl = selectedBackground ? selectedBackground.image_url : null;
-          const capturedTextColor = selectedBackground ? selectedTextColor : null;
-          const capturedTextAlignment = selectedBackground ? selectedTextAlignment : null;
-          const capturedTextPosition = selectedBackground ? selectedTextPosition : null;
-          const capturedTextFont = selectedBackground ? selectedTextFont : null;
-          const capturedTextSize = selectedBackground ? selectedTextSize : null;
+          const capturedTextColor = hasCustomTextStyle() ? selectedTextColor : null;
+          const capturedTextAlignment = hasCustomTextStyle() ? selectedTextAlignment : null;
+          const capturedTextPosition = hasCustomTextStyle() ? selectedTextPosition : null;
+          const capturedTextFont = hasCustomTextStyle() ? selectedTextFont : null;
+          const capturedTextSize = hasCustomTextStyle() ? selectedTextSize : null;
           const capturedIsTrade = isTrade;
           const capturedChallengeConfig = selectedChallengeConfig ? { ...selectedChallengeConfig } : null;
           const capturedLiveConfig = selectedLiveConfig ? { ...selectedLiveConfig } : null;
@@ -9139,11 +9174,11 @@ document.addEventListener('DOMContentLoaded', () => {
               content: text,
               paidHashtags: acceptedPaidHashtags,
               bgImageUrl: selectedBackground ? selectedBackground.image_url : null,
-              textColor: selectedBackground ? selectedTextColor : null,
-              textAlignment: selectedBackground ? selectedTextAlignment : null,
-              textPosition: selectedBackground ? selectedTextPosition : null,
-              textFont: selectedBackground ? selectedTextFont : null,
-              textSize: selectedBackground ? selectedTextSize : null,
+              textColor: hasCustomTextStyle() ? selectedTextColor : null,
+              textAlignment: hasCustomTextStyle() ? selectedTextAlignment : null,
+              textPosition: hasCustomTextStyle() ? selectedTextPosition : null,
+              textFont: hasCustomTextStyle() ? selectedTextFont : null,
+              textSize: hasCustomTextStyle() ? selectedTextSize : null,
               isTrade: isTrade,
               mediaUrls: mediaUrls,
               mediaType: mediaType,
@@ -9185,11 +9220,11 @@ document.addEventListener('DOMContentLoaded', () => {
           content: text,
           paidHashtags: acceptedPaidHashtags,
           bgImageUrl: selectedBackground ? selectedBackground.image_url : null,
-          textColor: selectedBackground ? selectedTextColor : null,
-          textAlignment: selectedBackground ? selectedTextAlignment : null,
-          textPosition: selectedBackground ? selectedTextPosition : null,
-          textFont: selectedBackground ? selectedTextFont : null,
-          textSize: selectedBackground ? selectedTextSize : null,
+          textColor: hasCustomTextStyle() ? selectedTextColor : null,
+          textAlignment: hasCustomTextStyle() ? selectedTextAlignment : null,
+          textPosition: hasCustomTextStyle() ? selectedTextPosition : null,
+          textFont: hasCustomTextStyle() ? selectedTextFont : null,
+          textSize: hasCustomTextStyle() ? selectedTextSize : null,
           isTrade: isTrade,
           mediaUrls: [],
           mediaType: null,
@@ -13364,6 +13399,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedTextPosition = 'center';
   let selectedTextFont = "'Outfit', sans-serif";
   let selectedTextSize = '20px';
+  const hasCustomTextStyle = () => {
+    return selectedBackground !== null ||
+           selectedTextColor !== '#ffffff' ||
+           selectedTextAlignment !== 'center' ||
+           selectedTextPosition !== 'center' ||
+           selectedTextFont !== "'Outfit', sans-serif" ||
+           selectedTextSize !== '20px';
+  };
   let cachedBackgroundsList = null;
   let pendingPaymentBackground = null;
 
@@ -16830,7 +16873,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const previewShell = document.getElementById('textStylePreviewShell');
     const previewText = document.getElementById('textStylePreviewText');
 
-    if (selectedBackground) {
+    if (hasCustomTextStyle()) {
       if (previewBox && previewShell && previewText) {
         const wasHidden = previewBox.style.display === 'none' || !previewBox.style.display;
 
@@ -16844,9 +16887,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         previewBox.style.display = 'flex';
-        previewBox.style.backgroundImage = `url(${selectedBackground.image_url})`;
-        previewBox.style.backgroundSize = 'cover';
-        previewBox.style.backgroundPosition = 'center';
+        if (selectedBackground) {
+          previewBox.style.backgroundImage = `url(${selectedBackground.image_url})`;
+          previewBox.style.backgroundSize = 'cover';
+          previewBox.style.backgroundPosition = 'center';
+          previewBox.style.backgroundColor = '';
+        } else {
+          previewBox.style.backgroundImage = '';
+          previewBox.style.backgroundColor = 'var(--bg-hover)';
+        }
         previewBox.style.minHeight = '140px';
         previewBox.style.borderRadius = '12px';
         previewBox.style.boxShadow = 'inset 0 0 0 1px rgba(255, 255, 255, 0.16)';
@@ -16883,6 +16932,7 @@ document.addEventListener('DOMContentLoaded', () => {
         previewText.innerText = '';
         previewBox.style.display = 'none';
         previewBox.style.backgroundImage = '';
+        previewBox.style.backgroundColor = '';
         previewShell.dataset.textAlign = 'center';
         previewShell.style.justifyContent = 'center';
       }
@@ -21107,6 +21157,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <option value="connect4">🔴 Puissance 4</option>
               <option value="gomoku">🎮 Morpion / Gomoku</option>
               <option value="tablefootball">⚽ Football Table</option>
+              <option value="echecs">👑 Echecs</option>
             </select>
           </div>
 
@@ -21510,6 +21561,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const connectFourGrid = document.getElementById('connectFourGrid');
   const gomokuBoardContainer = document.getElementById('gomokuBoardContainer');
   const gomokuBoard = document.getElementById('gomokuBoard');
+  const chessBoardContainer = document.getElementById('chessBoardContainer');
+  const chessBoard = document.getElementById('chessBoard');
   const tableFootballBoardContainer = document.getElementById('tableFootballBoardContainer');
   const tableFootballPhaseLabel = document.getElementById('tableFootballPhaseLabel');
   const tableFootballSubLabel = document.getElementById('tableFootballSubLabel');
@@ -21548,7 +21601,64 @@ document.addEventListener('DOMContentLoaded', () => {
   const gameNames = {
     connect4: 'Puissance 4',
     gomoku: 'Gomoku',
-    tablefootball: 'Football Table'
+    tablefootball: 'Football Table',
+    echecs: 'Echecs'
+  };
+
+  const getPlayerLevelData = (player = {}) => {
+    const rawMatchesPlayed = Number(player.matchesPlayed ?? player.matches_played ?? player.game_matches_played ?? 0);
+    const rawMatchesWon = Number(player.matchesWon ?? player.wins ?? player.game_matches_won ?? 0);
+    const matchesPlayed = Number.isFinite(rawMatchesPlayed) ? Math.max(0, Math.round(rawMatchesPlayed)) : 0;
+    const matchesWon = Number.isFinite(rawMatchesWon) ? Math.max(0, Math.round(rawMatchesWon)) : 0;
+    const normalizedPlayed = Math.max(matchesPlayed, matchesWon);
+    const normalizedWon = Math.min(normalizedPlayed, matchesWon);
+    const rawLevel = Number(player.level ?? 1);
+    const level = Number.isFinite(rawLevel) && rawLevel > 0 ? Math.round(rawLevel) : 1;
+    const levelTitle = String(player.levelTitle || '').trim();
+
+    return {
+      level,
+      levelTitle,
+      matchesPlayed: normalizedPlayed,
+      matchesWon: normalizedWon
+    };
+  };
+
+  const formatPlayerLevelChip = (player = {}) => {
+    const { level } = getPlayerLevelData(player);
+    return `Niv. ${level}`;
+  };
+
+  const formatPlayerLevelLine = (player = {}, { includeTitle = false } = {}) => {
+    const { level, levelTitle, matchesPlayed, matchesWon } = getPlayerLevelData(player);
+    const parts = [`Niv. ${level}`];
+    if (includeTitle && levelTitle) {
+      parts.push(levelTitle);
+    }
+    parts.push(`${matchesPlayed} match${matchesPlayed > 1 ? 's' : ''}`);
+    parts.push(`${matchesWon} victoire${matchesWon > 1 ? 's' : ''}`);
+    return parts.join(' • ');
+  };
+
+  const syncActiveGamePlayerCard = (slot, player, fallbackName) => {
+    const nameEl = document.getElementById(`gamePlayer${slot}Name`);
+    const avatarEl = document.getElementById(`gamePlayer${slot}Avatar`);
+    const levelEl = document.getElementById(`gamePlayer${slot}Level`);
+    const playerName = player?.name || fallbackName;
+
+    if (nameEl) nameEl.textContent = playerName;
+    if (avatarEl) avatarEl.src = player?.avatar || '/assets/avatar_placeholder.jpg';
+    if (levelEl) {
+      levelEl.textContent = player
+        ? formatPlayerLevelLine(player, { includeTitle: true })
+        : "En attente d'un adversaire";
+    }
+  };
+
+  const syncActiveGamePlayers = (game) => {
+    if (!game) return;
+    syncActiveGamePlayerCard('1', game.player1, 'Joueur 1');
+    syncActiveGamePlayerCard('2', game.player2 || null, 'Attente...');
   };
 
   // Games Lobby Tab Toggle Logic
@@ -21675,6 +21785,26 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         </div>
       `
+    },
+    echecs: {
+      title: "Echecs (Chess)",
+      icon: "crown",
+      content: `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div style="background: rgba(124, 58, 237, 0.08); border-left: 4px solid #7c3aed; padding: 12px; border-radius: 4px 8px 8px 4px;">
+            <strong style="color: var(--primary);">But du jeu :</strong> Mettre le roi adverse en échec et mat (sans qu'aucune parade ne soit possible).
+          </div>
+          <div>
+            <h4 style="margin: 0 0 8px 0; font-weight: 700; color: var(--text-primary);">Comment jouer :</h4>
+            <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px;">
+              <li>Le joueur blanc commence en premier.</li>
+              <li>Cliquez sur une pièce pour afficher ses mouvements légaux (points gris), puis cliquez sur la case de destination pour jouer le coup.</li>
+              <li><strong>Promotion :</strong> Si un pion atteint la dernière rangée, un panneau de promotion s'affiche pour choisir entre Dame, Cavalier, Tour ou Fou.</li>
+              <li><strong>Règles spéciales :</strong> Le roque et la prise en passant sont entièrement gérés et mis en valeur.</li>
+            </ul>
+          </div>
+        </div>
+      `
     }
   };
 
@@ -21782,12 +21912,9 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const ranks = ["Grand Master", "Championne", "Expert", "Pro", "Challenger", "Elite", "Vétéran", "Stratège"];
-
-    grid.innerHTML = availableBots.map((bot, index) => {
+    grid.innerHTML = availableBots.map((bot) => {
       const isSelected = selectedBotId === bot.id;
-      const winsCount = bot.wins || 0;
-      const botRank = ranks[index % ranks.length];
+      const { level, levelTitle, matchesPlayed, matchesWon } = getPlayerLevelData(bot);
       return `
         <div class="bot-select-card ${isSelected ? 'active' : ''}" data-bot-id="${bot.id}">
           <div class="bot-card-glow"></div>
@@ -21797,10 +21924,11 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <div class="bot-info-container">
             <div class="bot-select-card-name">${escapeHtml(bot.name)}</div>
-            <div class="bot-select-card-rank">${botRank}</div>
+            <div class="bot-select-card-rank">Niveau ${level} • ${escapeHtml(levelTitle || 'Debutant')}</div>
+            <div class="bot-select-card-stats">${matchesPlayed} match${matchesPlayed > 1 ? 's' : ''} joues</div>
             <div class="bot-select-card-wins">
               <i data-lucide="trophy"></i>
-              <span>${winsCount} Victoire${winsCount > 1 ? 's' : ''}</span>
+              <span>${matchesWon} Victoire${matchesWon > 1 ? 's' : ''}</span>
             </div>
           </div>
         </div>
@@ -21924,6 +22052,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     filtered.forEach(user => {
       const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'Utilisateur';
+      const levelLine = formatPlayerLevelLine(user, { includeTitle: true });
       const row = document.createElement('div');
       row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s;';
       row.innerHTML = `
@@ -21931,7 +22060,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <img src="${user.avatar || '/assets/avatar_placeholder.jpg'}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
           <div style="min-width: 0;">
             <div style="font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(fullName)}</div>
-            <div style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@${escapeHtml(user.username || '')}</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@${escapeHtml(user.username || '')} • ${escapeHtml(formatPlayerLevelChip(user))}</div>
+            <div style="font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(levelLine)}</div>
           </div>
         </div>
         <span style="flex-shrink: 0; font-size: 0.72rem; font-weight: 700; color: #10b981;">En ligne</span>
@@ -21946,7 +22076,7 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedOpponentPlayerId = user.id;
         if (selectedGameOpponentAvatar) selectedGameOpponentAvatar.src = user.avatar || '/assets/avatar_placeholder.jpg';
         if (selectedGameOpponentName) selectedGameOpponentName.textContent = fullName;
-        if (selectedGameOpponentUsername) selectedGameOpponentUsername.textContent = `@${user.username} • En ligne`;
+        if (selectedGameOpponentUsername) selectedGameOpponentUsername.textContent = `@${user.username} • En ligne • ${formatPlayerLevelChip(user)}`;
         if (selectedGameOpponentWrapper) selectedGameOpponentWrapper.style.display = 'flex';
 
         gamePlayerSearchResults.innerHTML = '';
@@ -22245,6 +22375,8 @@ document.addEventListener('DOMContentLoaded', () => {
         gamesWaitingList.innerHTML = waitingGames.map(game => {
           const isOwner = game.player1.id === window.currentUserId;
           const betLabel = game.mode === 'paid' ? `Payant (${parseFloat(game.betAmount || 0).toFixed(2)} $)` : 'Gratuit';
+          const playerLevelChip = formatPlayerLevelChip(game.player1);
+          const playerLevelLine = formatPlayerLevelLine(game.player1);
           return `
             <div class="game-list-item">
               <div class="game-item-left">
@@ -22252,8 +22384,8 @@ document.addEventListener('DOMContentLoaded', () => {
                   <img src="${game.player1.avatar}" style="width: 100%; height: 100%; object-fit: cover;">
                 </div>
                 <div class="game-item-details">
-                  <div class="game-item-title">${escapeHtml(game.player1.name)}</div>
-                  <span class="game-item-sub">${gameNames[game.gameType] || 'Jeu'} • ${betLabel}</span>
+                  <div class="game-item-title">${escapeHtml(game.player1.name)} <span style="display: inline-flex; align-items: center; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--bg-input); border: 1px solid var(--border-color); font-size: 10px; font-weight: 800; color: var(--text-secondary);">${escapeHtml(playerLevelChip)}</span></div>
+                  <span class="game-item-sub">${gameNames[game.gameType] || 'Jeu'} • ${betLabel} • ${escapeHtml(playerLevelLine)}</span>
                 </div>
               </div>
               <div>
@@ -22316,6 +22448,9 @@ document.addEventListener('DOMContentLoaded', () => {
           const isPlayer = game.player1.id === window.currentUserId || (game.player2 && game.player2.id === window.currentUserId);
           const p2Name = game.player2 ? game.player2.name : 'Robot';
           const betLabel = game.mode === 'paid' ? `Payant (${parseFloat(game.betAmount || 0).toFixed(2)} $)` : 'Gratuit';
+          const versusLevelLine = game.player2
+            ? `${formatPlayerLevelChip(game.player1)} vs ${formatPlayerLevelChip(game.player2)}`
+            : formatPlayerLevelChip(game.player1);
           return `
             <div class="game-list-item">
               <div class="game-item-left">
@@ -22329,6 +22464,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   <span class="game-item-sub">
                     ${gameNames[game.gameType] || 'Jeu'} • 
                     ${betLabel} • 
+                    ${escapeHtml(versusLevelLine)} • 
                     <i data-lucide="eye" style="width: 10px; height: 10px; display: inline-block; vertical-align: middle;"></i> ${game.spectatorCount}
                     ${game.startedAt ? ` • <span class="live-game-timer" data-started-at="${game.startedAt}" style="font-weight: 600; color: #b388ff;">00:00</span>` : ''}
                   </span>
@@ -23126,17 +23262,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Player 1 Card
-    const p1NameEl = document.getElementById('gamePlayer1Name');
-    const p1AvatarEl = document.getElementById('gamePlayer1Avatar');
-    if (p1NameEl) p1NameEl.textContent = game.player1.name;
-    if (p1AvatarEl) p1AvatarEl.src = game.player1.avatar;
-
-    // Player 2 Card
-    const p2NameEl = document.getElementById('gamePlayer2Name');
-    const p2AvatarEl = document.getElementById('gamePlayer2Avatar');
-    if (p2NameEl) p2NameEl.textContent = game.player2 ? game.player2.name : 'Attente...';
-    if (p2AvatarEl) p2AvatarEl.src = game.player2 ? game.player2.avatar : '/assets/avatar_placeholder.jpg';
+    syncActiveGamePlayers(game);
 
     // Update scoreboard display including round wins and scores
     updateScoreboardDisplay();
@@ -23199,6 +23325,11 @@ document.addEventListener('DOMContentLoaded', () => {
         p2Badge.textContent = `${t2Data.flag} ${t2Data.name}`;
         p1Badge.style.display = 'inline-block';
         p2Badge.style.display = 'inline-block';
+      } else if (game.gameType === 'echecs') {
+        p1Badge.textContent = 'Blancs';
+        p2Badge.textContent = 'Noirs';
+        p1Badge.style.display = 'inline-block';
+        p2Badge.style.display = 'inline-block';
       } else {
         p1Badge.style.display = 'none';
         p2Badge.style.display = 'none';
@@ -23210,7 +23341,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (connectFourBoardContainer) connectFourBoardContainer.style.display = 'none';
     if (gomokuBoardContainer) gomokuBoardContainer.style.display = 'none';
     if (tableFootballBoardContainer) tableFootballBoardContainer.style.display = 'none';
-
+    if (chessBoardContainer) chessBoardContainer.style.display = 'none';
     // Initialize corresponding board
     if (game.gameType === 'domino') {
       if (dominoBoardContainer) {
@@ -23231,6 +23362,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (tableFootballBoardContainer) {
         tableFootballBoardContainer.style.display = 'block';
         buildTableFootballBoard();
+      }
+    } else if (game.gameType === 'echecs') {
+      if (chessBoardContainer) {
+        chessBoardContainer.style.display = 'block';
+        buildChessBoard();
       }
     }
 
@@ -24073,6 +24209,316 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         gomokuBoard.appendChild(cell);
+      }
+    }
+  };
+
+  // 4. CHESS (ECHECS)
+  let selectedSquare = null;
+  let activePromotionMove = null;
+
+
+  const getFenFromGameState = (game) => {
+    const board = game.board;
+    const state = game.chessState;
+    if (!board || !state) return '';
+    const rows = [];
+    for (let r = 0; r < 8; r++) {
+      let emptyCount = 0;
+      let rowStr = '';
+      for (let c = 0; c < 8; c++) {
+        const piece = board[r][c];
+        if (piece === null || piece === 0) {
+          emptyCount++;
+        } else {
+          if (emptyCount > 0) {
+            rowStr += emptyCount;
+            emptyCount = 0;
+          }
+          const color = piece[0];
+          const type = piece[1];
+          rowStr += color === 'w' ? type.toUpperCase() : type.toLowerCase();
+        }
+      }
+      if (emptyCount > 0) {
+        rowStr += emptyCount;
+      }
+      rows.push(rowStr);
+    }
+    const boardFen = rows.join('/');
+    const turn = game.currentPlayer === 1 ? 'w' : 'b';
+    
+    let castlingStr = '';
+    if (state.castling) {
+      if (state.castling.whiteKingSide) castlingStr += 'K';
+      if (state.castling.whiteQueenSide) castlingStr += 'Q';
+      if (state.castling.blackKingSide) castlingStr += 'k';
+      if (state.castling.blackQueenSide) castlingStr += 'q';
+    }
+    if (castlingStr === '') castlingStr = '-';
+    
+    let epStr = '-';
+    if (state.enPassant) {
+      const colChar = String.fromCharCode(97 + state.enPassant.c);
+      const rowChar = 8 - state.enPassant.r;
+      epStr = colChar + rowChar;
+    }
+    
+    return `${boardFen} ${turn} ${castlingStr} ${epStr} 0 1`;
+  };
+
+  const getChessPieceSvgMarkup = (piece) => {
+    if (!piece) return '';
+    const color = piece[0];
+    const type = piece[1];
+    const fill = color === 'w' ? '#ffffff' : '#1e293b';
+    const stroke = color === 'w' ? '#374151' : '#f3f4f6';
+    
+    if (type === 'p') {
+      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
+        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 9c-2.2 0-4 1.8-4 4 0 1.5 1 2.8 2.5 3.5-2.2 1-3.5 3-3.5 5.5 0 2 1 3.5 3 4.5V28H16v2h13v-2h-4v-1.5c2-1 3-2.5 3-4.5 0-2.5-1.3-4.5-3.5-5.5 1.5-.7 2.5-2 2.5-3.5 0-2.2-1.8-4-4-4z"/>
+        </g>
+      </svg>`;
+    }
+    if (type === 'n') {
+      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
+        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M 22,10 C 22,10 19,11 16,15 C 13,19 13,23 13,23 C 13,23 14,21 16,21 C 18,21 20,22 22,20 C 24,18 24,15 24,15 C 24,15 25,16 27,15 C 29,14 30,12 30,12 C 30,12 28,15 25,16 C 22,17 21,21 21,23 C 21,24 22,25 24,25 C 26,25 28,24 30,22 C 31,21 32,18 32,18 C 32,18 32,23 29,26 C 26,29 22,30 22,30 L 15,30 L 15,32 L 30,32 L 30,30 C 30,30 33,26 31,20 C 29,14 22,10 22,10 z"/>
+        </g>
+      </svg>`;
+    }
+    if (type === 'b') {
+      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
+        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 36h27v-2H9v2zm13.5-32c-5 0-9 4-9 9 0 3 2 7.5 5 11.5v3.5h8v-3.5c3-4 5-8.5 5-11.5 0-5-4-9-9-9z"/>
+          <circle cx="22.5" cy="5" r="2" fill="${stroke}"/>
+          <path d="M22.5 8v8M18.5 12h8" fill="none" stroke="${stroke}" stroke-width="1.5"/>
+        </g>
+      </svg>`;
+    }
+    if (type === 'r') {
+      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
+        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 39h27v-3H9v3zm3-13h21v-4H12v4zm2.5-4l1.5-12h18l1.5 12h-21z"/>
+          <path d="M12 10V4h4v3h3V4h4v3h3V4h4v3h3V4h4v6H12z"/>
+        </g>
+      </svg>`;
+    }
+    if (type === 'q') {
+      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
+        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 37h27v-3H9v3zm3.5-17.5L6 9l9 17 7.5-18.5L30 26l9-17-6.5 10.5h-20z"/>
+          <path d="M12.5 32c0-3.5 4-6 10-6s10 2.5 10 6H12.5z"/>
+          <circle cx="6" cy="9" r="2"/>
+          <circle cx="15" cy="9" r="2"/>
+          <circle cx="22.5" cy="7.5" r="2"/>
+          <circle cx="30" cy="9" r="2"/>
+          <circle cx="39" cy="9" r="2"/>
+        </g>
+      </svg>`;
+    }
+    if (type === 'k') {
+      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
+        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22.5 11.63V6M20 8h5M12.5 36h20v-3h-20v3zm6-20c-3.5 0-6 3.5-6 7 0 5 12 10 12 10s12-5 12-10c0-3.5-2.5-7-6-7-3.5 0-6 3-6 3s-2.5-3-6-3z"/>
+          <path d="M11.5 30c0-3 4-5.5 11-5.5s11 2.5 11 5.5H11.5z"/>
+        </g>
+      </svg>`;
+    }
+    return '';
+  };
+
+  const showPromotionOverlay = () => {
+    const overlay = document.getElementById('chessPromotionOverlay');
+    const optionsGrid = document.getElementById('chessPromoOptions');
+    if (!overlay || !optionsGrid) return;
+
+    overlay.style.display = 'flex';
+    optionsGrid.innerHTML = '';
+
+    const myColor = activeGame.currentPlayer === 1 ? 'w' : 'b';
+    const pieces = ['q', 'n', 'r', 'b'];
+
+    pieces.forEach(type => {
+      const btn = document.createElement('button');
+      btn.className = 'chess-promo-btn';
+      btn.style.cssText = `
+        background: var(--bg-hover);
+        border: 1.5px solid var(--border-color);
+        border-radius: 12px;
+        padding: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        aspect-ratio: 1;
+        transition: background 0.15s ease, transform 0.1s ease;
+      `;
+      btn.addEventListener('mouseenter', () => {
+        btn.style.background = 'var(--border-color)';
+        btn.style.transform = 'scale(1.05)';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.background = 'var(--bg-hover)';
+        btn.style.transform = 'scale(1)';
+      });
+
+      btn.innerHTML = getChessPieceSvgMarkup(`${myColor}${type}`);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (activePromotionMove) {
+          socket.emit('game-move', {
+            gameId: activeGame.id,
+            r: activePromotionMove.from.r,
+            c: activePromotionMove.from.c,
+            extraMove: {
+              toR: activePromotionMove.to.r,
+              toC: activePromotionMove.to.c,
+              promotion: type
+            }
+          });
+          activePromotionMove = null;
+        }
+        overlay.style.display = 'none';
+        selectedSquare = null;
+      });
+      optionsGrid.appendChild(btn);
+    });
+  };
+
+  const buildChessBoard = () => {
+    if (!chessBoard) return;
+    chessBoard.innerHTML = '';
+
+    const promoOverlay = document.getElementById('chessPromotionOverlay');
+    if (promoOverlay) promoOverlay.style.display = 'none';
+
+    if (!activeGame || activeGame.gameType !== 'echecs' || !activeGame.chessState) {
+      return;
+    }
+
+    const turnLabel = document.getElementById('chessTurnLabel');
+    const checkStatus = document.getElementById('chessCheckStatus');
+    const opponentInfoLabel = document.getElementById('chessOpponentInfo');
+
+    if (opponentInfoLabel) {
+      const oppName = activeGame.opponentType === 'bot' ? 'Robot AI' : (activeGame.player2 ? activeGame.player2.name : 'Attente...');
+      opponentInfoLabel.textContent = `Adversaire : ${oppName}`;
+    }
+
+    const fen = getFenFromGameState(activeGame);
+    let chessInstance = null;
+    try {
+      chessInstance = new Chess();
+      chessInstance.load(fen);
+    } catch (e) {
+      console.error('Error loading chess.js FEN:', e);
+      return;
+    }
+
+    const inCheck = chessInstance.in_check();
+    const activeColor = activeGame.currentPlayer === 1 ? 'w' : 'b';
+
+    if (turnLabel) {
+      turnLabel.textContent = activeGame.currentPlayer === 1 ? 'Trait aux Blancs' : 'Trait aux Noirs';
+    }
+    if (checkStatus) {
+      checkStatus.style.display = inCheck ? 'inline' : 'none';
+    }
+
+    const mySlot = (activeGame.player1 && Number(activeGame.player1.id) === Number(window.currentUserId)) ? 1 : 2;
+    const isMyTurn = !window.isSpectatingActiveGame &&
+                     activeGame.status === 'playing' &&
+                     activeGame.currentPlayer === mySlot;
+
+    const isFlipped = activeGame.player2 && Number(activeGame.player2.id) === Number(window.currentUserId);
+
+    const rows = isFlipped ? [7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7];
+    const cols = isFlipped ? [7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7];
+
+    const legalDestinations = new Map();
+    if (selectedSquare) {
+      const squareName = String.fromCharCode(97 + selectedSquare.c) + (8 - selectedSquare.r);
+      const moves = chessInstance.moves({ square: squareName, verbose: true });
+      moves.forEach(m => {
+        const destC = m.to.charCodeAt(0) - 97;
+        const destR = 8 - parseInt(m.to[1], 10);
+        legalDestinations.set(`${destR},${destC}`, m.captured ? 'capture' : 'legal');
+      });
+    }
+
+    for (const r of rows) {
+      for (const c of cols) {
+        const cell = document.createElement('div');
+        const isLight = (r + c) % 2 === 0;
+        cell.className = `chess-square ${isLight ? 'light' : 'dark'}`;
+        cell.dataset.row = r;
+        cell.dataset.col = c;
+
+        const piece = activeGame.board[r][c];
+
+        if (selectedSquare && selectedSquare.r === r && selectedSquare.c === c) {
+          cell.classList.add('selected');
+        }
+
+        const destType = legalDestinations.get(`${r},${c}`);
+        if (destType) {
+          cell.classList.add(destType);
+        }
+
+        if (activeGame.lastMove && activeGame.lastMove.gameType === 'echecs') {
+          const from = activeGame.lastMove.from;
+          const to = activeGame.lastMove.to;
+          if ((from && from.r === r && from.c === c) || (to && to.r === r && to.c === c)) {
+            cell.classList.add('last-move');
+          }
+        }
+
+        if (inCheck && piece === `${activeColor}k`) {
+          cell.classList.add('in-check');
+        }
+
+        if (piece) {
+          cell.innerHTML = getChessPieceSvgMarkup(piece);
+        }
+
+        cell.addEventListener('click', () => {
+          if (!isMyTurn) return;
+
+          const clickedPiece = activeGame.board[r][c];
+          const clickedColor = clickedPiece ? clickedPiece[0] : null;
+          const myColor = mySlot === 1 ? 'w' : 'b';
+
+          const isLegalTarget = legalDestinations.has(`${r},${c}`);
+
+          if (isLegalTarget && selectedSquare) {
+            const movingPiece = activeGame.board[selectedSquare.r][selectedSquare.c];
+            const isPawn = movingPiece && movingPiece[1] === 'p';
+            const isPromoRow = r === 0 || r === 7;
+
+            if (isPawn && isPromoRow) {
+              activePromotionMove = { from: { ...selectedSquare }, to: { r, c } };
+              showPromotionOverlay();
+            } else {
+              socket.emit('game-move', {
+                gameId: activeGame.id,
+                r: selectedSquare.r,
+                c: selectedSquare.c,
+                extraMove: { toR: r, toC: c }
+              });
+              selectedSquare = null;
+            }
+          } else if (clickedPiece && clickedColor === myColor) {
+            selectedSquare = { r, c };
+            buildChessBoard();
+          } else {
+            selectedSquare = null;
+            buildChessBoard();
+          }
+        });
+
+        chessBoard.appendChild(cell);
       }
     }
   };
@@ -26057,7 +26503,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.restore();
     }
 
-    // Launch render loop only if not already running
+  // Launch render loop only if not already running
     if (!state.animationFrameId) {
       loop();
     }
@@ -26217,7 +26663,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       window.tfGameState = null;
     }
-
     if (typeof cleanupGameWebRTC === 'function') {
       cleanupGameWebRTC();
     }
@@ -26381,6 +26826,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const content = document.createElement('div');
     content.className = 'modal-content game-confirm-modal-content';
     content.style.cssText = 'border-radius: 20px; text-align: center; max-width: 400px; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 16px;';
+    const opponentLevelLine = game?.player2 ? formatPlayerLevelLine(game.player2, { includeTitle: true }) : '';
 
     content.innerHTML = `
       <div style="position: relative; display: inline-block; margin-bottom: 8px;">
@@ -26389,6 +26835,7 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
       <h3 style="font-size: 1.3rem; font-weight: 800; margin: 0; color: var(--text-primary); font-family: 'Outfit', sans-serif;">Invitation Envoyée</h3>
       <p style="font-size: 0.95rem; color: var(--text-secondary); margin: 0; line-height: 1.5;">En attente de la réponse de <strong>${escapeHtml(game.player2.name)}</strong>...</p>
+      ${opponentLevelLine ? `<p style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin: -8px 0 0 0;">${escapeHtml(opponentLevelLine)}</p>` : ''}
       
       <div style="display: flex; justify-content: center; gap: 6px; margin: 8px 0;">
         <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--primary); animation: bounce 1.4s infinite ease-in-out both; animation-delay: -0.32s;"></span>
@@ -26449,6 +26896,7 @@ document.addEventListener('DOMContentLoaded', () => {
       : 'Gratuit';
     const roundsLabel = `${invite.rounds} manche${invite.rounds > 1 ? 's' : ''}`;
     const totalMs = invite.timeoutMs || 30000;
+    const challengerLevelLine = invite?.challenger ? formatPlayerLevelLine(invite.challenger, { includeTitle: true }) : '';
     let teamSelectHtml = '';
     if (invite.gameType === 'tablefootball') {
       teamSelectHtml = `
@@ -26480,6 +26928,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
           <h3 class="gir-challenger-name">${escapeHtml(invite.challenger.name)}</h3>
           <p class="gir-challenger-username">@${escapeHtml(invite.challenger.username)}</p>
+          ${challengerLevelLine ? `<p class="gir-challenger-username" style="margin-top: -4px;">${escapeHtml(challengerLevelLine)}</p>` : ''}
         </div>
 
         <!-- ── Body ── -->
@@ -26697,11 +27146,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (activeGame && activeGame.id === game.id) {
         activeGame = game;
         updateActiveGameSubtitle();
-        
-        const p2NameEl = document.getElementById('gamePlayer2Name');
-        const p2AvatarEl = document.getElementById('gamePlayer2Avatar');
-        if (p2NameEl && game.player2) p2NameEl.textContent = game.player2.name;
-        if (p2AvatarEl && game.player2) p2AvatarEl.src = game.player2.avatar;
+        syncActiveGamePlayers(game);
 
         // Show/hide gift buttons dynamically for spectators
         const isSpectator = window.isSpectatingActiveGame || (game.player1.id !== window.currentUserId && (!game.player2 || game.player2.id !== window.currentUserId));
@@ -26730,6 +27175,8 @@ document.addEventListener('DOMContentLoaded', () => {
           buildGomokuBoard();
         } else if (game.gameType === 'tablefootball') {
           buildTableFootballBoard();
+        } else if (game.gameType === 'echecs') {
+          buildChessBoard();
         }
 
         if (game.lastMove) {
@@ -29138,7 +29585,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const gameNamesMap = {
       connect4: 'Puissance 4',
       gomoku: 'Gomoku',
-      tablefootball: 'Football Table'
+      tablefootball: 'Football Table',
+      echecs: 'Echecs'
     };
 
     // Prepend active games in reverse so the first game ends up at the top
@@ -29155,19 +29603,21 @@ document.addEventListener('DOMContentLoaded', () => {
       const p1Avatar = game.player1.avatar || '/assets/avatar_placeholder.jpg';
       const p1Name = escapeHtml(game.player1.name);
       const p1Username = escapeHtml(game.player1.username);
+      const p1Level = escapeHtml(formatPlayerLevelChip(game.player1));
 
       let p2Html = '';
       if (game.player2) {
         const p2Avatar = game.player2.avatar || '/assets/avatar_placeholder.jpg';
         const p2Name = escapeHtml(game.player2.name);
         const p2Username = escapeHtml(game.player2.username);
+        const p2Level = escapeHtml(formatPlayerLevelChip(game.player2));
         p2Html = `
           <div class="match-player-profile" style="flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0;">
             <div style="position: relative; width: 62px; height: 62px; margin-bottom: 8px;">
               <img src="${p2Avatar}" alt="${p2Name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary); box-shadow: var(--shadow-sm);" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
             </div>
             <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">${p2Name}</span>
-            <span style="font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">@${p2Username}</span>
+            <span style="font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">@${p2Username} • ${p2Level}</span>
           </div>
         `;
       } else {
@@ -29207,7 +29657,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <img src="${p1Avatar}" alt="${p1Name}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 2px solid var(--primary); box-shadow: var(--shadow-sm);" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
             </div>
             <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">${p1Name}</span>
-            <span style="font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">@${p1Username}</span>
+            <span style="font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">@${p1Username} • ${p1Level}</span>
           </div>
 
           <!-- VS Separation & Live Timer -->

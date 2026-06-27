@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { attachBotGameStats } = require('../utils/gameLevel');
 
 let botsTablePromise = null;
 
@@ -13,7 +14,8 @@ async function ensureBotsTable() {
           first_name VARCHAR(100) NOT NULL,
           last_name VARCHAR(100) NOT NULL,
           avatar VARCHAR(255) DEFAULT '/assets/avatar_placeholder.jpg',
-          wins INT DEFAULT 0
+          wins INT DEFAULT 0,
+          matches_played INT DEFAULT 0
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
@@ -26,6 +28,12 @@ async function ensureBotsTable() {
 
       try {
         await db.query('ALTER TABLE bots ADD COLUMN level INT DEFAULT 1');
+      } catch (err) {
+        // Ignored if the column already exists
+      }
+
+      try {
+        await db.query('ALTER TABLE bots ADD COLUMN matches_played INT DEFAULT 0');
       } catch (err) {
         // Ignored if the column already exists
       }
@@ -63,16 +71,24 @@ async function ensureBotsTable() {
 }
 
 class Bot {
+  static attachGameStats(bot) {
+    return attachBotGameStats(bot);
+  }
+
+  static attachGameStatsList(bots) {
+    return Array.isArray(bots) ? bots.map((bot) => this.attachGameStats(bot)) : [];
+  }
+
   static async getAll() {
     await ensureBotsTable();
     const [rows] = await db.query('SELECT *, CONCAT(first_name, \' \', last_name) AS name FROM bots');
-    return rows;
+    return this.attachGameStatsList(rows);
   }
 
   static async getById(id) {
     await ensureBotsTable();
     const [rows] = await db.query('SELECT *, CONCAT(first_name, \' \', last_name) AS name FROM bots WHERE id = ?', [id]);
-    return rows[0];
+    return this.attachGameStats(rows[0]);
   }
 
   static async getRandomBot() {

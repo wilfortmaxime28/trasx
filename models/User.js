@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const presence = require('../utils/presence');
+const { attachUserGameStats } = require('../utils/gameLevel');
 
 let eventAccessSchemaPromise = null;
 
@@ -22,7 +23,9 @@ async function ensureEventAccessColumns() {
         ['allow_dispute', 'TINYINT(1) DEFAULT 0'],
         ['token_balance', 'DECIMAL(15,4) DEFAULT 0.0000'],
         ['display_name', 'VARCHAR(100) DEFAULT NULL'],
-        ['display_name_updated_at', 'TIMESTAMP NULL DEFAULT NULL']
+        ['display_name_updated_at', 'TIMESTAMP NULL DEFAULT NULL'],
+        ['game_matches_played', 'INT DEFAULT 0'],
+        ['game_matches_won', 'INT DEFAULT 0']
       ];
 
       for (const [columnName, columnDefinition] of requiredColumns) {
@@ -88,6 +91,14 @@ async function ensureEventAccessColumns() {
 }
 
 class User {
+  static attachGameStats(user) {
+    return attachUserGameStats(user);
+  }
+
+  static attachGameStatsList(users) {
+    return Array.isArray(users) ? users.map((user) => this.attachGameStats(user)) : [];
+  }
+
   static async ensureSchema() {
     await ensureEventAccessColumns();
   }
@@ -98,7 +109,7 @@ class User {
       `SELECT *, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name FROM users WHERE id = ?`,
       [id]
     );
-    return rows[0];
+    return this.attachGameStats(rows[0]);
   }
 
   static async getByEmail(email) {
@@ -107,7 +118,7 @@ class User {
       `SELECT *, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name FROM users WHERE email = ?`,
       [email]
     );
-    return rows[0];
+    return this.attachGameStats(rows[0]);
   }
 
   static async getByUsername(username) {
@@ -116,7 +127,7 @@ class User {
       `SELECT *, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name FROM users WHERE username = ?`,
       [username]
     );
-    return rows[0];
+    return this.attachGameStats(rows[0]);
   }
 
   static async getByIdentifier(identifier) {
@@ -125,13 +136,13 @@ class User {
       `SELECT *, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name FROM users WHERE email = ? OR username = ? OR phone = ?`,
       [identifier, identifier, identifier]
     );
-    return rows[0];
+    return this.attachGameStats(rows[0]);
   }
 
   static async getAll() {
     await ensureEventAccessColumns();
     const [rows] = await db.query(`SELECT *, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name FROM users`);
-    return rows;
+    return this.attachGameStatsList(rows);
   }
 
   static async getTodaysBirthdayCelebrants(currentUserId, limit = 8) {
@@ -705,24 +716,25 @@ class User {
   static async search(query) {
     const searchQuery = `%${query}%`;
     const [rows] = await db.query(
-      `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar, certification_type AS certType
+      `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar, certification_type AS certType,
+              game_matches_played, game_matches_won
        FROM users 
        WHERE username LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR display_name LIKE ?
        LIMIT 10`,
       [searchQuery, searchQuery, searchQuery, searchQuery]
     );
-    return rows;
+    return this.attachGameStatsList(rows);
   }
 
   static async listForOpponentSearch(limit = 50) {
     const safeLimit = Math.max(1, Math.min(100, Number(limit) || 50));
     const [rows] = await db.query(
-      `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar
+      `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar, game_matches_played, game_matches_won
        FROM users
        ORDER BY first_name ASC, last_name ASC
        LIMIT ${safeLimit}`
     );
-    return rows;
+    return this.attachGameStatsList(rows);
   }
 
   static async getFollowingForShare(userId) {
