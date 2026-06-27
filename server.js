@@ -37,6 +37,7 @@ const cache = require('./utils/cache');
 const QRCode = require('qrcode');
 const bscMonitor = require('./utils/bscMonitor');
 const mailer = require('./utils/mailer');
+const { ethers } = require('ethers');
 
 const app = express();
 const server = http.createServer(app);
@@ -46,6 +47,16 @@ app.set('io', io);
 const TRADE_PRICE_MIN = 2;
 const TRADE_PRICE_MAX = 20;
 const GAME_ROUND_TRANSITION_DELAY_MS = 3500;
+const PLATFORM_WALLET_ADDRESS = (process.env.PLATFORM_WALLET_ADDRESS || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').trim();
+const BSC_PROVIDER_URL = process.env.BSC_PROVIDER_URL || 'https://bsc-dataseed.binance.org/';
+const BSC_USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').trim();
+const WITHDRAWAL_CONFIRMATIONS_REQUIRED = Math.max(1, Number.parseInt(process.env.BSC_WITHDRAW_CONFIRMATIONS || '1', 10) || 1);
+const WITHDRAWAL_MONITOR_INTERVAL_MS = Math.max(4000, Number.parseInt(process.env.BSC_WITHDRAW_MONITOR_INTERVAL_MS || '7000', 10) || 7000);
+const USDT_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
+
+let bscRpcProvider = null;
+let withdrawalMonitorTimer = null;
+let withdrawalMonitorRunning = false;
 
 async function emitRealtimeBalanceUpdate(userId, message = null) {
   const user = await User.getById(userId);
@@ -180,7 +191,8 @@ async function ensureBscDepositsSchema() {
         CREATE TABLE IF NOT EXISTS bsc_deposits (
           id INT AUTO_INCREMENT PRIMARY KEY,
           user_id INT NOT NULL,
-          tx_hash VARCHAR(66) NOT NULL UNIQUE,
+          tx_hash VARCHAR(66) NOT NULL,
+          log_index INT NOT NULL DEFAULT 0,
           from_address VARCHAR(42) NOT NULL,
           to_address VARCHAR(42) NOT NULL,
           amount_wei VARCHAR(40) NOT NULL,
@@ -192,10 +204,51 @@ async function ensureBscDepositsSchema() {
           credited_at TIMESTAMP NULL DEFAULT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          UNIQUE KEY uniq_bsc_deposits_tx_log (tx_hash, log_index),
           INDEX idx_bsc_deposits_status (status),
           INDEX idx_bsc_deposits_user (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
+
+      const [logIndexRows] = await db.query('SHOW COLUMNS FROM bsc_deposits LIKE ?', ['log_index']);
+      if (!logIndexRows || logIndexRows.length === 0) {
+        await db.query('ALTER TABLE bsc_deposits ADD COLUMN log_index INT NOT NULL DEFAULT 0 AFTER tx_hash');
+      }
+
+      const [depositIndexes] = await db.query('SHOW INDEX FROM bsc_deposits');
+      const indexesByName = new Map();
+      for (const indexRow of depositIndexes) {
+        if (!indexesByName.has(indexRow.Key_name)) {
+          indexesByName.set(indexRow.Key_name, []);
+        }
+        indexesByName.get(indexRow.Key_name).push(indexRow);
+      }
+
+      let hasCompositeTxLogUnique = false;
+      const uniqueTxHashOnlyIndexes = [];
+
+      for (const [indexName, rows] of indexesByName.entries()) {
+        const sortedRows = [...rows].sort((a, b) => Number(a.Seq_in_index || 0) - Number(b.Seq_in_index || 0));
+        const columns = sortedRows.map((row) => row.Column_name);
+        const isUnique = Number(sortedRows[0]?.Non_unique || 0) === 0;
+
+        if (isUnique && columns.length === 2 && columns[0] === 'tx_hash' && columns[1] === 'log_index') {
+          hasCompositeTxLogUnique = true;
+        }
+
+        if (isUnique && columns.length === 1 && columns[0] === 'tx_hash') {
+          uniqueTxHashOnlyIndexes.push(indexName);
+        }
+      }
+
+      for (const indexName of uniqueTxHashOnlyIndexes) {
+        if (indexName === 'PRIMARY') continue;
+        await db.query(`ALTER TABLE bsc_deposits DROP INDEX \`${indexName}\``);
+      }
+
+      if (!hasCompositeTxLogUnique) {
+        await db.query('ALTER TABLE bsc_deposits ADD UNIQUE INDEX uniq_bsc_deposits_tx_log (tx_hash, log_index)');
+      }
     })().catch((error) => {
       bscDepositsSchemaPromise = null;
       throw error;
@@ -238,12 +291,17 @@ async function ensureWithdrawalsSchema() {
           fee_usdt DECIMAL(18,6) NOT NULL DEFAULT 0.000000,
           net_amount_usdt DECIMAL(18,6) NOT NULL DEFAULT 0.000000,
           gas_cost_usdt DECIMAL(18,6) NOT NULL DEFAULT 0.000000,
+          confirmations INT NOT NULL DEFAULT 0,
           status ENUM('pending', 'completed', 'failed') DEFAULT 'pending',
+          submitted_at TIMESTAMP NULL DEFAULT NULL,
+          completed_at TIMESTAMP NULL DEFAULT NULL,
           error_message TEXT DEFAULT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
           INDEX idx_bsc_withdrawals_user (user_id),
-          INDEX idx_bsc_withdrawals_status (status)
+          INDEX idx_bsc_withdrawals_status (status),
+          INDEX idx_bsc_withdrawals_tx_hash (tx_hash)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
@@ -259,6 +317,27 @@ async function ensureWithdrawalsSchema() {
       const [gasCols] = await db.query('SHOW COLUMNS FROM bsc_withdrawals LIKE ?', ['gas_cost_usdt']);
       if (!gasCols || gasCols.length === 0) {
         await db.query('ALTER TABLE bsc_withdrawals ADD COLUMN gas_cost_usdt DECIMAL(18,6) NOT NULL DEFAULT 0.000000 AFTER net_amount_usdt');
+      }
+      const [confirmationCols] = await db.query('SHOW COLUMNS FROM bsc_withdrawals LIKE ?', ['confirmations']);
+      if (!confirmationCols || confirmationCols.length === 0) {
+        await db.query("ALTER TABLE bsc_withdrawals ADD COLUMN confirmations INT NOT NULL DEFAULT 0 AFTER gas_cost_usdt");
+      }
+      const [submittedAtCols] = await db.query('SHOW COLUMNS FROM bsc_withdrawals LIKE ?', ['submitted_at']);
+      if (!submittedAtCols || submittedAtCols.length === 0) {
+        await db.query("ALTER TABLE bsc_withdrawals ADD COLUMN submitted_at TIMESTAMP NULL DEFAULT NULL AFTER status");
+      }
+      const [completedAtCols] = await db.query('SHOW COLUMNS FROM bsc_withdrawals LIKE ?', ['completed_at']);
+      if (!completedAtCols || completedAtCols.length === 0) {
+        await db.query("ALTER TABLE bsc_withdrawals ADD COLUMN completed_at TIMESTAMP NULL DEFAULT NULL AFTER submitted_at");
+      }
+      const [updatedAtCols] = await db.query('SHOW COLUMNS FROM bsc_withdrawals LIKE ?', ['updated_at']);
+      if (!updatedAtCols || updatedAtCols.length === 0) {
+        await db.query("ALTER TABLE bsc_withdrawals ADD COLUMN updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
+      }
+
+      const [withdrawalTxIndexRows] = await db.query("SHOW INDEX FROM bsc_withdrawals WHERE Key_name = 'idx_bsc_withdrawals_tx_hash'");
+      if (!withdrawalTxIndexRows || withdrawalTxIndexRows.length === 0) {
+        await db.query('ALTER TABLE bsc_withdrawals ADD INDEX idx_bsc_withdrawals_tx_hash (tx_hash)');
       }
     })().catch((error) => {
       withdrawalSchemaPromise = null;
@@ -1564,158 +1643,428 @@ function getCleanErrorMessage(err) {
   return msg.slice(0, 150) || 'Erreur on-chain';
 }
 
-const { ethers } = require('ethers');
+function getBscRpcProvider() {
+  if (!bscRpcProvider) {
+    bscRpcProvider = new ethers.providers.JsonRpcProvider(BSC_PROVIDER_URL);
+  }
+  return bscRpcProvider;
+}
+
+function scheduleWithdrawalMonitor(delayMs = WITHDRAWAL_MONITOR_INTERVAL_MS) {
+  if (withdrawalMonitorTimer) clearTimeout(withdrawalMonitorTimer);
+  withdrawalMonitorTimer = setTimeout(() => {
+    monitorPendingWithdrawals().catch((err) => {
+      console.error('[BSCWithdrawalMonitor] Scheduled monitor error:', err);
+    });
+  }, delayMs);
+}
+
+async function getWithdrawalById(logId) {
+  const [rows] = await db.query(
+    `SELECT id, user_id, tx_hash, recipient_address, amount_usdt, fee_usdt, net_amount_usdt, gas_cost_usdt,
+            confirmations, status, error_message, created_at
+     FROM bsc_withdrawals
+     WHERE id = ?
+     LIMIT 1`,
+    [logId]
+  );
+  return rows[0] || null;
+}
+
+async function calculateGasCostUsdt(receipt) {
+  let gasCostUsdt = 0;
+
+  try {
+    const gasUsed = receipt?.gasUsed;
+    const gasPrice = receipt?.effectiveGasPrice || receipt?.gasPrice;
+    if (!gasUsed || !gasPrice) {
+      return 0;
+    }
+
+    const gasCostWei = gasUsed.mul(gasPrice);
+    const gasCostBnb = parseFloat(ethers.utils.formatEther(gasCostWei));
+    const bnbPrice = await fetchBnbPrice();
+    gasCostUsdt = Number((gasCostBnb * bnbPrice).toFixed(6));
+
+    console.log(
+      `[BSCWithdrawal] Gas Used: ${gasUsed.toString()}, Gas Price: ${ethers.utils.formatUnits(gasPrice, 'gwei')} gwei, Gas Cost BNB: ${gasCostBnb}, BNB Price: $${bnbPrice}, Gas Cost USDT: $${gasCostUsdt}`
+    );
+  } catch (gasErr) {
+    console.error('[BSCWithdrawal] Failed to calculate gas fee in USD:', gasErr);
+  }
+
+  return gasCostUsdt;
+}
+
+async function sendWithdrawalReceiptEmail(userId, logId) {
+  try {
+    const fullUser = await User.getById(userId);
+    const [rows] = await db.query('SELECT * FROM bsc_withdrawals WHERE id = ? LIMIT 1', [logId]);
+    if (fullUser && rows.length > 0) {
+      mailer.sendTransactionReceiptEmail(fullUser, rows[0], 'withdrawal').catch((emailErr) => {
+        console.error('[BSCWithdrawal] Failed to send receipt email for withdrawal log:', logId, emailErr);
+      });
+    }
+  } catch (emailTriggerErr) {
+    console.error('[BSCWithdrawal] Failed to trigger receipt email:', emailTriggerErr);
+  }
+}
+
+async function completePendingWithdrawal(withdrawalRow, receipt, currentBlock) {
+  if (!withdrawalRow || withdrawalRow.status !== 'pending') {
+    return false;
+  }
+
+  const confirmations = receipt?.blockNumber
+    ? Math.max(0, Number(currentBlock || 0) - Number(receipt.blockNumber || 0) + 1)
+    : Number(withdrawalRow.confirmations || 0);
+  const gasCostUsdt = await calculateGasCostUsdt(receipt);
+
+  const [updateResult] = await db.query(
+    `UPDATE bsc_withdrawals
+     SET status = 'completed',
+         confirmations = ?,
+         gas_cost_usdt = ?,
+         completed_at = NOW(),
+         updated_at = NOW()
+     WHERE id = ? AND status = 'pending'`,
+    [confirmations, gasCostUsdt, withdrawalRow.id]
+  );
+
+  if (!updateResult || updateResult.affectedRows === 0) {
+    return false;
+  }
+
+  const amountUsdt = Number(withdrawalRow.amount_usdt || 0);
+  const netAmountUsdt = Number(withdrawalRow.net_amount_usdt || 0);
+  const feeVal = Number((amountUsdt - netAmountUsdt).toFixed(6));
+  const netAdminFee = Number(Math.max(0, feeVal - gasCostUsdt).toFixed(6));
+
+  try {
+    const admin = await Admin.getPrimaryAdmin();
+    if (admin && feeVal > 0 && netAdminFee > 0) {
+      await db.query(
+        'UPDATE admins SET withdrawal_fees_balance = COALESCE(withdrawal_fees_balance, 0) + ? WHERE id = ?',
+        [netAdminFee, admin.id]
+      );
+      await PlatformRevenue.recordUsd({
+        amount: netAdminFee,
+        entryType: 'withdrawal_fee',
+        payerUserId: withdrawalRow.user_id,
+        referenceId: String(withdrawalRow.id),
+        note: `Frais de retrait sur le retrait #${withdrawalRow.id} (Brut: ${amountUsdt.toFixed(2)} USDT, frais de gaz déduits: ${gasCostUsdt.toFixed(4)} USDT)`
+      });
+    }
+  } catch (adminFeeErr) {
+    console.error('[BSCWithdrawal] Failed to credit admin withdrawal fee:', adminFeeErr);
+  }
+
+  try {
+    await emitMarketNotification(
+      withdrawalRow.user_id,
+      null,
+      `Votre retrait de ${amountUsdt.toFixed(2)} USDT (Net reçu : ${netAmountUsdt.toFixed(2)} USDT après frais) a été envoyé avec succès. Hash: ${withdrawalRow.tx_hash}`
+    );
+  } catch (notifErr) {
+    console.error('[BSCWithdrawal] Failed to emit withdrawal success notification:', notifErr);
+  }
+
+  try {
+    await emitRealtimeBalanceUpdate(withdrawalRow.user_id, `Retrait de ${amountUsdt.toFixed(2)} USDT complété !`);
+  } catch (balanceErr) {
+    console.error('[BSCWithdrawal] Failed to emit withdrawal success balance update:', balanceErr);
+  }
+
+  await sendWithdrawalReceiptEmail(withdrawalRow.user_id, withdrawalRow.id);
+
+  io.to(`user:${withdrawalRow.user_id}`).emit('withdrawal-status', {
+    type: 'completed',
+    amount: amountUsdt,
+    netAmount: netAmountUsdt,
+    txHash: withdrawalRow.tx_hash,
+    confirmations,
+    required: WITHDRAWAL_CONFIRMATIONS_REQUIRED,
+    message: `Retrait de ${amountUsdt.toFixed(2)} USDT (Reçu : ${netAmountUsdt.toFixed(2)} USDT après frais) envoyé avec succès !`
+  });
+
+  return true;
+}
+
+async function failPendingWithdrawal(withdrawalRow, cleanReason) {
+  if (!withdrawalRow) return false;
+
+  const connection = await db.getConnection();
+  let shouldEmitFailure = false;
+
+  try {
+    await connection.beginTransaction();
+
+    const [rows] = await connection.query(
+      `SELECT id, user_id, amount_usdt, net_amount_usdt, tx_hash, status
+       FROM bsc_withdrawals
+       WHERE id = ?
+       FOR UPDATE`,
+      [withdrawalRow.id]
+    );
+
+    const lockedWithdrawal = rows[0];
+    if (!lockedWithdrawal || lockedWithdrawal.status !== 'pending') {
+      await connection.rollback();
+      return false;
+    }
+
+    await connection.query(
+      `UPDATE bsc_withdrawals
+       SET status = 'failed',
+           error_message = ?,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [cleanReason, lockedWithdrawal.id]
+    );
+
+    await connection.query(
+      'UPDATE users SET withdrawal_account_balance = withdrawal_account_balance + ? WHERE id = ?',
+      [lockedWithdrawal.amount_usdt, lockedWithdrawal.user_id]
+    );
+
+    await connection.commit();
+    shouldEmitFailure = true;
+    withdrawalRow = {
+      ...withdrawalRow,
+      ...lockedWithdrawal
+    };
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
+  }
+
+  if (!shouldEmitFailure) {
+    return false;
+  }
+
+  try {
+    await emitMarketNotification(
+      withdrawalRow.user_id,
+      null,
+      `Votre retrait de ${Number(withdrawalRow.amount_usdt || 0).toFixed(2)} USDT a échoué et le solde a été restitué. Raison: ${cleanReason}`
+    );
+  } catch (notifErr) {
+    console.error('[BSCWithdrawal] Failed to emit withdrawal failure notification:', notifErr);
+  }
+
+  try {
+    await emitRealtimeBalanceUpdate(withdrawalRow.user_id, `Retrait échoué : ${cleanReason}`);
+  } catch (balanceErr) {
+    console.error('[BSCWithdrawal] Failed to emit withdrawal failure balance update:', balanceErr);
+  }
+
+  io.to(`user:${withdrawalRow.user_id}`).emit('withdrawal-status', {
+    type: 'failed',
+    amount: Number(withdrawalRow.amount_usdt || 0),
+    netAmount: Number(withdrawalRow.net_amount_usdt || 0),
+    txHash: withdrawalRow.tx_hash || null,
+    error: cleanReason,
+    message: 'Le retrait a échoué. Votre solde a été restitué.'
+  });
+
+  return true;
+}
+
+async function emitPendingWithdrawalProgress(withdrawalRow, confirmations) {
+  const normalizedConfirmations = Math.max(0, Number(confirmations || 0));
+  if (Number(withdrawalRow.confirmations || 0) === normalizedConfirmations) {
+    return;
+  }
+
+  await db.query(
+    `UPDATE bsc_withdrawals
+     SET confirmations = ?, updated_at = NOW()
+     WHERE id = ? AND status = 'pending'`,
+    [normalizedConfirmations, withdrawalRow.id]
+  );
+
+  io.to(`user:${withdrawalRow.user_id}`).emit('withdrawal-status', {
+    type: 'pending',
+    amount: Number(withdrawalRow.amount_usdt || 0),
+    netAmount: Number(withdrawalRow.net_amount_usdt || 0),
+    txHash: withdrawalRow.tx_hash,
+    confirmations: normalizedConfirmations,
+    required: WITHDRAWAL_CONFIRMATIONS_REQUIRED,
+    message: `Retrait détecté sur la blockchain (${normalizedConfirmations}/${WITHDRAWAL_CONFIRMATIONS_REQUIRED} confirmations).`
+  });
+}
+
+async function monitorPendingWithdrawals() {
+  if (withdrawalMonitorRunning) return;
+  withdrawalMonitorRunning = true;
+
+  try {
+    const provider = getBscRpcProvider();
+    const currentBlock = await provider.getBlockNumber();
+    let lastProcessedId = 0;
+
+    while (true) {
+      const [rows] = await db.query(
+        `SELECT id, user_id, tx_hash, recipient_address, amount_usdt, fee_usdt, net_amount_usdt, gas_cost_usdt,
+                confirmations, status, error_message, created_at
+         FROM bsc_withdrawals
+         WHERE status = 'pending' AND id > ?
+         ORDER BY id ASC
+         LIMIT 100`,
+        [lastProcessedId]
+      );
+
+      if (!rows.length) {
+        break;
+      }
+
+      for (const withdrawalRow of rows) {
+        lastProcessedId = withdrawalRow.id;
+
+        if (!withdrawalRow.tx_hash) {
+          const ageMs = Date.now() - new Date(withdrawalRow.created_at).getTime();
+          if (Number.isFinite(ageMs) && ageMs > 2 * 60 * 1000) {
+            console.warn(`[BSCWithdrawalMonitor] Withdrawal #${withdrawalRow.id} is still pending without tx hash after ${Math.round(ageMs / 1000)}s.`);
+          }
+          continue;
+        }
+
+        let receipt;
+        try {
+          receipt = await provider.getTransactionReceipt(withdrawalRow.tx_hash);
+        } catch (receiptErr) {
+          console.error(`[BSCWithdrawalMonitor] Failed to fetch receipt for withdrawal #${withdrawalRow.id}:`, receiptErr);
+          continue;
+        }
+
+        if (!receipt) {
+          continue;
+        }
+
+        const confirmations = receipt.blockNumber
+          ? Math.max(0, currentBlock - Number(receipt.blockNumber || 0) + 1)
+          : Number(withdrawalRow.confirmations || 0);
+
+        if (receipt.status === 0) {
+          await failPendingWithdrawal(withdrawalRow, 'La transaction blockchain a échoué (receipt status 0).');
+          continue;
+        }
+
+        if (receipt.status === 1 && confirmations >= WITHDRAWAL_CONFIRMATIONS_REQUIRED) {
+          await completePendingWithdrawal(withdrawalRow, receipt, currentBlock);
+          continue;
+        }
+
+        await emitPendingWithdrawalProgress(withdrawalRow, confirmations);
+      }
+    }
+  } catch (err) {
+    console.error('[BSCWithdrawalMonitor] Error while reconciling pending withdrawals:', err);
+  } finally {
+    withdrawalMonitorRunning = false;
+    scheduleWithdrawalMonitor();
+  }
+}
+
+function startWithdrawalMonitor() {
+  scheduleWithdrawalMonitor(0);
+}
+
+function triggerPendingWithdrawalCheck() {
+  if (withdrawalMonitorTimer) {
+    clearTimeout(withdrawalMonitorTimer);
+    withdrawalMonitorTimer = null;
+  }
+
+  if (withdrawalMonitorRunning) {
+    return;
+  }
+
+  monitorPendingWithdrawals().catch((err) => {
+    console.error('[BSCWithdrawalMonitor] Immediate trigger failed:', err);
+  });
+}
 
 async function executeBlockchainWithdrawal(userId, logId, recipientAddress, amountUsdt, netAmountUsdt) {
+  let tx = null;
+
   try {
     const privateKey = process.env.PLATFORM_PRIVATE_KEY;
     if (!privateKey) {
       throw new Error("Clé privée de la plateforme (PLATFORM_PRIVATE_KEY) non configurée dans le fichier .env.");
     }
-    
-    const providerUrl = process.env.BSC_PROVIDER_URL || 'https://bsc-dataseed.binance.org/';
-    const provider = new ethers.providers.JsonRpcProvider(providerUrl);
+
+    const provider = getBscRpcProvider();
     const signer = new ethers.Wallet(privateKey, provider);
-    
-    const usdtContractAddress = '0x55d398326f99059fF775485246999027B3197955'; // USDT contract on BSC
-    const usdtAbi = ['function transfer(address to, uint256 amount) returns (bool)'];
-    const contract = new ethers.Contract(usdtContractAddress, usdtAbi, signer);
-    
-    // USDT BEP-20 uses 18 decimals on BSC mainnet
+    const contract = new ethers.Contract(BSC_USDT_CONTRACT, USDT_TRANSFER_ABI, signer);
     const amountWei = ethers.utils.parseUnits(netAmountUsdt.toFixed(18), 18);
-    
-    // Send transaction
-    const tx = await contract.transfer(recipientAddress, amountWei);
-    
-    // Update withdrawal log with hash
-    await db.query(
-      'UPDATE bsc_withdrawals SET tx_hash = ? WHERE id = ?',
-      [tx.hash, logId]
-    );
-    
-    // Wait for 1 confirmation
-    const receipt = await tx.wait(1);
-    
-    if (receipt.status === 1) {
-      // Calculate actual gas fee in USDT
-      let gasCostUsdt = 0.0;
-      try {
-        const gasUsed = receipt.gasUsed;
-        const effectiveGasPrice = receipt.effectiveGasPrice;
-        if (gasUsed && effectiveGasPrice) {
-          const gasCostWei = gasUsed.mul(effectiveGasPrice);
-          const gasCostBnb = parseFloat(ethers.utils.formatEther(gasCostWei));
-          const bnbPrice = await fetchBnbPrice();
-          gasCostUsdt = Number((gasCostBnb * bnbPrice).toFixed(6));
-          console.log(`[BSCWithdrawal] Gas Used: ${gasUsed.toString()}, Gas Price: ${ethers.utils.formatUnits(effectiveGasPrice, 'gwei')} gwei, Gas Cost BNB: ${gasCostBnb}, BNB Price: $${bnbPrice}, Gas Cost USDT: $${gasCostUsdt}`);
-        }
-      } catch (gasErr) {
-        console.error('[BSCWithdrawal] Failed to calculate gas fee in USD:', gasErr);
-      }
-
-      // Transaction succeeded!
-      await db.query(
-        "UPDATE bsc_withdrawals SET status = 'completed', gas_cost_usdt = ? WHERE id = ?",
-        [gasCostUsdt, logId]
-      );
-      
-      // Credit primary admin's withdrawal fees balance (subtracting gas fee from 30% gross fee)
-      const feeVal = Number((amountUsdt - netAmountUsdt).toFixed(6));
-      const netAdminFee = Number(Math.max(0, feeVal - gasCostUsdt).toFixed(6));
-      
-      const admin = await Admin.getPrimaryAdmin();
-      if (admin && feeVal > 0) {
-        await db.query(
-          'UPDATE admins SET withdrawal_fees_balance = COALESCE(withdrawal_fees_balance, 0) + ? WHERE id = ?',
-          [netAdminFee, admin.id]
-        );
-        await PlatformRevenue.recordUsd({
-          amount: netAdminFee,
-          entryType: 'withdrawal_fee',
-          payerUserId: userId,
-          referenceId: String(logId),
-          note: `Frais de retrait de 30% sur le retrait #${logId} (Brut: ${amountUsdt.toFixed(2)} USDT, frais de gaz déduits : ${gasCostUsdt.toFixed(4)} USDT)`
-        });
-      }
-      
-      await emitMarketNotification(userId, null, `Votre retrait de ${amountUsdt.toFixed(2)} USDT (Net reçu : ${netAmountUsdt.toFixed(2)} USDT après 30% de frais) a été envoyé avec succès. Hash: ${tx.hash}`);
-      await emitRealtimeBalanceUpdate(userId, `Retrait de ${amountUsdt.toFixed(2)} USDT complété !`);
-
-      // Send transaction receipt email in background
-      try {
-        const fullUser = await User.getById(userId);
-        const [wRows] = await db.query('SELECT * FROM bsc_withdrawals WHERE id = ?', [logId]);
-        if (fullUser && wRows.length > 0) {
-          mailer.sendTransactionReceiptEmail(fullUser, wRows[0], 'withdrawal').catch(emailErr => {
-            console.error('[BSCWithdrawal] Failed to send receipt email for withdrawal log:', logId, emailErr);
-          });
-        }
-      } catch (emailTriggerErr) {
-        console.error('[BSCWithdrawal] Failed to trigger receipt email:', emailTriggerErr);
-      }
-      
-      // Emit withdrawal status to socket
-      io.to(`user:${userId}`).emit('withdrawal-status', {
-        type: 'completed',
-        amount: amountUsdt,
-        netAmount: netAmountUsdt,
-        txHash: tx.hash,
-        message: `Retrait de ${amountUsdt.toFixed(2)} USDT (Reçu : ${netAmountUsdt.toFixed(2)} USDT après frais) envoyé avec succès !`
-      });
-    } else {
-      throw new Error("La transaction blockchain a échoué (receipt status 0).");
-    }
+    tx = await contract.transfer(recipientAddress, amountWei);
   } catch (err) {
     console.error(`[BSCWithdrawal] On-chain transfer failed for log ${logId}:`, err);
-    
     const cleanReason = getCleanErrorMessage(err);
-    
-    // 1. Refund user's balance
+
+    try {
+      const withdrawalRow = await getWithdrawalById(logId);
+      await failPendingWithdrawal(
+        withdrawalRow || {
+          id: logId,
+          user_id: userId,
+          amount_usdt: amountUsdt,
+          net_amount_usdt: netAmountUsdt,
+          tx_hash: null,
+          status: 'pending'
+        },
+        cleanReason
+      );
+    } catch (failErr) {
+      console.error(`[BSCWithdrawal] Failed to rollback withdrawal ${logId}:`, failErr);
+    }
+    return;
+  }
+
+  try {
+    await db.query(
+      `UPDATE bsc_withdrawals
+       SET tx_hash = ?,
+           submitted_at = NOW(),
+           confirmations = 0,
+           error_message = NULL,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [tx.hash, logId]
+    );
+  } catch (persistErr) {
+    console.error(`[BSCWithdrawal] Submitted tx ${tx.hash} but failed to persist it for withdrawal ${logId}:`, persistErr);
+
     try {
       await db.query(
-        'UPDATE users SET withdrawal_account_balance = withdrawal_account_balance + ? WHERE id = ?',
-        [amountUsdt, userId]
+        `UPDATE bsc_withdrawals
+         SET tx_hash = ?,
+             submitted_at = NOW(),
+             confirmations = 0,
+             error_message = NULL,
+             updated_at = NOW()
+         WHERE id = ? AND (tx_hash IS NULL OR tx_hash = '')`,
+        [tx.hash, logId]
       );
-    } catch (refundErr) {
-      console.error(`[BSCWithdrawal] Refund failed for user ${userId}, log ${logId}:`, refundErr);
-    }
-    
-    // 2. Update log to failed (storing cleanReason in error_message to simplify transaction history)
-    try {
-      await db.query(
-        "UPDATE bsc_withdrawals SET status = 'failed', error_message = ? WHERE id = ?",
-        [cleanReason, logId]
-      );
-    } catch (dbErr) {
-      console.error(`[BSCWithdrawal] Failed to update bsc_withdrawals for log ${logId}:`, dbErr);
-    }
-    
-    // 3. Emit notification
-    try {
-      await emitMarketNotification(userId, null, `Votre retrait de ${amountUsdt.toFixed(2)} USDT a échoué et le solde a été restitué. Raison: ${cleanReason}`);
-    } catch (notifErr) {
-      console.error(`[BSCWithdrawal] Failed to emit market notification for user ${userId}:`, notifErr);
-    }
-    
-    // 4. Emit balance update
-    try {
-      await emitRealtimeBalanceUpdate(userId, `Retrait échoué : ${cleanReason}`);
-    } catch (balErr) {
-      console.error(`[BSCWithdrawal] Failed to emit balance update for user ${userId}:`, balErr);
-    }
-    
-    // 5. Emit status to socket
-    try {
-      io.to(`user:${userId}`).emit('withdrawal-status', {
-        type: 'failed',
-        amount: amountUsdt,
-        error: cleanReason,
-        message: `Le retrait a échoué. Votre solde a été restitué.`
-      });
-    } catch (socketErr) {
-      console.error(`[BSCWithdrawal] Failed to emit socket withdrawal-status for user ${userId}:`, socketErr);
+    } catch (retryErr) {
+      console.error(`[BSCWithdrawal] Retry to persist tx ${tx.hash} failed for withdrawal ${logId}:`, retryErr);
     }
   }
+
+  io.to(`user:${userId}`).emit('withdrawal-status', {
+    type: 'submitted',
+    amount: Number(amountUsdt || 0),
+    netAmount: Number(netAmountUsdt || 0),
+    txHash: tx.hash,
+    confirmations: 0,
+    required: WITHDRAWAL_CONFIRMATIONS_REQUIRED,
+    message: `Retrait soumis sur la blockchain BSC. Hash: ${tx.hash}`
+  });
+
+  triggerPendingWithdrawalCheck();
 }
 
 app.post('/api/wallet/address', requireAuth, async (req, res) => {
@@ -1761,7 +2110,7 @@ app.get('/api/wallet/deposit-info', requireAuth, async (req, res) => {
   try {
     const userId = req.session.userId;
     const user = await User.getById(userId);
-    let platformWallet = '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6';
+    const platformWallet = PLATFORM_WALLET_ADDRESS;
     let qrDataUrl = null;
 
     const minWithdrawalAmount = await getNumberSetting('min_withdrawal_amount', 50);
@@ -1801,6 +2150,7 @@ app.get('/api/wallet/deposit-info', requireAuth, async (req, res) => {
       withdrawalBalance: user?.withdrawal_account_balance || 0,
       minWithdrawalAmount,
       withdrawalFeePercent,
+      withdrawalConfirmationsRequired: WITHDRAWAL_CONFIRMATIONS_REQUIRED,
       isFirstWithdrawal,
       hasPassedKyc
     });
@@ -2187,11 +2537,13 @@ app.post('/api/wallet/withdraw', requireAuth, async (req, res) => {
     
     if (!user.wallet_address) {
       await connection.rollback();
+      connection.release();
       return res.status(400).json({ success: false, error: 'Veuillez configurer votre adresse de portefeuille avant de demander un retrait.' });
     }
     
     if (!user.withdrawal_pin) {
       await connection.rollback();
+      connection.release();
       return res.status(400).json({ success: false, error: 'Veuillez configurer votre code secret de retrait avant de continuer.' });
     }
     
@@ -2199,12 +2551,14 @@ app.post('/api/wallet/withdraw', requireAuth, async (req, res) => {
     const pinMatch = await bcrypt.compare(pin, user.withdrawal_pin);
     if (!pinMatch) {
       await connection.rollback();
+      connection.release();
       return res.status(400).json({ success: false, error: 'Code secret de retrait incorrect.' });
     }
     
     const userBal = parseFloat(user.withdrawal_account_balance || 0);
     if (amountVal > userBal) {
       await connection.rollback();
+      connection.release();
       return res.status(400).json({ success: false, error: 'Solde de retrait insuffisant.' });
     }
     
@@ -7036,6 +7390,7 @@ server.listen(PORT, async () => {
       }
       
       bscMonitor.start(io);
+      startWithdrawalMonitor();
 
       // Start periodic check for inactive tablefootball games (5 minutes of inactivity -> cancel & refund)
       setInterval(async () => {

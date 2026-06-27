@@ -7474,14 +7474,28 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (icon && title && desc && closeBtn) {
       icon.className = '';
-      if (data.type === 'completed') {
+      icon.style.color = '';
+      const amount = Number(data.amount || 0);
+      const feePct = Number(window.withdrawalFeePercent !== undefined ? window.withdrawalFeePercent : 30);
+      const netAmt = Number(data.netAmount !== undefined ? data.netAmount : (amount * (1 - feePct / 100)));
+
+      if (data.type === 'submitted') {
+        icon.className = 'animate-spin';
+        icon.setAttribute('data-lucide', 'loader');
+        icon.style.color = 'var(--primary)';
+        title.textContent = 'Transaction soumise';
+        desc.innerHTML = `Votre retrait de <strong>${amount.toFixed(2)} USDT</strong> a ete soumis sur la blockchain BSC.<br><br>Hash de transaction : <br><code style="font-family: monospace; font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${data.txHash}</code>`;
+      } else if (data.type === 'pending') {
+        icon.setAttribute('data-lucide', 'clock-3');
+        icon.style.color = '#eab308';
+        title.textContent = 'Confirmation blockchain';
+        desc.innerHTML = `Votre retrait de <strong>${amount.toFixed(2)} USDT</strong> est en cours de confirmation sur la blockchain BSC (${Number(data.confirmations || 0)}/${Number(data.required || 1)} confirmations).<br><br>Hash de transaction : <br><code style="font-family: monospace; font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${data.txHash}</code>`;
+      } else if (data.type === 'completed') {
         icon.setAttribute('data-lucide', 'check-circle');
         icon.style.color = '#10b981';
         title.textContent = 'Retrait réussi !';
-        const feePct = Number(window.withdrawalFeePercent !== undefined ? window.withdrawalFeePercent : 30);
-        const netAmt = Number(data.netAmount !== undefined ? data.netAmount : (data.amount * (1 - feePct / 100)));
-        const feePercentVal = data.amount > 0 ? Math.round((1 - (netAmt / data.amount)) * 100) : feePct;
-        desc.innerHTML = `Votre retrait de <strong>${data.amount.toFixed(2)} USDT</strong> a été envoyé avec succès (Somme reçue : <strong>${netAmt.toFixed(2)} USDT</strong> après ${feePercentVal}% de frais).<br><br>Hash de transaction : <br><code style="font-family: monospace; font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${data.txHash}</code>`;
+        const feePercentVal = amount > 0 ? Math.round((1 - (netAmt / amount)) * 100) : feePct;
+        desc.innerHTML = `Votre retrait de <strong>${amount.toFixed(2)} USDT</strong> a été envoyé avec succès (Somme reçue : <strong>${netAmt.toFixed(2)} USDT</strong> après ${feePercentVal}% de frais).<br><br>Hash de transaction : <br><code style="font-family: monospace; font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${data.txHash}</code>`;
       } else if (data.type === 'failed') {
         icon.setAttribute('data-lucide', 'x-circle');
         icon.style.color = 'var(--danger)';
@@ -7622,6 +7636,48 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  const getTextAlignJustifyValue = (alignment) => {
+    const normalizedAlignment = String(alignment || '').trim().toLowerCase();
+    if (normalizedAlignment === 'left') return 'flex-start';
+    if (normalizedAlignment === 'right') return 'flex-end';
+    if (normalizedAlignment === 'justify') return 'flex-start';
+    return 'center';
+  };
+
+  const getTextPositionJustifyValue = (position) => {
+    const normalizedPosition = String(position || '').trim().toLowerCase();
+    if (normalizedPosition === 'top') return 'flex-start';
+    if (normalizedPosition === 'bottom') return 'flex-end';
+    return 'center';
+  };
+
+  const renderStyledBackgroundPostHtml = (post) => {
+    const textAlignment = ['left', 'center', 'right', 'justify'].includes(String(post.text_alignment || '').trim().toLowerCase())
+      ? String(post.text_alignment).trim().toLowerCase()
+      : 'center';
+    const textColor = typeof post.text_color === 'string' && post.text_color.trim()
+      ? post.text_color.trim()
+      : '#ffffff';
+    const textFont = typeof post.text_font === 'string' && post.text_font.trim()
+      ? post.text_font.trim()
+      : "'Outfit', sans-serif";
+    const textSize = typeof post.text_size === 'string' && post.text_size.trim()
+      ? post.text_size.trim()
+      : '20px';
+    const verticalJustify = getTextPositionJustifyValue(post.text_position);
+    const horizontalJustify = getTextAlignJustifyValue(textAlignment);
+    const textWidth = textAlignment === 'justify' ? '100%' : 'auto';
+    const textDisplay = textAlignment === 'justify' ? 'block' : 'inline-block';
+
+    return `
+      <div class="post-bg-container" style="background-image: url('${post.bg_image_url}'); color: ${textColor}; font-family: ${textFont}; align-items: stretch; justify-content: ${verticalJustify}; font-size: ${textSize}; --bg-text-size: ${textSize};">
+        <div class="post-bg-text-shell" data-text-align="${textAlignment}" style="width: 100%; display: flex; justify-content: ${horizontalJustify};">
+          <p class="formatted-hashtag-text post-bg-text" data-raw-text="${escapeHtml(post.content || '')}" style="max-width: 100%; width: ${textWidth}; display: ${textDisplay}; text-align: ${textAlignment}; color: ${textColor}; margin: 0; padding: 0; white-space: pre-wrap;">${renderHashtagRichText(post.content || '')}</p>
+        </div>
+      </div>
+    `;
+  };
+
   // Helper to dynamically build post card element (used by socket and real-time search)
   const createPostCardElement = (post) => {
     const newPost = document.createElement('article');
@@ -7641,16 +7697,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Background rendering supporting bg_image_url
     let postContentHtml = '';
     if (post.bg_image_url) {
-      const alignMap = { 'left': 'flex-start', 'right': 'flex-end', 'center': 'center', 'justify': 'stretch' };
-      const posMap = { 'top': 'flex-start', 'center': 'center', 'bottom': 'flex-end' };
-      const alignVal = alignMap[post.text_alignment] || 'center';
-      const posVal = posMap[post.text_position] || 'center';
-
-      postContentHtml = `
-        <div class="post-bg-container" style="background-image: url('${post.bg_image_url}'); color: ${post.text_color || '#ffffff'}; text-align: ${post.text_alignment || 'center'}; font-family: ${post.text_font || "'Outfit', sans-serif"}; align-items: ${alignVal}; justify-content: ${posVal}; font-size: ${post.text_size || '20px'}; --bg-text-size: ${post.text_size || '20px'};">
-          <p class="formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="width: 100%; text-align: ${post.text_alignment === 'justify' ? 'justify' : 'inherit'}; margin: 0; padding: 0; white-space: pre-wrap;">${renderHashtagRichText(post.content || '')}</p>
-        </div>
-      `;
+      postContentHtml = renderStyledBackgroundPostHtml(post);
       if (post.challenge_type) {
         postContentHtml += renderChallengeCardHtml(post);
       }
@@ -16780,10 +16827,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function updatePostInputPreview() {
     if (!postInputEl) return;
     const previewBox = document.getElementById('textStylePreviewBox');
+    const previewShell = document.getElementById('textStylePreviewShell');
     const previewText = document.getElementById('textStylePreviewText');
 
     if (selectedBackground) {
-      if (previewBox && previewText) {
+      if (previewBox && previewShell && previewText) {
         const wasHidden = previewBox.style.display === 'none' || !previewBox.style.display;
 
         // On first background selection: transfer any text already in postInputEl into the editable preview
@@ -16802,33 +16850,29 @@ document.addEventListener('DOMContentLoaded', () => {
         previewBox.style.minHeight = '140px';
         previewBox.style.borderRadius = '12px';
         previewBox.style.boxShadow = 'inset 0 0 0 1px rgba(255, 255, 255, 0.16)';
+        previewBox.style.flexDirection = 'column';
+        previewBox.style.alignItems = 'stretch';
+        previewBox.style.justifyContent = getTextPositionJustifyValue(selectedTextPosition);
 
-        const alignMap = {
-          'left': 'flex-start',
-          'right': 'flex-end',
-          'center': 'center',
-          'justify': 'stretch'
-        };
-        previewBox.style.alignItems = alignMap[selectedTextAlignment] || 'center';
-
-        const posMap = {
-          'top': 'flex-start',
-          'center': 'center',
-          'bottom': 'flex-end'
-        };
-        previewBox.style.justifyContent = posMap[selectedTextPosition] || 'center';
+        previewShell.dataset.textAlign = selectedTextAlignment;
+        previewShell.style.display = 'flex';
+        previewShell.style.width = '100%';
+        previewShell.style.justifyContent = getTextAlignJustifyValue(selectedTextAlignment);
 
         previewText.style.color = selectedTextColor;
         previewText.style.textAlign = selectedTextAlignment;
         previewText.style.fontFamily = selectedTextFont;
         previewText.style.fontSize = selectedTextSize;
         previewText.style.fontWeight = '600';
+        previewText.style.maxWidth = '100%';
+        previewText.style.width = selectedTextAlignment === 'justify' ? '100%' : 'auto';
+        previewText.style.display = selectedTextAlignment === 'justify' ? 'block' : 'inline-block';
       }
 
       const resetBtn = document.getElementById('resetTextStyleBtn');
       if (resetBtn) resetBtn.style.display = 'flex';
     } else {
-      if (previewBox && previewText) {
+      if (previewBox && previewShell && previewText) {
         // Return text from the editable preview back to the main postInputEl on reset
         const previewContent = previewText.innerText.trim();
         if (previewContent) {
@@ -16839,6 +16883,8 @@ document.addEventListener('DOMContentLoaded', () => {
         previewText.innerText = '';
         previewBox.style.display = 'none';
         previewBox.style.backgroundImage = '';
+        previewShell.dataset.textAlign = 'center';
+        previewShell.style.justifyContent = 'center';
       }
       const resetBtn = document.getElementById('resetTextStyleBtn');
       if (resetBtn) resetBtn.style.display = 'none';
@@ -20537,6 +20583,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.withdrawalFeePercent !== undefined) {
           window.withdrawalFeePercent = Number(data.withdrawalFeePercent);
         }
+        if (data.withdrawalConfirmationsRequired !== undefined) {
+          window.withdrawalConfirmationsRequired = Number(data.withdrawalConfirmationsRequired);
+        }
         
         const freshWithdrawalBalance = data.withdrawalBalance !== undefined ? Number(data.withdrawalBalance) : (window.currentUserWithdrawalBalance || 0);
         const isFreshWithdrawDisabled = freshWithdrawalBalance < (window.minWithdrawalAmount || 50);
@@ -20968,12 +21017,20 @@ document.addEventListener('DOMContentLoaded', () => {
               
               let statusClass = 'market-status-badge--pending';
               let statusText = 'En attente';
+              const requiredConfirmations = Number(window.withdrawalConfirmationsRequired || 1);
+              const currentConfirmations = Math.max(0, Number(w.confirmations || 0));
               if (w.status === 'completed') {
                 statusClass = 'market-status-badge--completed';
                 statusText = 'Terminé';
               } else if (w.status === 'failed') {
                 statusClass = 'market-status-badge--disputed';
                 statusText = 'Échoué';
+              } else if (w.tx_hash) {
+                statusText = requiredConfirmations > 1
+                  ? `Confirmation ${Math.min(currentConfirmations, requiredConfirmations)}/${requiredConfirmations}`
+                  : (currentConfirmations > 0 ? 'Confirmé réseau' : 'Soumis');
+              } else {
+                statusText = 'Envoi...';
               }
 
               const txSection = w.tx_hash ? `

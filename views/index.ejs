@@ -598,11 +598,13 @@ function getYouTubeId(url) {
                                       style="padding: 16px; display: flex; flex-direction: column; gap: 14px;">
 
                                       <!-- Text Post Preview Box -->
-                                      <div id="textStylePreviewBox" style="display: none; width: 100%; min-height: 140px; border-radius: 12px; align-items: center; justify-content: center; background-size: cover; background-position: center; padding: 20px 16px; box-sizing: border-box; text-shadow: 0 2px 4px rgba(0,0,0,0.6); overflow: hidden; position: relative;">
-                                        <div id="textStylePreviewText"
-                                          contenteditable="true"
-                                          data-placeholder="<%= tText("Votre texte ici...") %>"
-                                          style="width: 100%; white-space: pre-wrap; font-weight: 600; overflow-wrap: break-word; word-break: normal; outline: none; cursor: text; min-height: 1em;"></div>
+                                      <div id="textStylePreviewBox" style="display: none; width: 100%; min-height: 140px; border-radius: 12px; flex-direction: column; align-items: stretch; justify-content: center; background-size: cover; background-position: center; padding: 20px 16px; box-sizing: border-box; text-shadow: 0 2px 4px rgba(0,0,0,0.6); overflow: hidden; position: relative;">
+                                        <div id="textStylePreviewShell" data-text-align="center" style="width: 100%; display: flex; justify-content: center;">
+                                          <div id="textStylePreviewText"
+                                            contenteditable="true"
+                                            data-placeholder="<%= tText("Votre texte ici...") %>"
+                                            style="max-width: 100%; display: inline-block; white-space: pre-wrap; font-weight: 600; overflow-wrap: break-word; word-break: normal; outline: none; cursor: text; min-height: 1em;"></div>
+                                        </div>
                                       </div>
 
                                       <!-- Background Grid Selector -->
@@ -1085,17 +1087,22 @@ function getYouTubeId(url) {
                                                     <div class="post-content">
                                                       <% if (post.bg_image_url) { %>
                                                         <!-- Custom Image Background post style -->
-                                                        <% const alignMap={ 'left' : 'flex-start' , 'right' : 'flex-end'
-                                                          , 'center' : 'center', 'justify': 'stretch' }; const posMap={ 'top' : 'flex-start'
+                                                          <% const textAlignMap={ 'left' : 'flex-start' , 'right' : 'flex-end'
+                                                          , 'center' : 'center', 'justify': 'flex-start' }; const posMap={ 'top' : 'flex-start'
                                                           , 'center' : 'center' , 'bottom' : 'flex-end' }; const
-                                                          alignVal=alignMap[post.text_alignment] || 'center' ; const
-                                                          posVal=posMap[post.text_position] || 'center' ; %>
+                                                          normalizedTextAlign=['left', 'center', 'right', 'justify'].includes(post.text_alignment) ? post.text_alignment : 'center' ; const
+                                                          shellJustify=textAlignMap[normalizedTextAlign] || 'center' ; const
+                                                          posVal=posMap[post.text_position] || 'center' ; const
+                                                          textWidth=normalizedTextAlign === 'justify' ? '100%' : 'auto' ; const
+                                                          textDisplay=normalizedTextAlign === 'justify' ? 'block' : 'inline-block' ; %>
                                                           <div class="post-bg-container"
-                                                            style="background-image: url('<%= post.bg_image_url %>'); color: <%= post.text_color || '#ffffff' %>; text-align: <%= post.text_alignment || 'center' %>; font-family: <%= post.text_font || '\'Outfit\', sans-serif' %>; align-items: <%= alignVal %>; justify-content: <%= posVal %>; font-size: <%= post.text_size || '20px' %>; --bg-text-size: <%= post.text_size || '20px' %>;">
-                                                            <p class="formatted-hashtag-text"
-                                                              style="width: 100%; text-align: <%= post.text_alignment === 'justify' ? 'justify' : 'inherit' %>; margin: 0; padding: 0; white-space: pre-wrap;">
-                                                              <%= post.content %>
-                                                            </p>
+                                                            style="background-image: url('<%= post.bg_image_url %>'); color: <%= post.text_color || '#ffffff' %>; font-family: <%= post.text_font || '\'Outfit\', sans-serif' %>; align-items: stretch; justify-content: <%= posVal %>; font-size: <%= post.text_size || '20px' %>; --bg-text-size: <%= post.text_size || '20px' %>;">
+                                                            <div class="post-bg-text-shell" data-text-align="<%= normalizedTextAlign %>" style="width: 100%; display: flex; justify-content: <%= shellJustify %>;">
+                                                              <p class="formatted-hashtag-text post-bg-text" data-raw-text="<%= post.content %>"
+                                                                style="max-width: 100%; width: <%= textWidth %>; display: <%= textDisplay %>; text-align: <%= normalizedTextAlign %>; color: <%= post.text_color || '#ffffff' %>; margin: 0; padding: 0; white-space: pre-wrap;">
+                                                                <%= post.content %>
+                                                              </p>
+                                                            </div>
                                                           </div>
                                                           <% if (post.challenge_type) { %>
                                                             <div class="challenge-post-card" data-challenge-post-id="<%= post.id %>"

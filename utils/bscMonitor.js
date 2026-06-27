@@ -3,14 +3,56 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const P2PMarket = require('../models/P2PMarket');
 const mailer = require('./mailer');
+const { getNumberSetting, setSetting } = require('./appSettings');
+const { ethers } = require('ethers');
 
-let pollingInterval = null;
 let ioInstance = null;
+let pollTimer = null;
+let rpcProvider = null;
+let wsProvider = null;
+let wsSubscriptionBound = false;
+let serviceStarted = false;
+let cycleRunning = false;
 
-// Platform wallet info
-const PLATFORM_WALLET = '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6';
-const USDT_CONTRACT = '0x55d398326f99059fF775485246999027B3197955';
-const REQUIRED_CONFIRMATIONS = 12;
+const PLATFORM_WALLET = (process.env.PLATFORM_WALLET_ADDRESS || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').trim();
+const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').trim();
+const REQUIRED_CONFIRMATIONS = Math.max(1, Number.parseInt(process.env.BSC_DEPOSIT_CONFIRMATIONS || '12', 10) || 12);
+const POLL_INTERVAL_MS = Math.max(3000, Number.parseInt(process.env.BSC_DEPOSIT_POLL_INTERVAL_MS || '6000', 10) || 6000);
+const BLOCK_BATCH_SIZE = Math.max(100, Number.parseInt(process.env.BSC_DEPOSIT_BLOCK_BATCH_SIZE || '800', 10) || 800);
+const REORG_BUFFER = Math.max(2, Number.parseInt(process.env.BSC_DEPOSIT_REORG_BUFFER || '6', 10) || 6);
+const INITIAL_BACKFILL_BLOCKS = Math.max(500, Number.parseInt(process.env.BSC_DEPOSIT_INITIAL_BACKFILL_BLOCKS || '20000', 10) || 20000);
+const CURSOR_SETTING_KEY = 'bsc_deposit_last_scanned_block';
+const USDT_DECIMALS = 18;
+
+const transferInterface = new ethers.utils.Interface([
+  'event Transfer(address indexed from, address indexed to, uint256 value)'
+]);
+const TRANSFER_TOPIC = transferInterface.getEventTopic('Transfer');
+const PLATFORM_WALLET_TOPIC = ethers.utils.hexZeroPad(PLATFORM_WALLET, 32);
+const DEPOSIT_LOG_FILTER = {
+  address: USDT_CONTRACT,
+  topics: [TRANSFER_TOPIC, null, PLATFORM_WALLET_TOPIC]
+};
+
+function getRpcProvider() {
+  if (!rpcProvider) {
+    const providerUrl = process.env.BSC_PROVIDER_URL || 'https://bsc-dataseed.binance.org/';
+    rpcProvider = new ethers.providers.JsonRpcProvider(providerUrl);
+  }
+  return rpcProvider;
+}
+
+function getWsProvider() {
+  if (wsProvider) return wsProvider;
+
+  const explicitWsUrl = (process.env.BSC_WS_PROVIDER_URL || '').trim();
+  const fallbackUrl = (process.env.BSC_PROVIDER_URL || '').trim();
+  const wsUrl = explicitWsUrl || (/^wss?:\/\//i.test(fallbackUrl) ? fallbackUrl : '');
+  if (!wsUrl) return null;
+
+  wsProvider = new ethers.providers.WebSocketProvider(wsUrl);
+  return wsProvider;
+}
 
 async function emitRealtimeBalanceUpdate(userId, message = null) {
   try {
@@ -53,7 +95,7 @@ async function emitMarketNotification(recipientId, actorId, message) {
       type: 'market',
       message: cleanMessage
     });
-    
+
     if (ioInstance) {
       const unreadCount = await Notification.getUnreadCount(recipientId);
       ioInstance.to(`user:${recipientId}`).emit('notification-created', {
@@ -61,7 +103,7 @@ async function emitMarketNotification(recipientId, actorId, message) {
         recipient_id: recipientId,
         actor_id: actorId,
         type: 'market',
-        message,
+        message: cleanMessage,
         post_id: null,
         share_id: null,
         comment_id: null,
@@ -82,9 +124,13 @@ async function emitMarketNotification(recipientId, actorId, message) {
 async function sendDepositReceipt(userId, txHash) {
   try {
     const fullUser = await User.getById(userId);
-    const [dRows] = await db.query('SELECT * FROM bsc_deposits WHERE tx_hash = ?', [txHash]);
-    if (fullUser && dRows.length > 0) {
-      mailer.sendTransactionReceiptEmail(fullUser, dRows[0], 'deposit').catch(emailErr => {
+    const [rows] = await db.query(
+      'SELECT * FROM bsc_deposits WHERE tx_hash = ? ORDER BY id DESC LIMIT 1',
+      [txHash]
+    );
+
+    if (fullUser && rows.length > 0) {
+      mailer.sendTransactionReceiptEmail(fullUser, rows[0], 'deposit').catch((emailErr) => {
         console.error('[BSCMonitor] Failed to send receipt email for deposit tx:', txHash, emailErr);
       });
     }
@@ -93,166 +139,327 @@ async function sendDepositReceipt(userId, txHash) {
   }
 }
 
-async function monitorDeposits() {
+function scheduleNextCycle(delayMs = POLL_INTERVAL_MS) {
+  if (!serviceStarted) return;
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = setTimeout(() => {
+    runMonitorCycle('poll').catch((err) => {
+      console.error('[BSCMonitor] Poll cycle error:', err);
+    });
+  }, delayMs);
+}
+
+function buildUserWalletMap(users) {
+  const userMap = new Map();
+  for (const user of users) {
+    const normalized = String(user.wallet_address || '').trim().toLowerCase();
+    if (!normalized) continue;
+    userMap.set(normalized, Number(user.id));
+  }
+  return userMap;
+}
+
+async function getStartBlock(currentBlock) {
+  const storedCursor = await getNumberSetting(CURSOR_SETTING_KEY, -1);
+  if (storedCursor >= 0) {
+    return Math.max(0, Math.min(currentBlock, storedCursor) - REORG_BUFFER + 1);
+  }
+  return Math.max(0, currentBlock - INITIAL_BACKFILL_BLOCKS);
+}
+
+async function emitPendingDeposit(userId, txHash, confirmations, amountUsdt) {
+  if (!ioInstance) return;
+  ioInstance.to(`user:${userId}`).emit('deposit-status', {
+    type: 'pending',
+    txHash,
+    confirmations,
+    required: REQUIRED_CONFIRMATIONS,
+    amount: amountUsdt,
+    message: `Dépôt de ${Number(amountUsdt).toFixed(2)} USDT détecté (${confirmations}/${REQUIRED_CONFIRMATIONS} confirmations)`
+  });
+}
+
+async function confirmDeposit(existingDeposit, confirmations, blockNumber) {
+  const [updateResult] = await db.query(
+    `UPDATE bsc_deposits
+     SET status = 'confirmed', confirmations = ?, block_number = ?, credited_at = NOW()
+     WHERE id = ? AND status = 'pending'`,
+    [confirmations, blockNumber, existingDeposit.id]
+  );
+
+  if (!updateResult || updateResult.affectedRows === 0) {
+    return false;
+  }
+
+  await db.query(
+    'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
+    [existingDeposit.amount_usdt, existingDeposit.user_id]
+  );
+
+  const amount = Number(existingDeposit.amount_usdt || 0);
+  await emitMarketNotification(
+    existingDeposit.user_id,
+    null,
+    `Votre dépôt de ${amount.toFixed(2)} USDT (BEP-20) a été confirmé.`
+  );
+  await emitRealtimeBalanceUpdate(
+    existingDeposit.user_id,
+    `Dépôt de ${amount.toFixed(2)} USDT confirmé !`
+  );
+  await sendDepositReceipt(existingDeposit.user_id, existingDeposit.tx_hash);
+  return true;
+}
+
+async function insertOrUpdateDepositRecord(deposit) {
+  const [existingRows] = await db.query(
+    `SELECT id, user_id, tx_hash, amount_usdt, confirmations, status
+     FROM bsc_deposits
+     WHERE tx_hash = ? AND log_index = ?
+     LIMIT 1`,
+    [deposit.txHash, deposit.logIndex]
+  );
+
+  const isConfirmed = deposit.confirmations >= REQUIRED_CONFIRMATIONS;
+
+  if (existingRows.length === 0) {
+    await db.query(
+      `INSERT INTO bsc_deposits
+       (user_id, tx_hash, log_index, from_address, to_address, amount_wei, amount_usdt, token_symbol, block_number, confirmations, status, credited_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'USDT', ?, ?, ?, ?)`,
+      [
+        deposit.userId,
+        deposit.txHash,
+        deposit.logIndex,
+        deposit.fromAddress,
+        deposit.toAddress,
+        deposit.amountWei,
+        deposit.amountUsdt,
+        deposit.blockNumber,
+        deposit.confirmations,
+        isConfirmed ? 'confirmed' : 'pending',
+        isConfirmed ? new Date() : null
+      ]
+    );
+
+    if (isConfirmed) {
+      await db.query(
+        'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
+        [deposit.amountUsdt, deposit.userId]
+      );
+      await emitMarketNotification(
+        deposit.userId,
+        null,
+        `Votre dépôt de ${deposit.amountUsdt.toFixed(2)} USDT (BEP-20) a été confirmé.`
+      );
+      await emitRealtimeBalanceUpdate(
+        deposit.userId,
+        `Dépôt de ${deposit.amountUsdt.toFixed(2)} USDT confirmé !`
+      );
+      await sendDepositReceipt(deposit.userId, deposit.txHash);
+    } else {
+      await emitPendingDeposit(deposit.userId, deposit.txHash, deposit.confirmations, deposit.amountUsdt);
+    }
+    return;
+  }
+
+  const existingDeposit = existingRows[0];
+  if (existingDeposit.status !== 'pending') {
+    return;
+  }
+
+  if (isConfirmed) {
+    await confirmDeposit(existingDeposit, deposit.confirmations, deposit.blockNumber);
+    return;
+  }
+
+  if (Number(existingDeposit.confirmations || 0) !== deposit.confirmations) {
+    await db.query(
+      'UPDATE bsc_deposits SET confirmations = ?, block_number = ? WHERE id = ?',
+      [deposit.confirmations, deposit.blockNumber, existingDeposit.id]
+    );
+    await emitPendingDeposit(existingDeposit.user_id, existingDeposit.tx_hash, deposit.confirmations, existingDeposit.amount_usdt);
+  }
+}
+
+async function syncDepositLogs(userMap, currentBlock) {
+  const provider = getRpcProvider();
+  const fromBlock = await getStartBlock(currentBlock);
+  if (fromBlock > currentBlock) {
+    return;
+  }
+
+  for (let batchStart = fromBlock; batchStart <= currentBlock; batchStart += BLOCK_BATCH_SIZE) {
+    const batchEnd = Math.min(currentBlock, batchStart + BLOCK_BATCH_SIZE - 1);
+    const logs = await provider.getLogs({
+      ...DEPOSIT_LOG_FILTER,
+      fromBlock: batchStart,
+      toBlock: batchEnd
+    });
+
+    logs.sort((a, b) => {
+      if (a.blockNumber !== b.blockNumber) return a.blockNumber - b.blockNumber;
+      return a.logIndex - b.logIndex;
+    });
+
+    for (const log of logs) {
+      const parsed = transferInterface.parseLog(log);
+      const fromAddress = String(parsed.args.from || '').toLowerCase();
+      const userId = userMap.get(fromAddress);
+      if (!userId) continue;
+
+      const amountUsdt = Number(ethers.utils.formatUnits(parsed.args.value, USDT_DECIMALS));
+      if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) continue;
+
+      const blockNumber = Number(log.blockNumber || 0);
+      const confirmations = Math.max(0, currentBlock - blockNumber + 1);
+
+      await insertOrUpdateDepositRecord({
+        userId,
+        txHash: log.transactionHash,
+        logIndex: Number(log.logIndex || 0),
+        fromAddress: parsed.args.from,
+        toAddress: parsed.args.to,
+        amountWei: parsed.args.value.toString(),
+        amountUsdt,
+        blockNumber,
+        confirmations
+      });
+    }
+  }
+
+  await setSetting(CURSOR_SETTING_KEY, currentBlock);
+}
+
+async function refreshPendingDeposits(currentBlock) {
+  const provider = getRpcProvider();
+  const [pendingRows] = await db.query(
+    `SELECT id, user_id, tx_hash, log_index, amount_usdt, confirmations, status
+     FROM bsc_deposits
+     WHERE status = 'pending'
+     ORDER BY id ASC`
+  );
+
+  for (const pendingDeposit of pendingRows) {
+    const receipt = await provider.getTransactionReceipt(pendingDeposit.tx_hash);
+    if (!receipt || !receipt.blockNumber) continue;
+
+    const receiptLog = Array.isArray(receipt.logs)
+      ? receipt.logs.find((log) =>
+          String(log.transactionHash || '').toLowerCase() === String(pendingDeposit.tx_hash || '').toLowerCase() &&
+          String(log.address || '').toLowerCase() === String(USDT_CONTRACT || '').toLowerCase() &&
+          Number(log.logIndex || -1) === Number(pendingDeposit.log_index || 0)
+        )
+      : null;
+
+    const blockNumber = Number(receiptLog?.blockNumber || receipt.blockNumber || 0);
+    const confirmations = Math.max(0, currentBlock - blockNumber + 1);
+
+    if (confirmations >= REQUIRED_CONFIRMATIONS) {
+      await confirmDeposit(pendingDeposit, confirmations, blockNumber);
+      continue;
+    }
+
+    if (Number(pendingDeposit.confirmations || 0) !== confirmations) {
+      await db.query(
+        'UPDATE bsc_deposits SET confirmations = ?, block_number = ? WHERE id = ?',
+        [confirmations, blockNumber, pendingDeposit.id]
+      );
+      await emitPendingDeposit(pendingDeposit.user_id, pendingDeposit.tx_hash, confirmations, pendingDeposit.amount_usdt);
+    }
+  }
+}
+
+async function runMonitorCycle(reason = 'manual') {
+  if (cycleRunning) return;
+  cycleRunning = true;
+
   try {
-    // 1. Get users with configured wallet addresses
+    const provider = getRpcProvider();
+    const currentBlock = await provider.getBlockNumber();
     const [users] = await db.query(
       'SELECT id, wallet_address FROM users WHERE wallet_address IS NOT NULL AND wallet_address != ""'
     );
-    if (users.length === 0) return;
+    const userMap = buildUserWalletMap(users);
 
-    const userMap = new Map();
-    users.forEach(u => {
-      userMap.set(u.wallet_address.toLowerCase().trim(), u.id);
-    });
-
-    // 2. Fetch token transfers from BSCScan
-    const apiKey = process.env.BSCSCAN_API_KEY || '';
-    const url = `https://api.bscscan.com/api?module=account&action=tokentx&contractaddress=${USDT_CONTRACT}&address=${PLATFORM_WALLET}&page=1&offset=100&sort=desc&apikey=${apiKey}`;
-
-    const res = await fetch(url);
-    const data = await res.json();
-
-    if (data.status !== '1' || !Array.isArray(data.result)) {
-      // BSCScan returns status "0" with msg "No transactions found" if there are none, which is normal
-      if (data.message !== 'No transactions found') {
-        console.warn('[BSCMonitor] BSCScan API warning:', data.message || data);
-      }
-      return;
+    if (userMap.size > 0) {
+      await syncDepositLogs(userMap, currentBlock);
     }
 
-    const txs = data.result;
+    await refreshPendingDeposits(currentBlock);
 
-    for (const tx of txs) {
-      const fromAddr = tx.from.toLowerCase().trim();
-      const toAddr = tx.to.toLowerCase().trim();
-      
-      // Make sure the destination is our platform wallet
-      if (toAddr !== PLATFORM_WALLET.toLowerCase()) continue;
-
-      // Check if from matches a registered user wallet address
-      const userId = userMap.get(fromAddr);
-      if (!userId) continue;
-
-      const txHash = tx.hash;
-      const confirmations = parseInt(tx.confirmations || '0', 10);
-      const valueWei = tx.value;
-      const blockNumber = parseInt(tx.blockNumber || '0', 10);
-      // USDT has 18 decimals on BSC mainnet
-      const amountUsdt = parseFloat(valueWei) / 1e18; 
-
-      if (isNaN(amountUsdt) || amountUsdt <= 0) continue;
-
-      // 3. Check if transaction already processed
-      const [existing] = await db.query(
-        'SELECT * FROM bsc_deposits WHERE tx_hash = ?',
-        [txHash]
-      );
-
-      if (existing.length === 0) {
-        // New transaction!
-        const isConfirmed = confirmations >= REQUIRED_CONFIRMATIONS;
-        const status = isConfirmed ? 'confirmed' : 'pending';
-        const creditedAt = isConfirmed ? new Date() : null;
-
-        await db.query(
-          `INSERT INTO bsc_deposits 
-           (user_id, tx_hash, from_address, to_address, amount_wei, amount_usdt, token_symbol, block_number, confirmations, status, credited_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'USDT', ?, ?, ?, ?)`,
-          [userId, txHash, tx.from, tx.to, valueWei, amountUsdt, blockNumber, confirmations, status, creditedAt]
-        );
-
-        if (isConfirmed) {
-          // Credit user balance
-          await db.query(
-            'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
-            [amountUsdt, userId]
-          );
-          
-          await emitMarketNotification(userId, null, `Votre dépôt de ${amountUsdt.toFixed(2)} USDT (BEP-20) a été confirmé.`);
-          await emitRealtimeBalanceUpdate(userId, `Dépôt de ${amountUsdt.toFixed(2)} USDT confirmé !`);
-          sendDepositReceipt(userId, txHash);
-        } else {
-          // Notify pending deposit
-          if (ioInstance) {
-            ioInstance.to(`user:${userId}`).emit('deposit-status', {
-              type: 'pending',
-              txHash,
-              confirmations,
-              required: REQUIRED_CONFIRMATIONS,
-              amount: amountUsdt,
-              message: `Dépôt de ${amountUsdt.toFixed(2)} USDT détecté (${confirmations}/${REQUIRED_CONFIRMATIONS} confirmations)`
-            });
-          }
-        }
-      } else {
-        // Tx exists, check if pending and ready to be confirmed
-        const currentTx = existing[0];
-        if (currentTx.status === 'pending') {
-          const isConfirmed = confirmations >= REQUIRED_CONFIRMATIONS;
-          
-          if (isConfirmed) {
-            await db.query(
-              `UPDATE bsc_deposits 
-               SET status = 'confirmed', confirmations = ?, block_number = ?, credited_at = NOW() 
-               WHERE id = ?`,
-              [confirmations, blockNumber, currentTx.id]
-            );
-
-            await db.query(
-              'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
-              [currentTx.amount_usdt, currentTx.user_id]
-            );
-
-            await emitMarketNotification(currentTx.user_id, null, `Votre dépôt de ${Number(currentTx.amount_usdt).toFixed(2)} USDT (BEP-20) a été confirmé.`);
-            await emitRealtimeBalanceUpdate(currentTx.user_id, `Dépôt de ${Number(currentTx.amount_usdt).toFixed(2)} USDT confirmé !`);
-            sendDepositReceipt(currentTx.user_id, currentTx.tx_hash);
-          } else if (confirmations !== currentTx.confirmations) {
-            // Update confirmations count
-            await db.query(
-              'UPDATE bsc_deposits SET confirmations = ?, block_number = ? WHERE id = ?',
-              [confirmations, blockNumber, currentTx.id]
-            );
-
-            if (ioInstance) {
-              ioInstance.to(`user:${currentTx.user_id}`).emit('deposit-status', {
-                type: 'pending',
-                txHash,
-                confirmations,
-                required: REQUIRED_CONFIRMATIONS,
-                amount: currentTx.amount_usdt,
-                message: `Dépôt en attente : ${confirmations}/${REQUIRED_CONFIRMATIONS} confirmations`
-              });
-            }
-          }
-        }
-      }
+    if (reason === 'startup') {
+      console.log('[BSCMonitor] Deposit monitor synced with on-chain logs.');
     }
   } catch (err) {
-    console.error('[BSCMonitor] Error in monitor loop:', err);
+    console.error(`[BSCMonitor] Error during ${reason} cycle:`, err);
+  } finally {
+    cycleRunning = false;
+    scheduleNextCycle();
+  }
+}
+
+async function handleIncomingWsLog() {
+  await runMonitorCycle('ws');
+}
+
+function bindWsSubscription() {
+  if (wsSubscriptionBound) return;
+
+  try {
+    const provider = getWsProvider();
+    if (!provider) return;
+
+    provider.on(DEPOSIT_LOG_FILTER, handleIncomingWsLog);
+    wsSubscriptionBound = true;
+    console.log('[BSCMonitor] WebSocket subscription enabled for live deposit detection.');
+  } catch (err) {
+    wsProvider = null;
+    wsSubscriptionBound = false;
+    console.warn('[BSCMonitor] WebSocket provider unavailable, continuing with RPC polling only:', err.message || err);
   }
 }
 
 function start(io) {
   ioInstance = io;
-  if (pollingInterval) clearInterval(pollingInterval);
-  
-  // Run once immediately, then every 15 seconds
-  monitorDeposits();
-  pollingInterval = setInterval(monitorDeposits, 15000);
-  console.log('[BSCMonitor] Service started (polling every 15s)');
+  serviceStarted = true;
+
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+    pollTimer = null;
+  }
+
+  bindWsSubscription();
+  runMonitorCycle('startup').catch((err) => {
+    console.error('[BSCMonitor] Failed to start monitor:', err);
+  });
+  console.log(`[BSCMonitor] Service started (RPC polling every ${POLL_INTERVAL_MS}ms, confirmations required: ${REQUIRED_CONFIRMATIONS})`);
 }
 
 function stop() {
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-    pollingInterval = null;
+  serviceStarted = false;
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+    pollTimer = null;
   }
+
+  if (wsProvider && wsSubscriptionBound) {
+    try {
+      wsProvider.off(DEPOSIT_LOG_FILTER, handleIncomingWsLog);
+    } catch (err) {
+      console.warn('[BSCMonitor] Failed to detach WebSocket listener:', err.message || err);
+    }
+  }
+
+  wsSubscriptionBound = false;
   console.log('[BSCMonitor] Service stopped');
+}
+
+async function triggerCheck() {
+  await runMonitorCycle('manual');
 }
 
 module.exports = {
   start,
   stop,
-  triggerCheck: monitorDeposits
+  triggerCheck
 };
