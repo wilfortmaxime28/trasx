@@ -14,6 +14,7 @@ async function ensureStatusTable() {
           media_name VARCHAR(255) DEFAULT NULL,
           media_size INT DEFAULT NULL,
           caption TEXT DEFAULT NULL,
+          media_fit VARCHAR(20) DEFAULT 'cover',
           expires_at DATETIME NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -58,6 +59,9 @@ async function ensureStatusTable() {
       try {
         await db.query(`ALTER TABLE statuses ADD COLUMN bg_color VARCHAR(255) DEFAULT NULL`);
       } catch (e) {}
+      try {
+        await db.query(`ALTER TABLE statuses ADD COLUMN media_fit VARCHAR(20) DEFAULT 'cover'`);
+      } catch (e) {}
     })().catch((error) => {
       statusSchemaPromise = null;
       throw error;
@@ -83,7 +87,8 @@ function normalizeStatusRow(row, currentUserId = null) {
       : `${remainingSeconds}s`,
     trim_start: row.trim_start !== null && row.trim_start !== undefined ? Number(row.trim_start) : null,
     trim_end: row.trim_end !== null && row.trim_end !== undefined ? Number(row.trim_end) : null,
-    bg_color: row.bg_color || null
+    bg_color: row.bg_color || null,
+    media_fit: row.media_fit === 'contain' ? 'contain' : 'cover'
   };
 }
 
@@ -103,8 +108,10 @@ class Status {
       caption = null,
       trimStart = null,
       trimEnd = null,
-      bgColor = null
+      bgColor = null,
+      mediaFit = 'cover'
     } = data;
+    const sanitizedMediaFit = mediaFit === 'contain' ? 'contain' : 'cover';
 
     // Do NOT delete previous active statuses, so users can post multiple updates like WhatsApp.
 
@@ -117,11 +124,12 @@ class Status {
           media_name,
           media_size,
           caption,
+          media_fit,
           expires_at,
           trim_start,
           trim_end,
           bg_color
-        ) VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), ?, ?, ?)
       `,
       [
         userId,
@@ -130,6 +138,7 @@ class Status {
         mediaName,
         Number.isFinite(Number(mediaSize)) ? Number(mediaSize) : null,
         caption || null,
+        sanitizedMediaFit,
         Number.isFinite(parseFloat(trimStart)) ? parseFloat(trimStart) : null,
         Number.isFinite(parseFloat(trimEnd)) ? parseFloat(trimEnd) : null,
         bgColor || null
@@ -165,6 +174,7 @@ class Status {
           s.media_name,
           s.media_size,
           s.caption,
+          s.media_fit,
           s.expires_at,
           s.created_at,
           s.trim_start,

@@ -359,6 +359,174 @@ class Reel {
     return rows;
   }
 
+  static async search(currentUserId, term, { limit = 18 } = {}) {
+    await Reel.ensureReelSchema();
+
+    const normalizedLimit = Math.min(Math.max(1, Number(limit) || 18), 24);
+    const normalizedTerm = String(term || '').trim().toLowerCase();
+    if (!normalizedTerm) {
+      return [];
+    }
+
+    const searchTerm = normalizedTerm.startsWith('@')
+      ? normalizedTerm.slice(1)
+      : normalizedTerm;
+    if (!searchTerm) {
+      return [];
+    }
+    const containsQuery = `%${searchTerm}%`;
+    const prefixQuery = `${searchTerm}%`;
+
+    const query = `
+      SELECT
+        r.id,
+        r.user_id,
+        r.video_url,
+        r.sound_name,
+        r.caption,
+        r.likes_count,
+        r.comments_count,
+        r.shares_count,
+        r.created_at,
+        r.media_type,
+        r.audio_url,
+        r.audio_start_time,
+        r.audio_duration,
+        r.media_fit,
+        r.is_trade,
+        r.trade_price,
+        r.last_possession_user_id,
+        r.trim_start,
+        r.trim_end,
+        r.next_trade_payout_admin,
+        r.promo_daily_target,
+        r.promo_paid_hashtag_count,
+        COALESCE(u.display_name, CONCAT_WS(' ', u.first_name, u.last_name)) AS author_name,
+        u.avatar AS author_avatar,
+        u.username AS author_username,
+        u.country AS author_country,
+        u.certification_type AS author_certification_type,
+        u.created_at AS author_created_at,
+        COALESCE(fc.followers_count, 0) AS author_followers_count,
+        (fw.follower_id IS NOT NULL) AS is_author_following,
+        CASE
+          WHEN LOWER(COALESCE(u.username, '')) = ? THEN 1000
+          WHEN LOWER(COALESCE(u.display_name, CONCAT_WS(' ', u.first_name, u.last_name))) = ? THEN 960
+          WHEN LOWER(COALESCE(u.username, '')) LIKE ? THEN 920
+          WHEN LOWER(COALESCE(u.display_name, CONCAT_WS(' ', u.first_name, u.last_name))) LIKE ? THEN 880
+          WHEN LOWER(CONCAT_WS(' ', u.first_name, u.last_name)) LIKE ? THEN 840
+          WHEN LOWER(COALESCE(r.caption, '')) LIKE ? THEN 760
+          WHEN LOWER(COALESCE(r.sound_name, '')) LIKE ? THEN 700
+          ELSE 520
+        END AS search_rank
+      FROM reels r
+      JOIN users u ON u.id = r.user_id
+      LEFT JOIN (
+        SELECT following_id, COUNT(*) AS followers_count
+        FROM follows
+        GROUP BY following_id
+      ) fc ON fc.following_id = r.user_id
+      LEFT JOIN follows fw ON fw.follower_id = ? AND fw.following_id = r.user_id
+      WHERE
+        LOWER(COALESCE(u.username, '')) LIKE ?
+        OR LOWER(COALESCE(u.display_name, CONCAT_WS(' ', u.first_name, u.last_name))) LIKE ?
+        OR LOWER(COALESCE(u.first_name, '')) LIKE ?
+        OR LOWER(COALESCE(u.last_name, '')) LIKE ?
+        OR LOWER(CONCAT_WS(' ', u.first_name, u.last_name)) LIKE ?
+        OR LOWER(COALESCE(r.caption, '')) LIKE ?
+        OR LOWER(COALESCE(r.sound_name, '')) LIKE ?
+      ORDER BY search_rank DESC, r.created_at DESC, r.id DESC
+      LIMIT ?
+    `;
+
+    const [rows] = await db.query(query, [
+      searchTerm,
+      searchTerm,
+      prefixQuery,
+      prefixQuery,
+      prefixQuery,
+      containsQuery,
+      containsQuery,
+      currentUserId,
+      containsQuery,
+      containsQuery,
+      containsQuery,
+      containsQuery,
+      containsQuery,
+      containsQuery,
+      containsQuery,
+      normalizedLimit
+    ]);
+
+    return rows.map(({ search_rank, ...row }) => ({
+      ...row,
+      search_rank: Number(search_rank || 0),
+      is_author_following: !!row.is_author_following
+    }));
+  }
+
+  static async getFeedDisplayById(reelId, currentUserId) {
+    await Reel.ensureReelSchema();
+
+    const query = `
+      SELECT
+        r.id,
+        r.user_id,
+        r.video_url,
+        r.sound_name,
+        r.caption,
+        r.likes_count,
+        r.comments_count,
+        r.shares_count,
+        COALESCE(vc.views_count, 0) AS views_count,
+        r.created_at,
+        r.media_type,
+        r.audio_url,
+        r.audio_start_time,
+        r.audio_duration,
+        r.media_fit,
+        r.is_trade,
+        r.trade_price,
+        r.last_possession_user_id,
+        r.trim_start,
+        r.trim_end,
+        r.next_trade_payout_admin,
+        r.promo_daily_target,
+        r.promo_paid_hashtag_count,
+        COALESCE(u.display_name, CONCAT_WS(' ', u.first_name, u.last_name)) AS author_name,
+        u.avatar AS author_avatar,
+        u.username AS author_username,
+        u.country AS author_country,
+        u.certification_type AS author_certification_type,
+        u.created_at AS author_created_at,
+        COALESCE(fc.followers_count, 0) AS author_followers_count,
+        (fw.follower_id IS NOT NULL) AS is_author_following
+      FROM reels r
+      JOIN users u ON u.id = r.user_id
+      LEFT JOIN (
+        SELECT reel_id, COUNT(*) AS views_count
+        FROM reel_daily_unique_views
+        GROUP BY reel_id
+      ) vc ON vc.reel_id = r.id
+      LEFT JOIN (
+        SELECT following_id, COUNT(*) AS followers_count
+        FROM follows
+        GROUP BY following_id
+      ) fc ON fc.following_id = r.user_id
+      LEFT JOIN follows fw ON fw.follower_id = ? AND fw.following_id = r.user_id
+      WHERE r.id = ?
+      LIMIT 1
+    `;
+
+    const [rows] = await db.query(query, [currentUserId, reelId]);
+    if (!rows.length) return null;
+
+    return {
+      ...rows[0],
+      is_author_following: !!rows[0].is_author_following
+    };
+  }
+
   static async getById(reelId) {
     await Reel.ensureReelSchema();
     const query = `

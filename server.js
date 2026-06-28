@@ -828,6 +828,71 @@ app.get('/api/feed/reels', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/feed/reels/search', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const rawQuery = String(req.query.q || '').trim();
+    const limit = Math.min(24, Math.max(1, Number(req.query.limit) || 18));
+
+    if (!Number.isFinite(currentUserId) || currentUserId <= 0) {
+      return res.status(401).json({ success: false, error: 'Non authentifie.', results: [] });
+    }
+
+    if (!rawQuery) {
+      return res.json({ success: true, results: [] });
+    }
+
+    const results = await Reel.search(currentUserId, rawQuery, { limit });
+    return res.json({ success: true, results });
+  } catch (err) {
+    console.error('[/api/feed/reels/search]', err);
+    return res.status(500).json({ success: false, error: 'Erreur lors de la recherche des shorts.', results: [] });
+  }
+});
+
+app.get('/api/feed/reels/:reelId/card', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const reelId = Number(req.params.reelId);
+    const currentUser = res.locals.currentUser || await User.getById(currentUserId);
+
+    if (!Number.isFinite(currentUserId) || currentUserId <= 0 || !currentUser) {
+      return res.status(401).json({ success: false, error: 'Non authentifie.' });
+    }
+
+    if (!Number.isFinite(reelId) || reelId <= 0) {
+      return res.status(400).json({ success: false, error: 'Short invalide.' });
+    }
+
+    const reel = await Reel.getFeedDisplayById(reelId, currentUserId);
+    if (!reel) {
+      return res.status(404).json({ success: false, error: 'Short introuvable.' });
+    }
+
+    req.app.render('partials/reelCards', {
+      ...res.locals,
+      reels: [reel],
+      currentUser,
+      reelIndexOffset: 0
+    }, (renderError, html) => {
+      if (renderError) {
+        console.error('[/api/feed/reels/:reelId/card] render error:', renderError);
+        return res.status(500).json({ success: false, error: 'Erreur lors du rendu du short.' });
+      }
+
+      return res.json({
+        success: true,
+        reel,
+        reels: [reel],
+        html
+      });
+    });
+  } catch (err) {
+    console.error('[/api/feed/reels/:reelId/card]', err);
+    return res.status(500).json({ success: false, error: 'Erreur lors du chargement du short.' });
+  }
+});
+
 // Route Profile
 app.use('/profile', profileRoutes);
 app.use('/settings', settingsRoutes);
@@ -7474,34 +7539,38 @@ server.listen(PORT, async () => {
         await resolveExpiredChessClocks();
       }, 1000);
 
-      // Start periodic check for inactive tablefootball games (5 minutes of inactivity -> cancel & refund)
+      // Start periodic check for inactive games (2 minutes of inactivity -> cancel & refund)
       setInterval(async () => {
         try {
           const now = Date.now();
+          const INACTIVITY_LIMIT_MS = 2 * 60 * 1000; // 2 minutes
           const gameIds = Object.keys(gamesManager.games);
           for (const gameId of gameIds) {
             const game = gamesManager.games[gameId];
-            if (game && game.gameType === 'tablefootball' && game.status === 'playing') {
-              const lastActivity = game.lastActivityAt || game.startedAt || game.createdAt || now;
-              const inactiveDuration = now - lastActivity;
-              if (inactiveDuration > 5 * 60 * 1000) {
-                console.log(`[Inactivity Checker] Game ${gameId} has been inactive for ${Math.round(inactiveDuration / 1000)} seconds. Cancelling and refunding...`);
-                
-                const result = await gamesManager.endGame(gameId, 'cancelled');
-                
-                if (result && result.finished) {
-                  io.to(`game:${gameId}`).emit('game-over', {
-                    winnerId: 'cancelled',
-                    winningStones: null,
-                    isForfeit: false,
-                    reason: 'cancelled',
-                    message: "Le match a été annulé pour inactivité."
-                  });
-                  io.emit('game-list-updated', gamesManager.getLiveGames());
-                  
-                  if (game.mode === 'paid' && game.player2 && game.player2.isBot) {
+            if (!game || game.status !== 'playing') continue;
+
+            const lastActivity = game.lastActivityAt || game.startedAt || game.createdAt || now;
+            const inactiveDuration = now - lastActivity;
+
+            if (inactiveDuration > INACTIVITY_LIMIT_MS) {
+              console.log(`[Inactivity Checker] Game ${gameId} (${game.gameType}) inactive for ${Math.round(inactiveDuration / 1000)}s. Cancelling and refunding...`);
+
+              const result = await gamesManager.endGame(gameId, 'cancelled');
+
+              if (result && result.finished) {
+                io.to(`game:${gameId}`).emit('game-over', {
+                  winnerId: 'cancelled',
+                  winningStones: null,
+                  isForfeit: false,
+                  reason: 'cancelled',
+                  message: "Le match a été annulé pour inactivité. Vos fonds ont été remboursés."
+                });
+                io.emit('game-list-updated', gamesManager.getLiveGames());
+
+                if (game.mode === 'paid') {
+                  if (game.player2 && game.player2.isBot) {
                     await emitRealtimeBalanceUpdate(game.player1.id, "Mise remboursée suite à l'annulation pour inactivité.");
-                  } else if (game.mode === 'paid') {
+                  } else {
                     if (game.player1) await emitRealtimeBalanceUpdate(game.player1.id, "Mise remboursée suite à l'annulation pour inactivité.");
                     if (game.player2) await emitRealtimeBalanceUpdate(game.player2.id, "Mise remboursée suite à l'annulation pour inactivité.");
                   }

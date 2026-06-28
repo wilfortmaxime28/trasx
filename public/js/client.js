@@ -1024,12 +1024,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const statusCaption = escapeHtml(statusData.caption || '');
       const statusMediaUrl = escapeHtml(statusData.media_url || '');
       const statusMediaType = String(statusData.media_type || '').toLowerCase();
+      const statusMediaFit = String(statusData.media_fit || '').toLowerCase() === 'contain' ? 'contain' : 'cover';
       
       let statusMediaHtml = '';
       if (statusMediaType.startsWith('video/')) {
         statusMediaHtml = `
-          <div class="chat-shared-post-media chat-shared-post-media-video" style="aspect-ratio: 9/16; max-height: 240px; overflow: hidden; border-radius: 8px;">
-            <video src="${statusMediaUrl}" muted playsinline preload="metadata" style="width: 100%; height: 100%; object-fit: cover;"></video>
+          <div class="chat-shared-post-media chat-shared-post-media-video" style="aspect-ratio: 9/16; max-height: 240px; overflow: hidden; border-radius: 8px; background: #000; display: flex; align-items: center; justify-content: center;">
+            <video src="${statusMediaUrl}" muted playsinline preload="metadata" style="width: 100%; height: 100%; object-fit: ${statusMediaFit}; background: #000;"></video>
           </div>
         `;
       } else if (statusMediaType.startsWith('image/')) {
@@ -2501,6 +2502,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const videoEditor = document.getElementById('statusVideoEditor');
     if (videoEditor) videoEditor.style.display = 'none';
 
+    setStatusMediaFitState('cover');
+    if (statusMediaFitSection) statusMediaFitSection.style.display = 'none';
+
     renderStatusMediaPreview(null);
   };
 
@@ -2512,7 +2516,27 @@ document.addEventListener('DOMContentLoaded', () => {
   let storyElapsedBeforePause = 0;
   let isStoryPaused = false;
   let activeStatusCardElement = null;
-  let statusViewerVolumeOn = true;
+  let statusViewerVolumeOn = false;
+  const syncStatusViewerMuteButton = () => {
+    if (!statusViewerMuteBtn) return;
+    statusViewerMuteBtn.innerHTML = `<i data-lucide="${statusViewerVolumeOn ? 'volume-2' : 'volume-x'}" style="width: 16px; height: 16px;"></i>`;
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  };
+  const setStatusViewerAudioState = (volumeOn) => {
+    statusViewerVolumeOn = !!volumeOn;
+    if (statusViewerVideo) {
+      statusViewerVideo.muted = !statusViewerVolumeOn;
+      statusViewerVideo.defaultMuted = !statusViewerVolumeOn;
+      if (statusViewerVideo.muted) {
+        statusViewerVideo.setAttribute('muted', '');
+      } else {
+        statusViewerVideo.removeAttribute('muted');
+      }
+    }
+    syncStatusViewerMuteButton();
+  };
   const openStatusViewerById = (statusId) => {
     if (!statusId) return;
     fetch(`/statuses/${statusId}`)
@@ -2539,6 +2563,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const openStatusViewer = (card) => {
     if (!statusViewerModal || !card) return;
+    const isFreshOpen = statusViewerModal.style.display !== 'flex';
     activeStatusCardElement = card;
     currentGroupStatuses = [];
     try {
@@ -2547,6 +2572,9 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error(e);
     }
     if (currentGroupStatuses.length === 0) return;
+    if (isFreshOpen) {
+      setStatusViewerAudioState(true);
+    }
 
     currentStatusIndex = 0;
     showStatusSegment(currentStatusIndex);
@@ -2617,6 +2645,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const trimStart = status.trim_start;
     const trimEnd = status.trim_end;
     const bgColor = status.bg_color;
+    const mediaFit = status.media_fit === 'contain' ? 'contain' : 'cover';
 
     statusViewerAvatar.src = avatar;
     statusViewerAvatar.alt = userName;
@@ -2676,12 +2705,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Hide normal media elements
     statusViewerImage.style.display = 'none';
+    statusViewerImage.style.objectFit = 'cover';
     statusViewerVideo.style.display = 'none';
     statusViewerVideo.style.pointerEvents = 'none';
+    statusViewerVideo.style.objectFit = 'cover';
+    statusViewerVideo.style.background = '#050505';
     statusViewerImage.removeAttribute('src');
     statusViewerVideo.removeAttribute('src');
     statusViewerVideo.pause();
     statusViewerVideo.currentTime = 0;
+    statusViewerVideo.muted = true;
+    statusViewerVideo.setAttribute('muted', '');
 
     // Remove old custom containers
     const oldCustom = statusViewerModal.querySelector('.status-viewer-custom-content');
@@ -2810,8 +2844,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Show mute button for video
       if (statusViewerMuteBtn) {
         statusViewerMuteBtn.style.display = 'flex';
-        statusViewerMuteBtn.innerHTML = `<i data-lucide="${statusViewerVolumeOn ? 'volume-2' : 'volume-x'}" style="width: 16px; height: 16px;"></i>`;
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        syncStatusViewerMuteButton();
       }
 
       // 3. Video Status — load clean URL, seek via currentTime to avoid buffering chops
@@ -2820,6 +2853,8 @@ document.addEventListener('DOMContentLoaded', () => {
       statusViewerVideo.preload = 'auto';
       statusViewerVideo.style.display = 'block';
       statusViewerVideo.style.pointerEvents = 'auto';
+      statusViewerVideo.style.objectFit = mediaFit;
+      statusViewerVideo.style.background = mediaFit === 'contain' ? '#000000' : '#050505';
       statusViewerVideo.load();
       statusViewerVideo.onloadedmetadata = () => {
         // Calculate story slide duration based on trimmed values
@@ -2934,6 +2969,7 @@ document.addEventListener('DOMContentLoaded', () => {
       statusViewerVideo.pause();
       statusViewerVideo.currentTime = 0;
     }
+    setStatusViewerAudioState(false);
   };
 
   const renderStatusMediaPreview = (file) => {
@@ -2945,6 +2981,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (!file) {
+      if (statusMediaFitSection) statusMediaFitSection.style.display = 'none';
       const locale = String(document.documentElement.getAttribute('lang') || 'en').slice(0, 2).toLowerCase();
       const emptyLabel = locale === 'fr'
         ? 'Sélectionnez une image ou une vidéo pour l’aperçu.'
@@ -2960,9 +2997,10 @@ document.addEventListener('DOMContentLoaded', () => {
     statusMediaPreview.dataset.previewUrl = url;
     if (statusMediaFilename) statusMediaFilename.textContent = file.name || getStatusNoFileLabel();
     if (file.type.startsWith('video/')) {
+      if (statusMediaFitSection) statusMediaFitSection.style.display = 'grid';
       statusMediaPreview.innerHTML = `
         <div style="position: relative; width: 100%; height: 100%; min-height: 200px; display: flex; align-items: center; justify-content: center; background: #000; border-radius: 12px; overflow: hidden;">
-          <video playsinline muted id="statusPreviewVideoTag" src="${url}" style="width: 100%; height: auto; max-height: 240px; display: block; object-fit: contain;"></video>
+          <video playsinline muted id="statusPreviewVideoTag" src="${url}" style="width: 100%; height: 100%; display: block; object-fit: cover; background: #000;"></video>
           
           <!-- Premium overlay trimmer track directly on the video container -->
           <div id="statusVideoEditor" style="position: absolute; bottom: 12px; left: 12px; right: 12px; background: rgba(15, 23, 42, 0.82); padding: 8px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.16); backdrop-filter: blur(10px); z-index: 10; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);">
@@ -2987,6 +3025,7 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
 
       if (typeof lucide !== 'undefined') lucide.createIcons();
+      applyStatusMediaFit();
 
       // Initialize Trimmer timeline slider limits
       const videoTag = document.getElementById('statusPreviewVideoTag');
@@ -3061,6 +3100,7 @@ document.addEventListener('DOMContentLoaded', () => {
           document.getElementById('statusTrimEndInput').value = String(endValDefault);
 
           updateHighlight();
+          applyStatusMediaFit();
           videoTag.play().catch(() => { });
         };
 
@@ -3091,6 +3131,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
     } else {
+      if (statusMediaFitSection) statusMediaFitSection.style.display = 'none';
       statusMediaPreview.innerHTML = `<img src="${url}" alt="Status preview">`;
       document.getElementById('statusTrimStartInput').value = '';
       document.getElementById('statusTrimEndInput').value = '';
@@ -3440,7 +3481,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const pauseAllFeedVideos = () => {
-    document.querySelectorAll('video').forEach(video => {
+    document.querySelectorAll('.post-video').forEach(video => {
       if (!video.paused) {
         video.pause();
       }
@@ -3453,7 +3494,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const videos = document.querySelectorAll('video');
+    const videos = document.querySelectorAll('.post-video');
     let closestVideo = null;
     let minDistance = Infinity;
     const viewportCenter = window.innerHeight / 2;
@@ -10864,6 +10905,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const shortsSearchCloseBtn = document.getElementById('shortsSearchCloseBtn');
   const shortsSearchInput = document.getElementById('shortsSearchInput');
   const shortsSearchResults = document.getElementById('shortsSearchResults');
+  const shortsSearchCache = new Map();
+  let shortsSearchAbortController = null;
+  let shortsSearchDebounceTimer = null;
+  let shortsSearchRequestSerial = 0;
 
   const updateUrlView = (view) => {
     try {
@@ -10992,24 +11037,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const renderShortsSearchResults = (query = '') => {
+  const paintShortsSearchResults = (results = []) => {
     if (!shortsSearchResults) return;
-    const term = String(query || '').trim().toLowerCase();
-    const cards = Array.from(document.querySelectorAll('.reels-feed .reel-card'));
 
-    if (!term) {
-      shortsSearchResults.innerHTML = `
-        <div class="shorts-search-empty">${tText('Commencez a taper pour trouver un short.')}</div>
-      `;
-      return;
-    }
-
-    const matches = cards.filter((card) => {
-      const searchText = String(card.getAttribute('data-search-text') || '').toLowerCase();
-      return searchText.includes(term);
-    }).slice(0, 24);
-
-    if (!matches.length) {
+    if (!Array.isArray(results) || !results.length) {
       shortsSearchResults.innerHTML = `
         <div class="shorts-search-empty">${tText('Aucun short correspondant pour le moment.')}</div>
       `;
@@ -11017,26 +11048,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const pendingThumbCards = [];
-
-    shortsSearchResults.innerHTML = matches.map((card) => {
-      const reelId = Number(card.getAttribute('data-reel-id') || 0);
-      const authorName = escapeHtml(card.getAttribute('data-author-name') || card.getAttribute('data-author-username') || 'Utilisateur');
-      const authorUsername = escapeHtml(card.getAttribute('data-author-username') || '');
-      const caption = escapeHtml(card.getAttribute('data-caption') || '');
-      const soundName = escapeHtml(card.getAttribute('data-sound-name') || '');
-      const thumbEl = card.querySelector('.reel-video');
-      const thumbSrc = escapeHtml(
-        card.getAttribute('data-thumb-src')
+    shortsSearchResults.innerHTML = results.map((result) => {
+      const reelId = Number(result?.id || result?.reel_id || 0);
+      const existingCard = reelId
+        ? document.querySelector(`.reel-card[data-reel-id="${reelId}"]`)
+        : null;
+      const thumbEl = existingCard?.querySelector('.reel-video');
+      const authorName = escapeHtml(result?.author_name || existingCard?.getAttribute('data-author-name') || result?.author_username || existingCard?.getAttribute('data-author-username') || 'Utilisateur');
+      const authorUsername = escapeHtml(result?.author_username || existingCard?.getAttribute('data-author-username') || '');
+      const caption = escapeHtml(result?.caption || existingCard?.getAttribute('data-caption') || '');
+      const soundName = escapeHtml(result?.sound_name || existingCard?.getAttribute('data-sound-name') || '');
+      const rawThumbSrc = (
+        existingCard?.getAttribute('data-thumb-src')
         || thumbEl?.getAttribute('poster')
         || (thumbEl?.tagName?.toLowerCase() === 'img' ? thumbEl.getAttribute('src') : '')
+        || (result?.media_type === 'image_audio' ? result?.video_url : '')
         || ''
       );
+      const thumbSrc = escapeHtml(rawThumbSrc);
       const thumbHtml = thumbSrc
         ? `<img src="${thumbSrc}" alt="${authorName}">`
         : `<div class="shorts-search-result-thumb-fallback"><i data-lucide="play"></i></div>`;
 
-      if (!thumbSrc && card.querySelector('video.reel-video')) {
-        pendingThumbCards.push({ reelId, authorName, card });
+      if (!thumbSrc && existingCard?.querySelector('video.reel-video')) {
+        pendingThumbCards.push({ reelId, authorName, card: existingCard });
       }
 
       return `
@@ -11070,6 +11105,105 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
+  const fetchShortsSearchResults = async (query = '') => {
+    if (!shortsSearchResults) return;
+
+    const normalizedQuery = String(query || '').trim();
+    if (!normalizedQuery) {
+      shortsSearchResults.innerHTML = `
+        <div class="shorts-search-empty">${tText('Commencez a taper pour trouver un short.')}</div>
+      `;
+      return;
+    }
+
+    const cacheKey = normalizedQuery.toLowerCase();
+    if (shortsSearchCache.has(cacheKey)) {
+      paintShortsSearchResults(shortsSearchCache.get(cacheKey));
+      return;
+    }
+
+    if (shortsSearchAbortController) {
+      shortsSearchAbortController.abort();
+    }
+
+    const requestSerial = ++shortsSearchRequestSerial;
+    const controller = new AbortController();
+    shortsSearchAbortController = controller;
+
+    try {
+      shortsSearchResults.innerHTML = `
+        <div class="shorts-search-empty">${tText('Recherche des shorts...')}</div>
+      `;
+
+      const params = new URLSearchParams();
+      params.set('q', normalizedQuery);
+      params.set('limit', '18');
+
+      const response = await fetch(`/api/feed/reels/search?${params.toString()}`, {
+        credentials: 'same-origin',
+        signal: controller.signal
+      });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Shorts search failed');
+
+      if (requestSerial !== shortsSearchRequestSerial) return;
+
+      const results = Array.isArray(data.results) ? data.results : [];
+      shortsSearchCache.set(cacheKey, results);
+      paintShortsSearchResults(results);
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      if (requestSerial !== shortsSearchRequestSerial) return;
+
+      shortsSearchResults.innerHTML = `
+        <div class="shorts-search-empty">${tText('Impossible de charger la recherche pour le moment.')}</div>
+      `;
+    } finally {
+      if (shortsSearchAbortController === controller) {
+        shortsSearchAbortController = null;
+      }
+    }
+  };
+
+  const renderShortsSearchResults = (query = '') => {
+    const normalizedQuery = String(query || '').trim();
+
+    if (shortsSearchDebounceTimer) {
+      window.clearTimeout(shortsSearchDebounceTimer);
+      shortsSearchDebounceTimer = null;
+    }
+
+    if (!normalizedQuery) {
+      if (shortsSearchAbortController) {
+        shortsSearchAbortController.abort();
+      }
+      if (shortsSearchResults) {
+        shortsSearchResults.innerHTML = `
+          <div class="shorts-search-empty">${tText('Commencez a taper pour trouver un short.')}</div>
+        `;
+      }
+      return;
+    }
+
+    const cacheKey = normalizedQuery.toLowerCase();
+    if (shortsSearchCache.has(cacheKey)) {
+      paintShortsSearchResults(shortsSearchCache.get(cacheKey));
+      return;
+    }
+
+    if (shortsSearchResults) {
+      shortsSearchResults.innerHTML = `
+        <div class="shorts-search-empty">${tText('Recherche des shorts...')}</div>
+      `;
+    }
+
+    shortsSearchDebounceTimer = window.setTimeout(() => {
+      fetchShortsSearchResults(normalizedQuery).catch(() => {});
+    }, 180);
+  };
+
   const openShortsSearchOverlay = () => {
     if (!shortsSearchOverlay) return;
     shortsSearchOverlay.style.display = 'flex';
@@ -11080,13 +11214,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const closeShortsSearchOverlay = () => {
     if (!shortsSearchOverlay) return;
+    if (shortsSearchDebounceTimer) {
+      window.clearTimeout(shortsSearchDebounceTimer);
+      shortsSearchDebounceTimer = null;
+    }
+    if (shortsSearchAbortController) {
+      shortsSearchAbortController.abort();
+    }
     shortsSearchOverlay.style.display = 'none';
     shortsSearchOverlay.setAttribute('aria-hidden', 'true');
   };
 
-  const openShortFromSearchResult = (reelId) => {
+  const openShortFromSearchResult = async (reelId) => {
     if (!reelId) return;
-    focusSharedReelTarget(reelId);
+    if (focusSharedReelTarget(reelId)) return;
+
+    if (typeof window.ensureReelCardLoaded === 'function') {
+      try {
+        await window.ensureReelCardLoaded(reelId);
+      } catch (_) {}
+      if (focusSharedReelTarget(reelId)) return;
+    }
+
+    if (typeof window.loadNextReelsBatch === 'function') {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        if (!window.reelsHasMore) break;
+        try {
+          await window.loadNextReelsBatch({ reason: 'search-open', retryCount: 0 });
+        } catch (_) {
+          break;
+        }
+        if (focusSharedReelTarget(reelId)) return;
+      }
+    }
+
+    window.location.href = `/?view=shorts&shared_reel=${Number(reelId || 0)}#reel-${Number(reelId || 0)}`;
   };
 
   shortsMobileSearchBtn?.addEventListener('click', openShortsSearchOverlay);
@@ -11099,12 +11261,12 @@ document.addEventListener('DOMContentLoaded', () => {
   shortsSearchInput?.addEventListener('input', (event) => {
     renderShortsSearchResults(event.target.value);
   });
-  shortsSearchResults?.addEventListener('click', (event) => {
+  shortsSearchResults?.addEventListener('click', async (event) => {
     const resultBtn = event.target.closest('.shorts-search-result-item');
     if (!resultBtn) return;
     const reelId = Number(resultBtn.getAttribute('data-reel-id') || 0);
     closeShortsSearchOverlay();
-    openShortFromSearchResult(reelId);
+    await openShortFromSearchResult(reelId);
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && shortsSearchOverlay?.getAttribute('aria-hidden') === 'false') {
@@ -11437,6 +11599,34 @@ document.addEventListener('DOMContentLoaded', () => {
     return Promise.resolve(card);
   };
 
+  const prefetchReelCardMedia = (card) => {
+    const media = getMediaElements(card);
+    if (!media) return Promise.resolve(card);
+
+    if (media.type === 'video') {
+      rememberReelMediaSource(media.main);
+      if (typeof window.prefetchLazyVideo === 'function') {
+        return window.prefetchLazyVideo(media.main).then(() => card);
+      }
+      if (typeof window.ensureLazyVideoLoaded === 'function') {
+        return window.ensureLazyVideoLoaded(media.main, { preload: 'auto' }).then(() => {
+          media.main.preload = 'auto';
+          return card;
+        });
+      }
+      media.main.preload = 'auto';
+      return Promise.resolve(card);
+    }
+
+    if (media.audio) {
+      rememberReelMediaSource(media.audio);
+      media.audio.preload = 'auto';
+      return ensureLazyAudioLoaded(media.audio).then(() => card);
+    }
+
+    return Promise.resolve(card);
+  };
+
   const reelThumbnailPromises = new WeakMap();
 
   const getExistingReelThumbnailSource = (card) => {
@@ -11710,6 +11900,50 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  let reelWindowPrefetchPromise = null;
+
+  const ensureUpcomingReelCardsPrefetched = (centerCard) => {
+    if (!centerCard || reelWindowPrefetchPromise || typeof window.loadNextReelsBatch !== 'function' || !window.reelsHasMore) return;
+
+    const reelsFeed = document.querySelector('.reels-feed');
+    if (!reelsFeed) return;
+
+    const cards = Array.from(reelsFeed.querySelectorAll('.reel-card'));
+    const centerIndex = cards.indexOf(centerCard);
+    if (centerIndex === -1) return;
+
+    const keepNextCount = getShortsPrefetchCount();
+    const remainingAhead = Math.max(0, (cards.length - 1) - centerIndex);
+    if (remainingAhead >= keepNextCount) return;
+
+    const centerReelId = Number(centerCard.getAttribute('data-reel-id') || 0);
+    let shouldContinuePrefetch = false;
+    reelWindowPrefetchPromise = window.loadNextReelsBatch({ reason: 'shorts-prefetch-window' })
+      .then((result) => {
+        if (!result?.appended) return result;
+        shouldContinuePrefetch = true;
+        const refreshedCenterCard = centerReelId
+          ? document.querySelector(`.reel-card[data-reel-id="${centerReelId}"]`)
+          : centerCard;
+        if (refreshedCenterCard) {
+          window.requestAnimationFrame(() => {
+            maintainReelMediaWindow(refreshedCenterCard);
+          });
+        }
+        return result;
+      })
+      .catch(() => null)
+      .finally(() => {
+        reelWindowPrefetchPromise = null;
+        const refreshedCenterCard = centerReelId
+          ? document.querySelector(`.reel-card[data-reel-id="${centerReelId}"]`)
+          : centerCard;
+        if (shouldContinuePrefetch && refreshedCenterCard) {
+          ensureUpcomingReelCardsPrefetched(refreshedCenterCard);
+        }
+      });
+  };
+
   const maintainReelMediaWindow = (centerCard) => {
     const reelsFeed = document.querySelector('.reels-feed');
     if (!reelsFeed || !centerCard) return;
@@ -11718,18 +11952,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const centerIndex = cards.indexOf(centerCard);
     if (centerIndex === -1) return;
 
-    // Cache all previous videos (keepStart = 0) and prefetch the next 5 videos
+    // Keep current and previous shorts ready, and aggressively prefetch the next 5 videos.
     const keepNextCount = getShortsPrefetchCount();
     const keepStart = 0;
     const keepEnd = Math.min(cards.length - 1, centerIndex + keepNextCount);
 
     cards.forEach((card, index) => {
       if (index >= keepStart && index <= keepEnd) {
-        ensureReelCardMediaLoaded(card).catch(() => {});
+        if (index <= centerIndex) {
+          ensureReelCardMediaLoaded(card).catch(() => {});
+        } else {
+          prefetchReelCardMedia(card).catch(() => {});
+        }
       } else {
         unloadReelCardMedia(card);
       }
     });
+
+    ensureUpcomingReelCardsPrefetched(centerCard);
   };
 
   const getReelEndOverlayController = (card) => {
@@ -13167,6 +13407,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.loadNextReelsBatch = loadNextReelsBatch;
 
+    const ensureReelCardLoaded = async (reelId) => {
+      const numericReelId = Number(reelId || 0);
+      if (!numericReelId) return null;
+
+      const existingCard = document.getElementById(`reel-${numericReelId}`);
+      if (existingCard) return existingCard;
+
+      try {
+        const response = await fetch(`/api/feed/reels/${numericReelId}/card`, {
+          credentials: 'same-origin'
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+
+        const data = await response.json();
+        if (!data.success || !data.html) {
+          throw new Error(data.error || 'Specific reel load failed');
+        }
+
+        appendReelsFromHtml(data.html, data.reels || (data.reel ? [data.reel] : []));
+        return document.getElementById(`reel-${numericReelId}`) || null;
+      } catch (err) {
+        console.warn('[ShortsInfiniteScroll] Error ensuring reel card:', err);
+        return null;
+      }
+    };
+
+    window.ensureReelCardLoaded = ensureReelCardLoaded;
+
     if (!hasMore) return;
 
     const reelsScrollObserver = new IntersectionObserver((entries) => {
@@ -14303,14 +14571,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (statusViewerMuteBtn) {
     statusViewerMuteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      statusViewerVolumeOn = !statusViewerVolumeOn;
-      if (statusViewerVideo) {
-        statusViewerVideo.muted = !statusViewerVolumeOn;
-      }
-      statusViewerMuteBtn.innerHTML = `<i data-lucide="${statusViewerVolumeOn ? 'volume-2' : 'volume-x'}" style="width: 16px; height: 16px;"></i>`;
-      if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-      }
+      setStatusViewerAudioState(!statusViewerVolumeOn);
     });
   }
 
@@ -14564,6 +14825,40 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const statusMediaFitInput = document.getElementById('statusMediaFitInput');
+  const statusMediaFitSection = document.getElementById('statusMediaFitSection');
+  const statusMediaFitOptions = document.querySelectorAll('.status-fit-option');
+
+  const setStatusMediaFitState = (fit = 'cover') => {
+    const normalizedFit = fit === 'contain' ? 'contain' : 'cover';
+    if (statusMediaFitInput) statusMediaFitInput.value = normalizedFit;
+
+    statusMediaFitOptions.forEach((option) => {
+      const isActive = option.getAttribute('data-status-fit-option') === normalizedFit;
+      option.classList.toggle('active', isActive);
+      const input = option.querySelector('input[type="radio"]');
+      if (input) input.checked = isActive;
+    });
+  };
+
+  const applyStatusMediaFit = () => {
+    const fit = statusMediaFitInput?.value === 'contain' ? 'contain' : 'cover';
+    const previewVideo = document.getElementById('statusPreviewVideoTag');
+    if (previewVideo) {
+      previewVideo.style.objectFit = fit;
+      previewVideo.style.background = '#000';
+    }
+  };
+
+  statusMediaFitOptions.forEach((option) => {
+    option.addEventListener('click', () => {
+      const fit = option.getAttribute('data-status-fit-option') === 'contain' ? 'contain' : 'cover';
+      setStatusMediaFitState(fit);
+      applyStatusMediaFit();
+    });
+  });
+  setStatusMediaFitState('cover');
+
   // --- Status Creation Tab Selection ---
   const statusTabBtns = document.querySelectorAll('.status-tab-btn[data-tab-id]');
   const statusTypeInput = document.getElementById('statusTypeInput');
@@ -14594,6 +14889,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mediaPanel) mediaPanel.style.display = tabId === 'media' ? 'block' : 'none';
         if (textPanel) textPanel.style.display = tabId === 'text' ? 'block' : 'none';
         if (voicePanel) voicePanel.style.display = tabId === 'voice' ? 'block' : 'none';
+        if (statusMediaFitSection) {
+          const selectedMedia = statusMediaInput?.files?.[0] || null;
+          statusMediaFitSection.style.display = tabId === 'media' && selectedMedia && selectedMedia.type.startsWith('video/')
+            ? 'grid'
+            : 'none';
+        }
 
         // Update hidden status type input
         if (statusTypeInput) {
@@ -14992,10 +15293,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const caption = document.getElementById('statusCaption')?.value || '';
         const trimStart = document.getElementById('statusTrimStartInput')?.value || '';
         const trimEnd = document.getElementById('statusTrimEndInput')?.value || '';
+        const mediaFit = statusMediaFitInput?.value === 'contain' ? 'contain' : 'cover';
 
         formData.append('caption', caption);
         formData.append('trim_start', trimStart);
         formData.append('trim_end', trimEnd);
+        formData.append('media_fit', file.type.startsWith('video/') ? mediaFit : 'cover');
         formData.append('status_media', file);
       }
 

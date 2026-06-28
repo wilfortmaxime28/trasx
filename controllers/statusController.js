@@ -23,6 +23,8 @@ class StatusController {
       const bgColor = String(req.body?.bg_color || '').trim() || null;
       const trimStart = req.body?.trim_start ? parseFloat(req.body.trim_start) : null;
       const trimEnd = req.body?.trim_end ? parseFloat(req.body.trim_end) : null;
+      const requestedMediaFit = String(req.body?.media_fit || '').trim().toLowerCase();
+      const mediaFit = requestedMediaFit === 'contain' ? 'contain' : 'cover';
 
       let mediaUrl = '';
       let mediaType = '';
@@ -77,7 +79,8 @@ class StatusController {
         caption: caption || null,
         trimStart,
         trimEnd,
-        bgColor
+        bgColor,
+        mediaFit: mediaType.startsWith('video/') ? mediaFit : 'cover'
       });
 
       const newStatus = await Status.getById(statusId);

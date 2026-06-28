@@ -220,6 +220,7 @@ CREATE TABLE statuses (
   media_name VARCHAR(255) DEFAULT NULL,
   media_size INT DEFAULT NULL,
   caption TEXT DEFAULT NULL,
+  media_fit VARCHAR(20) DEFAULT 'cover',
   expires_at DATETIME NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

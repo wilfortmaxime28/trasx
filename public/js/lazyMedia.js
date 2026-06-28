@@ -66,8 +66,15 @@
     img.classList.add('lazy-loaded');
   }
 
-  function ensureLazyVideoLoaded(video) {
+  function ensureLazyVideoLoaded(video, options) {
     if (!video) return Promise.resolve(video);
+    var config = options || {};
+    var preferredPreload = config.preload === 'auto' ? 'auto' : (config.preload === 'metadata' ? 'metadata' : '');
+
+    if (preferredPreload) {
+      video.preload = preferredPreload;
+    }
+
     if (video.src || video.currentSrc) return Promise.resolve(video);
 
     const lazySrc = video.getAttribute('data-lazy-src');
@@ -75,19 +82,32 @@
 
     return new Promise((resolve) => {
       const finalize = () => {
-        video.removeAttribute('data-lazy-src');
-        video.removeEventListener('loadedmetadata', finalize);
-        video.removeEventListener('loadeddata', finalize);
-        resolve(video);
-      };
+      video.removeAttribute('data-lazy-src');
+      video.removeEventListener('loadedmetadata', finalize);
+      video.removeEventListener('loadeddata', finalize);
+      resolve(video);
+    };
 
       video.addEventListener('loadedmetadata', finalize, { once: true });
       video.addEventListener('loadeddata', finalize, { once: true });
+      if (preferredPreload) {
+        video.preload = preferredPreload;
+      }
       video.src = lazySrc;
       video.load();
 
       // Fallback for browsers that do not emit metadata immediately.
       setTimeout(finalize, 1500);
+    });
+  }
+
+  function prefetchLazyVideo(video) {
+    if (!video) return Promise.resolve(video);
+    return ensureLazyVideoLoaded(video, { preload: 'auto' }).then(function (loadedVideo) {
+      if (loadedVideo) {
+        loadedVideo.preload = 'auto';
+      }
+      return loadedVideo;
     });
   }
 
@@ -165,5 +185,6 @@
   }
 
   global.ensureLazyVideoLoaded = ensureLazyVideoLoaded;
+  global.prefetchLazyVideo = prefetchLazyVideo;
   global.initLazyMedia = initLazyMedia;
 })(window);

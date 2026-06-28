@@ -38,7 +38,7 @@ const requireAuth = (req, res, next) => {
   }
 };
 
-router.post('/create', uploadStatusMedia.single('status_media'), statusController.createStatus);
+router.post('/create', requireAuth, uploadStatusMedia.single('status_media'), statusController.createStatus);
 router.post('/view/:id', requireAuth, statusController.recordView);
 router.post('/comment/:id', requireAuth, statusController.createComment);
 router.post('/share/:id', requireAuth, statusController.recordShare);
