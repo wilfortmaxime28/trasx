@@ -802,7 +802,7 @@ function getYouTubeId(url) {
                         <div id="postsGrid" class="profile-grid profile-grid-container active">
                           <% if (userPosts && userPosts.length> 0) { %>
                             <% userPosts.forEach(post=> { %>
-                              <div class="grid-item" data-post-id="<%= post.id %>" onclick="window.location.href='/#post-<%= post.id %>'" style="cursor: pointer;">
+                              <div class="grid-item" data-post-id="<%= post.id %>" data-json="<%= JSON.stringify(post).replace(/"/g, '&quot;') %>" style="cursor: pointer;">
                                 <% if (post.is_live === 1) { 
                                      const ytId = getYouTubeId(post.live_url);
                                 %>
@@ -844,11 +844,11 @@ function getYouTubeId(url) {
                                            <%= formatNumber(post.likes_count) %>
                                          </span>
                                        </div>
-                                      <form action="/profile/post/<%= post.id %>/delete" method="POST"
-                                        style="position: absolute; top: 8px; right: 8px; margin: 0;">
-                                        <button type="submit"
+                                      <form action="/profile/post/<%= post.id %>/delete" method="POST" id="delete-post-form-<%= post.id %>"
+                                        style="position: absolute; top: 8px; right: 8px; margin: 0;" onclick="event.stopPropagation();">
+                                        <button type="button"
                                           style="background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer;"
-                                          onclick="return confirm('Voulez-vous vraiment supprimer ou masquer ce post ?');">
+                                          onclick="window.showConfirmationModal('Voulez-vous vraiment supprimer ou masquer ce post ?', () => document.getElementById('delete-post-form-<%= post.id %>').submit(), 'Supprimer le post');">
                                           <i data-lucide="trash-2" style="width: 14px;"></i>
                                         </button>
                                       </form>
@@ -877,7 +877,7 @@ function getYouTubeId(url) {
                                 }
                                 const reelMediaFit = reel.media_fit === 'contain' ? 'contain' : 'cover';
                                 %>
-                                <div class="grid-item" data-reel-id="<%= reel.id %>">
+                                <div class="grid-item" data-reel-id="<%= reel.id %>" data-json="<%= JSON.stringify(reel).replace(/"/g, '&quot;') %>" style="cursor: pointer;">
                                   <% if (!reel.media_type || reel.media_type==='video' ) { %>
                                     <video src="<%= resolvedVideoUrl %>" muted loop
                                       style="object-fit: <%= reelMediaFit %>;"></video>
@@ -905,11 +905,11 @@ function getYouTubeId(url) {
                                                  <%= formatNumber(reel.likes_count) %>
                                                </span>
                                              </div>
-                                            <form action="/profile/reel/<%= reel.id %>/delete" method="POST"
-                                              style="position: absolute; top: 8px; right: 8px; margin: 0;">
-                                              <button type="submit"
+                                            <form action="/profile/reel/<%= reel.id %>/delete" method="POST" id="delete-reel-form-<%= reel.id %>"
+                                              style="position: absolute; top: 8px; right: 8px; margin: 0;" onclick="event.stopPropagation();">
+                                              <button type="button"
                                                 style="background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer;"
-                                                onclick="return confirm('Voulez-vous vraiment supprimer ou masquer ce short ?');">
+                                                onclick="window.showConfirmationModal('Voulez-vous vraiment supprimer ou masquer ce short ?', () => document.getElementById('delete-reel-form-<%= reel.id %>').submit(), 'Supprimer le short');">
                                                 <i data-lucide="trash-2" style="width: 14px;"></i>
                                               </button>
                                             </form>

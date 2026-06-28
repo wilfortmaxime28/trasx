@@ -6,6 +6,7 @@ const GAME_PREVIEW_NAMES = {
   puissance4: 'Puissance 4',
   connect4: 'Puissance 4',
   gomoku: 'Gomoku',
+  ludo: 'Ludo',
   tablefootball: 'Football Table',
   chess: 'Echecs',
   echec: 'Echecs',

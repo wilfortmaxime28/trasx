@@ -10,6 +10,16 @@ const LUDO_START_INDICES = {
   1: 0,
   2: 13
 };
+const CHESS_PIECE_VALUES = Object.freeze({
+  p: 100,
+  n: 320,
+  b: 330,
+  r: 500,
+  q: 900,
+  k: 20000
+});
+const CHESS_MATE_SCORE = 100000;
+const CHESS_INITIAL_TIME_MS = 10 * 60 * 1000;
 
 class GamesManager {
   constructor() {
@@ -353,6 +363,10 @@ class GamesManager {
       game.player2 = this.buildBotPlayer(bot, 2);
     }
 
+    if (game.gameType === 'echecs' && game.status === 'playing') {
+      this.startChessTurnClock(game, Date.now());
+    }
+
     this.games[gameId] = game;
     return game;
   }
@@ -391,6 +405,9 @@ class GamesManager {
     game.status = 'playing';
     game.startedAt = Date.now();
     game.lastActivityAt = Date.now();
+    if (game.gameType === 'echecs') {
+      this.startChessTurnClock(game, Date.now());
+    }
     return game;
   }
 
@@ -602,15 +619,25 @@ class GamesManager {
     } else if (game.gameType === 'echecs') {
       const chessState = game.chessState;
       if (!chessState) throw new Error('État des échecs introuvable.');
+      this.ensureChessStateRuntime(chessState, game.currentPlayer);
+
+      const remainingBeforeMove = this.syncChessClock(game, Date.now());
+      if (remainingBeforeMove <= 0) {
+        return await this.resolveChessTimeout(gameId);
+      }
 
       const fromRow = Number(parsedRow);
       const fromCol = Number(parsedCol);
       const toRow = Number(extraMove?.toR);
       const toCol = Number(extraMove?.toC);
       const promotion = String(extraMove?.promotion || 'q').toLowerCase();
+      const allowedPromotions = new Set(['q', 'r', 'b', 'n']);
 
       if (![fromRow, fromCol, toRow, toCol].every(Number.isInteger)) {
         throw new Error('Coup d échecs invalide.');
+      }
+      if (!allowedPromotions.has(promotion)) {
+        throw new Error('Promotion invalide.');
       }
 
       const legalMoves = this.getLegalChessMoves(chessState, activePlayer.symbol);
@@ -626,6 +653,8 @@ class GamesManager {
         throw new Error('Ce coup n est pas autorisé.');
       }
 
+      const isPawnMove = this.getChessPieceType(chosenMove.piece) === 'p';
+      const isCaptureMove = !!chosenMove.captured;
       this.applyChessMove(chessState, chosenMove);
       game.board = chessState.board;
       game.lastMove = {
@@ -638,16 +667,89 @@ class GamesManager {
         promotion: chosenMove.promotion || null
       };
 
-      const opponentSymbol = activePlayer.symbol === 1 ? 2 : 1;
+      chessState.halfmoveClock = (isPawnMove || isCaptureMove) ? 0 : Number(chessState.halfmoveClock || 0) + 1;
+      if (activePlayer.symbol === 2) {
+        chessState.fullmoveNumber = Number(chessState.fullmoveNumber || 1) + 1;
+      }
+
+      const opponentSymbol = this.getChessOpponentSymbol(activePlayer.symbol);
       const opponentMoves = this.getLegalChessMoves(chessState, opponentSymbol);
       const opponentInCheck = this.isChessKingInCheck(chessState.board, opponentSymbol);
+      const isCheckmate = opponentInCheck && opponentMoves.length === 0;
+      const isStalemate = !opponentInCheck && opponentMoves.length === 0;
 
-      if (opponentMoves.length === 0) {
-        if (opponentInCheck) {
-          return await this.endGame(gameId, activePlayer.id);
-        }
-        return await this.endGame(gameId, 'draw');
+      chessState.moveHistory.push(
+        this.buildChessMoveHistoryEntry(chessState, chosenMove, activePlayer.symbol, {
+          inCheck: opponentInCheck,
+          isMate: isCheckmate
+        })
+      );
+
+      if (isCheckmate) {
+        game.currentPlayer = opponentSymbol;
+        chessState.statusMessage = this.buildChessStatusMessage({ isMate: true });
+        chessState.lastEvent = { type: 'checkmate', player: opponentSymbol, at: Date.now() };
+        return await this.endGame(gameId, activePlayer.id, null, false, {
+          reason: 'checkmate',
+          message: activePlayer.symbol === 1 ? 'Victoire des Blancs par echec et mat.' : 'Victoire des Noirs par echec et mat.'
+        });
       }
+
+      if (isStalemate) {
+        game.currentPlayer = opponentSymbol;
+        chessState.statusMessage = this.buildChessStatusMessage({ isStalemate: true });
+        chessState.lastEvent = { type: 'stalemate', player: opponentSymbol, at: Date.now() };
+        return await this.endGame(gameId, 'draw', null, false, {
+          reason: 'stalemate',
+          message: 'Pat. Match nul.'
+        });
+      }
+
+      game.currentPlayer = opponentSymbol;
+
+      const repetitionCount = this.recordChessPosition(chessState, game.currentPlayer);
+      if (repetitionCount >= 3) {
+        chessState.statusMessage = this.buildChessStatusMessage({ reason: 'threefold-repetition' });
+        chessState.lastEvent = { type: 'draw', reason: 'threefold-repetition', at: Date.now() };
+        return await this.endGame(gameId, 'draw', null, false, {
+          reason: 'threefold-repetition',
+          message: 'Match nul par triple repetition.'
+        });
+      }
+
+      if (Number(chessState.halfmoveClock || 0) >= 100) {
+        chessState.statusMessage = this.buildChessStatusMessage({ reason: 'fifty-move-rule' });
+        chessState.lastEvent = { type: 'draw', reason: 'fifty-move-rule', at: Date.now() };
+        return await this.endGame(gameId, 'draw', null, false, {
+          reason: 'fifty-move-rule',
+          message: 'Match nul par regle des 50 coups.'
+        });
+      }
+
+      if (this.isChessInsufficientMaterial(chessState.board)) {
+        chessState.statusMessage = this.buildChessStatusMessage({ reason: 'insufficient-material' });
+        chessState.lastEvent = { type: 'draw', reason: 'insufficient-material', at: Date.now() };
+        return await this.endGame(gameId, 'draw', null, false, {
+          reason: 'insufficient-material',
+          message: 'Match nul par materiel insuffisant.'
+        });
+      }
+
+      chessState.statusMessage = this.buildChessStatusMessage({
+        currentPlayer: game.currentPlayer,
+        inCheck: opponentInCheck
+      });
+      chessState.lastEvent = opponentInCheck
+        ? { type: 'check', player: opponentSymbol, at: Date.now() }
+        : null;
+      game.resultReason = null;
+      game.resultMessage = null;
+      this.startChessTurnClock(game, Date.now());
+
+      return {
+        success: true,
+        game
+      };
     } else if (game.gameType === 'mathduel') {
       const mathState = game.mathState;
       if (!mathState || !mathState.currentQuestion) {
@@ -993,11 +1095,8 @@ class GamesManager {
       } else if (game.gameType === 'echecs') {
         const legalMoves = this.getLegalChessMoves(game.chessState, 2);
         if (!legalMoves.length) return;
-        const scoredMoves = legalMoves.map((move) => ({
-          move,
-          score: this.scoreChessMove(game.chessState, move)
-        })).sort((a, b) => b.score - a.score);
-        const bestMove = scoredMoves[0]?.move;
+        const searchDepth = this.getChessBotSearchDepth(game, legalMoves.length);
+        const bestMove = this.findBestChessMove(game.chessState, 2, searchDepth, legalMoves);
         if (!bestMove) return;
         return await this.makeMove(
           gameId,
@@ -1183,13 +1282,53 @@ class GamesManager {
     }
   }
 
+  async resolveChessTimeout(gameId, now = Date.now()) {
+    const game = this.games[gameId];
+    if (!game || game.gameType !== 'echecs' || game.status !== 'playing' || !game.chessState) return null;
+
+    this.ensureChessStateRuntime(game.chessState, game.currentPlayer || 1);
+    const remaining = this.syncChessClock(game, now);
+    if (remaining > 0) return null;
+
+    const timedOutSlot = Number(game.currentPlayer || 1);
+    const opponentSlot = this.getChessOpponentSymbol(timedOutSlot);
+    game.chessState.clock.remainingMs[timedOutSlot] = 0;
+    game.chessState.clock.turnStartedAt = null;
+    game.chessState.clock.lastUpdatedAt = now;
+
+    const opponentCanMate = this.hasChessSufficientMaterialForMate(game.chessState.board, opponentSlot);
+    const winnerId = opponentCanMate
+      ? (opponentSlot === 1 ? game.player1.id : game.player2.id)
+      : 'draw';
+    const reason = opponentCanMate ? 'timeout' : 'timeout-draw';
+    const message = opponentCanMate
+      ? this.getChessTimeoutResultMessage(game, winnerId)
+      : 'Match nul au temps pour materiel insuffisant.';
+
+    game.chessState.statusMessage = this.buildChessStatusMessage({ reason });
+    game.chessState.lastEvent = { type: 'timeout', player: timedOutSlot, at: now };
+
+    return await this.endGame(gameId, winnerId, null, false, { reason, message });
+  }
+
   // Handle Game forfeit
   async forfeitGame(gameId, forfeitingPlayerId) {
     const game = this.games[gameId];
     if (!game || game.status !== 'playing') return;
 
+    if (game.gameType === 'echecs') {
+      this.stopChessClock(game, Date.now());
+      if (game.chessState) {
+        game.chessState.statusMessage = 'Abandon.';
+        game.chessState.lastEvent = { type: 'resign', player: game.player1.id === forfeitingPlayerId ? 1 : 2, at: Date.now() };
+      }
+    }
+
     const winnerId = game.player1.id === forfeitingPlayerId ? game.player2.id : game.player1.id;
-    return await this.endGame(gameId, winnerId, null, true);
+    return await this.endGame(gameId, winnerId, null, true, {
+      reason: 'resign',
+      message: String(winnerId) === String(game.player1?.id) ? 'Victoire des Blancs par abandon.' : 'Victoire des Noirs par abandon.'
+    });
   }
 
   resetGameForNextRound(game) {
@@ -1216,6 +1355,9 @@ class GamesManager {
     } else if (game.gameType === 'ludo') {
       game.ludoState = this.createInitialLudoState();
       game.board = [];
+    } else if (game.gameType === 'echecs') {
+      game.chessState = this.createInitialChessState(1);
+      game.board = game.chessState.board;
     } else if (game.gameType === 'connect4') {
       game.board = Array(6).fill(null).map(() => Array(7).fill(0));
     } else if (game.gameType === 'gomoku') {
@@ -1252,11 +1394,13 @@ class GamesManager {
         lastResult: null
       };
     }
-    game.currentPlayer = game.nextRoundStarter === 2 ? 2 : 1;
+    game.currentPlayer = game.gameType === 'echecs' ? 1 : (game.nextRoundStarter === 2 ? 2 : 1);
     game.winner = null;
     game.winningStones = null;
     game.pendingNextRound = null;
     game.nextRoundStarter = null;
+    game.resultReason = null;
+    game.resultMessage = null;
   }
 
   startNextRound(gameId) {
@@ -1266,13 +1410,23 @@ class GamesManager {
     game.currentRound = game.pendingNextRound || ((game.currentRound || 1) + 1);
     game.status = 'playing';
     this.resetGameForNextRound(game);
+    if (game.gameType === 'echecs') {
+      this.startChessTurnClock(game, Date.now());
+    }
     return game;
   }
 
   // End game and handle payouts / rounds
-  async endGame(gameId, winnerId, winningStones = null, isForfeit = false) {
+  async endGame(gameId, winnerId, winningStones = null, isForfeit = false, meta = {}) {
     const game = this.games[gameId];
     if (!game) return;
+
+    if (game.gameType === 'echecs') {
+      this.stopChessClock(game, Date.now());
+    }
+
+    const resultReason = meta?.reason || null;
+    const resultMessage = meta?.message || null;
 
     if (game.gameType === 'domino' && !game.dominoScores) {
       game.dominoScores = { player1: 0, player2: 0 };
@@ -1314,6 +1468,8 @@ class GamesManager {
         game.status = 'finished';
         game.winner = matchWinnerId;
         game.winningStones = winningStones;
+        game.resultReason = resultReason;
+        game.resultMessage = resultMessage;
         await this.recordCompletedMatchStats(game, matchWinnerId);
 
         const isPaid = game.mode === 'paid';
@@ -1368,7 +1524,9 @@ class GamesManager {
           finished: true,
           winnerId: matchWinnerId,
           winningStones,
-          isForfeit: false
+          isForfeit: false,
+          resultReason,
+          resultMessage
         };
       } else {
         const nextRound = (game.currentRound || 1) + 1;
@@ -1390,6 +1548,8 @@ class GamesManager {
       game.status = 'finished';
       game.winner = winnerId;
       game.winningStones = winningStones;
+      game.resultReason = resultReason;
+      game.resultMessage = resultMessage;
       await this.recordCompletedMatchStats(game, winnerId);
 
       const isPaid = game.mode === 'paid';
@@ -1448,7 +1608,9 @@ class GamesManager {
         finished: true,
         winnerId,
         winningStones,
-        isForfeit
+        isForfeit,
+        resultReason,
+        resultMessage
       };
     }
   }
@@ -1903,7 +2065,7 @@ class GamesManager {
     return scoredMoves[0] ? scoredMoves[0].move : null;
   }
 
-  createInitialChessState() {
+  createInitialChessState(currentPlayer = 1) {
     const board = [
       ['br', 'bn', 'bb', 'bq', 'bk', 'bb', 'bn', 'br'],
       ['bp', 'bp', 'bp', 'bp', 'bp', 'bp', 'bp', 'bp'],
@@ -1914,7 +2076,7 @@ class GamesManager {
       ['wp', 'wp', 'wp', 'wp', 'wp', 'wp', 'wp', 'wp'],
       ['wr', 'wn', 'wb', 'wq', 'wk', 'wb', 'wn', 'wr']
     ];
-    return {
+    const state = {
       board,
       castling: {
         whiteKingSide: true,
@@ -1922,8 +2084,28 @@ class GamesManager {
         blackKingSide: true,
         blackQueenSide: true
       },
-      enPassant: null
+      enPassant: null,
+      halfmoveClock: 0,
+      fullmoveNumber: 1,
+      moveHistory: [],
+      positionCounts: {},
+      positionHistory: [],
+      statusMessage: 'Traits aux Blancs',
+      lastEvent: null,
+      clock: {
+        initialMs: CHESS_INITIAL_TIME_MS,
+        remainingMs: {
+          1: CHESS_INITIAL_TIME_MS,
+          2: CHESS_INITIAL_TIME_MS
+        },
+        turnStartedAt: null,
+        lastUpdatedAt: null
+      }
     };
+    const initialKey = this.getChessPositionKey(state, currentPlayer);
+    state.positionCounts[initialKey] = 1;
+    state.positionHistory.push(initialKey);
+    return state;
   }
 
   getChessColorBySymbol(symbol) {
@@ -1938,8 +2120,168 @@ class GamesManager {
     return {
       board: chessState.board.map((row) => [...row]),
       castling: { ...chessState.castling },
-      enPassant: chessState.enPassant ? { ...chessState.enPassant } : null
+      enPassant: chessState.enPassant ? { ...chessState.enPassant } : null,
+      halfmoveClock: Number(chessState.halfmoveClock || 0),
+      fullmoveNumber: Number(chessState.fullmoveNumber || 1),
+      moveHistory: Array.isArray(chessState.moveHistory) ? chessState.moveHistory.map((entry) => ({ ...entry })) : [],
+      positionCounts: chessState.positionCounts ? { ...chessState.positionCounts } : {},
+      positionHistory: Array.isArray(chessState.positionHistory) ? [...chessState.positionHistory] : [],
+      statusMessage: chessState.statusMessage || '',
+      lastEvent: chessState.lastEvent ? { ...chessState.lastEvent } : null,
+      clock: chessState.clock ? {
+        initialMs: Number(chessState.clock.initialMs || CHESS_INITIAL_TIME_MS),
+        remainingMs: {
+          1: Number(chessState.clock.remainingMs?.[1] ?? CHESS_INITIAL_TIME_MS),
+          2: Number(chessState.clock.remainingMs?.[2] ?? CHESS_INITIAL_TIME_MS)
+        },
+        turnStartedAt: chessState.clock.turnStartedAt ? Number(chessState.clock.turnStartedAt) : null,
+        lastUpdatedAt: chessState.clock.lastUpdatedAt ? Number(chessState.clock.lastUpdatedAt) : null
+      } : {
+        initialMs: CHESS_INITIAL_TIME_MS,
+        remainingMs: { 1: CHESS_INITIAL_TIME_MS, 2: CHESS_INITIAL_TIME_MS },
+        turnStartedAt: null,
+        lastUpdatedAt: null
+      }
     };
+  }
+
+  ensureChessStateRuntime(chessState, currentPlayer = 1) {
+    if (!chessState) return null;
+
+    if (!Number.isFinite(Number(chessState.halfmoveClock))) chessState.halfmoveClock = 0;
+    if (!Number.isFinite(Number(chessState.fullmoveNumber)) || Number(chessState.fullmoveNumber) < 1) chessState.fullmoveNumber = 1;
+    if (!Array.isArray(chessState.moveHistory)) chessState.moveHistory = [];
+    if (!Array.isArray(chessState.positionHistory)) chessState.positionHistory = [];
+    if (!chessState.positionCounts || typeof chessState.positionCounts !== 'object') chessState.positionCounts = {};
+    if (!chessState.clock || typeof chessState.clock !== 'object') {
+      chessState.clock = {};
+    }
+
+    chessState.clock.initialMs = Number(chessState.clock.initialMs || CHESS_INITIAL_TIME_MS);
+    chessState.clock.remainingMs = chessState.clock.remainingMs || {};
+    chessState.clock.remainingMs[1] = Math.max(0, Number(chessState.clock.remainingMs[1] ?? chessState.clock.initialMs));
+    chessState.clock.remainingMs[2] = Math.max(0, Number(chessState.clock.remainingMs[2] ?? chessState.clock.initialMs));
+    chessState.clock.turnStartedAt = chessState.clock.turnStartedAt ? Number(chessState.clock.turnStartedAt) : null;
+    chessState.clock.lastUpdatedAt = chessState.clock.lastUpdatedAt ? Number(chessState.clock.lastUpdatedAt) : null;
+
+    const positionKey = this.getChessPositionKey(chessState, currentPlayer);
+    if (!chessState.positionHistory.length) {
+      chessState.positionHistory.push(positionKey);
+    }
+    if (!chessState.positionCounts[positionKey]) {
+      chessState.positionCounts[positionKey] = 1;
+    }
+    if (typeof chessState.statusMessage !== 'string' || !chessState.statusMessage) {
+      chessState.statusMessage = currentPlayer === 1 ? 'Traits aux Blancs' : 'Traits aux Noirs';
+    }
+
+    return chessState;
+  }
+
+  getChessSquareName(r, c) {
+    return `${String.fromCharCode(97 + c)}${8 - r}`;
+  }
+
+  getChessPieceNotationLetter(piece) {
+    const type = this.getChessPieceType(piece);
+    if (!type || type === 'p') return '';
+    if (type === 'n') return 'N';
+    return type.toUpperCase();
+  }
+
+  getChessPositionKey(chessState, currentSymbol) {
+    const rows = [];
+    for (let r = 0; r < 8; r++) {
+      let emptyCount = 0;
+      let rowText = '';
+      for (let c = 0; c < 8; c++) {
+        const piece = chessState.board[r][c];
+        if (!piece) {
+          emptyCount += 1;
+        } else {
+          if (emptyCount > 0) {
+            rowText += String(emptyCount);
+            emptyCount = 0;
+          }
+          rowText += piece[0] === 'w' ? piece[1].toUpperCase() : piece[1];
+        }
+      }
+      if (emptyCount > 0) rowText += String(emptyCount);
+      rows.push(rowText);
+    }
+
+    let castlingText = '';
+    if (chessState.castling?.whiteKingSide) castlingText += 'K';
+    if (chessState.castling?.whiteQueenSide) castlingText += 'Q';
+    if (chessState.castling?.blackKingSide) castlingText += 'k';
+    if (chessState.castling?.blackQueenSide) castlingText += 'q';
+    if (!castlingText) castlingText = '-';
+
+    const enPassantText = chessState.enPassant
+      ? this.getChessSquareName(chessState.enPassant.r, chessState.enPassant.c)
+      : '-';
+
+    return `${rows.join('/')} ${currentSymbol === 1 ? 'w' : 'b'} ${castlingText} ${enPassantText}`;
+  }
+
+  recordChessPosition(chessState, currentSymbol) {
+    this.ensureChessStateRuntime(chessState, currentSymbol);
+    const key = this.getChessPositionKey(chessState, currentSymbol);
+    chessState.positionHistory.push(key);
+    chessState.positionCounts[key] = Number(chessState.positionCounts[key] || 0) + 1;
+    return chessState.positionCounts[key];
+  }
+
+  getEffectiveChessRemainingMs(game, playerSlot, now = Date.now()) {
+    if (!game?.chessState) return 0;
+    this.ensureChessStateRuntime(game.chessState, game.currentPlayer || 1);
+
+    const clock = game.chessState.clock;
+    let remaining = Math.max(0, Number(clock.remainingMs?.[playerSlot] ?? clock.initialMs));
+    if (
+      game.status === 'playing'
+      && Number(game.currentPlayer) === Number(playerSlot)
+      && Number.isFinite(Number(clock.turnStartedAt))
+      && Number(clock.turnStartedAt) > 0
+    ) {
+      remaining = Math.max(0, remaining - Math.max(0, now - Number(clock.turnStartedAt)));
+    }
+    return remaining;
+  }
+
+  syncChessClock(game, now = Date.now()) {
+    if (!game || game.gameType !== 'echecs' || !game.chessState) return null;
+    this.ensureChessStateRuntime(game.chessState, game.currentPlayer || 1);
+
+    const clock = game.chessState.clock;
+    const activeSlot = Number(game.currentPlayer || 1);
+    if (!Number.isFinite(Number(clock.turnStartedAt)) || Number(clock.turnStartedAt) <= 0) {
+      clock.turnStartedAt = now;
+      clock.lastUpdatedAt = now;
+      return Math.max(0, Number(clock.remainingMs[activeSlot] || 0));
+    }
+
+    const elapsed = Math.max(0, now - Number(clock.turnStartedAt));
+    if (elapsed > 0) {
+      clock.remainingMs[activeSlot] = Math.max(0, Number(clock.remainingMs[activeSlot] || 0) - elapsed);
+    }
+    clock.turnStartedAt = now;
+    clock.lastUpdatedAt = now;
+    return Math.max(0, Number(clock.remainingMs[activeSlot] || 0));
+  }
+
+  startChessTurnClock(game, now = Date.now()) {
+    if (!game || game.gameType !== 'echecs' || !game.chessState) return;
+    this.ensureChessStateRuntime(game.chessState, game.currentPlayer || 1);
+    game.chessState.clock.turnStartedAt = now;
+    game.chessState.clock.lastUpdatedAt = now;
+  }
+
+  stopChessClock(game, now = Date.now()) {
+    if (!game || game.gameType !== 'echecs' || !game.chessState) return;
+    this.syncChessClock(game, now);
+    game.chessState.clock.turnStartedAt = null;
+    game.chessState.clock.lastUpdatedAt = now;
   }
 
   isInsideChessBoard(r, c) {
@@ -2216,19 +2558,387 @@ class GamesManager {
     if (move.captured === 'br' && move.to.r === 0 && move.to.c === 7) chessState.castling.blackKingSide = false;
   }
 
-  scoreChessMove(chessState, move) {
-    const values = { p: 10, n: 30, b: 32, r: 50, q: 90, k: 1000 };
+  isChessInsufficientMaterial(board) {
+    const extras = { w: [], b: [] };
+    const bishops = [];
+
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const piece = board[r][c];
+        if (!piece) continue;
+        const type = this.getChessPieceType(piece);
+        if (type === 'k') continue;
+        const color = this.getChessPieceColor(piece);
+        extras[color].push(type);
+        if (type === 'b') {
+          bishops.push({ color, squareColor: (r + c) % 2 });
+        }
+      }
+    }
+
+    const allExtras = [...extras.w, ...extras.b];
+    if (allExtras.length === 0) return true;
+
+    if (allExtras.some((type) => ['p', 'r', 'q'].includes(type))) return false;
+
+    if (allExtras.length === 1 && ['b', 'n'].includes(allExtras[0])) return true;
+
+    if (allExtras.every((type) => type === 'n')) {
+      return allExtras.length <= 2;
+    }
+
+    if (allExtras.every((type) => type === 'b')) {
+      const maxBishopsPerSide = Math.max(extras.w.length, extras.b.length);
+      if (maxBishopsPerSide <= 1) {
+        return true;
+      }
+      const uniqueSquareColors = new Set(bishops.map((bishop) => bishop.squareColor));
+      return uniqueSquareColors.size === 1;
+    }
+
+    if (allExtras.length === 2) {
+      const sorted = [...allExtras].sort().join('');
+      if (sorted === 'bn') return false;
+    }
+
+    return false;
+  }
+
+  hasChessSufficientMaterialForMate(board, symbol) {
+    const color = this.getChessColorBySymbol(symbol);
+    const pieces = [];
+    const bishops = [];
+
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const piece = board[r][c];
+        if (!piece || this.getChessPieceColor(piece) !== color) continue;
+        const type = this.getChessPieceType(piece);
+        if (type === 'k') continue;
+        pieces.push(type);
+        if (type === 'b') bishops.push((r + c) % 2);
+      }
+    }
+
+    if (pieces.some((type) => ['p', 'r', 'q'].includes(type))) return true;
+    if (pieces.filter((type) => type === 'b').length >= 2) return true;
+    if (pieces.includes('b') && pieces.includes('n')) return true;
+    if (pieces.filter((type) => type === 'n').length >= 3) return true;
+    if (pieces.filter((type) => type === 'b').length >= 1 && new Set(bishops).size > 1) return true;
+    return false;
+  }
+
+  formatChessMoveNotation(move, { inCheck = false, isMate = false } = {}) {
+    if (move.castle === 'king') return `O-O${isMate ? '#' : (inCheck ? '+' : '')}`;
+    if (move.castle === 'queen') return `O-O-O${isMate ? '#' : (inCheck ? '+' : '')}`;
+
+    const pieceLetter = this.getChessPieceNotationLetter(move.piece);
+    const fromSquare = this.getChessSquareName(move.from.r, move.from.c);
+    const toSquare = this.getChessSquareName(move.to.r, move.to.c);
+    const captureMarker = move.captured ? 'x' : '-';
+    const promotionSuffix = move.promotion ? `=${String(move.promotion).toUpperCase()}` : '';
+    const enPassantSuffix = move.enPassant ? ' e.p.' : '';
+    const suffix = isMate ? '#' : (inCheck ? '+' : '');
+
+    if (!pieceLetter) {
+      const pawnPrefix = move.captured ? fromSquare[0] : fromSquare;
+      return `${pawnPrefix}${captureMarker}${toSquare}${promotionSuffix}${enPassantSuffix}${suffix}`;
+    }
+
+    return `${pieceLetter}${fromSquare}${captureMarker}${toSquare}${promotionSuffix}${suffix}`;
+  }
+
+  buildChessMoveHistoryEntry(chessState, move, playerSlot, { inCheck = false, isMate = false } = {}) {
+    const moveIndex = Number(chessState.moveHistory?.length || 0) + 1;
+    return {
+      index: moveIndex,
+      moveNumber: Math.ceil(moveIndex / 2),
+      player: playerSlot,
+      color: playerSlot === 1 ? 'white' : 'black',
+      notation: this.formatChessMoveNotation(move, { inCheck, isMate }),
+      from: this.getChessSquareName(move.from.r, move.from.c),
+      to: this.getChessSquareName(move.to.r, move.to.c),
+      piece: move.piece,
+      captured: move.captured || null,
+      promotion: move.promotion || null,
+      castle: move.castle || null,
+      enPassant: move.enPassant === true,
+      createdAt: Date.now()
+    };
+  }
+
+  buildChessStatusMessage({ currentPlayer, inCheck = false, isMate = false, isStalemate = false, reason = null } = {}) {
+    if (reason === 'threefold-repetition') return 'Nulle par triple repetition.';
+    if (reason === 'fifty-move-rule') return 'Nulle par regle des 50 coups.';
+    if (reason === 'insufficient-material') return 'Nulle par materiel insuffisant.';
+    if (reason === 'timeout') return 'Defaite au temps.';
+    if (reason === 'timeout-draw') return 'Nulle au temps, materiel insuffisant.';
+    if (isMate) return 'Echec et mat.';
+    if (isStalemate) return 'Pat. Match nul.';
+    if (inCheck) return 'Echec.';
+    return currentPlayer === 1 ? 'Traits aux Blancs' : 'Traits aux Noirs';
+  }
+
+  getChessTimeoutResultMessage(game, winnerId) {
+    if (!game) return 'Defaite au temps.';
+    if (winnerId === 'draw') return 'Match nul au temps.';
+    return String(winnerId) === String(game.player1?.id) ? 'Victoire des Blancs au temps.' : 'Victoire des Noirs au temps.';
+  }
+
+  getChessOpponentSymbol(symbol) {
+    return symbol === 1 ? 2 : 1;
+  }
+
+  countChessPieces(board) {
+    let count = 0;
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if (board[r][c]) count += 1;
+      }
+    }
+    return count;
+  }
+
+  getChessPieceActivityScore(piece, r, c) {
+    if (!piece) return 0;
+
+    const color = this.getChessPieceColor(piece);
+    const type = this.getChessPieceType(piece);
+    const forwardProgress = color === 'w' ? 7 - r : r;
+    const centerDistance = Math.abs(3.5 - r) + Math.abs(3.5 - c);
+    const centerBonus = Math.max(0, Math.round((4 - centerDistance) * 4));
+    const onEdge = r === 0 || r === 7 || c === 0 || c === 7;
+    const homeRow = color === 'w' ? 7 : 0;
+
+    if (type === 'p') return (forwardProgress * 5) + (c >= 2 && c <= 5 ? 4 : 0) + Math.round(centerBonus * 0.35);
+    if (type === 'n') return centerBonus + (onEdge ? -12 : 0) + (r === homeRow ? -10 : 6);
+    if (type === 'b') return Math.round(centerBonus * 0.85) + (r === homeRow ? -6 : 6);
+    if (type === 'r') return Math.round(centerBonus * 0.3) + (r === homeRow ? -4 : 8);
+    if (type === 'q') return Math.round(centerBonus * 0.35) + (forwardProgress > 1 ? 4 : 0);
+    return 0;
+  }
+
+  evaluateChessPawnStructure(pawnFiles, color) {
     let score = 0;
-    if (move.captured) score += values[this.getChessPieceType(move.captured)] || 0;
-    if (move.promotion) score += 80;
-    if (move.castle) score += 25;
-    if ([3, 4].includes(move.to.c) && [3, 4].includes(move.to.r)) score += 6;
+
+    for (let file = 0; file < 8; file++) {
+      const pawnsOnFile = pawnFiles[color][file];
+      if (!pawnsOnFile) continue;
+
+      if (pawnsOnFile > 1) {
+        score -= (pawnsOnFile - 1) * 15;
+      }
+
+      const hasLeftSupport = file > 0 && pawnFiles[color][file - 1] > 0;
+      const hasRightSupport = file < 7 && pawnFiles[color][file + 1] > 0;
+      if (!hasLeftSupport && !hasRightSupport) {
+        score -= 12;
+      }
+    }
+
+    return score;
+  }
+
+  evaluateChessKingSafety(chessState, color, pieceCount) {
+    const king = this.findChessKing(chessState.board, color);
+    if (!king) return -CHESS_PIECE_VALUES.k;
+
+    const isEndgame = pieceCount <= 12;
+    if (isEndgame) {
+      const centerDistance = Math.abs(3.5 - king.r) + Math.abs(3.5 - king.c);
+      return Math.round((5 - centerDistance) * 9);
+    }
+
+    let score = 0;
+    const homeRow = color === 'w' ? 7 : 0;
+    if (king.r === homeRow && (king.c === 6 || king.c === 2)) {
+      score += 42;
+    } else if (king.r === homeRow && king.c === 4) {
+      score -= 12;
+    } else {
+      score -= 24;
+    }
+
+    const shieldRow = color === 'w' ? king.r - 1 : king.r + 1;
+    for (let dc = -1; dc <= 1; dc++) {
+      const shieldCol = king.c + dc;
+      const shieldPiece = this.isInsideChessBoard(shieldRow, shieldCol) ? chessState.board[shieldRow][shieldCol] : null;
+      if (shieldPiece === `${color}p`) {
+        score += 10;
+      } else {
+        score -= 7;
+      }
+    }
+
+    if (king.c >= 3 && king.c <= 4) {
+      score -= 8;
+    }
+
+    return score;
+  }
+
+  evaluateChessState(chessState, perspectiveSymbol) {
+    const perspectiveColor = this.getChessColorBySymbol(perspectiveSymbol);
+    const enemySymbol = this.getChessOpponentSymbol(perspectiveSymbol);
+    const pieceCount = this.countChessPieces(chessState.board);
+    const pawnFiles = {
+      w: Array(8).fill(0),
+      b: Array(8).fill(0)
+    };
+    const bishops = { w: 0, b: 0 };
+    let score = 0;
+
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const piece = chessState.board[r][c];
+        if (!piece) continue;
+
+        const color = this.getChessPieceColor(piece);
+        const type = this.getChessPieceType(piece);
+        const pieceScore = CHESS_PIECE_VALUES[type] + this.getChessPieceActivityScore(piece, r, c);
+
+        if (type === 'p') pawnFiles[color][c] += 1;
+        if (type === 'b') bishops[color] += 1;
+
+        score += color === perspectiveColor ? pieceScore : -pieceScore;
+      }
+    }
+
+    const perspectiveStructure = this.evaluateChessPawnStructure(pawnFiles, perspectiveColor);
+    const enemyColor = this.getChessColorBySymbol(enemySymbol);
+    const enemyStructure = this.evaluateChessPawnStructure(pawnFiles, enemyColor);
+    score += perspectiveStructure - enemyStructure;
+
+    if (bishops[perspectiveColor] >= 2) score += 28;
+    if (bishops[enemyColor] >= 2) score -= 28;
+
+    score += this.evaluateChessKingSafety(chessState, perspectiveColor, pieceCount);
+    score -= this.evaluateChessKingSafety(chessState, enemyColor, pieceCount);
+
+    const perspectiveMobility = this.getLegalChessMoves(chessState, perspectiveSymbol).length;
+    const enemyMobility = this.getLegalChessMoves(chessState, enemySymbol).length;
+    score += (perspectiveMobility - enemyMobility) * (pieceCount <= 12 ? 5 : 3);
+
+    if (this.isChessKingInCheck(chessState.board, enemySymbol)) score += 26;
+    if (this.isChessKingInCheck(chessState.board, perspectiveSymbol)) score -= 26;
+
+    return score;
+  }
+
+  scoreChessMove(chessState, move, perspectiveSymbol = null) {
+    const attackerType = this.getChessPieceType(move.piece);
+    const capturedType = this.getChessPieceType(move.captured);
+    let score = 0;
+
+    if (move.captured) {
+      score += (CHESS_PIECE_VALUES[capturedType] || 0) - Math.round((CHESS_PIECE_VALUES[attackerType] || 0) / 12);
+    }
+    if (move.promotion) score += 880;
+    if (move.castle) score += 90;
+    if ([2, 3, 4, 5].includes(move.to.c) && [2, 3, 4, 5].includes(move.to.r)) score += 14;
+    if (attackerType === 'p') score += Math.abs(move.to.r - move.from.r) * 5;
+    if (attackerType === 'n' || attackerType === 'b') score += 8;
 
     const nextState = this.cloneChessState(chessState);
     this.applyChessMove(nextState, move);
     const enemySymbol = move.piece[0] === 'w' ? 2 : 1;
     if (this.isChessKingInCheck(nextState.board, enemySymbol)) score += 15;
+    if (perspectiveSymbol !== null) {
+      score += this.getChessPieceActivityScore(nextState.board[move.to.r][move.to.c], move.to.r, move.to.c);
+    }
     return score;
+  }
+
+  orderChessMoves(chessState, moves, perspectiveSymbol = null) {
+    return [...moves].sort((a, b) => this.scoreChessMove(chessState, b, perspectiveSymbol) - this.scoreChessMove(chessState, a, perspectiveSymbol));
+  }
+
+  getChessBotSearchDepth(game, legalMovesCount = 0) {
+    const botLevel = Math.max(1, Number(game?.player2?.level || 1));
+    const isPaidMode = game?.mode === 'paid';
+    const pieceCount = game?.chessState ? this.countChessPieces(game.chessState.board) : 32;
+
+    let depth = 3;
+    if (isPaidMode || botLevel >= 10 || legalMovesCount <= 16 || pieceCount <= 14) {
+      depth = 4;
+    }
+
+    return depth;
+  }
+
+  searchChessPosition(chessState, currentSymbol, depth, alpha, beta, rootSymbol, ply = 0) {
+    const legalMoves = this.getLegalChessMoves(chessState, currentSymbol);
+    const inCheck = this.isChessKingInCheck(chessState.board, currentSymbol);
+
+    if (!legalMoves.length) {
+      if (inCheck) {
+        return currentSymbol === rootSymbol
+          ? (-CHESS_MATE_SCORE + ply)
+          : (CHESS_MATE_SCORE - ply);
+      }
+      return 0;
+    }
+
+    if (depth <= 0) {
+      return this.evaluateChessState(chessState, rootSymbol);
+    }
+
+    const orderedMoves = this.orderChessMoves(chessState, legalMoves, rootSymbol);
+    const nextSymbol = this.getChessOpponentSymbol(currentSymbol);
+
+    if (currentSymbol === rootSymbol) {
+      let bestScore = -Infinity;
+      for (const move of orderedMoves) {
+        const nextState = this.cloneChessState(chessState);
+        this.applyChessMove(nextState, move);
+        const score = this.searchChessPosition(nextState, nextSymbol, depth - 1, alpha, beta, rootSymbol, ply + 1);
+        if (score > bestScore) bestScore = score;
+        if (bestScore > alpha) alpha = bestScore;
+        if (alpha >= beta) break;
+      }
+      return bestScore;
+    }
+
+    let bestScore = Infinity;
+    for (const move of orderedMoves) {
+      const nextState = this.cloneChessState(chessState);
+      this.applyChessMove(nextState, move);
+      const score = this.searchChessPosition(nextState, nextSymbol, depth - 1, alpha, beta, rootSymbol, ply + 1);
+      if (score < bestScore) bestScore = score;
+      if (bestScore < beta) beta = bestScore;
+      if (alpha >= beta) break;
+    }
+    return bestScore;
+  }
+
+  findBestChessMove(chessState, symbol, depth, precomputedMoves = null) {
+    const legalMoves = Array.isArray(precomputedMoves) && precomputedMoves.length
+      ? [...precomputedMoves]
+      : this.getLegalChessMoves(chessState, symbol);
+
+    if (!legalMoves.length) return null;
+
+    const orderedMoves = this.orderChessMoves(chessState, legalMoves, symbol);
+    const nextSymbol = this.getChessOpponentSymbol(symbol);
+    let bestMove = orderedMoves[0];
+    let bestScore = -Infinity;
+    let alpha = -Infinity;
+    const beta = Infinity;
+
+    for (const move of orderedMoves) {
+      const nextState = this.cloneChessState(chessState);
+      this.applyChessMove(nextState, move);
+      const score = this.searchChessPosition(nextState, nextSymbol, depth - 1, alpha, beta, symbol, 1);
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = move;
+      }
+
+      if (bestScore > alpha) alpha = bestScore;
+    }
+
+    return bestMove;
   }
 
   // --- TIC TAC TOE WIN AND AI ENGINE ---

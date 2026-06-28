@@ -39,7 +39,9 @@ const bscMonitor = require('./utils/bscMonitor');
 const mailer = require('./utils/mailer');
 const { ethers } = require('ethers');
 
+const compression = require('compression');
 const app = express();
+app.use(compression());
 const server = http.createServer(app);
 const io = socketIo(server);
 app.set('io', io);
@@ -3544,7 +3546,9 @@ async function handleScheduledBotResult(gameId, botResult, { allowLudoFollowUp =
     io.to(`game:${gameId}`).emit('game-over', {
       winnerId: botResult.winnerId,
       winningStones: botResult.winningStones,
-      isForfeit: botResult.isForfeit || false
+      isForfeit: botResult.isForfeit || false,
+      reason: botResult.resultReason || null,
+      message: botResult.resultMessage || null
     });
     io.emit('game-list-updated', gamesManager.getLiveGames());
 
@@ -3575,8 +3579,38 @@ async function handleScheduledBotResult(gameId, botResult, { allowLudoFollowUp =
     && botResult.game.player2
     && botResult.game.player2.isBot
   ) {
-    const followUpDelay = botResult.botAction === 'roll' ? 1150 : 1050;
+    const followUpDelay = botResult.botAction === 'roll'
+      ? (1500 + Math.random() * 1000)
+      : (1200 + Math.random() * 1000);
     scheduleBotMove(gameId, followUpDelay);
+  }
+}
+
+async function resolveExpiredChessClocks() {
+  const gameEntries = Object.entries(gamesManager.games || {});
+  for (const [gameId, game] of gameEntries) {
+    if (!game || game.gameType !== 'echecs' || game.status !== 'playing') continue;
+
+    try {
+      const timeoutResult = await gamesManager.resolveChessTimeout(gameId, Date.now());
+      if (!timeoutResult || !timeoutResult.finished) continue;
+
+      await broadcastGameState(gameId, null);
+      io.to(`game:${gameId}`).emit('game-over', {
+        winnerId: timeoutResult.winnerId,
+        winningStones: timeoutResult.winningStones || null,
+        isForfeit: timeoutResult.isForfeit || false,
+        reason: timeoutResult.resultReason || null,
+        message: timeoutResult.resultMessage || null
+      });
+      io.emit('game-list-updated', gamesManager.getLiveGames());
+
+      if (timeoutResult.game && timeoutResult.game.mode === 'paid' && timeoutResult.game.player2 && timeoutResult.game.player2.isBot) {
+        await emitRealtimeBalanceUpdate(timeoutResult.game.player1.id, "Votre solde de tokens a été mis à jour.");
+      }
+    } catch (timeoutErr) {
+      console.error('Error while resolving chess timeout:', timeoutErr);
+    }
   }
 }
 
@@ -3588,9 +3622,36 @@ function scheduleBotMove(gameId, delayOverride = null) {
   if (!nextPlayer || !nextPlayer.isBot) return;
 
   const isTableFootball = game.gameType === 'tablefootball';
-  const delay = Number.isFinite(Number(delayOverride))
+  const isChess = game.gameType === 'echecs';
+  const isLudo = game.gameType === 'ludo';
+  const isMathDuel = game.gameType === 'mathduel';
+  const isGomoku = game.gameType === 'gomoku';
+  const isConnect4 = game.gameType === 'connect4';
+
+  const chessPieceCount = isChess && Array.isArray(game.chessState?.board)
+    ? game.chessState.board.flat().filter(Boolean).length
+    : 0;
+  const chessBotLevel = isChess ? Math.max(1, Number(game.player2?.level || 1)) : 1;
+
+  const delay = (delayOverride !== null && Number.isFinite(Number(delayOverride)))
     ? Number(delayOverride)
-    : (isTableFootball ? 2500 + Math.random() * 1000 : 1200 + Math.random() * 1000);
+    : (
+      isTableFootball
+        ? 1200 + Math.random() * 1000
+        : isChess
+          ? (
+            (chessPieceCount <= 12 ? 2200 : 1800)
+            + Math.random() * (chessPieceCount <= 12 ? 1500 : 1000)
+            + Math.min(chessBotLevel, 20) * 50
+          )
+          : isLudo
+            ? 1200 + Math.random() * 1000
+            : isMathDuel
+              ? 1800 + Math.random() * 1500
+              : (isGomoku || isConnect4)
+                ? 1500 + Math.random() * 1500
+                : 1500 + Math.random() * 1000
+    );
 
   setTimeout(async () => {
     try {
@@ -6269,6 +6330,9 @@ io.on('connection', (socket) => {
       }
       game.status = 'playing';
       game.startedAt = Date.now();
+      if (game.gameType === 'echecs') {
+        gamesManager.startChessTurnClock(game, Date.now());
+      }
 
       if (game.gameType === 'tablefootball') {
         let selectedTeam2 = team;
@@ -6912,7 +6976,9 @@ io.on('connection', (socket) => {
           io.to(`game:${gameId}`).emit('game-over', {
             winnerId: result.winnerId,
             winningStones: result.winningStones,
-            isForfeit: result.isForfeit || false
+            isForfeit: result.isForfeit || false,
+            reason: result.resultReason || null,
+            message: result.resultMessage || null
           });
           io.emit('game-list-updated', gamesManager.getLiveGames());
           if (result.game && result.game.mode === 'paid' && result.game.player2 && result.game.player2.isBot) {
@@ -7129,7 +7195,9 @@ io.on('connection', (socket) => {
         io.to(`game:${gameId}`).emit('game-over', {
           winnerId: result.winnerId,
           winningStones: null,
-          isForfeit: true
+          isForfeit: true,
+          reason: result.resultReason || 'resign',
+          message: result.resultMessage || null
         });
         io.emit('game-list-updated', gamesManager.getLiveGames());
         if (result.game && result.game.mode === 'paid' && result.game.player2 && result.game.player2.isBot) {
@@ -7402,6 +7470,10 @@ server.listen(PORT, async () => {
       bscMonitor.start(io);
       startWithdrawalMonitor();
 
+      setInterval(async () => {
+        await resolveExpiredChessClocks();
+      }, 1000);
+
       // Start periodic check for inactive tablefootball games (5 minutes of inactivity -> cancel & refund)
       setInterval(async () => {
         try {
@@ -7421,7 +7493,9 @@ server.listen(PORT, async () => {
                   io.to(`game:${gameId}`).emit('game-over', {
                     winnerId: 'cancelled',
                     winningStones: null,
-                    isForfeit: false
+                    isForfeit: false,
+                    reason: 'cancelled',
+                    message: "Le match a été annulé pour inactivité."
                   });
                   io.emit('game-list-updated', gamesManager.getLiveGames());
                   

@@ -1661,6 +1661,7 @@ select:-webkit-autofill {
   border-radius: 14px;
   border: 1px solid #e3e8f2;
   background: #fff;
+  overflow: hidden;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
@@ -1694,8 +1695,10 @@ select:-webkit-autofill {
   background: transparent;
   color: #111827;
   font-size: 14px;
-  padding: 0 16px 0 0;
+  padding: 0 14px 0 0;
   box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
 }
 
 .auth-input-inline {
@@ -17963,6 +17966,89 @@ body[data-theme="dark"] .ludo-dice-face {
   background: rgba(239, 68, 68, 0.25) !important;
 }
 
+.chess-square.move-arrived svg.chess-piece-svg {
+  animation: chessMoveArrive 0.22s ease-out;
+}
+
+.chess-square.capture-impact::before {
+  content: '';
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  border: 3px solid rgba(239, 68, 68, 0.42);
+  animation: chessCapturePulse 0.34s ease-out;
+}
+
+.chess-clock-card {
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.chess-clock-card.is-active {
+  border-color: rgba(59, 130, 246, 0.34);
+  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.14);
+  transform: translateY(-1px);
+}
+
+.chess-clock-card.is-low .chess-clock-time {
+  color: #ef4444 !important;
+}
+
+.chess-clock-card.is-flagged {
+  border-color: rgba(239, 68, 68, 0.36);
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
+.chess-move-history {
+  scrollbar-width: thin;
+}
+
+.chess-history-row {
+  display: grid;
+  grid-template-columns: 34px 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.chess-history-index {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-secondary);
+  font-family: 'Outfit', sans-serif;
+}
+
+.chess-history-move {
+  min-height: 30px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.02);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'Outfit', sans-serif;
+}
+
+.chess-history-move.is-last {
+  border-color: rgba(250, 204, 21, 0.24);
+  background: rgba(250, 204, 21, 0.12);
+}
+
+.chess-history-empty {
+  border-radius: 10px;
+  border: 1px dashed var(--border-color);
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 svg.chess-piece-svg {
   width: 88%;
   height: 88%;
@@ -17981,6 +18067,42 @@ svg.chess-piece-svg {
   filter:
     drop-shadow(0 1px 1px rgba(255, 255, 255, 0.18))
     drop-shadow(0 6px 10px rgba(0, 0, 0, 0.32));
+}
+
+@keyframes chessMoveArrive {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes chessCapturePulse {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.72);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+}
+
+@media (max-width: 520px) {
+  .chess-history-row {
+    grid-template-columns: 28px 1fr 1fr;
+    gap: 6px;
+    padding: 5px 6px;
+  }
+
+  .chess-history-move {
+    font-size: 11px;
+    padding: 0 6px;
+    min-height: 28px;
+  }
 }
 
 .mathduel-board-container,

@@ -3333,6 +3333,16 @@ function getYouTubeId(url) {
                               <span id="chessOpponentInfo" style="font-size: 11px; color: var(--text-secondary);"></span>
                             </div>
                           </div>
+                          <div class="chess-clocks-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                            <div id="chessClockWhite" class="chess-clock-card is-white" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 12px; padding: 8px 10px;">
+                              <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary);">Blancs</span>
+                              <span class="chess-clock-time" style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 800; color: var(--text-primary);">10:00</span>
+                            </div>
+                            <div id="chessClockBlack" class="chess-clock-card is-black" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 12px; padding: 8px 10px;">
+                              <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary);">Noirs</span>
+                              <span class="chess-clock-time" style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 800; color: var(--text-primary);">10:00</span>
+                            </div>
+                          </div>
                           <!-- Chess Board Wrapper -->
                           <div class="chess-grid-wrapper" style="position: relative; width: 100%; aspect-ratio: 1; background: var(--bg-hover); border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color);">
                             <div id="chessBoard" class="chess-board-grid"></div>
@@ -3345,6 +3355,14 @@ function getYouTubeId(url) {
                                 </div>
                               </div>
                             </div>
+                          </div>
+                          <div id="chessResultStatus" style="display: none; margin-top: 10px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.18); border-radius: 12px; padding: 10px 12px; font-size: 12px; font-weight: 700; color: var(--text-primary);"></div>
+                          <div class="chess-history-panel" style="margin-top: 10px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
+                              <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary);">Historique des coups</span>
+                              <span id="chessHistoryCount" style="font-size: 10px; color: var(--text-muted);">0 coup</span>
+                            </div>
+                            <div id="chessMoveHistory" class="chess-move-history" style="display: flex; flex-direction: column; gap: 6px; max-height: 168px; overflow-y: auto;"></div>
                           </div>
                         </div>
                       </div>

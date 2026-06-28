@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Jeu Ludo</title>
+
+<style>
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  background:#eee;
+  font-family:Arial,sans-serif;
+}
+
+.board{
+  width:720px;
+  height:720px;
+  display:grid;
+  grid-template-columns:300px 120px 300px;
+  grid-template-rows:300px 120px 300px;
+  border:8px solid #222;
+  background:#ddd;
+}
+
+.home{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:3px solid #111;
+}
+
+.red{background:#f01812}
+.green{background:#149447}
+.blue{background:#062b9b}
+.yellow{background:#ffc400}
+
+.base{
+  width:180px;
+  height:180px;
+  background:#fff;
+  border:4px solid #111;
+  border-radius:8px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:28px;
+  padding:28px;
+}
+
+.base i{
+  border:4px solid #111;
+  border-radius:50%;
+  background:#fff;
+  position:relative;
+}
+
+.base i::before{
+  content:"★";
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:42px;
+}
+
+.home.red i::before{color:#f01812}
+.home.green i::before{color:#149447}
+.home.blue i::before{color:#062b9b}
+.home.yellow i::before{color:#ffc400}
+
+.grid{
+  display:grid;
+}
+
+.vertical{
+  grid-template-columns:repeat(3,40px);
+  grid-template-rows:repeat(6,50px);
+}
+
+.horizontal{
+  grid-template-columns:repeat(6,50px);
+  grid-template-rows:repeat(3,40px);
+}
+
+.grid b{
+  background:#fff;
+  border:2px solid #111;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+  font-style:normal;
+}
+
+.grid .red{background:#f01812}
+.grid .green{background:#149447}
+.grid .blue{background:#062b9b}
+.grid .yellow{background:#ffc400}
+
+.star{
+  background:#fff!important;
+  text-shadow:1px 1px #111;
+}
+
+.red-text{color:#f01812}
+.green-text{color:#149447}
+.blue-text{color:#062b9b}
+.yellow-text{color:#ffc400}
+
+/* CENTRE CORRIGÉ */
+.center{
+  position:relative;
+  width:120px;
+  height:120px;
+  background:#fff;
+  border:3px solid #111;
+  overflow:hidden;
+}
+
+.center-triangle{
+  position:absolute;
+  inset:0;
+}
+
+.center-red{
+  background:#f01812;
+  clip-path:polygon(0 0, 50% 50%, 0 100%);
+}
+
+.center-green{
+  background:#149447;
+  clip-path:polygon(0 0, 100% 0, 50% 50%);
+}
+
+.center-yellow{
+  background:#ffc400;
+  clip-path:polygon(100% 0, 100% 100%, 50% 50%);
+}
+
+.center-blue{
+  background:#062b9b;
+  clip-path:polygon(0 100%, 100% 100%, 50% 50%);
+}
+
+@media(max-width:760px){
+  .board{
+    width:95vw;
+    height:95vw;
+    grid-template-columns:41.66% 16.66% 41.66%;
+    grid-template-rows:41.66% 16.66% 41.66%;
+  }
+
+  .vertical{
+    grid-template-columns:repeat(3,33.33%);
+    grid-template-rows:repeat(6,16.66%);
+  }
+
+  .horizontal{
+    grid-template-columns:repeat(6,16.66%);
+    grid-template-rows:repeat(3,33.33%);
+  }
+
+  .center{
+    width:100%;
+    height:100%;
+  }
+
+  .base{
+    width:55%;
+    height:55%;
+    padding:5%;
+    gap:12%;
+  }
+
+  .grid b{
+    font-size:18px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="board">
+
+  <div class="home red">
+    <div class="base"><i></i><i></i><i></i><i></i></div>
+  </div>
+
+  <div class="grid vertical top">
+    <b></b><b>⬇</b><b></b>
+    <b></b><b class="green"></b><b></b>
+    <b class="star red-text">★</b><b class="green"></b><b></b>
+    <b></b><b class="green"></b><b></b>
+    <b></b><b class="green"></b><b></b>
+    <b></b><b class="green"></b><b></b>
+  </div>
+
+  <div class="home green">
+    <div class="base"><i></i><i></i><i></i><i></i></div>
+  </div>
+
+  <div class="grid horizontal left">
+    <b></b><b></b><b></b><b></b><b></b><b></b>
+    <b>➡</b><b class="red"></b><b class="red"></b><b class="red"></b><b class="red"></b><b class="red"></b>
+    <b></b><b></b><b class="star blue-text">★</b><b></b><b></b><b></b>
+  </div>
+
+  <div class="center">
+    <div class="center-triangle center-red"></div>
+    <div class="center-triangle center-green"></div>
+    <div class="center-triangle center-blue"></div>
+    <div class="center-triangle center-yellow"></div>
+  </div>
+
+  <div class="grid horizontal right">
+    <b></b><b></b><b></b><b class="star green-text">★</b><b></b><b></b>
+    <b class="yellow"></b><b class="yellow"></b><b class="yellow"></b><b class="yellow"></b><b class="yellow"></b><b>⬅</b>
+    <b></b><b></b><b></b><b></b><b></b><b></b>
+  </div>
+
+  <div class="home blue">
+    <div class="base"><i></i><i></i><i></i><i></i></div>
+  </div>
+
+  <div class="grid vertical bottom">
+    <b></b><b class="blue"></b><b></b>
+    <b></b><b class="blue"></b><b></b>
+    <b></b><b class="blue"></b><b class="star yellow-text">★</b>
+    <b></b><b class="blue"></b><b></b>
+    <b></b><b class="blue"></b><b></b>
+    <b></b><b>⬆</b><b></b>
+  </div>
+
+  <div class="home yellow">
+    <div class="base"><i></i><i></i><i></i><i></i></div>
+  </div>
+
+</div>
+
+</body>
+</html>

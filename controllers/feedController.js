@@ -12,6 +12,7 @@ const { getNumberSetting } = require('../utils/appSettings');
 const { getSupportedCurrencyOptions, getPreferredCurrencyForCountry, getDefaultPaymentMethodsForCountry } = require('../utils/p2pCurrencies');
 const { getFeedPage } = require('../services/feedService');
 const { getReelFeedPage } = require('../services/reelFeedService');
+const cache = require('../utils/cache');
 
 function isWithinPromoWindow(authorCreatedAt, promoWindowDays) {
   const createdAtMs = new Date(authorCreatedAt || 0).getTime();
@@ -384,7 +385,7 @@ class FeedController {
         postLikes,
         reelLikes
       ] = await Promise.all([
-        User.getFollowingCount(currentUserId),
+        cache.wrap(`followingCount:${currentUserId}`, cache.TTL.FOLLOWERS_COUNT, () => User.getFollowingCount(currentUserId)),
         getFeedPage({
           session: req.session,
           currentUserId,
@@ -399,18 +400,18 @@ class FeedController {
           limit: initialShortBatchSize,
           refreshSession: true
         }),
-        User.getContactsWithFollowState(currentUserId),
-        User.getFollowingForShare(currentUserId),
-        User.getFriendsForShare(currentUserId),
-        Event.getDashboard(currentUserId),
+        cache.wrap(`contacts:${currentUserId}`, 60, () => User.getContactsWithFollowState(currentUserId)),
+        cache.wrap(`followingShareTargets:${currentUserId}`, 60, () => User.getFollowingForShare(currentUserId)),
+        cache.wrap(`friendShareTargets:${currentUserId}`, 60, () => User.getFriendsForShare(currentUserId)),
+        cache.wrap(`eventDashboard:${currentUserId}`, 60, () => Event.getDashboard(currentUserId)),
         Message.getRecentForUser(currentUserId),
         Status.getFeedStatuses(currentUserId),
-        Ad.getActiveAds(),
-        loadBirthdayCelebrantsForFeed(currentUserId),
-        P2PMarket.getSnapshot(currentUserId),
-        User.getFollowersCount(currentUserId),
-        Post.getTotalLikesForUser(currentUserId),
-        Reel.getTotalLikesForUser(currentUserId)
+        cache.wrap('activeAds', cache.TTL.FEED_STATS, () => Ad.getActiveAds()),
+        cache.wrap(`birthdayCelebrants:${currentUserId}`, 60, () => loadBirthdayCelebrantsForFeed(currentUserId)),
+        cache.wrap(`marketData:${currentUserId}`, 60, () => P2PMarket.getSnapshot(currentUserId)),
+        cache.wrap(`followersCount:${currentUserId}`, cache.TTL.FOLLOWERS_COUNT, () => User.getFollowersCount(currentUserId)),
+        cache.wrap(`postLikes:${currentUserId}`, 60, () => Post.getTotalLikesForUser(currentUserId)),
+        cache.wrap(`reelLikes:${currentUserId}`, 60, () => Reel.getTotalLikesForUser(currentUserId))
       ]);
 
       let posts = feedResult.posts;

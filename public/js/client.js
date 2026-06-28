@@ -3381,26 +3381,119 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const autoplayObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      const video = entry.target;
-      if (entry.isIntersecting) {
-        const autoplayWhenReady = () => {
-          const targetMuted = (typeof window.feedVideosMuted !== 'undefined' ? window.feedVideosMuted : false);
-          video.muted = targetMuted;
-          video.play().catch(err => {
-            // If playing unmuted was blocked by browser autoplay policy, retry muted
-            if (!targetMuted && err.name === 'NotAllowedError') {
-              video.muted = true;
-              video.play().catch(() => {});
+  const isElementVisible = (el) => {
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+
+    let parent = el;
+    while (parent) {
+      if (parent === document.body) break;
+      if (!parent.tagName) {
+        parent = parent.parentElement;
+        continue;
+      }
+      const style = window.getComputedStyle(parent);
+      if (style.display === 'none' || style.visibility === 'hidden') {
+        return false;
+      }
+      parent = parent.parentElement;
+    }
+
+    return (rect.top < window.innerHeight && rect.bottom > 0);
+  };
+
+  const isAnyModalOpen = () => {
+    if (document.body.classList.contains('modal-open')) {
+      return true;
+    }
+    const modalSelectors = [
+      '.modal',
+      '[id*="modal"]',
+      '[id*="Modal"]',
+      '.modal-container',
+      '.modal-wrapper',
+      '#createAdModal',
+      '#giftPostModal',
+      '#shareSheetModal',
+      '#postReportModal',
+      '#editChallengeModal',
+      '#statusModal',
+      '#socialListModal',
+      '#textStyleModal'
+    ];
+    for (const selector of modalSelectors) {
+      const els = document.querySelectorAll(selector);
+      for (const el of els) {
+        if (['INPUT', 'BUTTON', 'A', 'SPAN', 'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(el.tagName)) {
+          continue;
+        }
+        const style = window.getComputedStyle(el);
+        if (style.display !== 'none' && style.visibility !== 'hidden' && el.offsetHeight > 0) {
+          if (style.position === 'fixed' || style.position === 'absolute') {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  const pauseAllFeedVideos = () => {
+    document.querySelectorAll('video').forEach(video => {
+      if (!video.paused) {
+        video.pause();
+      }
+    });
+  };
+
+  const updateActiveAutoplayVideo = () => {
+    if (isAnyModalOpen() || document.visibilityState === 'hidden') {
+      pauseAllFeedVideos();
+      return;
+    }
+
+    const videos = document.querySelectorAll('video');
+    let closestVideo = null;
+    let minDistance = Infinity;
+    const viewportCenter = window.innerHeight / 2;
+
+    videos.forEach(video => {
+      if (isElementVisible(video)) {
+        const rect = video.getBoundingClientRect();
+        const videoCenter = rect.top + (rect.height / 2);
+        const distToCenter = Math.abs(videoCenter - viewportCenter);
+
+        if (distToCenter < minDistance) {
+          minDistance = distToCenter;
+          closestVideo = video;
+        }
+      }
+    });
+
+    videos.forEach(video => {
+      if (video === closestVideo) {
+        const targetMuted = (typeof window.feedVideosMuted !== 'undefined' ? window.feedVideosMuted : false);
+        video.muted = targetMuted;
+
+        const playClosest = () => {
+          if (video.paused) {
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(err => {
+                if (!targetMuted && err.name === 'NotAllowedError') {
+                  video.muted = true;
+                  video.play().catch(() => {});
+                }
+              });
             }
-          });
+          }
         };
 
         if (typeof window.ensureLazyVideoLoaded === 'function') {
-          window.ensureLazyVideoLoaded(video).then(autoplayWhenReady).catch(() => {});
+          window.ensureLazyVideoLoaded(video).then(playClosest).catch(() => {});
         } else {
-          autoplayWhenReady();
+          playClosest();
         }
       } else {
         if (!video.paused) {
@@ -3408,11 +3501,77 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     });
+  };
+
+  const autoplayObserver = new IntersectionObserver((entries) => {
+    updateActiveAutoplayVideo();
   }, {
     root: null,
     rootMargin: '-30% 0px -30% 0px',
     threshold: 0.1
   });
+
+  window.addEventListener('scroll', updateActiveAutoplayVideo, { passive: true });
+  window.addEventListener('resize', updateActiveAutoplayVideo, { passive: true });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      pauseAllFeedVideos();
+    } else {
+      updateActiveAutoplayVideo();
+    }
+  });
+
+  const modalObserver = new MutationObserver(() => {
+    if (isAnyModalOpen()) {
+      pauseAllFeedVideos();
+      if (typeof clearActiveReelCard === 'function') {
+        clearActiveReelCard();
+      }
+    } else {
+      updateActiveAutoplayVideo();
+      if (typeof window.refreshShortsPlayback === 'function') {
+        const reelsFeed = document.querySelector('.reels-feed');
+        if (reelsFeed && window.getComputedStyle(reelsFeed).display !== 'none') {
+          window.refreshShortsPlayback();
+        }
+      }
+    }
+  });
+
+  // Observe body class changes (e.g., modal-open toggled by Bootstrap)
+  modalObserver.observe(document.body, {
+    attributes: true,
+    attributeFilter: ['class']
+  });
+
+  // Observe individual modal elements directly (no subtree) to detect display flex/none changes
+  const observeRegisteredModals = () => {
+    const modalSelectors = [
+      '.modal',
+      '.modal-container',
+      '.modal-wrapper',
+      '#createAdModal',
+      '#giftPostModal',
+      '#shareSheetModal',
+      '#postReportModal',
+      '#editChallengeModal',
+      '#statusModal',
+      '#socialListModal',
+      '#textStyleModal'
+    ];
+    modalSelectors.forEach(selector => {
+      document.querySelectorAll(selector).forEach(el => {
+        if (!['INPUT', 'BUTTON', 'A', 'SPAN', 'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(el.tagName)) {
+          modalObserver.observe(el, {
+            attributes: true,
+            attributeFilter: ['style', 'class']
+          });
+        }
+      });
+    });
+  };
+  observeRegisteredModals();
 
   let platformEndAudio = null;
   let platformEndAudioUnlocked = false;
@@ -8138,7 +8297,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast(error || 'Erreur lors de la modification du challenge.');
   });
 
-  function showConfirmationModal(message, onConfirm) {
+  function showConfirmationModal(message, onConfirm, title = "Confirmation") {
     const existing = document.getElementById('globalConfirmationModal');
     if (existing) existing.remove();
 
@@ -8163,14 +8322,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     modal.innerHTML = `
       <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 20px; width: 340px; padding: 24px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); transform: scale(0.9); transition: transform 0.25s ease;">
-        <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(249, 115, 22, 0.1); border: 1.5px solid #f97316; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto; color: #f97316;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-help-circle"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(239, 68, 68, 0.1); border: 1.5px solid #ef4444; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto; color: #ef4444;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-alert-triangle"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         </div>
-        <h3 style="font-size: 16px; font-weight: 800; color: var(--text-primary); margin-bottom: 8px;">Confirmer le vote</h3>
+        <h3 style="font-size: 16px; font-weight: 800; color: var(--text-primary); margin-bottom: 8px;">${title}</h3>
         <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 24px;">${message}</p>
         <div style="display: flex; gap: 10px; justify-content: center;">
           <button id="confirmCancelBtn" style="flex: 1; padding: 10px 16px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-primary); font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s;">Annuler</button>
-          <button id="confirmYesBtn" style="flex: 1; padding: 10px 16px; border-radius: 12px; border: none; background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); color: white; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25);">Confirmer</button>
+          <button id="confirmYesBtn" style="flex: 1; padding: 10px 16px; border-radius: 12px; border: none; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);">Confirmer</button>
         </div>
       </div>
     `;
@@ -8197,6 +8356,308 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.target === modal) closeModal();
     };
   }
+
+  window.showConfirmationModal = showConfirmationModal;
+
+  const showTikTokPreviewModal = (initialItem, type) => {
+    pauseAllFeedVideos();
+    if (typeof clearActiveReelCard === 'function') {
+      clearActiveReelCard();
+    }
+
+    const existing = document.getElementById('tiktokPreviewModal');
+    if (existing) existing.remove();
+
+    const activeGrid = document.querySelector('.profile-grid-container.active');
+    const gridItems = activeGrid ? Array.from(activeGrid.querySelectorAll('.grid-item')) : [];
+    let itemsList = gridItems.map(el => {
+      try {
+        const dataJson = el.getAttribute('data-json');
+        if (!dataJson) return null;
+        return {
+          id: el.getAttribute('data-post-id') || el.getAttribute('data-reel-id'),
+          data: JSON.parse(dataJson),
+          type: el.hasAttribute('data-post-id') ? 'post' : 'reel'
+        };
+      } catch (e) {
+        return null;
+      }
+    }).filter(Boolean);
+
+    let currentIndex = itemsList.findIndex(x => String(x.id) === String(initialItem.id));
+    if (currentIndex === -1) {
+      itemsList = [{ id: initialItem.id, data: initialItem, type }];
+      currentIndex = 0;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'tiktokPreviewModal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(9, 13, 22, 0.96);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      z-index: 200000;
+      display: flex;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      color: white;
+      font-family: 'Inter', sans-serif;
+    `;
+
+    modal.innerHTML = `
+      <div id="tiktokMediaPane" style="flex: 1; display: flex; align-items: center; justify-content: center; background: #000; position: relative; height: 100%;">
+        <div id="tiktokMediaContent" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"></div>
+        
+        <button id="tiktokCloseBtn" style="position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s; font-size: 18px; z-index: 10;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+
+        <div style="position: absolute; right: 20px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 16px; z-index: 10;">
+          <button id="tiktokPrevBtn" style="background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.15); border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
+          <button id="tiktokNextBtn" style="background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.15); border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="tiktokDetailsPane" style="width: 420px; height: 100%; background: var(--bg-card, #0f172a); border-left: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;">
+        <div id="tiktokDetailsHeader" style="padding: 20px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; align-items: center; justify-content: space-between;"></div>
+        
+        <div id="tiktokDetailsBody" style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px;">
+          <div>
+            <p id="tiktokContentText" style="font-size: 14px; color: var(--text-primary, #fff); line-height: 1.5; margin: 0; white-space: pre-wrap;"></p>
+            <div style="display: flex; gap: 16px; margin-top: 16px; color: var(--text-secondary, #94a3b8); font-size: 13px;">
+              <span style="display: flex; align-items: center; gap: 6px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="red" stroke="red" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                <strong id="tiktokLikesCount">0</strong> likes
+              </span>
+            </div>
+          </div>
+
+          <div style="border-top: 1px solid var(--border-color, rgba(255,255,255,0.1)); padding-top: 16px;">
+            <h5 style="font-size: 13px; font-weight: 700; color: var(--text-secondary, #94a3b8); margin: 0 0 12px 0;">Commentaires</h5>
+            <div id="tiktokCommentsList" style="display: flex; flex-direction: column; gap: 14px;">
+              <div style="color: var(--text-secondary, #94a3b8); font-size: 12px; text-align: center; padding: 10px 0;">Chargement...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const getProfileAuthorInfo = () => {
+      const nameEl = document.getElementById('profileDisplayName');
+      const avatarEl = document.querySelector('.profile-avatar-circle');
+      const handleEl = document.querySelector('.profile-page-wrapper p');
+
+      return {
+        name: nameEl ? nameEl.textContent.trim() : 'Utilisateur',
+        avatar: avatarEl ? avatarEl.src : '/assets/avatar_placeholder.jpg',
+        username: handleEl ? handleEl.textContent.replace('@', '').trim() : 'user'
+      };
+    };
+
+    const renderCurrentItem = (index) => {
+      modal.querySelectorAll('video, audio').forEach(el => el.pause());
+
+      const itemWrapper = itemsList[index];
+      const item = itemWrapper.data;
+      const type = itemWrapper.type;
+
+      const mediaContent = modal.querySelector('#tiktokMediaContent');
+      mediaContent.innerHTML = '';
+
+      const isVideo = type === 'reel' || (item.media_type === 'video' || (item.image_url && (item.image_url.endsWith('.mp4') || item.image_url.endsWith('.webm') || item.image_url.endsWith('.mov'))));
+      let resolvedMediaUrl = item.video_url || item.image_url || '';
+      if (resolvedMediaUrl && resolvedMediaUrl.includes('unsplash.com') && type === 'reel') {
+        const videoUrls = [
+          'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+          'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+          'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+          'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+          'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4'
+        ];
+        const videoIdx = (item.id - 1) % videoUrls.length;
+        resolvedMediaUrl = videoUrls[videoIdx >= 0 ? videoIdx : 0];
+      }
+
+      if (isVideo) {
+        mediaContent.innerHTML = `
+          <video src="${resolvedMediaUrl}" autoplay loop controls muted style="max-width: 100%; max-height: 100%; object-fit: contain; width: 100%; height: 100%;"></video>
+        `;
+      } else if (item.image_url) {
+        mediaContent.innerHTML = `
+          <img src="${resolvedMediaUrl}" style="max-width: 100%; max-height: 100%; object-fit: contain; width: 100%; height: 100%;">
+        `;
+      } else if (item.media_type === 'voice') {
+        mediaContent.innerHTML = `
+          <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px;">
+            <div style="width: 80px; height: 80px; border-radius: 50%; background: rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 8px 32px rgba(0,0,0,0.25);">
+              <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mic"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+            </div>
+            <p style="font-size: 14px; font-weight: 600;">Note vocale</p>
+            <audio src="${item.audio_url || ''}" controls style="width: 240px; margin-top: 12px;"></audio>
+          </div>
+        `;
+      } else {
+        mediaContent.innerHTML = `
+          <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #1e1b4b 0%, #311042 100%); display: flex; align-items: center; justify-content: center; text-align: center; padding: 32px; box-sizing: border-box;">
+            <p style="font-size: 18px; font-weight: 500; line-height: 1.6; max-width: 80%;">${item.content || ''}</p>
+          </div>
+        `;
+      }
+
+      const authorInfo = getProfileAuthorInfo();
+      const authorAvatar = item.author_avatar || item.avatar || authorInfo.avatar;
+      const authorName = item.author_name || (item.first_name ? `${item.first_name} ${item.last_name || ''}` : authorInfo.name);
+      const authorUsername = item.author_username || item.username || authorInfo.username;
+
+      modal.querySelector('#tiktokDetailsHeader').innerHTML = `
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <img src="${authorAvatar}" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--primary, #6366f1);">
+          <div>
+            <h4 style="font-size: 14px; font-weight: 700; color: var(--text-primary, #fff); margin: 0;">${authorName}</h4>
+            <p style="font-size: 12px; color: var(--text-secondary, #94a3b8); margin: 2px 0 0 0;">@${authorUsername}</p>
+          </div>
+        </div>
+      `;
+
+      modal.querySelector('#tiktokContentText').textContent = item.content || '';
+      modal.querySelector('#tiktokLikesCount').textContent = item.likes_count || 0;
+
+      const prevBtn = modal.querySelector('#tiktokPrevBtn');
+      const nextBtn = modal.querySelector('#tiktokNextBtn');
+      if (prevBtn) prevBtn.style.opacity = index > 0 ? '1' : '0.3';
+      if (nextBtn) nextBtn.style.opacity = index < itemsList.length - 1 ? '1' : '0.3';
+
+      const commentsList = modal.querySelector('#tiktokCommentsList');
+      commentsList.innerHTML = '<div style="color: var(--text-secondary, #94a3b8); font-size: 12px; text-align: center; padding: 10px 0;">Chargement...</div>';
+
+      if (type === 'post') {
+        fetch(`/api/posts/${encodeURIComponent(item.id)}/comments`, { credentials: 'same-origin' })
+          .then(res => res.json())
+          .then(payload => {
+            if (payload.success && Array.isArray(payload.comments)) {
+              if (payload.comments.length === 0) {
+                commentsList.innerHTML = '<div style="color: var(--text-secondary, #94a3b8); font-size: 12px; text-align: center; padding: 10px 0;">Aucun commentaire pour le moment.</div>';
+              } else {
+                commentsList.innerHTML = payload.comments.map(c => `
+                  <div style="display: flex; gap: 10px; align-items: flex-start;">
+                    <img src="${c.avatar || '/assets/avatar_placeholder.jpg'}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
+                    <div style="flex: 1; background: var(--bg-hover, rgba(255,255,255,0.05)); padding: 8px 12px; border-radius: 12px;">
+                      <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">${c.first_name} ${c.last_name || ''}</span>
+                      </div>
+                      <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 0; line-height: 1.4;">${c.content}</p>
+                    </div>
+                  </div>
+                `).join('');
+              }
+            } else {
+              commentsList.innerHTML = '<div style="color: var(--danger); font-size: 12px; text-align: center; padding: 10px 0;">Impossible de charger les commentaires.</div>';
+            }
+          })
+          .catch(() => {
+            commentsList.innerHTML = '<div style="color: var(--danger); font-size: 12px; text-align: center; padding: 10px 0;">Impossible de charger les commentaires.</div>';
+          });
+      } else {
+        socket.emit('reel-comments-fetch', { reelId: item.id }, (response) => {
+          if (response && Array.isArray(response.comments)) {
+            if (response.comments.length === 0) {
+              commentsList.innerHTML = '<div style="color: var(--text-secondary, #94a3b8); font-size: 12px; text-align: center; padding: 10px 0;">Aucun commentaire pour le moment.</div>';
+            } else {
+              commentsList.innerHTML = response.comments.map(c => `
+                <div style="display: flex; gap: 10px; align-items: flex-start;">
+                  <img src="${c.avatar || '/assets/avatar_placeholder.jpg'}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
+                  <div style="flex: 1; background: var(--bg-hover, rgba(255,255,255,0.05)); padding: 8px 12px; border-radius: 12px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                      <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">${c.first_name} ${c.last_name || ''}</span>
+                    </div>
+                    <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 0; line-height: 1.4;">${c.content}</p>
+                  </div>
+                </div>
+              `).join('');
+            }
+          } else {
+            commentsList.innerHTML = '<div style="color: var(--danger); font-size: 12px; text-align: center; padding: 10px 0;">Impossible de charger les commentaires.</div>';
+          }
+        });
+      }
+    };
+
+    renderCurrentItem(currentIndex);
+
+    modal.offsetHeight;
+    modal.style.opacity = '1';
+
+    let isTransitioning = false;
+    const handleScrollTransition = (direction) => {
+      if (isTransitioning) return;
+      if (direction === 'next' && currentIndex < itemsList.length - 1) {
+        isTransitioning = true;
+        currentIndex++;
+        renderCurrentItem(currentIndex);
+        setTimeout(() => { isTransitioning = false; }, 400);
+      } else if (direction === 'prev' && currentIndex > 0) {
+        isTransitioning = true;
+        currentIndex--;
+        renderCurrentItem(currentIndex);
+        setTimeout(() => { isTransitioning = false; }, 400);
+      }
+    };
+
+    const wheelHandler = (e) => {
+      e.preventDefault();
+      if (e.deltaY < -30) {
+        handleScrollTransition('next');
+      } else if (e.deltaY > 30) {
+        handleScrollTransition('prev');
+      }
+    };
+    modal.addEventListener('wheel', wheelHandler, { passive: false });
+
+    const keyHandler = (e) => {
+      if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+        e.preventDefault();
+        handleScrollTransition('next');
+      } else if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+        e.preventDefault();
+        handleScrollTransition('prev');
+      } else if (e.key === 'Escape') {
+        closeModal();
+      }
+    };
+    document.addEventListener('keydown', keyHandler);
+
+    const closeModal = () => {
+      modal.querySelectorAll('video, audio').forEach(el => el.pause());
+      modal.removeEventListener('wheel', wheelHandler);
+      document.removeEventListener('keydown', keyHandler);
+      modal.style.opacity = '0';
+      setTimeout(() => modal.remove(), 300);
+      updateActiveAutoplayVideo();
+    };
+
+    modal.querySelector('#tiktokCloseBtn').onclick = closeModal;
+    modal.querySelector('#tiktokPrevBtn').onclick = () => handleScrollTransition('next');
+    modal.querySelector('#tiktokNextBtn').onclick = () => handleScrollTransition('prev');
+
+    modal.onclick = (e) => {
+      if (e.target === modal || e.target === modal.querySelector('#tiktokMediaPane')) {
+        closeModal();
+      }
+    };
+  };
+
+  window.showTikTokPreviewModal = showTikTokPreviewModal;
 
   document.addEventListener('click', async (event) => {
     const carouselBtn = event.target.closest('.challenge-carousel-btn');
@@ -10945,8 +11406,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const getShortsConnectionProfile = () => window.__trasxConnectionProfile || {};
 
   const getShortsPrefetchCount = () => {
-    const profile = getShortsConnectionProfile();
-    return profile.isSlow ? 1 : 2;
+    return 5;
   };
 
   const getShortsBatchSize = () => {
@@ -11258,9 +11718,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const centerIndex = cards.indexOf(centerCard);
     if (centerIndex === -1) return;
 
-    const keepPreviousCount = 1;
+    // Cache all previous videos (keepStart = 0) and prefetch the next 5 videos
     const keepNextCount = getShortsPrefetchCount();
-    const keepStart = Math.max(0, centerIndex - keepPreviousCount);
+    const keepStart = 0;
     const keepEnd = Math.min(cards.length - 1, centerIndex + keepNextCount);
 
     cards.forEach((card, index) => {
@@ -11476,6 +11936,12 @@ document.addEventListener('DOMContentLoaded', () => {
     activeReelCard = card;
     card.classList.add('active');
     maintainReelMediaWindow(card);
+
+    if (isAnyModalOpen() || document.visibilityState === 'hidden') {
+      pauseMedia(card);
+      return;
+    }
+
     playMedia(card).catch(err => {
       console.log('Autoplay blocked (waiting for user click):', err);
       const playOverlay = card.querySelector('.reel-play-overlay');
@@ -11484,6 +11950,11 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const refreshActiveReelCard = () => {
+    if (isAnyModalOpen() || document.visibilityState === 'hidden') {
+      clearActiveReelCard();
+      return;
+    }
+
     let candidateCard = null;
     let candidateRatio = 0;
 
@@ -17756,9 +18227,25 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="search-results-section-header" style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 16px 8px 16px;">Publications</div>
           `;
           data.posts.forEach(post => {
-            const mediaIndicator = post.mediaUrl 
-              ? `<div style="margin-left: auto; width: 44px; height: 44px; border-radius: 6px; overflow: hidden; background: #000; flex-shrink: 0;"><img src="${escapeHtml(post.mediaUrl)}" style="width: 100%; height: 100%; object-fit: cover;"></div>` 
-              : '';
+            let mediaIndicator = '';
+            if (post.mediaUrl || post.thumbnail_url) {
+              const isVideo = post.media_type === 'video' || (post.mediaUrl && (post.mediaUrl.endsWith('.mp4') || post.mediaUrl.endsWith('.webm') || post.mediaUrl.endsWith('.mov') || post.mediaUrl.endsWith('.ogg')));
+              if (isVideo) {
+                mediaIndicator = `
+                  <div style="margin-left: auto; width: 44px; height: 44px; border-radius: 6px; overflow: hidden; background: #000; flex-shrink: 0; position: relative;">
+                    ${post.thumbnail_url 
+                      ? `<img src="${escapeHtml(post.thumbnail_url)}" style="width: 100%; height: 100%; object-fit: cover;">` 
+                      : `<video src="${escapeHtml(post.mediaUrl)}" style="width: 100%; height: 100%; object-fit: cover;" muted playsinline></video>`
+                    }
+                    <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.25);">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-play"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                    </div>
+                  </div>
+                `;
+              } else {
+                mediaIndicator = `<div style="margin-left: auto; width: 44px; height: 44px; border-radius: 6px; overflow: hidden; background: #000; flex-shrink: 0;"><img src="${escapeHtml(post.mediaUrl)}" style="width: 100%; height: 100%; object-fit: cover;"></div>`;
+              }
+            }
             const dateStr = new Date(post.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
             html += `
               <a href="/#post-${escapeHtml(post.id)}" class="search-result-item" style="display: flex; align-items: flex-start; gap: 12px; padding: 10px 16px; color: var(--text-primary); text-decoration: none; transition: background 0.15s ease;">
@@ -20029,6 +20516,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const postId = gridItem.getAttribute('data-post-id');
       const reelId = gridItem.getAttribute('data-reel-id');
+      const itemJson = gridItem.getAttribute('data-json');
+      if (itemJson) {
+        try {
+          const item = JSON.parse(itemJson);
+          if (postId) {
+            window.showTikTokPreviewModal(item, 'post');
+          } else if (reelId) {
+            window.showTikTokPreviewModal(item, 'reel');
+          }
+          return;
+        } catch (err) {
+          console.error('Error parsing grid item JSON:', err);
+        }
+      }
 
       if (postId) {
         window.location.href = `/#post-${postId}`;
@@ -22850,7 +23351,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', unlockAudioContext);
   document.addEventListener('touchstart', unlockAudioContext);
 
-  const showGameResultOverlay = (result) => {
+  const showGameResultOverlay = (result, detailText = '') => {
     const existing = document.getElementById('gameResultOverlay');
     if (existing) existing.remove();
 
@@ -22930,6 +23431,16 @@ document.addEventListener('DOMContentLoaded', () => {
     title.style.color = isWin ? '#fbbf24' : (isLose ? '#ef4444' : '#94a3b8');
 
     card.appendChild(title);
+
+    if (detailText) {
+      const detail = document.createElement('p');
+      detail.textContent = detailText;
+      detail.style.margin = '-6px 0 0 0';
+      detail.style.fontSize = '13px';
+      detail.style.lineHeight = '1.45';
+      detail.style.color = 'var(--text-secondary, rgba(255,255,255,0.75))';
+      card.appendChild(detail);
+    }
 
     if (imgSrc) {
       const img = document.createElement('img');
@@ -23516,7 +24027,10 @@ document.addEventListener('DOMContentLoaded', () => {
       gameTurnStatus.innerHTML = '';
 
       const textSpan = document.createElement('span');
-      if (activeGame.winner === 'draw') {
+      if (activeGame.gameType === 'echecs' && activeGame.resultMessage) {
+        textSpan.textContent = activeGame.resultMessage;
+        gameTurnStatus.className = activeGame.winner === 'draw' ? 'game-turn-status-bar finished-draw' : 'game-turn-status-bar finished-win';
+      } else if (activeGame.winner === 'draw') {
         textSpan.textContent = "Partie terminée : Match nul !";
         gameTurnStatus.className = 'game-turn-status-bar finished-draw';
       } else {
@@ -23559,6 +24073,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     gameTurnStatus.removeAttribute('style');
+    if (activeGame.gameType === 'echecs' && activeGame.chessState?.statusMessage === 'Echec.') {
+      const checkedSide = activeGame.currentPlayer === 1 ? 'Blancs' : 'Noirs';
+      gameTurnStatus.textContent = `Echec sur les ${checkedSide}.`;
+      gameTurnStatus.className = isMyTurn ? 'game-turn-status-bar my-turn' : 'game-turn-status-bar opponent-turn';
+      return;
+    }
     if (isMyTurn) {
       const symbolText = getSymbolLabel(activePlayer.symbol, activeGame.gameType);
       gameTurnStatus.textContent = `C'est à votre tour de jouer !${symbolText}`;
@@ -24858,6 +25378,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedSquare = null;
   let activePromotionMove = null;
   let chessPieceSvgCounter = 0;
+  const CHESS_DEFAULT_CLOCK_MS = 10 * 60 * 1000;
 
 
   const getFenFromGameState = (game) => {
@@ -24906,123 +25427,177 @@ document.addEventListener('DOMContentLoaded', () => {
       epStr = colChar + rowChar;
     }
     
-    return `${boardFen} ${turn} ${castlingStr} ${epStr} 0 1`;
+    const halfmoveClock = Number(state.halfmoveClock || 0);
+    const fullmoveNumber = Math.max(1, Number(state.fullmoveNumber || 1));
+
+    return `${boardFen} ${turn} ${castlingStr} ${epStr} ${halfmoveClock} ${fullmoveNumber}`;
+  };
+
+  const formatChessClockMs = (ms) => {
+    const safeMs = Math.max(0, Number(ms || 0));
+    const totalSeconds = Math.ceil(safeMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  const getChessClockRemainingMs = (game, slot, now = Date.now()) => {
+    const clock = game?.chessState?.clock;
+    const base = Number(clock?.remainingMs?.[slot] ?? clock?.initialMs ?? CHESS_DEFAULT_CLOCK_MS);
+    if (
+      game?.status === 'playing'
+      && Number(game.currentPlayer) === Number(slot)
+      && Number.isFinite(Number(clock?.turnStartedAt))
+      && Number(clock.turnStartedAt) > 0
+    ) {
+      return Math.max(0, base - Math.max(0, now - Number(clock.turnStartedAt)));
+    }
+    return Math.max(0, base);
+  };
+
+  const updateChessClockDisplay = (game = activeGame) => {
+    const whiteCard = document.getElementById('chessClockWhite');
+    const blackCard = document.getElementById('chessClockBlack');
+    if (!whiteCard || !blackCard || !game || game.gameType !== 'echecs' || !game.chessState) return;
+
+    const whiteTimeEl = whiteCard.querySelector('.chess-clock-time');
+    const blackTimeEl = blackCard.querySelector('.chess-clock-time');
+    const now = Date.now();
+    const whiteMs = getChessClockRemainingMs(game, 1, now);
+    const blackMs = getChessClockRemainingMs(game, 2, now);
+
+    if (whiteTimeEl) whiteTimeEl.textContent = formatChessClockMs(whiteMs);
+    if (blackTimeEl) blackTimeEl.textContent = formatChessClockMs(blackMs);
+
+    const updateCardState = (card, slot, ms) => {
+      if (!card) return;
+      card.classList.toggle('is-active', game.status === 'playing' && Number(game.currentPlayer) === Number(slot));
+      card.classList.toggle('is-low', ms <= 60000);
+      card.classList.toggle('is-flagged', ms <= 0);
+    };
+
+    updateCardState(whiteCard, 1, whiteMs);
+    updateCardState(blackCard, 2, blackMs);
+  };
+
+  const getChessResultStatusText = (game = activeGame) => {
+    if (!game || game.gameType !== 'echecs') return '';
+    const reason = String(game.resultReason || '');
+    const winnerIsWhite = String(game.winner) === String(game.player1?.id);
+    const winnerIsBlack = game.player2 && String(game.winner) === String(game.player2.id);
+
+    if (reason === 'checkmate') return winnerIsWhite ? 'Echec et Mat. Victoire des Blancs.' : winnerIsBlack ? 'Echec et Mat. Victoire des Noirs.' : 'Echec et Mat.';
+    if (reason === 'stalemate') return 'Pat. Match nul.';
+    if (reason === 'threefold-repetition') return 'Triple repetition. Match nul.';
+    if (reason === 'fifty-move-rule') return 'Regle des 50 coups. Match nul.';
+    if (reason === 'insufficient-material') return 'Materiel insuffisant. Match nul.';
+    if (reason === 'timeout') return winnerIsWhite ? 'Defaite au temps. Victoire des Blancs.' : winnerIsBlack ? 'Defaite au temps. Victoire des Noirs.' : 'Defaite au temps.';
+    if (reason === 'timeout-draw') return 'Temps ecoule. Match nul par materiel insuffisant.';
+    if (reason === 'resign') return winnerIsWhite ? 'Abandon. Victoire des Blancs.' : winnerIsBlack ? 'Abandon. Victoire des Noirs.' : 'Abandon.';
+    if (game.status === 'finished' && game.winner === 'draw') return 'Match nul.';
+    return String(game.resultMessage || game.chessState?.statusMessage || '').trim();
+  };
+
+  const renderChessMoveHistory = (game = activeGame) => {
+    const historyHost = document.getElementById('chessMoveHistory');
+    const countEl = document.getElementById('chessHistoryCount');
+    if (!historyHost || !countEl) return;
+
+    const history = Array.isArray(game?.chessState?.moveHistory) ? game.chessState.moveHistory : [];
+    countEl.textContent = `${history.length} ${history.length > 1 ? 'coups' : 'coup'}`;
+    historyHost.innerHTML = '';
+
+    if (!history.length) {
+      const empty = document.createElement('div');
+      empty.className = 'chess-history-empty';
+      empty.textContent = 'Aucun coup joue pour le moment.';
+      historyHost.appendChild(empty);
+      return;
+    }
+
+    for (let i = 0; i < history.length; i += 2) {
+      const whiteMove = history[i];
+      const blackMove = history[i + 1];
+      const row = document.createElement('div');
+      row.className = 'chess-history-row';
+
+      const index = document.createElement('span');
+      index.className = 'chess-history-index';
+      index.textContent = `${whiteMove?.moveNumber || Math.ceil((i + 1) / 2)}.`;
+
+      const whiteEl = document.createElement('span');
+      whiteEl.className = 'chess-history-move';
+      whiteEl.textContent = whiteMove?.notation || '...';
+      if (whiteMove && history.length - 1 === i) {
+        whiteEl.classList.add('is-last');
+      }
+
+      const blackEl = document.createElement('span');
+      blackEl.className = 'chess-history-move';
+      blackEl.textContent = blackMove?.notation || '...';
+      if (blackMove && history.length - 1 === i + 1) {
+        blackEl.classList.add('is-last');
+      }
+
+      row.appendChild(index);
+      row.appendChild(whiteEl);
+      row.appendChild(blackEl);
+      historyHost.appendChild(row);
+    }
+
+    historyHost.scrollTop = historyHost.scrollHeight;
   };
 
   const getChessPieceSvgMarkup = (piece) => {
     if (!piece) return '';
-
     const color = piece[0];
     const type = piece[1];
-    const isWhite = color === 'w';
-    const uid = `chess-${color}-${type}-${++chessPieceSvgCounter}`;
-    const bodyGradientId = `${uid}-body`;
-    const trimGradientId = `${uid}-trim`;
-    const gemGradientId = `${uid}-gem`;
-    const shineGradientId = `${uid}-shine`;
-    const edge = isWhite ? '#526074' : '#eef4ff';
-    const edgeSoft = isWhite ? 'rgba(82, 96, 116, 0.35)' : 'rgba(238, 244, 255, 0.2)';
-    const shadow = isWhite ? 'rgba(100, 116, 139, 0.28)' : 'rgba(15, 23, 42, 0.42)';
-    const bodyTop = isWhite ? '#ffffff' : '#435066';
-    const bodyBottom = isWhite ? '#cfd8e6' : '#0f172a';
-    const trimTop = isWhite ? '#f7d67b' : '#8ec5ff';
-    const trimBottom = isWhite ? '#bf8821' : '#2563eb';
-    const shine = isWhite ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.22)';
 
-    const shell = (content) => `
-      <svg class="chess-piece-svg" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <defs>
-          <linearGradient id="${bodyGradientId}" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="${bodyTop}"></stop>
-            <stop offset="55%" stop-color="${isWhite ? '#eef3fb' : '#243145'}"></stop>
-            <stop offset="100%" stop-color="${bodyBottom}"></stop>
-          </linearGradient>
-          <linearGradient id="${trimGradientId}" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="${trimTop}"></stop>
-            <stop offset="100%" stop-color="${trimBottom}"></stop>
-          </linearGradient>
-          <radialGradient id="${gemGradientId}" cx="35%" cy="30%" r="70%">
-            <stop offset="0%" stop-color="${isWhite ? '#fff8dc' : '#d7ecff'}"></stop>
-            <stop offset="100%" stop-color="${trimBottom}"></stop>
-          </radialGradient>
-          <linearGradient id="${shineGradientId}" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="${shine}"></stop>
-            <stop offset="100%" stop-color="rgba(255,255,255,0)"></stop>
-          </linearGradient>
-        </defs>
-        <ellipse cx="32" cy="58.4" rx="16.5" ry="3.2" fill="${shadow}"></ellipse>
-        ${content}
-      </svg>
-    `;
+    const stroke = color === 'w' ? '#38bdf8' : '#fbbf24';
+    const glowColor = color === 'w' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(251, 191, 36, 0.4)';
+    const fill = color === 'w' ? 'rgba(56, 189, 248, 0.08)' : 'rgba(251, 191, 36, 0.08)';
+
+    let pathMarkup = '';
 
     if (type === 'p') {
-      return shell(`
-        <circle cx="32" cy="14.5" r="6.3" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></circle>
-        <path d="M25.8 23.8c0-3.9 2.8-6.6 6.2-6.6s6.2 2.7 6.2 6.6c0 1.7-.6 3.2-1.7 4.4 3.9 1.8 6.4 5.8 6.4 10.8 0 2.2-.5 4.1-1.4 5.7H22.9c-.9-1.6-1.4-3.5-1.4-5.7 0-5 2.5-9 6.4-10.8-1.1-1.2-1.7-2.7-1.7-4.4Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></path>
-        <path d="M25.2 44.6h13.6c2.8 0 5 2 5 4.3v1.4H20.2v-1.4c0-2.3 2.2-4.3 5-4.3Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <path d="M20.4 50.3h23.2l2.1 4.2H18.3l2.1-4.2Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <path d="M28.4 12.6c1.1-1.6 2.4-2.4 4-2.4 1.2 0 2.4.4 3.6 1.2" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.2" stroke-linecap="round"></path>
-      `);
+      pathMarkup = `
+        <path d="M 14 34 L 31 34 L 22.5 19 Z" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" />
+        <circle cx="22.5" cy="13.5" r="4.5" fill="${fill}" stroke="${stroke}" stroke-width="2" />
+      `;
+    } else if (type === 'r') {
+      pathMarkup = `
+        <path d="M 13 34 L 32 34 L 32 18 L 28.5 18 L 28.5 13 L 25 13 L 25 16.5 L 20 16.5 L 20 13 L 16.5 13 L 16.5 18 L 13 18 Z" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" />
+      `;
+    } else if (type === 'n') {
+      pathMarkup = `
+        <path d="M 13 34 L 32 34 L 32 31 L 28.5 28 L 28.5 22.5 L 31.5 17.5 L 26.5 12 L 18.5 12 L 13.5 18.5 L 13.5 23 L 22 23 L 22 27 L 13 27 Z" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" />
+      `;
+    } else if (type === 'b') {
+      pathMarkup = `
+        <path d="M 14 34 L 31 34 M 22.5 14 C 17 21.5 17.5 30.5 22.5 30.5 C 27.5 30.5 28 21.5 22.5 14 Z" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" />
+        <line x1="20" y1="21.5" x2="25" y2="25" stroke="${stroke}" stroke-width="2" stroke-linecap="round" />
+        <circle cx="22.5" cy="10.5" r="2.5" fill="${fill}" stroke="${stroke}" stroke-width="2" />
+      `;
+    } else if (type === 'q') {
+      pathMarkup = `
+        <path d="M 12 34 L 33 34 L 35 18.5 L 29.5 26.5 L 22.5 15.5 L 15.5 26.5 L 10 18.5 Z" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" />
+        <circle cx="10" cy="17.5" r="1.5" fill="${stroke}" />
+        <circle cx="22.5" cy="14.5" r="1.5" fill="${stroke}" />
+        <circle cx="35" cy="17.5" r="1.5" fill="${stroke}" />
+      `;
+    } else if (type === 'k') {
+      pathMarkup = `
+        <path d="M 12 34 L 33 34 L 33 22.5 L 27.5 27.5 L 22.5 19.5 L 17.5 27.5 L 12 22.5 Z" fill="${fill}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" />
+        <line x1="22.5" y1="17.5" x2="22.5" y2="12" stroke="${stroke}" stroke-width="2" stroke-linecap="round" />
+        <line x1="19.5" y1="14.5" x2="25.5" y2="14.5" stroke="${stroke}" stroke-width="2" stroke-linecap="round" />
+      `;
     }
 
-    if (type === 'n') {
-      return shell(`
-        <path d="M23.4 48.2c-1.2-8.2 1.1-14.3 6.7-20.3 2.8-3 4.3-5.8 4.3-9-2.4-.8-4.6-.4-7.4 1.3-1.3-3.6-.8-6.7 1.7-9.1 1.9 2.1 4.6 3.1 8.2 3.2 5 .1 8.3 2.7 8.7 8.1-1.8-.5-3.4-.4-4.9.1 1.8 3.5 1.8 7.4.9 11.7-.7 3.1-.7 6.1 0 9.2l-18.2 4.8Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6" stroke-linejoin="round"></path>
-        <path d="M21.3 46.7h22.4c2.3 0 4.2 1.8 4.2 4v1.4H17.1v-1.4c0-2.2 1.9-4 4.2-4Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <path d="M18.8 52.1h27l1.9 3.6H16.9l1.9-3.6Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <circle cx="35.5" cy="18.3" r="1.7" fill="${isWhite ? '#405065' : '#f8fafc'}"></circle>
-        <path d="M30.3 17.6c2.5-2 5.6-2.7 9.4-1.9" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.1" stroke-linecap="round"></path>
-      `);
-    }
-
-    if (type === 'b') {
-      return shell(`
-        <path d="M32 8.6c2.3 0 4.2 1.9 4.2 4.2 0 1.4-.7 2.8-1.8 3.5l2.7 3.3c3.1 3.8 4.8 8.1 4.8 12.2 0 4.2-1.2 8.2-3.7 12.1H25.8c-2.5-3.9-3.7-7.9-3.7-12.1 0-4.1 1.7-8.4 4.8-12.2l2.7-3.3c-1.1-.8-1.8-2.1-1.8-3.5 0-2.3 1.9-4.2 4.2-4.2Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></path>
-        <path d="M29.6 18.3 35 39.2" fill="none" stroke="${edgeSoft}" stroke-width="2.2" stroke-linecap="round"></path>
-        <path d="M28.2 16.2h7.6" fill="none" stroke="url(#${trimGradientId})" stroke-width="2.4" stroke-linecap="round"></path>
-        <path d="M24.2 44h15.6c2.9 0 5.3 2 5.3 4.4v1.5H18.9v-1.5c0-2.4 2.4-4.4 5.3-4.4Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <path d="M20.4 49.9h23.2l2.1 4.3H18.3l2.1-4.3Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <circle cx="32" cy="8.2" r="2.5" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
-        <path d="M28.8 12.2c.9-1.2 2-1.8 3.5-1.8 1.3 0 2.4.4 3.6 1.3" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.1" stroke-linecap="round"></path>
-      `);
-    }
-
-    if (type === 'r') {
-      return shell(`
-        <path d="M20.4 11.4h4.3v4h4.3v-4h6v4h4.3v-4h4.3v8.8H20.4v-8.8Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></path>
-        <path d="M23.2 20.2h17.6l2.4 17.2H20.8l2.4-17.2Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></path>
-        <path d="M21.6 37.4h20.8c2.3 0 4.2 1.8 4.2 4v1.4H17.4v-1.4c0-2.2 1.9-4 4.2-4Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <path d="M18.8 42.8h26.4l2 4.8H16.8l2-4.8Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <path d="M24.6 26h14.8" fill="none" stroke="${edgeSoft}" stroke-width="2.2" stroke-linecap="round"></path>
-        <path d="M24 13c1.1.8 1.9 1.1 2.7 1.1M37.3 14.1c.9 0 1.8-.3 2.7-1.1" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.1" stroke-linecap="round"></path>
-      `);
-    }
-
-    if (type === 'q') {
-      return shell(`
-        <circle cx="14.1" cy="12.8" r="2.8" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
-        <circle cx="24.2" cy="10.4" r="2.8" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
-        <circle cx="32" cy="8.4" r="3.1" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
-        <circle cx="39.8" cy="10.4" r="2.8" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
-        <circle cx="49.9" cy="12.8" r="2.8" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
-        <path d="M14.1 15.6 20 33.4l7.3-16.2L32 34.6l4.7-17.4L44 33.4l5.9-17.8-5.7 22.7H19.8l-5.7-22.7Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6" stroke-linejoin="round"></path>
-        <path d="M22.4 38.3h19.2c2.8 0 5.2 2.1 5.2 4.7v1.6H17.2V43c0-2.6 2.4-4.7 5.2-4.7Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <path d="M18.6 44.6h26.8l2 5.1H16.6l2-5.1Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <path d="M21 20.3c4.7-2.2 11.3-2.4 18 0" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.2" stroke-linecap="round"></path>
-      `);
-    }
-
-    if (type === 'k') {
-      return shell(`
-        <path d="M32 7.2v8.2M28 11.3h8" fill="none" stroke="url(#${trimGradientId})" stroke-width="2.8" stroke-linecap="round"></path>
-        <path d="M28.6 17.2c-4 0-7.3 3.2-7.3 7.3 0 3.3 1.6 5.6 4.1 8l-2.5 10h18.2l-2.5-10c2.5-2.4 4.1-4.7 4.1-8 0-4.1-3.3-7.3-7.3-7.3-1.7 0-3.2.6-4.4 1.6-1.2-1-2.7-1.6-4.4-1.6Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></path>
-        <path d="M23.9 42.5h16.2c3.1 0 5.5 2.1 5.5 4.7v1.5H18.4v-1.5c0-2.6 2.4-4.7 5.5-4.7Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <path d="M19.7 48.7h24.6l2.1 5H17.6l2.1-5Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
-        <path d="M27 21.8c1.2-1.4 2.9-2.1 5-2.1 1.7 0 3.2.5 4.5 1.4" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.2" stroke-linecap="round"></path>
-      `);
-    }
-
-    return '';
+    return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 4px ${glowColor});">
+      <g>
+        ${pathMarkup}
+      </g>
+    </svg>`;
   };
 
   const showPromotionOverlay = () => {
@@ -25097,9 +25672,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const turnLabel = document.getElementById('chessTurnLabel');
     const checkStatus = document.getElementById('chessCheckStatus');
     const opponentInfoLabel = document.getElementById('chessOpponentInfo');
+    const resultStatus = document.getElementById('chessResultStatus');
 
     if (opponentInfoLabel) {
-      const oppName = activeGame.opponentType === 'bot' ? 'Robot AI' : (activeGame.player2 ? activeGame.player2.name : 'Attente...');
+      const isPlayer1 = activeGame.player1 && Number(activeGame.player1.id) === Number(window.currentUserId);
+      const opponentPlayer = isPlayer1 ? activeGame.player2 : activeGame.player1;
+      const oppName = opponentPlayer ? (opponentPlayer.name || opponentPlayer.username || 'Adversaire') : (activeGame.opponentType === 'bot' ? 'Robot AI' : 'Attente...');
       opponentInfoLabel.textContent = `Adversaire : ${oppName}`;
     }
 
@@ -25115,13 +25693,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const inCheck = chessInstance.in_check();
     const activeColor = activeGame.currentPlayer === 1 ? 'w' : 'b';
+    const chessStatusMessage = String(activeGame.chessState?.statusMessage || '').trim();
+    const resultStatusText = getChessResultStatusText(activeGame);
 
     if (turnLabel) {
-      turnLabel.textContent = activeGame.currentPlayer === 1 ? 'Trait aux Blancs' : 'Trait aux Noirs';
+      turnLabel.textContent = chessStatusMessage || (activeGame.currentPlayer === 1 ? 'Trait aux Blancs' : 'Trait aux Noirs');
     }
     if (checkStatus) {
-      checkStatus.style.display = inCheck ? 'inline' : 'none';
+      const showCheck = activeGame.status === 'playing' && inCheck;
+      checkStatus.style.display = showCheck ? 'inline' : 'none';
+      checkStatus.textContent = activeGame.resultReason === 'checkmate' ? '♚ ÉCHEC ET MAT' : '⚠️ ÉCHEC';
     }
+    if (resultStatus) {
+      const shouldShowResultStatus = activeGame.status === 'finished' || ['stalemate', 'threefold-repetition', 'fifty-move-rule', 'insufficient-material', 'timeout', 'timeout-draw', 'resign', 'checkmate'].includes(String(activeGame.resultReason || ''));
+      resultStatus.style.display = shouldShowResultStatus && resultStatusText ? 'block' : 'none';
+      resultStatus.textContent = resultStatusText;
+    }
+
+    updateChessClockDisplay(activeGame);
+    renderChessMoveHistory(activeGame);
 
     const mySlot = (activeGame.player1 && Number(activeGame.player1.id) === Number(window.currentUserId)) ? 1 : 2;
     const isMyTurn = !window.isSpectatingActiveGame &&
@@ -25168,6 +25758,12 @@ document.addEventListener('DOMContentLoaded', () => {
           const to = activeGame.lastMove.to;
           if ((from && from.r === r && from.c === c) || (to && to.r === r && to.c === c)) {
             cell.classList.add('last-move');
+          }
+          if (to && to.r === r && to.c === c) {
+            cell.classList.add('move-arrived');
+            if (activeGame.lastMove.captured) {
+              cell.classList.add('capture-impact');
+            }
           }
         }
 
@@ -27868,6 +28464,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const { game, botMove } = data;
       if (activeGame && activeGame.id === game.id) {
         activeGame = game;
+        if (game.gameType === 'echecs') {
+          selectedSquare = null;
+          activePromotionMove = null;
+        }
         updateActiveGameSubtitle();
         syncActiveGamePlayers(game);
 
@@ -27983,6 +28583,15 @@ document.addEventListener('DOMContentLoaded', () => {
       winnerEl.style.color = '#ffffff';
       winnerEl.style.marginTop = '5px';
 
+      let detailEl = null;
+      if (data.message) {
+        detailEl = document.createElement('div');
+        detailEl.textContent = data.message;
+        detailEl.style.fontSize = '13px';
+        detailEl.style.lineHeight = '1.45';
+        detailEl.style.color = 'rgba(255, 255, 255, 0.75)';
+      }
+
       let scoreDisplay = '';
       if (activeGame.gameType === 'domino' && activeGame.dominoScores) {
         const s1 = activeGame.dominoScores.player1 || 0;
@@ -28053,6 +28662,7 @@ document.addEventListener('DOMContentLoaded', () => {
       card.appendChild(title);
       card.appendChild(trophyImg);
       card.appendChild(winnerEl);
+      if (detailEl) card.appendChild(detailEl);
       card.appendChild(scoreEl);
       card.appendChild(closeBtn);
       overlay.appendChild(card);
@@ -28062,10 +28672,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     socket.on('game-over', (data) => {
-      const { winnerId, winningStones, isForfeit } = data;
+      const { winnerId, winningStones, isForfeit, reason, message } = data;
       if (activeGame) {
         activeGame.status = 'finished';
         activeGame.winner = winnerId;
+        activeGame.resultReason = reason || null;
+        activeGame.resultMessage = message || null;
 
         // Save last active game info for rematch detection
         const opponentKey = activeGame.opponentType === 'bot' 
@@ -28087,6 +28699,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isPlayer = activeGame.player1.id === window.currentUserId || (activeGame.player2 && activeGame.player2.id === window.currentUserId);
         const isRealPlayer = isPlayer && !window.isSpectatingActiveGame;
+        const chessMessage = activeGame.gameType === 'echecs' ? (message || getChessResultStatusText(activeGame) || '') : '';
 
         if (isRealPlayer) {
           if (winnerId === 'cancelled') {
@@ -28100,19 +28713,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (gamesLobby) gamesLobby.style.display = 'flex';
             loadGamesLobby();
           } else if (winnerId === 'draw') {
-            showToast("Match nul !");
-            showGameResultOverlay('draw');
+            showToast(chessMessage || "Match nul !");
+            showGameResultOverlay('draw', chessMessage);
           } else if (winnerId === window.currentUserId) {
-            showToast("Victoire ! Vous avez gagné !");
+            showToast(chessMessage || "Victoire ! Vous avez gagné !");
             updateStoredScore(true);
-            showGameResultOverlay('win');
+            showGameResultOverlay('win', chessMessage);
           } else {
-            showToast("Partie terminée.");
+            showToast(chessMessage || "Partie terminée.");
             updateStoredScore(false);
-            showGameResultOverlay('lose');
+            showGameResultOverlay('lose', chessMessage);
           }
         } else {
-          showToast(winnerId === 'cancelled' ? "Le match a été annulé pour inactivité." : "Partie terminée.");
+          showToast(winnerId === 'cancelled' ? "Le match a été annulé pour inactivité." : (chessMessage || "Partie terminée."));
           if (winnerId === 'cancelled') {
             if (window.tfGameState && window.tfGameState.animationFrameId) {
               cancelAnimationFrame(window.tfGameState.animationFrameId);
@@ -28123,7 +28736,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (gamesLobby) gamesLobby.style.display = 'flex';
             loadGamesLobby();
           } else {
-            showSpectatorGameResultModal({ winnerId, winningStones, isForfeit });
+            showSpectatorGameResultModal({ winnerId, winningStones, isForfeit, message: chessMessage });
           }
         }
       }
@@ -29733,6 +30346,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    if (activeGame && activeGame.gameType === 'echecs' && activeGame.chessState) {
+      updateChessClockDisplay(activeGame);
+    }
+
     // Update challenge countdown timers
     document.querySelectorAll('.challenge-countdown-badge').forEach((badge) => {
       const endDateStr = badge.dataset.endDate;
@@ -31088,6 +31705,52 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
   }
+
+  // --- Game Leaving Protection ---
+  window.addEventListener('beforeunload', (event) => {
+    const isPlayerInActiveGame = activeGame && activeGame.status !== 'finished' && !window.isSpectatingActiveGame;
+    if (isPlayerInActiveGame) {
+      event.preventDefault();
+      event.returnValue = 'Si vous quittez maintenant, vous perdrez la partie et déclarerez forfait.';
+      return event.returnValue;
+    }
+  });
+
+  document.addEventListener('click', async (event) => {
+    const isPlayerInActiveGame = activeGame && activeGame.status !== 'finished' && !window.isSpectatingActiveGame;
+    if (!isPlayerInActiveGame) return;
+
+    // Find closest anchor tag
+    const anchor = event.target.closest('a');
+    if (!anchor) return;
+
+    const href = anchor.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+
+    // Check if the confirmation dialog is already open to prevent double triggers
+    if (window.isGameConfirmDialogOpen) return;
+
+    // Intercept click
+    event.preventDefault();
+    event.stopPropagation();
+
+    window.isGameConfirmDialogOpen = true;
+    const confirmed = await openGameConfirmDialog({
+      title: 'Quitter la partie ?',
+      message: 'Si vous quittez maintenant, vous perdrez la partie et déclarerez forfait. Voulez-vous vraiment quitter ?',
+      confirmLabel: 'Quitter'
+    });
+    window.isGameConfirmDialogOpen = false;
+
+    if (confirmed) {
+      // Emit forfeit so the game ends correctly on server and databases
+      socket.emit('game-forfeit', { gameId: activeGame.id });
+      // Navigate to the target page
+      setTimeout(() => {
+        window.location.href = href;
+      }, 100);
+    }
+  });
 
   // Apply navigation query state at the end of DOMContentLoaded to prevent TDZ errors
   applyNavigationQueryState();
