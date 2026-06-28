@@ -24274,6 +24274,7 @@ document.addEventListener('DOMContentLoaded', () => {
     { r: 8, c: 4 }, { r: 8, c: 3 }, { r: 8, c: 2 }, { r: 8, c: 1 }, { r: 8, c: 0 },
     { r: 7, c: 0 }, { r: 6, c: 0 }
   ];
+  const LUDO_FINAL_STEP = 57;
   const LUDO_START_INDICES = { 1: 0, 2: 13 };
   const LUDO_SAFE_INDICES = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
   const LUDO_HOME_LANES = {
@@ -24699,7 +24700,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return home;
   };
 
-  const createLudoCenterSection = () => {
+  const createLudoCenterSection = (finishedTokenGroups = {}) => {
     const center = document.createElement('div');
     center.className = 'ludo-center-emblem';
     center.setAttribute('aria-hidden', 'true');
@@ -24707,6 +24708,22 @@ document.addEventListener('DOMContentLoaded', () => {
     ['red', 'green', 'yellow', 'blue'].forEach((color) => {
       const triangle = document.createElement('div');
       triangle.className = `ludo-center-triangle is-${color}`;
+
+      const finishedTokens = Array.isArray(finishedTokenGroups[color]) ? finishedTokenGroups[color] : [];
+      if (finishedTokens.length) {
+        const strip = document.createElement('div');
+        strip.className = `ludo-center-finish-strip is-${color}`;
+
+        finishedTokens.forEach((token) => {
+          const tokenEl = document.createElement('div');
+          tokenEl.className = `ludo-token ludo-center-finished-token ${getLudoTokenColorClass(token.color || token.playerSlot)} is-finished is-center-finished${token.isLast ? ' is-last' : ''}`;
+          tokenEl.title = `Pion ${token.tokenIndex + 1}`;
+          strip.appendChild(tokenEl);
+        });
+
+        triangle.appendChild(strip);
+      }
+
       center.appendChild(triangle);
     });
 
@@ -24761,9 +24778,31 @@ document.addEventListener('DOMContentLoaded', () => {
     maybeAnnounceLudoTurnMessage(activeGame);
 
     const tokenMap = new Map();
+    const finishedTokenGroups = {
+      red: [],
+      green: [],
+      blue: [],
+      yellow: []
+    };
     [1, 2].forEach((playerSlot) => {
       const tokens = ludoState.players?.[playerSlot]?.tokens || [];
       tokens.forEach((step, tokenIndex) => {
+        if (step === LUDO_FINAL_STEP) {
+          const colorKey = playerSlot === 1 ? 'red' : playerSlot === 2 ? 'green' : 'red';
+          finishedTokenGroups[colorKey].push({
+            playerSlot,
+            tokenIndex,
+            color: colorKey,
+            isFinished: true,
+            isLast: activeGame.lastMove
+              && activeGame.lastMove.gameType === 'ludo'
+              && activeGame.lastMove.type === 'move'
+              && Number(activeGame.lastMove.player) === Number(playerSlot)
+              && Number(activeGame.lastMove.tokenIndex) === Number(tokenIndex)
+          });
+          return;
+        }
+
         const coord = getLudoTokenCoord(playerSlot, tokenIndex, step);
         if (!coord) return;
         const key = `${coord.r},${coord.c}`;
@@ -24772,7 +24811,7 @@ document.addEventListener('DOMContentLoaded', () => {
           playerSlot,
           tokenIndex,
           isYard: step === -1,
-          isFinished: step === 57,
+          isFinished: false,
           isLegal: playerSlot === mySlot && isMyTurn && ludoState.hasRolled && legalMoves.includes(tokenIndex),
           isLast: activeGame.lastMove
             && activeGame.lastMove.gameType === 'ludo'
@@ -24806,7 +24845,7 @@ document.addEventListener('DOMContentLoaded', () => {
     boardShell.appendChild(createLudoLaneSection(LUDO_LANE_SECTION_COORDS.top, 'is-vertical is-top', tokenMap));
     boardShell.appendChild(createLudoHomeSection(LUDO_HOME_DISPLAY_META[1], tokenMap));
     boardShell.appendChild(createLudoLaneSection(LUDO_LANE_SECTION_COORDS.left, 'is-horizontal is-left', tokenMap));
-    boardShell.appendChild(createLudoCenterSection());
+    boardShell.appendChild(createLudoCenterSection(finishedTokenGroups));
     boardShell.appendChild(createLudoLaneSection(LUDO_LANE_SECTION_COORDS.right, 'is-horizontal is-right', tokenMap));
     boardShell.appendChild(createLudoHomeSection(LUDO_HOME_DISPLAY_META[2], tokenMap));
     boardShell.appendChild(createLudoLaneSection(LUDO_LANE_SECTION_COORDS.bottom, 'is-vertical is-bottom', tokenMap));

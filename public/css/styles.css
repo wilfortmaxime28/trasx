@@ -16823,9 +16823,9 @@ body[data-theme="dark"] .connectfour-grid {
 }
 
 .ludo-dice-face {
-  --ludo-dice-size: 68px;
-  --ludo-cube-size: 40px;
-  --ludo-cube-depth: 20px;
+  --ludo-dice-size: 60px;
+  --ludo-cube-size: 34px;
+  --ludo-cube-depth: 17px;
   --ludo-flat-face-inset: 10px;
   --ludo-flat-pip-size: 9px;
   --ludo-flat-edge-x: 14%;
@@ -17405,6 +17405,44 @@ body[data-theme="dark"] .connectfour-grid {
   inset: 0;
 }
 
+.ludo-center-finish-strip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.ludo-center-finish-strip.is-red {
+  left: 3%;
+  top: 52%;
+  width: 36%;
+  transform: translateY(-50%);
+}
+
+.ludo-center-finish-strip.is-green {
+  left: 50%;
+  top: 7%;
+  width: 36%;
+  transform: translateX(-50%);
+}
+
+.ludo-center-finish-strip.is-yellow {
+  right: 3%;
+  top: 52%;
+  width: 36%;
+  transform: translateY(-50%);
+}
+
+.ludo-center-finish-strip.is-blue {
+  left: 50%;
+  bottom: 7%;
+  width: 36%;
+  transform: translateX(-50%);
+}
+
 .ludo-center-triangle.is-red {
   background: #f01812;
   clip-path: polygon(0 0, 50% 50%, 0 100%);
@@ -17516,6 +17554,21 @@ body[data-theme="dark"] .connectfour-grid {
   font-size: clamp(14px, 1.85vw, 22px);
 }
 
+.ludo-token.is-center-finished {
+  position: relative;
+  top: auto;
+  left: auto;
+  flex: 0 0 22%;
+  width: 22%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  transform: none;
+}
+
+.ludo-token.is-center-finished::before {
+  font-size: clamp(9px, 1.25vw, 14px);
+}
+
 .ludo-token.is-legal {
   cursor: pointer;
   animation: ludoTokenPulse 1.15s ease-in-out infinite;
@@ -17589,9 +17642,9 @@ body[data-theme="dark"] .ludo-dice-face {
   }
 
   .ludo-dice-face {
-    --ludo-dice-size: 58px;
-    --ludo-cube-size: 32px;
-    --ludo-cube-depth: 16px;
+    --ludo-dice-size: 52px;
+    --ludo-cube-size: 28px;
+    --ludo-cube-depth: 14px;
     --ludo-flat-face-inset: 7px;
     --ludo-flat-pip-size: 6px;
     --ludo-flat-edge-x: 9%;
@@ -17660,6 +17713,30 @@ body[data-theme="dark"] .ludo-dice-face {
     width: 42%;
     height: 42%;
   }
+
+  .ludo-center-finish-strip.is-red,
+  .ludo-center-finish-strip.is-green,
+  .ludo-center-finish-strip.is-yellow,
+  .ludo-center-finish-strip.is-blue {
+    width: 40%;
+    gap: 1px;
+  }
+
+  .ludo-center-finish-strip.is-red {
+    left: 2%;
+  }
+
+  .ludo-center-finish-strip.is-green {
+    top: 5%;
+  }
+
+  .ludo-center-finish-strip.is-yellow {
+    right: 2%;
+  }
+
+  .ludo-center-finish-strip.is-blue {
+    bottom: 5%;
+  }
 }
 
 @media (max-width: 520px) {
@@ -17673,9 +17750,9 @@ body[data-theme="dark"] .ludo-dice-face {
   }
 
   .ludo-dice-face {
-    --ludo-dice-size: 52px;
-    --ludo-cube-size: 28px;
-    --ludo-cube-depth: 14px;
+    --ludo-dice-size: 46px;
+    --ludo-cube-size: 24px;
+    --ludo-cube-depth: 12px;
     --ludo-flat-face-inset: 5px;
     --ludo-flat-pip-size: 5px;
     --ludo-flat-edge-x: 7%;
@@ -17763,6 +17840,39 @@ body[data-theme="dark"] .ludo-dice-face {
 
   .ludo-token.is-finished::before {
     font-size: clamp(11px, 3vw, 16px);
+  }
+
+  .ludo-token.is-center-finished {
+    flex-basis: 21%;
+    width: 21%;
+  }
+
+  .ludo-token.is-center-finished::before {
+    font-size: clamp(8px, 2.8vw, 11px);
+  }
+
+  .ludo-center-finish-strip.is-red,
+  .ludo-center-finish-strip.is-green,
+  .ludo-center-finish-strip.is-yellow,
+  .ludo-center-finish-strip.is-blue {
+    width: 42%;
+    gap: 1px;
+  }
+
+  .ludo-center-finish-strip.is-red {
+    left: 1%;
+  }
+
+  .ludo-center-finish-strip.is-green {
+    top: 4%;
+  }
+
+  .ludo-center-finish-strip.is-yellow {
+    right: 1%;
+  }
+
+  .ludo-center-finish-strip.is-blue {
+    bottom: 4%;
   }
 }
 

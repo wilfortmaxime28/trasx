@@ -1,5 +1,5 @@
 // TrasX Service Worker v21 — Network-first with offline fallback & Web Push
-const CACHE_NAME = 'trasx-v25';
+const CACHE_NAME = 'trasx-v27';
 const OFFLINE_URL = '/';
 const APP_BRAND_ASSETS = [
   '/favicon.ico',
