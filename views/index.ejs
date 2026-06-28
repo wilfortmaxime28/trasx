@@ -938,6 +938,7 @@ function getYouTubeId(url) {
                                                     const gameNamesMap = {
                                                       connect4: 'Puissance 4',
                                                       gomoku: 'Gomoku',
+                                                      ludo: 'Ludo',
                                                       tablefootball: 'Football Table'
                                                     };
                                                     const gameName = gameNamesMap[game.gameType] || 'Jeu';
@@ -2906,6 +2907,13 @@ function getYouTubeId(url) {
                               </div>
                             </label>
                             <label class="game-choice-option" style="position: relative;">
+                              <input type="radio" name="setupGameType" value="ludo">
+                              <div class="choice-card-content">
+                                <i data-lucide="dice-5"></i>
+                                <span><%= tText("Ludo") %></span>
+                              </div>
+                            </label>
+                            <label class="game-choice-option" style="position: relative;">
                               <input type="radio" name="setupGameType" value="tablefootball">
                               <div class="choice-card-content">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3256,6 +3264,60 @@ function getYouTubeId(url) {
                       <!-- Gomoku Board (Uses original styles) -->
                       <div id="gomokuBoardContainer" class="gomoku-board-container">
                         <div id="gomokuBoard" class="gomoku-board"></div>
+                      </div>
+
+                      <div id="ludoBoardContainer" class="ludo-board-container" style="display: none; width: 100%;">
+                        <div class="ludo-card">
+                          <div class="ludo-card-header">
+                            <div class="ludo-card-copy">
+                              <span id="ludoStatusPill" class="ludo-status-pill">Ludo 2 joueurs</span>
+                              <span id="ludoHelperText" class="ludo-helper-text">Lancez le de pour commencer.</span>
+                            </div>
+                            <div class="ludo-dice-panel">
+                              <div id="ludoDiceFace" class="ludo-dice-face is-empty" data-value="1" data-empty="true" aria-live="polite" aria-label="De non lance" title="De non lance">
+                                <div class="ludo-dice-cube-wrap">
+                                  <div class="ludo-dice-cube">
+                                    <div class="ludo-dice-side face-1">
+                                      <span class="ludo-dice-pip center"></span>
+                                    </div>
+                                    <div class="ludo-dice-side face-2">
+                                      <span class="ludo-dice-pip tl"></span>
+                                      <span class="ludo-dice-pip br"></span>
+                                    </div>
+                                    <div class="ludo-dice-side face-3">
+                                      <span class="ludo-dice-pip tl"></span>
+                                      <span class="ludo-dice-pip center"></span>
+                                      <span class="ludo-dice-pip br"></span>
+                                    </div>
+                                    <div class="ludo-dice-side face-4">
+                                      <span class="ludo-dice-pip tl"></span>
+                                      <span class="ludo-dice-pip tr"></span>
+                                      <span class="ludo-dice-pip bl"></span>
+                                      <span class="ludo-dice-pip br"></span>
+                                    </div>
+                                    <div class="ludo-dice-side face-5">
+                                      <span class="ludo-dice-pip tl"></span>
+                                      <span class="ludo-dice-pip tr"></span>
+                                      <span class="ludo-dice-pip center"></span>
+                                      <span class="ludo-dice-pip bl"></span>
+                                      <span class="ludo-dice-pip br"></span>
+                                    </div>
+                                    <div class="ludo-dice-side face-6">
+                                      <span class="ludo-dice-pip tl"></span>
+                                      <span class="ludo-dice-pip tr"></span>
+                                      <span class="ludo-dice-pip ml"></span>
+                                      <span class="ludo-dice-pip mr"></span>
+                                      <span class="ludo-dice-pip bl"></span>
+                                      <span class="ludo-dice-pip br"></span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <button id="ludoRollBtn" class="ludo-roll-btn" type="button">Lancer</button>
+                            </div>
+                          </div>
+                          <div id="ludoBoard" class="ludo-board-grid"></div>
+                        </div>
                       </div>
 
                       <!-- Chess Board Container -->
@@ -5216,7 +5278,7 @@ function getYouTubeId(url) {
           <span><%= typeof tText === 'function' ? tText("Nouveaux posts") : "Nouveaux posts" %></span>
         </div>
 
-        <script src="/js/client.js?v=220"></script>
+        <script src="/js/client.js?v=228"></script>
         </body>
 
         </html>

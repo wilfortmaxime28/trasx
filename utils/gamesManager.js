@@ -3,11 +3,19 @@ const Bot = require('../models/Bot');
 const User = require('../models/User');
 const { attachBotGameStats, attachUserGameStats } = require('./gameLevel');
 
+const LUDO_LOOP_LENGTH = 52;
+const LUDO_FINAL_STEP = 57;
+const LUDO_SAFE_GLOBAL_INDICES = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
+const LUDO_START_INDICES = {
+  1: 0,
+  2: 13
+};
+
 class GamesManager {
   constructor() {
     this.games = {};
     this.nextGameId = 1;
-    this.supportedGameTypes = new Set(['connect4', 'gomoku', 'tablefootball', 'echecs']);
+    this.supportedGameTypes = new Set(['connect4', 'gomoku', 'tablefootball', 'echecs', 'ludo']);
   }
 
   normalizeRounds(rounds) {
@@ -220,6 +228,7 @@ class GamesManager {
     let mathState = null;
     let tableFootballState = null;
     let chessState = null;
+    let ludoState = null;
 
     if (gameType === 'domino') {
       const pool = [];
@@ -240,6 +249,9 @@ class GamesManager {
       boneyard = pool;
     } else if (gameType === 'connect4') {
       board = Array(6).fill(null).map(() => Array(7).fill(0));
+    } else if (gameType === 'ludo') {
+      ludoState = this.createInitialLudoState();
+      board = [];
     } else if (gameType === 'echecs') {
       chessState = this.createInitialChessState();
       board = chessState.board;
@@ -314,6 +326,7 @@ class GamesManager {
       mathState,
       tableFootballState,
       chessState,
+      ludoState,
       leftEnd,
       rightEnd,
       currentPlayer: 1,
@@ -432,7 +445,48 @@ class GamesManager {
     let moveRow = parsedRow;
     let moveCol = parsedCol;
     
-    if (game.gameType === 'domino') {
+    if (game.gameType === 'ludo') {
+      const actingSlot = game.currentPlayer;
+      const ludoState = game.ludoState;
+      if (!ludoState) throw new Error('Etat du Ludo introuvable.');
+
+      const actionType = String(extraMove?.promotion || '').toLowerCase();
+
+      if (actionType === 'roll') {
+        const rollResult = this.performLudoRoll(game, actingSlot);
+        game.lastMove = {
+          gameType: 'ludo',
+          type: 'roll',
+          player: actingSlot,
+          roll: rollResult.die,
+          autoPass: rollResult.autoPass === true,
+          turnCancelled: rollResult.turnCancelled === true
+        };
+        return {
+          success: true,
+          game
+        };
+      }
+
+      const tokenIndex = Number(parsedRow);
+      if (!Number.isInteger(tokenIndex) || tokenIndex < 0 || tokenIndex > 3) {
+        throw new Error('Pion de Ludo invalide.');
+      }
+
+      if (!ludoState.hasRolled || !this.isValidLudoDieValue(ludoState.currentDie)) {
+        throw new Error('Lancez le de avant de deplacer un pion.');
+      }
+
+      const moveResult = this.applyLudoMove(game, actingSlot, tokenIndex, Number(ludoState.currentDie));
+      if (moveResult.finished) {
+        return await this.endGame(gameId, activePlayer.id);
+      }
+
+      return {
+        success: true,
+        game
+      };
+    } else if (game.gameType === 'domino') {
       const tileIndex = r;
       const side = c; // 'left' or 'right'
       const hand = game.currentPlayer === 1 ? game.player1Hand : game.player2Hand;
@@ -702,7 +756,76 @@ class GamesManager {
     // Silently bail out instead of crashing with 'Ce n'est pas votre tour.'
     if (game.currentPlayer !== 2) return;
 
-    if (game.gameType === 'domino') {
+    if (game.gameType === 'ludo') {
+      const ludoState = game.ludoState;
+      if (!ludoState) return;
+
+      if (!ludoState.hasRolled) {
+        const rollResult = this.performLudoRoll(game, 2);
+        game.lastMove = {
+          gameType: 'ludo',
+          type: 'roll',
+          player: 2,
+          roll: rollResult.die,
+          autoPass: rollResult.autoPass === true,
+          turnCancelled: rollResult.turnCancelled === true
+        };
+
+      return {
+        success: true,
+        game,
+        botMove: { type: 'roll', die: rollResult.die },
+        botAction: 'roll',
+        continueTurn: rollResult.autoPass !== true && game.status === 'playing' && game.currentPlayer === 2 && game.ludoState?.hasRolled === true
+      };
+    }
+
+      const dieValue = this.isValidLudoDieValue(ludoState.currentDie)
+        ? Number(ludoState.currentDie)
+        : null;
+      const legalMoves = dieValue === null ? [] : this.getLudoLegalMoves(game, 2, dieValue);
+      const chosenMove = this.chooseLudoBotMove(game, legalMoves);
+
+      if (!chosenMove) {
+        ludoState.currentDie = null;
+        ludoState.hasRolled = false;
+        ludoState.legalMoves = [];
+        ludoState.turnMessage = 'Le robot passe son tour.';
+        game.currentPlayer = 1;
+        return {
+          success: true,
+          game,
+          botMove: null,
+          botAction: 'move',
+          continueTurn: false
+        };
+      }
+
+      const moveResult = this.applyLudoMove(game, 2, chosenMove.tokenIndex, dieValue);
+      const botMove = {
+        type: 'move',
+        die: dieValue,
+        tokenIndex: chosenMove.tokenIndex
+      };
+
+      if (moveResult.finished) {
+        const endResult = await this.endGame(gameId, game.player2.id);
+        return {
+          ...endResult,
+          botMove,
+          botAction: 'move',
+          continueTurn: false
+        };
+      }
+
+      return {
+        success: true,
+        game,
+        botMove,
+        botAction: 'move',
+        continueTurn: moveResult.extraTurn === true && game.status === 'playing' && game.currentPlayer === 2
+      };
+    } else if (game.gameType === 'domino') {
       const hand = game.player2Hand;
       const moves = [];
       for (let i = 0; i < hand.length; i++) {
@@ -1090,6 +1213,9 @@ class GamesManager {
       game.table = [];
       game.leftEnd = null;
       game.rightEnd = null;
+    } else if (game.gameType === 'ludo') {
+      game.ludoState = this.createInitialLudoState();
+      game.board = [];
     } else if (game.gameType === 'connect4') {
       game.board = Array(6).fill(null).map(() => Array(7).fill(0));
     } else if (game.gameType === 'gomoku') {
@@ -1374,6 +1500,407 @@ class GamesManager {
       correctIndex: shuffledChoices.indexOf(answer),
       answer
     };
+  }
+
+  createInitialLudoState() {
+    return {
+      currentDie: null,
+      lastRoll: null,
+      lastRollPlayer: null,
+      rollNonce: 0,
+      hasRolled: false,
+      legalMoves: [],
+      turnMessage: 'Lancez le de pour commencer.',
+      consecutiveSixes: {
+        1: 0,
+        2: 0
+      },
+      players: {
+        1: {
+          color: 'red',
+          label: 'Rouges',
+          startIndex: LUDO_START_INDICES[1],
+          tokens: [-1, -1, -1, -1],
+          finishedTokens: 0
+        },
+        2: {
+          color: 'green',
+          label: 'Verts',
+          startIndex: LUDO_START_INDICES[2],
+          tokens: [-1, -1, -1, -1],
+          finishedTokens: 0
+        }
+      }
+    };
+  }
+
+  getLudoOpponentSlot(playerSlot) {
+    return playerSlot === 1 ? 2 : 1;
+  }
+
+  getLudoPlayerState(ludoState, playerSlot) {
+    return ludoState && ludoState.players ? ludoState.players[playerSlot] : null;
+  }
+
+  getLudoConsecutiveSixCount(ludoState, playerSlot) {
+    if (!ludoState) return 0;
+    if (!ludoState.consecutiveSixes || typeof ludoState.consecutiveSixes !== 'object') {
+      ludoState.consecutiveSixes = { 1: 0, 2: 0 };
+    }
+    const slot = Number(playerSlot) === 2 ? 2 : 1;
+    const count = Number(ludoState.consecutiveSixes[slot] || 0);
+    return Number.isInteger(count) && count >= 0 ? count : 0;
+  }
+
+  setLudoConsecutiveSixCount(ludoState, playerSlot, count) {
+    if (!ludoState) return;
+    if (!ludoState.consecutiveSixes || typeof ludoState.consecutiveSixes !== 'object') {
+      ludoState.consecutiveSixes = { 1: 0, 2: 0 };
+    }
+    const slot = Number(playerSlot) === 2 ? 2 : 1;
+    ludoState.consecutiveSixes[slot] = Math.max(0, Number.isInteger(Number(count)) ? Number(count) : 0);
+  }
+
+  isValidLudoDieValue(value) {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 6;
+  }
+
+  getLudoGlobalIndex(playerSlot, step) {
+    if (!Number.isInteger(step) || step < 0 || step >= LUDO_LOOP_LENGTH) {
+      return null;
+    }
+    const startIndex = LUDO_START_INDICES[playerSlot] || 0;
+    return (startIndex + step) % LUDO_LOOP_LENGTH;
+  }
+
+  isLudoSafeSquare(globalIndex) {
+    return LUDO_SAFE_GLOBAL_INDICES.has(Number(globalIndex));
+  }
+
+  getLudoTokensOnGlobalIndex(playerState, playerSlot, globalIndex) {
+    if (!playerState || globalIndex === null || globalIndex === undefined) return [];
+
+    const tokens = [];
+    playerState.tokens.forEach((step, tokenIndex) => {
+      if (!Number.isInteger(step) || step < 0 || step >= LUDO_LOOP_LENGTH) return;
+      if (this.getLudoGlobalIndex(playerSlot, step) === globalIndex) {
+        tokens.push(tokenIndex);
+      }
+    });
+    return tokens;
+  }
+
+  getLudoBlockadeOwnerAtGlobalIndex(ludoState, globalIndex) {
+    if (!ludoState || globalIndex === null || globalIndex === undefined) return null;
+
+    for (const playerSlot of [1, 2]) {
+      const playerState = this.getLudoPlayerState(ludoState, playerSlot);
+      const tokensAtSquare = this.getLudoTokensOnGlobalIndex(playerState, playerSlot, globalIndex);
+      if (tokensAtSquare.length >= 2) {
+        return playerSlot;
+      }
+    }
+
+    return null;
+  }
+
+  hasLudoBlockadeOnPath(game, playerSlot, fromStep, toStep) {
+    const ludoState = game?.ludoState;
+    if (!ludoState || !Number.isInteger(fromStep) || !Number.isInteger(toStep)) {
+      return false;
+    }
+
+    if (fromStep < 0 || toStep <= fromStep + 1) {
+      return false;
+    }
+
+    const lastLoopStep = Math.min(toStep, LUDO_LOOP_LENGTH - 1);
+    for (let step = fromStep + 1; step < lastLoopStep; step += 1) {
+      const globalIndex = this.getLudoGlobalIndex(playerSlot, step);
+      if (this.getLudoBlockadeOwnerAtGlobalIndex(ludoState, globalIndex) !== null) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  refreshLudoFinishedCounts(ludoState) {
+    [1, 2].forEach((playerSlot) => {
+      const playerState = this.getLudoPlayerState(ludoState, playerSlot);
+      if (!playerState) return;
+      playerState.finishedTokens = playerState.tokens.filter((step) => step === LUDO_FINAL_STEP).length;
+    });
+  }
+
+  getLudoLegalMoves(game, playerSlot, dieValue = null) {
+    const ludoState = game.ludoState;
+    const playerState = this.getLudoPlayerState(ludoState, playerSlot);
+    const opponentSlot = this.getLudoOpponentSlot(playerSlot);
+    const opponentState = this.getLudoPlayerState(ludoState, opponentSlot);
+    const die = this.isValidLudoDieValue(dieValue)
+      ? Number(dieValue)
+      : (this.isValidLudoDieValue(ludoState?.currentDie) ? Number(ludoState.currentDie) : null);
+
+    if (!playerState || !opponentState || die === null) {
+      return [];
+    }
+
+    const moves = [];
+
+    playerState.tokens.forEach((currentStep, tokenIndex) => {
+      if (currentStep === LUDO_FINAL_STEP) return;
+
+      let targetStep = null;
+      if (currentStep === -1) {
+        if (die !== 6) return;
+        targetStep = 0;
+      } else {
+        targetStep = currentStep + die;
+        if (targetStep > LUDO_FINAL_STEP) return;
+      }
+
+      if (this.hasLudoBlockadeOnPath(game, playerSlot, currentStep, targetStep)) {
+        return;
+      }
+
+      const move = {
+        tokenIndex,
+        fromStep: currentStep,
+        toStep: targetStep,
+        entersBoard: currentStep === -1,
+        reachesHome: targetStep === LUDO_FINAL_STEP,
+        willCapture: false,
+        isSafe: false,
+        opponentTokensAtTarget: []
+      };
+
+      if (targetStep < LUDO_LOOP_LENGTH) {
+        const globalIndex = this.getLudoGlobalIndex(playerSlot, targetStep);
+        move.globalIndex = globalIndex;
+        move.isSafe = this.isLudoSafeSquare(globalIndex);
+        move.opponentTokensAtTarget = this.getLudoTokensOnGlobalIndex(opponentState, opponentSlot, globalIndex);
+
+        if (move.opponentTokensAtTarget.length > 0 && move.isSafe) {
+          return;
+        }
+
+        if (!move.isSafe && move.opponentTokensAtTarget.length > 1) {
+          return;
+        }
+
+        move.willCapture = !move.isSafe && move.opponentTokensAtTarget.length === 1;
+      } else {
+        move.homeLaneIndex = targetStep - LUDO_LOOP_LENGTH;
+      }
+
+      moves.push(move);
+    });
+
+    return moves;
+  }
+
+  getLudoNoMoveMessage(game, playerSlot, dieValue = null) {
+    const ludoState = game.ludoState;
+    const playerState = this.getLudoPlayerState(ludoState, playerSlot);
+    const die = this.isValidLudoDieValue(dieValue) ? Number(dieValue) : null;
+
+    if (!playerState || die === null) {
+      return 'Aucun pion ne peut avancer.';
+    }
+
+    const allTokensInBase = playerState.tokens.every((step) => step === -1);
+    if (allTokensInBase && die !== 6) {
+      return `De ${die}. Il faut faire 6 pour sortir un pion de la base.`;
+    }
+
+    return `De ${die}. Aucun pion ne peut avancer.`;
+  }
+
+  performLudoRoll(game, playerSlot, forcedDie = null) {
+    const ludoState = game.ludoState;
+    if (!ludoState) {
+      throw new Error('Etat du Ludo introuvable.');
+    }
+    if (ludoState.hasRolled) {
+      throw new Error('Le de a deja ete lance pour ce tour.');
+    }
+
+    const die = this.isValidLudoDieValue(forcedDie)
+      ? Number(forcedDie)
+      : (Math.floor(Math.random() * 6) + 1);
+
+    ludoState.currentDie = die;
+    ludoState.lastRoll = die;
+    ludoState.lastRollPlayer = playerSlot;
+    ludoState.rollNonce = Number.isInteger(Number(ludoState.rollNonce)) ? Number(ludoState.rollNonce) + 1 : 1;
+
+    const consecutiveSixCount = die === 6
+      ? this.getLudoConsecutiveSixCount(ludoState, playerSlot) + 1
+      : 0;
+    this.setLudoConsecutiveSixCount(ludoState, playerSlot, consecutiveSixCount);
+
+    if (die === 6 && consecutiveSixCount >= 3) {
+      ludoState.currentDie = null;
+      ludoState.hasRolled = false;
+      ludoState.legalMoves = [];
+      this.setLudoConsecutiveSixCount(ludoState, playerSlot, 0);
+      ludoState.turnMessage = 'Trois 6 consecutifs ! Tour annule, au joueur suivant.';
+      game.currentPlayer = this.getLudoOpponentSlot(playerSlot);
+      return {
+        die,
+        autoPass: true,
+        turnCancelled: true,
+        legalMoves: []
+      };
+    }
+
+    ludoState.hasRolled = true;
+
+    const legalMoves = this.getLudoLegalMoves(game, playerSlot, die);
+    ludoState.legalMoves = legalMoves.map((move) => move.tokenIndex);
+
+    if (legalMoves.length === 0) {
+      ludoState.currentDie = null;
+      ludoState.hasRolled = false;
+      ludoState.legalMoves = [];
+      ludoState.turnMessage = this.getLudoNoMoveMessage(game, playerSlot, die);
+      this.setLudoConsecutiveSixCount(ludoState, playerSlot, 0);
+      game.currentPlayer = this.getLudoOpponentSlot(playerSlot);
+      return {
+        die,
+        autoPass: true,
+        legalMoves: []
+      };
+    }
+
+    ludoState.turnMessage = legalMoves.length === 1
+      ? `De ${die}. Un seul pion peut avancer.`
+      : `De ${die}. Choisissez un pion a avancer.`;
+
+    return {
+      die,
+      autoPass: false,
+      legalMoves
+    };
+  }
+
+  applyLudoMove(game, playerSlot, tokenIndex, dieValue = null) {
+    const ludoState = game.ludoState;
+    const playerState = this.getLudoPlayerState(ludoState, playerSlot);
+    const opponentSlot = this.getLudoOpponentSlot(playerSlot);
+    const opponentState = this.getLudoPlayerState(ludoState, opponentSlot);
+    const die = this.isValidLudoDieValue(dieValue)
+      ? Number(dieValue)
+      : (this.isValidLudoDieValue(ludoState?.currentDie) ? Number(ludoState.currentDie) : null);
+
+    if (!ludoState || !playerState || !opponentState) {
+      throw new Error('Etat du Ludo introuvable.');
+    }
+    if (!Number.isInteger(tokenIndex) || tokenIndex < 0 || tokenIndex > 3) {
+      throw new Error('Pion de Ludo invalide.');
+    }
+    if (die === null) {
+      throw new Error('Valeur de de invalide.');
+    }
+
+    const legalMoves = this.getLudoLegalMoves(game, playerSlot, die);
+    const chosenMove = legalMoves.find((move) => move.tokenIndex === tokenIndex);
+    if (!chosenMove) {
+      throw new Error('Ce pion ne peut pas etre deplace avec ce lancer.');
+    }
+
+    playerState.tokens[tokenIndex] = chosenMove.toStep;
+
+    const capturedTokens = [];
+    if (chosenMove.willCapture && Number.isInteger(chosenMove.globalIndex)) {
+      opponentState.tokens.forEach((oppStep, oppTokenIndex) => {
+        if (oppStep < 0 || oppStep >= LUDO_LOOP_LENGTH) return;
+        if (this.getLudoGlobalIndex(opponentSlot, oppStep) === chosenMove.globalIndex) {
+          opponentState.tokens[oppTokenIndex] = -1;
+          capturedTokens.push(oppTokenIndex);
+        }
+      });
+    }
+
+    this.refreshLudoFinishedCounts(ludoState);
+
+    const reachedHome = chosenMove.toStep === LUDO_FINAL_STEP;
+    const extraTurn = die === 6 || capturedTokens.length > 0 || reachedHome;
+
+    ludoState.currentDie = null;
+    ludoState.hasRolled = false;
+    ludoState.legalMoves = [];
+    if (capturedTokens.length > 0) {
+      ludoState.turnMessage = 'Capture reussie ! Vous rejouez.';
+    } else if (reachedHome) {
+      ludoState.turnMessage = 'Un pion est arrive a la maison ! Vous rejouez.';
+    } else if (die === 6) {
+      ludoState.turnMessage = 'Six obtenu ! Vous rejouez.';
+    } else {
+      ludoState.turnMessage = 'Tour termine.';
+    }
+
+    if (die !== 6 || !extraTurn) {
+      this.setLudoConsecutiveSixCount(ludoState, playerSlot, 0);
+    }
+
+    game.lastMove = {
+      gameType: 'ludo',
+      type: 'move',
+      player: playerSlot,
+      tokenIndex,
+      roll: die,
+      fromStep: chosenMove.fromStep,
+      toStep: chosenMove.toStep,
+      capturedTokens,
+      reachedHome
+    };
+
+    if (playerState.finishedTokens >= 4) {
+      ludoState.turnMessage = `${playerState.label} remportent la partie !`;
+      this.setLudoConsecutiveSixCount(ludoState, playerSlot, 0);
+      return {
+        finished: true,
+        extraTurn,
+        chosenMove,
+        capturedTokens,
+        reachedHome
+      };
+    }
+
+    if (!extraTurn) {
+      game.currentPlayer = opponentSlot;
+    }
+
+    return {
+      finished: false,
+      extraTurn,
+      chosenMove,
+      capturedTokens,
+      reachedHome
+    };
+  }
+
+  chooseLudoBotMove(game, legalMoves = []) {
+    if (!Array.isArray(legalMoves) || legalMoves.length === 0) {
+      return null;
+    }
+
+    const scoredMoves = legalMoves
+      .map((move) => {
+        let score = Number(move.toStep || 0);
+        if (move.reachesHome) score += 1000;
+        if (move.willCapture) score += 650;
+        if (move.entersBoard) score += 280;
+        if (move.isSafe) score += 120;
+        if (move.toStep >= LUDO_LOOP_LENGTH) score += 80;
+        return { move, score };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return scoredMoves[0] ? scoredMoves[0].move : null;
   }
 
   createInitialChessState() {

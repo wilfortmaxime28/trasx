@@ -3535,6 +3535,73 @@ const broadcastGameStarted = async (gameId) => {
   }
 };
 
+async function handleScheduledBotResult(gameId, botResult, { allowLudoFollowUp = false } = {}) {
+  if (!botResult || !botResult.success) return;
+
+  await broadcastGameState(gameId, botResult.botMove || null);
+
+  if (botResult.finished) {
+    io.to(`game:${gameId}`).emit('game-over', {
+      winnerId: botResult.winnerId,
+      winningStones: botResult.winningStones,
+      isForfeit: botResult.isForfeit || false
+    });
+    io.emit('game-list-updated', gamesManager.getLiveGames());
+
+    if (botResult.game && botResult.game.mode === 'paid' && botResult.game.player2 && botResult.game.player2.isBot) {
+      await emitRealtimeBalanceUpdate(botResult.game.player1.id, "Votre solde de tokens a été mis à jour.");
+    }
+    return;
+  }
+
+  if (botResult.roundWinnerId) {
+    io.to(`game:${gameId}`).emit('game-round-over', {
+      roundWinnerId: botResult.roundWinnerId,
+      winningStones: botResult.winningStones,
+      nextRound: botResult.nextRound,
+      roundWins: botResult.game.roundWins,
+      delayMs: GAME_ROUND_TRANSITION_DELAY_MS
+    });
+    scheduleNextGameRound(gameId);
+    return;
+  }
+
+  if (
+    allowLudoFollowUp
+    && botResult.game
+    && botResult.game.gameType === 'ludo'
+    && botResult.continueTurn === true
+    && botResult.game.currentPlayer === 2
+    && botResult.game.player2
+    && botResult.game.player2.isBot
+  ) {
+    const followUpDelay = botResult.botAction === 'roll' ? 1150 : 1050;
+    scheduleBotMove(gameId, followUpDelay);
+  }
+}
+
+function scheduleBotMove(gameId, delayOverride = null) {
+  const game = gamesManager.games[gameId];
+  if (!game || game.status !== 'playing') return;
+
+  const nextPlayer = game.currentPlayer === 1 ? game.player1 : game.player2;
+  if (!nextPlayer || !nextPlayer.isBot) return;
+
+  const isTableFootball = game.gameType === 'tablefootball';
+  const delay = Number.isFinite(Number(delayOverride))
+    ? Number(delayOverride)
+    : (isTableFootball ? 2500 + Math.random() * 1000 : 1200 + Math.random() * 1000);
+
+  setTimeout(async () => {
+    try {
+      const botResult = await gamesManager.makeBotMove(gameId);
+      await handleScheduledBotResult(gameId, botResult, { allowLudoFollowUp: true });
+    } catch (botErr) {
+      console.error('Error during delayed bot move:', botErr);
+    }
+  }, delay);
+}
+
 const scheduleNextGameRound = async (gameId) => {
   setTimeout(async () => {
     try {
@@ -3545,35 +3612,7 @@ const scheduleNextGameRound = async (gameId) => {
 
       const nextPlayer = nextRoundGame.currentPlayer === 1 ? nextRoundGame.player1 : nextRoundGame.player2;
       if (nextPlayer && nextPlayer.isBot) {
-        const delay = 1200 + Math.random() * 1000;
-        setTimeout(async () => {
-          try {
-            const botResult = await gamesManager.makeBotMove(gameId);
-            if (botResult && botResult.success) {
-              await broadcastGameState(gameId, botResult.botMove || null);
-
-              if (botResult.finished) {
-                io.to(`game:${gameId}`).emit('game-over', {
-                  winnerId: botResult.winnerId,
-                  winningStones: botResult.winningStones,
-                  isForfeit: botResult.isForfeit || false
-                });
-                io.emit('game-list-updated', gamesManager.getLiveGames());
-              } else if (botResult.roundWinnerId) {
-                io.to(`game:${gameId}`).emit('game-round-over', {
-                  roundWinnerId: botResult.roundWinnerId,
-                  winningStones: botResult.winningStones,
-                  nextRound: botResult.nextRound,
-                  roundWins: botResult.game.roundWins,
-                  delayMs: GAME_ROUND_TRANSITION_DELAY_MS
-                });
-                scheduleNextGameRound(gameId);
-              }
-            }
-          } catch (botErr) {
-            console.error('Error during delayed bot move after next round start:', botErr);
-          }
-        }, delay);
+        scheduleBotMove(gameId);
       }
     } catch (err) {
       console.error('Error while starting next game round:', err);
@@ -5651,6 +5690,7 @@ io.on('connection', (socket) => {
         puissance4: 'Puissance 4',
         connect4: 'Puissance 4',
         gomoku: 'Gomoku',
+        ludo: 'Ludo',
         tablefootball: 'Football Table',
         chess: 'Echecs',
         echec: 'Echecs',
@@ -5775,6 +5815,7 @@ io.on('connection', (socket) => {
         puissance4: 'Puissance 4',
         connect4: 'Puissance 4',
         gomoku: 'Gomoku',
+        ludo: 'Ludo',
         tablefootball: 'Football Table',
         chess: 'Echecs',
         echec: 'Echecs',
@@ -6896,44 +6937,7 @@ io.on('connection', (socket) => {
           // Schedule bot move with a thinking delay (only when turn has truly switched to the bot)
           const nextPlayerObj = result.game.currentPlayer === 1 ? result.game.player1 : result.game.player2;
           if (nextPlayerObj && nextPlayerObj.isBot && !result.roundWinnerId && !isTableFootballShot) {
-            // For tablefootball sync: give extra time so client can replay/animate the ball
-            const isTableFootball = result.game.gameType === 'tablefootball';
-            const delay = isTableFootball
-              ? 2500 + Math.random() * 1000  // 2.5–3.5s for football (accounts for animation)
-              : 1200 + Math.random() * 1000; // 1.2–2.2s for other games
-            setTimeout(async () => {
-              try {
-                const botResult = await gamesManager.makeBotMove(gameId);
-                if (botResult && botResult.success) {
-                  await broadcastGameState(gameId, botResult.botMove || null);
-
-                  if (botResult.finished) {
-                    io.to(`game:${gameId}`).emit('game-over', {
-                      winnerId: botResult.winnerId,
-                      winningStones: botResult.winningStones,
-                      isForfeit: botResult.isForfeit || false
-                    });
-                    io.emit('game-list-updated', gamesManager.getLiveGames());
-                    if (botResult.game && botResult.game.mode === 'paid' && botResult.game.player2 && botResult.game.player2.isBot) {
-                      await emitRealtimeBalanceUpdate(botResult.game.player1.id, "Votre solde de tokens a été mis à jour.");
-                    }
-                  } else {
-                    if (botResult.roundWinnerId) {
-                      io.to(`game:${gameId}`).emit('game-round-over', {
-                        roundWinnerId: botResult.roundWinnerId,
-                        winningStones: botResult.winningStones,
-                        nextRound: botResult.nextRound,
-                        roundWins: botResult.game.roundWins,
-                        delayMs: GAME_ROUND_TRANSITION_DELAY_MS
-                      });
-                      scheduleNextGameRound(gameId);
-                    }
-                  }
-                }
-              } catch (botErr) {
-                console.error('Error during delayed bot move:', botErr);
-              }
-            }, delay);
+            scheduleBotMove(gameId);
           }
         }
 
@@ -6950,7 +6954,11 @@ io.on('connection', (socket) => {
         "Tuile invalide.",
         "Le domino ne correspond pas à l'extrémité gauche.",
         "Le domino ne correspond pas à l'extrémité droite.",
-        "Ce coup n est pas autorisé."
+        "Ce coup n est pas autorisé.",
+        "Pion de Ludo invalide.",
+        "Lancez le de avant de deplacer un pion.",
+        "Le de a deja ete lance pour ce tour.",
+        "Ce pion ne peut pas etre deplace avec ce lancer."
       ].includes(err.message);
 
       if (isValidationError) {
@@ -7001,26 +7009,7 @@ io.on('connection', (socket) => {
         // If next player is bot, trigger bot play
         const nextPlayer = result.game.currentPlayer === 1 ? result.game.player1 : result.game.player2;
         if (nextPlayer && nextPlayer.isBot) {
-          const delay = 1200 + Math.random() * 1000;
-          setTimeout(async () => {
-            try {
-              const botResult = await gamesManager.makeBotMove(gameId);
-              if (botResult && botResult.success) {
-                await broadcastGameState(gameId, botResult.botMove || null);
-
-                if (botResult.finished) {
-                  io.to(`game:${gameId}`).emit('game-over', {
-                    winnerId: botResult.winnerId,
-                    winningStones: botResult.winningStones,
-                    isForfeit: botResult.isForfeit || false
-                  });
-                  io.emit('game-list-updated', gamesManager.getLiveGames());
-                }
-              }
-            } catch (botErr) {
-              console.error('Error during delayed bot move after pass:', botErr);
-            }
-          }, delay);
+          scheduleBotMove(gameId);
         }
 
         if (typeof ack === 'function') {

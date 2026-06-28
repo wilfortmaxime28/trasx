@@ -900,6 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
         puissance4: 'Puissance 4',
         connect4: 'Puissance 4',
         gomoku: 'Gomoku',
+        ludo: 'Ludo',
         tablefootball: 'Football Table',
         chess: 'Echecs',
         echec: 'Echecs',
@@ -1486,6 +1487,7 @@ document.addEventListener('DOMContentLoaded', () => {
       puissance4: 'Puissance 4',
       connect4: 'Puissance 4',
       gomoku: 'Gomoku',
+      ludo: 'Ludo',
       tablefootball: 'Football Table',
       chess: 'Echecs',
       echec: 'Echecs',
@@ -21561,6 +21563,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const connectFourGrid = document.getElementById('connectFourGrid');
   const gomokuBoardContainer = document.getElementById('gomokuBoardContainer');
   const gomokuBoard = document.getElementById('gomokuBoard');
+  const ludoBoardContainer = document.getElementById('ludoBoardContainer');
+  const ludoBoard = document.getElementById('ludoBoard');
+  const ludoDiceFace = document.getElementById('ludoDiceFace');
+  const ludoRollBtn = document.getElementById('ludoRollBtn');
+  const ludoHelperText = document.getElementById('ludoHelperText');
+  const ludoStatusPill = document.getElementById('ludoStatusPill');
   const chessBoardContainer = document.getElementById('chessBoardContainer');
   const chessBoard = document.getElementById('chessBoard');
   const tableFootballBoardContainer = document.getElementById('tableFootballBoardContainer');
@@ -21601,6 +21609,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const gameNames = {
     connect4: 'Puissance 4',
     gomoku: 'Gomoku',
+    ludo: 'Ludo',
     tablefootball: 'Football Table',
     echecs: 'Echecs'
   };
@@ -21761,6 +21770,27 @@ document.addEventListener('DOMContentLoaded', () => {
               <li>Cliquez sur n'importe quelle intersection vide pour y placer l'un de vos pions (Noir ou Blanc).</li>
               <li>Le premier joueur à former une ligne ininterrompue de <strong>5 pions</strong> horizontalement, verticalement ou diagonalement gagne le match.</li>
               <li>Ce jeu requiert de l'anticipation pour bloquer les tentatives d'alignement de l'adversaire tout en créant ses propres opportunités.</li>
+            </ul>
+          </div>
+        </div>
+      `
+    },
+    ludo: {
+      title: "Ludo",
+      icon: "dice-5",
+      content: `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div style="background: rgba(124, 58, 237, 0.08); border-left: 4px solid #7c3aed; padding: 12px; border-radius: 4px 8px 8px 4px;">
+            <strong style="color: var(--primary);">But du jeu :</strong> Faire entrer vos 4 pions dans leur maison avant l'adversaire.
+          </div>
+          <div>
+            <h4 style="margin: 0 0 8px 0; font-weight: 700; color: var(--text-primary);">Comment jouer :</h4>
+            <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px;">
+              <li>Le jeu se joue ici en duel, avec 4 pions rouges contre 4 pions verts.</li>
+              <li>Cliquez sur <strong>Lancer</strong> pour tirer le de. Un <strong>6</strong> permet de sortir un pion et donne un tour supplementaire.</li>
+              <li>Quand plusieurs pions peuvent avancer, cliquez sur le pion que vous voulez deplacer.</li>
+              <li>Si vous tombez sur un pion adverse hors case sure, il retourne a sa base.</li>
+              <li>Le premier joueur qui amene ses 4 pions au bout de sa ligne de maison remporte la manche.</li>
             </ul>
           </div>
         </div>
@@ -22974,6 +23004,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (activeGame.gameType === 'domino' && activeGame.dominoScores) {
       p1ScoreEl.textContent = String(activeGame.dominoScores.player1 || 0);
       p2ScoreEl.textContent = String(activeGame.dominoScores.player2 || 0);
+    } else if (activeGame.gameType === 'ludo' && activeGame.ludoState?.players && (!activeGame.rounds || Number(activeGame.rounds) <= 1)) {
+      p1ScoreEl.textContent = String(activeGame.ludoState.players[1]?.finishedTokens || 0);
+      p2ScoreEl.textContent = String(activeGame.ludoState.players[2]?.finishedTokens || 0);
     } else if (activeGame.rounds && Number(activeGame.rounds) > 1) {
       const player1Rounds = activeGame.roundWins ? Number(activeGame.roundWins.player1 || 0) : 0;
       const player2Rounds = activeGame.roundWins ? Number(activeGame.roundWins.player2 || 0) : 0;
@@ -23311,6 +23344,11 @@ document.addEventListener('DOMContentLoaded', () => {
         p2Badge.textContent = 'Pions Jaunes';
         p1Badge.style.display = 'inline-block';
         p2Badge.style.display = 'inline-block';
+      } else if (game.gameType === 'ludo') {
+        p1Badge.textContent = 'Rouges';
+        p2Badge.textContent = 'Verts';
+        p1Badge.style.display = 'inline-block';
+        p2Badge.style.display = 'inline-block';
       } else if (game.gameType === 'gomoku') {
         p1Badge.textContent = 'Pions Noirs';
         p2Badge.textContent = 'Pions Blancs';
@@ -23340,6 +23378,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dominoBoardContainer) dominoBoardContainer.style.display = 'none';
     if (connectFourBoardContainer) connectFourBoardContainer.style.display = 'none';
     if (gomokuBoardContainer) gomokuBoardContainer.style.display = 'none';
+    if (ludoBoardContainer) ludoBoardContainer.style.display = 'none';
     if (tableFootballBoardContainer) tableFootballBoardContainer.style.display = 'none';
     if (chessBoardContainer) chessBoardContainer.style.display = 'none';
     // Initialize corresponding board
@@ -23357,6 +23396,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (gomokuBoardContainer) {
         gomokuBoardContainer.style.display = 'block';
         buildGomokuBoard();
+      }
+    } else if (game.gameType === 'ludo') {
+      if (ludoBoardContainer) {
+        ludoBoardContainer.style.display = 'block';
+        buildLudoBoard();
       }
     } else if (game.gameType === 'tablefootball') {
       if (tableFootballBoardContainer) {
@@ -23501,6 +23545,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (gameType === 'domino') return '';
       if (gameType === 'connect4') {
         return playerSymbol === 1 ? ' (Rouge)' : ' (Jaune)';
+      }
+      if (gameType === 'ludo') {
+        return playerSymbol === 1 ? ' (Rouges)' : ' (Verts)';
       }
       if (gameType === 'gomoku') {
         return playerSymbol === 1 ? ' (Noir)' : ' (Blanc)';
@@ -24213,9 +24260,565 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // 4. CHESS (ECHECS)
+  // 4. LUDO
+  const LUDO_LOOP_COORDS = [
+    { r: 6, c: 1 }, { r: 6, c: 2 }, { r: 6, c: 3 }, { r: 6, c: 4 }, { r: 6, c: 5 },
+    { r: 5, c: 6 }, { r: 4, c: 6 }, { r: 3, c: 6 }, { r: 2, c: 6 }, { r: 1, c: 6 },
+    { r: 0, c: 6 }, { r: 0, c: 7 }, { r: 0, c: 8 }, { r: 1, c: 8 }, { r: 2, c: 8 },
+    { r: 3, c: 8 }, { r: 4, c: 8 }, { r: 5, c: 8 }, { r: 6, c: 9 }, { r: 6, c: 10 },
+    { r: 6, c: 11 }, { r: 6, c: 12 }, { r: 6, c: 13 }, { r: 6, c: 14 }, { r: 7, c: 14 },
+    { r: 8, c: 14 }, { r: 8, c: 13 }, { r: 8, c: 12 }, { r: 8, c: 11 }, { r: 8, c: 10 },
+    { r: 8, c: 9 }, { r: 9, c: 8 }, { r: 10, c: 8 }, { r: 11, c: 8 }, { r: 12, c: 8 },
+    { r: 13, c: 8 }, { r: 14, c: 8 }, { r: 14, c: 7 }, { r: 14, c: 6 }, { r: 13, c: 6 },
+    { r: 12, c: 6 }, { r: 11, c: 6 }, { r: 10, c: 6 }, { r: 9, c: 6 }, { r: 8, c: 5 },
+    { r: 8, c: 4 }, { r: 8, c: 3 }, { r: 8, c: 2 }, { r: 8, c: 1 }, { r: 8, c: 0 },
+    { r: 7, c: 0 }, { r: 6, c: 0 }
+  ];
+  const LUDO_START_INDICES = { 1: 0, 2: 13 };
+  const LUDO_SAFE_INDICES = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
+  const LUDO_HOME_LANES = {
+    1: [
+      { r: 7, c: 1 }, { r: 7, c: 2 }, { r: 7, c: 3 },
+      { r: 7, c: 4 }, { r: 7, c: 5 }, { r: 7, c: 6 }
+    ],
+    2: [
+      { r: 1, c: 7 }, { r: 2, c: 7 }, { r: 3, c: 7 },
+      { r: 4, c: 7 }, { r: 5, c: 7 }, { r: 6, c: 7 }
+    ]
+  };
+  const LUDO_YARD_COORDS = {
+    1: [
+      { r: 2, c: 2 }, { r: 2, c: 4 }, { r: 4, c: 2 }, { r: 4, c: 4 }
+    ],
+    2: [
+      { r: 2, c: 10 }, { r: 2, c: 12 }, { r: 4, c: 10 }, { r: 4, c: 12 }
+    ]
+  };
+  const LUDO_DECOR_TOKENS = [
+    { r: 10, c: 2, color: 'blue' },
+    { r: 10, c: 4, color: 'blue' },
+    { r: 12, c: 2, color: 'blue' },
+    { r: 12, c: 4, color: 'blue' },
+    { r: 10, c: 10, color: 'yellow' },
+    { r: 10, c: 12, color: 'yellow' },
+    { r: 12, c: 10, color: 'yellow' },
+    { r: 12, c: 12, color: 'yellow' }
+  ];
+  const LUDO_LANE_SECTION_COORDS = {
+    top: Array.from({ length: 6 }, (_, rowOffset) => (
+      Array.from({ length: 3 }, (_, colOffset) => ({ r: rowOffset, c: 6 + colOffset }))
+    )).flat(),
+    left: Array.from({ length: 3 }, (_, rowOffset) => (
+      Array.from({ length: 6 }, (_, colOffset) => ({ r: 6 + rowOffset, c: colOffset }))
+    )).flat(),
+    right: Array.from({ length: 3 }, (_, rowOffset) => (
+      Array.from({ length: 6 }, (_, colOffset) => ({ r: 6 + rowOffset, c: 9 + colOffset }))
+    )).flat(),
+    bottom: Array.from({ length: 6 }, (_, rowOffset) => (
+      Array.from({ length: 3 }, (_, colOffset) => ({ r: 9 + rowOffset, c: 6 + colOffset }))
+    )).flat()
+  };
+  const LUDO_HOME_DISPLAY_META = [
+    { color: 'red', coords: LUDO_YARD_COORDS[1] },
+    { color: 'green', coords: LUDO_YARD_COORDS[2] },
+    { color: 'blue', coords: LUDO_DECOR_TOKENS.filter((token) => token.color === 'blue').map(({ r, c }) => ({ r, c })) },
+    { color: 'yellow', coords: LUDO_DECOR_TOKENS.filter((token) => token.color === 'yellow').map(({ r, c }) => ({ r, c })) }
+  ];
+  const LUDO_LOOP_INDEX_MAP = new Map(
+    LUDO_LOOP_COORDS.map((coord, index) => [`${coord.r},${coord.c}`, index])
+  );
+  const LUDO_HOME_META = new Map([
+    ...LUDO_HOME_LANES[1].map((coord) => [`${coord.r},${coord.c}`, 'home-red']),
+    ...LUDO_HOME_LANES[2].map((coord) => [`${coord.r},${coord.c}`, 'home-green']),
+    ...[{ r: 7, c: 8 }, { r: 7, c: 9 }, { r: 7, c: 10 }, { r: 7, c: 11 }, { r: 7, c: 12 }, { r: 7, c: 13 }]
+      .map((coord) => [`${coord.r},${coord.c}`, 'home-yellow']),
+    ...[{ r: 8, c: 7 }, { r: 9, c: 7 }, { r: 10, c: 7 }, { r: 11, c: 7 }, { r: 12, c: 7 }, { r: 13, c: 7 }]
+      .map((coord) => [`${coord.r},${coord.c}`, 'home-blue'])
+  ]);
+  const LUDO_ARROW_META = new Map([
+    ['7,0', 'entry-red'],
+    ['0,7', 'entry-green'],
+    ['7,14', 'entry-yellow'],
+    ['14,7', 'entry-blue']
+  ]);
+  const LUDO_STAR_META = new Map([
+    ['2,6', 'star-red'],
+    ['6,12', 'star-green'],
+    ['12,8', 'star-yellow'],
+    ['8,2', 'star-blue']
+  ]);
+  const LUDO_DICE_ROLL_DURATION = 960;
+  let ludoDiceRollTimer = null;
+  let ludoDiceRollStartedAt = 0;
+  let lastRenderedLudoRollNonce = 0;
+  let lastRenderedLudoGameId = null;
+  let lastAnnouncedLudoMessageKey = '';
+  let lastAnnouncedLudoGameId = null;
+
+  const getValidLudoDieValue = (value) => {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed >= 1 && parsed <= 6 ? parsed : null;
+  };
+
+  const getLudoCurrentUserSlot = (game) => {
+    if (!game) return 0;
+
+    const currentUserId = String(window.currentUserId ?? '');
+    if (!currentUserId) return 0;
+
+    if (game.player1 && String(game.player1.id) === currentUserId) {
+      return 1;
+    }
+    if (game.player2 && String(game.player2.id) === currentUserId) {
+      return 2;
+    }
+
+    return 0;
+  };
+
+  const setLudoDiceValue = (value = null) => {
+    if (!ludoDiceFace) return;
+
+    const safeValue = getValidLudoDieValue(value);
+    if (safeValue === null) {
+      ludoDiceFace.dataset.value = '1';
+      ludoDiceFace.dataset.empty = 'true';
+      ludoDiceFace.setAttribute('aria-label', 'De non lance');
+      ludoDiceFace.setAttribute('title', 'De non lance');
+      return;
+    }
+
+    ludoDiceFace.dataset.value = String(safeValue);
+    ludoDiceFace.dataset.empty = 'false';
+    ludoDiceFace.setAttribute('aria-label', `De ${safeValue}`);
+    ludoDiceFace.setAttribute('title', `De ${safeValue}`);
+  };
+
+  const startLudoDiceRollAnimation = () => {
+    if (!ludoDiceFace) return;
+
+    clearTimeout(ludoDiceRollTimer);
+    ludoDiceRollStartedAt = Date.now();
+    ludoDiceFace.classList.remove('is-settled');
+    ludoDiceFace.classList.remove('is-rolling');
+    setLudoDiceValue((Math.floor(Math.random() * 6) + 1));
+    void ludoDiceFace.offsetWidth;
+    ludoDiceFace.classList.add('is-rolling');
+  };
+
+  const finishLudoDiceRollAnimation = (value, { forceAnimate = false, immediate = false } = {}) => {
+    if (!ludoDiceFace) return;
+
+    const safeValue = getValidLudoDieValue(value);
+    if (safeValue === null) {
+      clearTimeout(ludoDiceRollTimer);
+      ludoDiceFace.classList.remove('is-rolling');
+      ludoDiceFace.classList.remove('is-settled');
+      setLudoDiceValue(null);
+      return;
+    }
+
+    if (forceAnimate && !ludoDiceFace.classList.contains('is-rolling')) {
+      startLudoDiceRollAnimation();
+    }
+
+    const elapsed = Date.now() - ludoDiceRollStartedAt;
+    const delay = immediate ? 0 : Math.max(0, ludoDiceFace.classList.contains('is-rolling')
+      ? LUDO_DICE_ROLL_DURATION - elapsed
+      : 0);
+
+    clearTimeout(ludoDiceRollTimer);
+    ludoDiceRollTimer = window.setTimeout(() => {
+      setLudoDiceValue(safeValue);
+      ludoDiceFace.classList.remove('is-rolling');
+      ludoDiceFace.classList.add('is-settled');
+    }, delay);
+  };
+
+  const syncLudoDiceFromState = (ludoState) => {
+    if (!ludoDiceFace) return;
+
+    const currentGameId = activeGame?.id || null;
+    const rollNonce = Number.isInteger(Number(ludoState?.rollNonce)) ? Number(ludoState.rollNonce) : 0;
+
+    if (lastRenderedLudoGameId !== currentGameId || rollNonce < lastRenderedLudoRollNonce) {
+      clearTimeout(ludoDiceRollTimer);
+      lastRenderedLudoGameId = currentGameId;
+      lastRenderedLudoRollNonce = 0;
+      ludoDiceFace.classList.remove('is-rolling');
+      ludoDiceFace.classList.remove('is-settled');
+    }
+
+    const currentDie = getValidLudoDieValue(ludoState?.currentDie);
+    const lastDie = getValidLudoDieValue(ludoState?.lastRoll);
+    const visibleDie = currentDie !== null ? currentDie : lastDie;
+
+    if (rollNonce > lastRenderedLudoRollNonce && lastDie !== null) {
+      lastRenderedLudoRollNonce = rollNonce;
+      finishLudoDiceRollAnimation(lastDie, { forceAnimate: true });
+      return;
+    }
+
+    if (visibleDie !== null) {
+      setLudoDiceValue(visibleDie);
+      if (!ludoDiceFace.classList.contains('is-rolling')) {
+        ludoDiceFace.classList.add('is-settled');
+      }
+    } else {
+      setLudoDiceValue(null);
+    }
+  };
+
+  const maybeAnnounceLudoTurnMessage = (game) => {
+    if (!game || game.gameType !== 'ludo' || window.isSpectatingActiveGame) return;
+
+    const turnMessage = String(game.ludoState?.turnMessage || '').trim();
+    const announcementKey = [
+      game.id,
+      game.status,
+      game.currentPlayer,
+      Number(game.ludoState?.rollNonce || 0),
+      game.lastMove?.type || '',
+      Number(game.lastMove?.player || 0),
+      Number(game.lastMove?.tokenIndex ?? -1),
+      game.lastMove?.turnCancelled ? '1' : '0',
+      turnMessage
+    ].join(':');
+
+    if (lastAnnouncedLudoGameId !== game.id) {
+      lastAnnouncedLudoGameId = game.id;
+      lastAnnouncedLudoMessageKey = announcementKey;
+      return;
+    }
+
+    if (lastAnnouncedLudoMessageKey === announcementKey) return;
+    lastAnnouncedLudoMessageKey = announcementKey;
+
+    if (!turnMessage) return;
+
+    if (/Capture reussie|Six obtenu|Aucun pion ne peut avancer|Trois 6 consecutifs|Un pion est arrive a la maison|Il faut faire 6 pour sortir un pion de la base/i.test(turnMessage)) {
+      showToast(turnMessage);
+    }
+  };
+
+  const getLudoCellClasses = (r, c) => {
+    const key = `${r},${c}`;
+    const classes = ['ludo-cell'];
+
+    if (r >= 6 && r <= 8 && c >= 6 && c <= 8) {
+      classes.push('center-pad');
+      return classes.join(' ');
+    }
+
+    const homeClass = LUDO_HOME_META.get(key);
+    if (homeClass) {
+      classes.push(homeClass);
+      return classes.join(' ');
+    }
+
+    if (r >= 1 && r <= 4 && c >= 1 && c <= 4) {
+      classes.push('yard-red');
+      return classes.join(' ');
+    }
+    if (r >= 1 && r <= 4 && c >= 10 && c <= 13) {
+      classes.push('yard-green');
+      return classes.join(' ');
+    }
+    if (r >= 10 && r <= 13 && c >= 1 && c <= 4) {
+      classes.push('yard-blue');
+      return classes.join(' ');
+    }
+    if (r >= 10 && r <= 13 && c >= 10 && c <= 13) {
+      classes.push('yard-yellow');
+      return classes.join(' ');
+    }
+
+    if (LUDO_LOOP_INDEX_MAP.has(key)) {
+      const globalIndex = LUDO_LOOP_INDEX_MAP.get(key);
+      classes.push('track');
+      if (LUDO_SAFE_INDICES.has(globalIndex)) {
+        classes.push('safe');
+      }
+      const arrowClass = LUDO_ARROW_META.get(key);
+      const starClass = LUDO_STAR_META.get(key);
+      if (arrowClass) classes.push(arrowClass);
+      if (starClass) classes.push(starClass);
+      if (globalIndex === LUDO_START_INDICES[1]) {
+        classes.push('start-red');
+      } else if (globalIndex === LUDO_START_INDICES[2]) {
+        classes.push('start-green');
+      } else if (globalIndex === 26) {
+        classes.push('start-yellow');
+      } else if (globalIndex === 39) {
+        classes.push('start-blue');
+      }
+      return classes.join(' ');
+    }
+
+    if (r <= 5 && c <= 5) {
+      classes.push('base-red');
+    } else if (r <= 5 && c >= 9) {
+      classes.push('base-green');
+    } else if (r >= 9 && c <= 5) {
+      classes.push('base-blue');
+    } else if (r >= 9 && c >= 9) {
+      classes.push('base-yellow');
+    }
+
+    return classes.join(' ');
+  };
+
+  const getLudoTokenColorClass = (tokenRef) => {
+    if (tokenRef === 1 || tokenRef === 'red') return 'is-red';
+    if (tokenRef === 2 || tokenRef === 'green') return 'is-green';
+    if (tokenRef === 'blue') return 'is-blue';
+    if (tokenRef === 'yellow') return 'is-yellow';
+    return 'is-red';
+  };
+
+  const getLudoTokenCoord = (playerSlot, tokenIndex, step) => {
+    if (step === -1) {
+      return LUDO_YARD_COORDS[playerSlot]?.[tokenIndex] || null;
+    }
+    if (step >= 0 && step < 52) {
+      const startIndex = LUDO_START_INDICES[playerSlot] || 0;
+      return LUDO_LOOP_COORDS[(startIndex + step) % 52] || null;
+    }
+    if (step >= 52 && step <= 57) {
+      return LUDO_HOME_LANES[playerSlot]?.[step - 52] || null;
+    }
+    return null;
+  };
+
+  const emitLudoTokenMove = (tokenIndex) => {
+    if (!activeGame || activeGame.gameType !== 'ludo') return;
+    if (!Number.isInteger(Number(tokenIndex))) return;
+
+    socket.emit('game-move', {
+      gameId: activeGame.id,
+      r: Number(tokenIndex),
+      c: 0
+    }, (res) => {
+      if (res && res.error) {
+        showToast(res.error);
+      }
+    });
+  };
+
+  const appendLudoTokensToHost = (host, tokens, { isBaseSlot = false } = {}) => {
+    if (!host || !Array.isArray(tokens) || tokens.length === 0) return;
+
+    const firstLegalToken = tokens.find((token) => token.isLegal && !token.isDecor);
+    if (firstLegalToken) {
+      host.classList.add('has-legal-token');
+      host.classList.add('is-clickable');
+      host.tabIndex = 0;
+      host.setAttribute('role', 'button');
+      host.setAttribute('aria-label', `Deplacer le pion ${firstLegalToken.tokenIndex + 1}`);
+      host.addEventListener('click', () => {
+        emitLudoTokenMove(firstLegalToken.tokenIndex);
+      });
+      host.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          emitLudoTokenMove(firstLegalToken.tokenIndex);
+        }
+      });
+    }
+
+    const stack = document.createElement('div');
+    stack.className = `ludo-token-stack${isBaseSlot ? ' is-base-slot-stack' : ''}`;
+
+    const finishedStackOffsets = [
+      { x: -8, y: -8 },
+      { x: 8, y: -8 },
+      { x: -8, y: 8 },
+      { x: 8, y: 8 }
+    ];
+    const defaultStackOffsets = [
+      { x: 0, y: 0 },
+      { x: -7, y: 0 },
+      { x: 7, y: 0 },
+      { x: -7, y: 7 },
+      { x: 7, y: 7 }
+    ];
+
+    tokens.forEach((token, index) => {
+      const tokenEl = document.createElement('div');
+      const stackPreset = token.isFinished && tokens.length > 1 ? finishedStackOffsets : defaultStackOffsets;
+      const fallbackOffsetX = tokens.length > 1 ? (index % 2 === 0 ? -7 : 7) : 0;
+      const fallbackOffsetY = tokens.length > 2 ? (index > 1 ? 7 : -7) : 0;
+      const offset = stackPreset[index] || { x: fallbackOffsetX, y: fallbackOffsetY };
+      tokenEl.className = `ludo-token ${getLudoTokenColorClass(token.color || token.playerSlot)}${token.isYard ? ' is-yard' : ''}${token.isDecor ? ' is-decor' : ''}${token.isFinished ? ' is-finished' : ''}${token.isLegal ? ' is-legal' : ''}${token.isLast ? ' is-last' : ''}`;
+      tokenEl.style.setProperty('--stack-x', `${offset.x}px`);
+      tokenEl.style.setProperty('--stack-y', `${offset.y}px`);
+
+      if (!token.isDecor) {
+        tokenEl.title = `Pion ${token.tokenIndex + 1}`;
+      } else {
+        tokenEl.setAttribute('aria-hidden', 'true');
+      }
+
+      stack.appendChild(tokenEl);
+    });
+
+    host.appendChild(stack);
+  };
+
+  const createLudoLaneCell = (r, c, tokenMap) => {
+    const cell = document.createElement('div');
+    cell.className = getLudoCellClasses(r, c);
+    appendLudoTokensToHost(cell, tokenMap.get(`${r},${c}`) || []);
+    return cell;
+  };
+
+  const createLudoLaneSection = (coords, sectionClasses, tokenMap) => {
+    const lane = document.createElement('div');
+    lane.className = `ludo-lane ${sectionClasses}`;
+    coords.forEach(({ r, c }) => {
+      lane.appendChild(createLudoLaneCell(r, c, tokenMap));
+    });
+    return lane;
+  };
+
+  const createLudoHomeSection = ({ color, coords }, tokenMap) => {
+    const home = document.createElement('div');
+    home.className = `ludo-home is-${color}`;
+
+    const base = document.createElement('div');
+    base.className = 'ludo-base';
+
+    coords.forEach(({ r, c }) => {
+      const slot = document.createElement('div');
+      slot.className = 'ludo-base-slot';
+      appendLudoTokensToHost(slot, tokenMap.get(`${r},${c}`) || [], { isBaseSlot: true });
+      base.appendChild(slot);
+    });
+
+    home.appendChild(base);
+    return home;
+  };
+
+  const createLudoCenterSection = () => {
+    const center = document.createElement('div');
+    center.className = 'ludo-center-emblem';
+    center.setAttribute('aria-hidden', 'true');
+
+    ['red', 'green', 'yellow', 'blue'].forEach((color) => {
+      const triangle = document.createElement('div');
+      triangle.className = `ludo-center-triangle is-${color}`;
+      center.appendChild(triangle);
+    });
+
+    return center;
+  };
+
+  const buildLudoBoard = () => {
+    if (!ludoBoard || !activeGame?.ludoState) return;
+    ludoBoard.innerHTML = '';
+
+    const ludoState = activeGame.ludoState;
+    const mySlot = getLudoCurrentUserSlot(activeGame);
+    const isMyTurn = mySlot > 0
+      && !window.isSpectatingActiveGame
+      && activeGame.status === 'playing'
+      && activeGame.currentPlayer === mySlot;
+    const legalMoves = Array.isArray(ludoState.legalMoves) ? ludoState.legalMoves : [];
+    const currentPlayer = activeGame.currentPlayer === 1 ? activeGame.player1 : activeGame.player2;
+    const currentDieValue = getValidLudoDieValue(ludoState?.currentDie);
+
+    syncLudoDiceFromState(ludoState);
+
+    if (ludoRollBtn) {
+      ludoRollBtn.disabled = !isMyTurn || ludoState.hasRolled || activeGame.status !== 'playing';
+      ludoRollBtn.textContent = activeGame.status === 'finished' ? 'Termine' : 'Lancer';
+    }
+
+    if (ludoStatusPill) {
+      if (activeGame.status === 'finished') {
+        ludoStatusPill.textContent = 'Partie terminee';
+      } else if (ludoState.hasRolled && currentDieValue !== null) {
+        ludoStatusPill.textContent = isMyTurn
+          ? `De ${currentDieValue} - Choisissez un pion`
+          : `${currentPlayer ? currentPlayer.name : 'Tour adverse'} - De ${currentDieValue}`;
+      } else if (isMyTurn) {
+        ludoStatusPill.textContent = 'Votre tour';
+      } else {
+        ludoStatusPill.textContent = currentPlayer ? `Tour de ${currentPlayer.name}` : 'Tour adverse';
+      }
+    }
+
+    if (ludoHelperText) {
+      if (activeGame.status === 'finished') {
+        ludoHelperText.textContent = ludoState.turnMessage || 'La manche est terminee.';
+      } else if (isMyTurn && !ludoState.hasRolled) {
+        ludoHelperText.textContent = 'Lancez le de pour jouer.';
+      } else {
+        ludoHelperText.textContent = ludoState.turnMessage || 'Lancez le de pour commencer.';
+      }
+    }
+
+    maybeAnnounceLudoTurnMessage(activeGame);
+
+    const tokenMap = new Map();
+    [1, 2].forEach((playerSlot) => {
+      const tokens = ludoState.players?.[playerSlot]?.tokens || [];
+      tokens.forEach((step, tokenIndex) => {
+        const coord = getLudoTokenCoord(playerSlot, tokenIndex, step);
+        if (!coord) return;
+        const key = `${coord.r},${coord.c}`;
+        const bucket = tokenMap.get(key) || [];
+        bucket.push({
+          playerSlot,
+          tokenIndex,
+          isYard: step === -1,
+          isFinished: step === 57,
+          isLegal: playerSlot === mySlot && isMyTurn && ludoState.hasRolled && legalMoves.includes(tokenIndex),
+          isLast: activeGame.lastMove
+            && activeGame.lastMove.gameType === 'ludo'
+            && activeGame.lastMove.type === 'move'
+            && Number(activeGame.lastMove.player) === Number(playerSlot)
+            && Number(activeGame.lastMove.tokenIndex) === Number(tokenIndex)
+        });
+        tokenMap.set(key, bucket);
+      });
+    });
+
+    LUDO_DECOR_TOKENS.forEach((decorToken, decorIndex) => {
+      const key = `${decorToken.r},${decorToken.c}`;
+      const bucket = tokenMap.get(key) || [];
+      bucket.push({
+        playerSlot: 0,
+        tokenIndex: decorIndex,
+        color: decorToken.color,
+        isDecor: true,
+        isYard: true,
+        isLegal: false,
+        isLast: false
+      });
+      tokenMap.set(key, bucket);
+    });
+
+    const boardShell = document.createElement('div');
+    boardShell.className = 'ludo-design-board';
+
+    boardShell.appendChild(createLudoHomeSection(LUDO_HOME_DISPLAY_META[0], tokenMap));
+    boardShell.appendChild(createLudoLaneSection(LUDO_LANE_SECTION_COORDS.top, 'is-vertical is-top', tokenMap));
+    boardShell.appendChild(createLudoHomeSection(LUDO_HOME_DISPLAY_META[1], tokenMap));
+    boardShell.appendChild(createLudoLaneSection(LUDO_LANE_SECTION_COORDS.left, 'is-horizontal is-left', tokenMap));
+    boardShell.appendChild(createLudoCenterSection());
+    boardShell.appendChild(createLudoLaneSection(LUDO_LANE_SECTION_COORDS.right, 'is-horizontal is-right', tokenMap));
+    boardShell.appendChild(createLudoHomeSection(LUDO_HOME_DISPLAY_META[2], tokenMap));
+    boardShell.appendChild(createLudoLaneSection(LUDO_LANE_SECTION_COORDS.bottom, 'is-vertical is-bottom', tokenMap));
+    boardShell.appendChild(createLudoHomeSection(LUDO_HOME_DISPLAY_META[3], tokenMap));
+
+    ludoBoard.appendChild(boardShell);
+  };
+
+  // 5. CHESS (ECHECS)
   let selectedSquare = null;
   let activePromotionMove = null;
+  let chessPieceSvgCounter = 0;
 
 
   const getFenFromGameState = (game) => {
@@ -24269,63 +24872,117 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const getChessPieceSvgMarkup = (piece) => {
     if (!piece) return '';
+
     const color = piece[0];
     const type = piece[1];
-    const fill = color === 'w' ? '#ffffff' : '#1e293b';
-    const stroke = color === 'w' ? '#374151' : '#f3f4f6';
-    
+    const isWhite = color === 'w';
+    const uid = `chess-${color}-${type}-${++chessPieceSvgCounter}`;
+    const bodyGradientId = `${uid}-body`;
+    const trimGradientId = `${uid}-trim`;
+    const gemGradientId = `${uid}-gem`;
+    const shineGradientId = `${uid}-shine`;
+    const edge = isWhite ? '#526074' : '#eef4ff';
+    const edgeSoft = isWhite ? 'rgba(82, 96, 116, 0.35)' : 'rgba(238, 244, 255, 0.2)';
+    const shadow = isWhite ? 'rgba(100, 116, 139, 0.28)' : 'rgba(15, 23, 42, 0.42)';
+    const bodyTop = isWhite ? '#ffffff' : '#435066';
+    const bodyBottom = isWhite ? '#cfd8e6' : '#0f172a';
+    const trimTop = isWhite ? '#f7d67b' : '#8ec5ff';
+    const trimBottom = isWhite ? '#bf8821' : '#2563eb';
+    const shine = isWhite ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.22)';
+
+    const shell = (content) => `
+      <svg class="chess-piece-svg" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="${bodyGradientId}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${bodyTop}"></stop>
+            <stop offset="55%" stop-color="${isWhite ? '#eef3fb' : '#243145'}"></stop>
+            <stop offset="100%" stop-color="${bodyBottom}"></stop>
+          </linearGradient>
+          <linearGradient id="${trimGradientId}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${trimTop}"></stop>
+            <stop offset="100%" stop-color="${trimBottom}"></stop>
+          </linearGradient>
+          <radialGradient id="${gemGradientId}" cx="35%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="${isWhite ? '#fff8dc' : '#d7ecff'}"></stop>
+            <stop offset="100%" stop-color="${trimBottom}"></stop>
+          </radialGradient>
+          <linearGradient id="${shineGradientId}" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="${shine}"></stop>
+            <stop offset="100%" stop-color="rgba(255,255,255,0)"></stop>
+          </linearGradient>
+        </defs>
+        <ellipse cx="32" cy="58.4" rx="16.5" ry="3.2" fill="${shadow}"></ellipse>
+        ${content}
+      </svg>
+    `;
+
     if (type === 'p') {
-      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
-        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 9c-2.2 0-4 1.8-4 4 0 1.5 1 2.8 2.5 3.5-2.2 1-3.5 3-3.5 5.5 0 2 1 3.5 3 4.5V28H16v2h13v-2h-4v-1.5c2-1 3-2.5 3-4.5 0-2.5-1.3-4.5-3.5-5.5 1.5-.7 2.5-2 2.5-3.5 0-2.2-1.8-4-4-4z"/>
-        </g>
-      </svg>`;
+      return shell(`
+        <circle cx="32" cy="14.5" r="6.3" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></circle>
+        <path d="M25.8 23.8c0-3.9 2.8-6.6 6.2-6.6s6.2 2.7 6.2 6.6c0 1.7-.6 3.2-1.7 4.4 3.9 1.8 6.4 5.8 6.4 10.8 0 2.2-.5 4.1-1.4 5.7H22.9c-.9-1.6-1.4-3.5-1.4-5.7 0-5 2.5-9 6.4-10.8-1.1-1.2-1.7-2.7-1.7-4.4Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></path>
+        <path d="M25.2 44.6h13.6c2.8 0 5 2 5 4.3v1.4H20.2v-1.4c0-2.3 2.2-4.3 5-4.3Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <path d="M20.4 50.3h23.2l2.1 4.2H18.3l2.1-4.2Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <path d="M28.4 12.6c1.1-1.6 2.4-2.4 4-2.4 1.2 0 2.4.4 3.6 1.2" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.2" stroke-linecap="round"></path>
+      `);
     }
+
     if (type === 'n') {
-      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
-        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M 22,10 C 22,10 19,11 16,15 C 13,19 13,23 13,23 C 13,23 14,21 16,21 C 18,21 20,22 22,20 C 24,18 24,15 24,15 C 24,15 25,16 27,15 C 29,14 30,12 30,12 C 30,12 28,15 25,16 C 22,17 21,21 21,23 C 21,24 22,25 24,25 C 26,25 28,24 30,22 C 31,21 32,18 32,18 C 32,18 32,23 29,26 C 26,29 22,30 22,30 L 15,30 L 15,32 L 30,32 L 30,30 C 30,30 33,26 31,20 C 29,14 22,10 22,10 z"/>
-        </g>
-      </svg>`;
+      return shell(`
+        <path d="M23.4 48.2c-1.2-8.2 1.1-14.3 6.7-20.3 2.8-3 4.3-5.8 4.3-9-2.4-.8-4.6-.4-7.4 1.3-1.3-3.6-.8-6.7 1.7-9.1 1.9 2.1 4.6 3.1 8.2 3.2 5 .1 8.3 2.7 8.7 8.1-1.8-.5-3.4-.4-4.9.1 1.8 3.5 1.8 7.4.9 11.7-.7 3.1-.7 6.1 0 9.2l-18.2 4.8Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6" stroke-linejoin="round"></path>
+        <path d="M21.3 46.7h22.4c2.3 0 4.2 1.8 4.2 4v1.4H17.1v-1.4c0-2.2 1.9-4 4.2-4Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <path d="M18.8 52.1h27l1.9 3.6H16.9l1.9-3.6Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <circle cx="35.5" cy="18.3" r="1.7" fill="${isWhite ? '#405065' : '#f8fafc'}"></circle>
+        <path d="M30.3 17.6c2.5-2 5.6-2.7 9.4-1.9" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.1" stroke-linecap="round"></path>
+      `);
     }
+
     if (type === 'b') {
-      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
-        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 36h27v-2H9v2zm13.5-32c-5 0-9 4-9 9 0 3 2 7.5 5 11.5v3.5h8v-3.5c3-4 5-8.5 5-11.5 0-5-4-9-9-9z"/>
-          <circle cx="22.5" cy="5" r="2" fill="${stroke}"/>
-          <path d="M22.5 8v8M18.5 12h8" fill="none" stroke="${stroke}" stroke-width="1.5"/>
-        </g>
-      </svg>`;
+      return shell(`
+        <path d="M32 8.6c2.3 0 4.2 1.9 4.2 4.2 0 1.4-.7 2.8-1.8 3.5l2.7 3.3c3.1 3.8 4.8 8.1 4.8 12.2 0 4.2-1.2 8.2-3.7 12.1H25.8c-2.5-3.9-3.7-7.9-3.7-12.1 0-4.1 1.7-8.4 4.8-12.2l2.7-3.3c-1.1-.8-1.8-2.1-1.8-3.5 0-2.3 1.9-4.2 4.2-4.2Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></path>
+        <path d="M29.6 18.3 35 39.2" fill="none" stroke="${edgeSoft}" stroke-width="2.2" stroke-linecap="round"></path>
+        <path d="M28.2 16.2h7.6" fill="none" stroke="url(#${trimGradientId})" stroke-width="2.4" stroke-linecap="round"></path>
+        <path d="M24.2 44h15.6c2.9 0 5.3 2 5.3 4.4v1.5H18.9v-1.5c0-2.4 2.4-4.4 5.3-4.4Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <path d="M20.4 49.9h23.2l2.1 4.3H18.3l2.1-4.3Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <circle cx="32" cy="8.2" r="2.5" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
+        <path d="M28.8 12.2c.9-1.2 2-1.8 3.5-1.8 1.3 0 2.4.4 3.6 1.3" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.1" stroke-linecap="round"></path>
+      `);
     }
+
     if (type === 'r') {
-      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
-        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 39h27v-3H9v3zm3-13h21v-4H12v4zm2.5-4l1.5-12h18l1.5 12h-21z"/>
-          <path d="M12 10V4h4v3h3V4h4v3h3V4h4v3h3V4h4v6H12z"/>
-        </g>
-      </svg>`;
+      return shell(`
+        <path d="M20.4 11.4h4.3v4h4.3v-4h6v4h4.3v-4h4.3v8.8H20.4v-8.8Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></path>
+        <path d="M23.2 20.2h17.6l2.4 17.2H20.8l2.4-17.2Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></path>
+        <path d="M21.6 37.4h20.8c2.3 0 4.2 1.8 4.2 4v1.4H17.4v-1.4c0-2.2 1.9-4 4.2-4Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <path d="M18.8 42.8h26.4l2 4.8H16.8l2-4.8Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <path d="M24.6 26h14.8" fill="none" stroke="${edgeSoft}" stroke-width="2.2" stroke-linecap="round"></path>
+        <path d="M24 13c1.1.8 1.9 1.1 2.7 1.1M37.3 14.1c.9 0 1.8-.3 2.7-1.1" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.1" stroke-linecap="round"></path>
+      `);
     }
+
     if (type === 'q') {
-      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
-        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 37h27v-3H9v3zm3.5-17.5L6 9l9 17 7.5-18.5L30 26l9-17-6.5 10.5h-20z"/>
-          <path d="M12.5 32c0-3.5 4-6 10-6s10 2.5 10 6H12.5z"/>
-          <circle cx="6" cy="9" r="2"/>
-          <circle cx="15" cy="9" r="2"/>
-          <circle cx="22.5" cy="7.5" r="2"/>
-          <circle cx="30" cy="9" r="2"/>
-          <circle cx="39" cy="9" r="2"/>
-        </g>
-      </svg>`;
+      return shell(`
+        <circle cx="14.1" cy="12.8" r="2.8" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
+        <circle cx="24.2" cy="10.4" r="2.8" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
+        <circle cx="32" cy="8.4" r="3.1" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
+        <circle cx="39.8" cy="10.4" r="2.8" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
+        <circle cx="49.9" cy="12.8" r="2.8" fill="url(#${gemGradientId})" stroke="${edge}" stroke-width="1.1"></circle>
+        <path d="M14.1 15.6 20 33.4l7.3-16.2L32 34.6l4.7-17.4L44 33.4l5.9-17.8-5.7 22.7H19.8l-5.7-22.7Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6" stroke-linejoin="round"></path>
+        <path d="M22.4 38.3h19.2c2.8 0 5.2 2.1 5.2 4.7v1.6H17.2V43c0-2.6 2.4-4.7 5.2-4.7Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <path d="M18.6 44.6h26.8l2 5.1H16.6l2-5.1Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <path d="M21 20.3c4.7-2.2 11.3-2.4 18 0" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.2" stroke-linecap="round"></path>
+      `);
     }
+
     if (type === 'k') {
-      return `<svg class="chess-piece-svg" viewBox="0 0 45 45" xmlns="http://www.w3.org/2000/svg">
-        <g fill="${fill}" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22.5 11.63V6M20 8h5M12.5 36h20v-3h-20v3zm6-20c-3.5 0-6 3.5-6 7 0 5 12 10 12 10s12-5 12-10c0-3.5-2.5-7-6-7-3.5 0-6 3-6 3s-2.5-3-6-3z"/>
-          <path d="M11.5 30c0-3 4-5.5 11-5.5s11 2.5 11 5.5H11.5z"/>
-        </g>
-      </svg>`;
+      return shell(`
+        <path d="M32 7.2v8.2M28 11.3h8" fill="none" stroke="url(#${trimGradientId})" stroke-width="2.8" stroke-linecap="round"></path>
+        <path d="M28.6 17.2c-4 0-7.3 3.2-7.3 7.3 0 3.3 1.6 5.6 4.1 8l-2.5 10h18.2l-2.5-10c2.5-2.4 4.1-4.7 4.1-8 0-4.1-3.3-7.3-7.3-7.3-1.7 0-3.2.6-4.4 1.6-1.2-1-2.7-1.6-4.4-1.6Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.6"></path>
+        <path d="M23.9 42.5h16.2c3.1 0 5.5 2.1 5.5 4.7v1.5H18.4v-1.5c0-2.6 2.4-4.7 5.5-4.7Z" fill="url(#${trimGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <path d="M19.7 48.7h24.6l2.1 5H17.6l2.1-5Z" fill="url(#${bodyGradientId})" stroke="${edge}" stroke-width="1.4"></path>
+        <path d="M27 21.8c1.2-1.4 2.9-2.1 5-2.1 1.7 0 3.2.5 4.5 1.4" fill="none" stroke="url(#${shineGradientId})" stroke-width="2.2" stroke-linecap="round"></path>
+      `);
     }
+
     return '';
   };
 
@@ -26669,6 +27326,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     activeGame = null;
     window.isSpectatingActiveGame = false;
+    lastAnnouncedLudoMessageKey = '';
+    lastAnnouncedLudoGameId = null;
 
     if (activeGameArea) activeGameArea.style.display = 'none';
     if (gamesLobby) gamesLobby.style.display = 'flex';
@@ -26706,6 +27365,30 @@ document.addEventListener('DOMContentLoaded', () => {
       socket.emit('game-forfeit', { gameId: activeGame.id });
     }
   });
+
+  if (ludoRollBtn) {
+    ludoRollBtn.addEventListener('click', () => {
+      if (!activeGame || activeGame.gameType !== 'ludo') return;
+      if (ludoRollBtn.disabled) return;
+
+      ludoRollBtn.disabled = true;
+      startLudoDiceRollAnimation();
+      socket.emit('game-move', {
+        gameId: activeGame.id,
+        r: 0,
+        c: 0,
+        extraMove: {
+          promotion: 'roll'
+        }
+      }, (res) => {
+        if (res && res.error) {
+          ludoRollBtn.disabled = false;
+          finishLudoDiceRollAnimation(activeGame?.ludoState?.lastRoll, { immediate: true });
+          showToast(res.error);
+        }
+      });
+    });
+  }
 
   if (dominoDrawBtn) {
     dominoDrawBtn.addEventListener('click', () => {
@@ -26887,6 +27570,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const localGameNames = {
       connect4: 'Puissance 4',
       gomoku: 'Gomoku',
+      ludo: 'Ludo',
       tablefootball: 'Football Table'
     };
     const gameName = localGameNames[invite.gameType] || invite.gameType || 'Jeu';
@@ -27171,6 +27855,8 @@ document.addEventListener('DOMContentLoaded', () => {
           buildDominoBoard();
         } else if (game.gameType === 'connect4') {
           buildConnectFourBoard();
+        } else if (game.gameType === 'ludo') {
+          buildLudoBoard();
         } else if (game.gameType === 'gomoku') {
           buildGomokuBoard();
         } else if (game.gameType === 'tablefootball') {
@@ -27262,6 +27948,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (activeGame.gameType === 'domino' && activeGame.dominoScores) {
         const s1 = activeGame.dominoScores.player1 || 0;
         const s2 = activeGame.dominoScores.player2 || 0;
+        scoreDisplay = `${p1Name}   ${s1}  —  ${s2}   ${p2Name}`;
+      } else if (activeGame.gameType === 'ludo' && activeGame.ludoState?.players && (!activeGame.rounds || Number(activeGame.rounds) <= 1)) {
+        const s1 = activeGame.ludoState.players[1]?.finishedTokens || 0;
+        const s2 = activeGame.ludoState.players[2]?.finishedTokens || 0;
         scoreDisplay = `${p1Name}   ${s1}  —  ${s2}   ${p2Name}`;
       } else if (activeGame.rounds && Number(activeGame.rounds) > 1) {
         const p1Rounds = activeGame.roundWins ? Number(activeGame.roundWins.player1 || 0) : 0;
@@ -29585,6 +30275,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const gameNamesMap = {
       connect4: 'Puissance 4',
       gomoku: 'Gomoku',
+      ludo: 'Ludo',
       tablefootball: 'Football Table',
       echecs: 'Echecs'
     };
