@@ -73,9 +73,11 @@ CREATE TABLE users (
   premium_followers_threshold INT DEFAULT 1000,
   premium_paid_at TIMESTAMP NULL DEFAULT NULL,
   premium_activated_at TIMESTAMP NULL DEFAULT NULL,
+  account_type VARCHAR(30) NOT NULL DEFAULT 'standard',
   game_matches_played INT DEFAULT 0,
   game_matches_won INT DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_users_account_type (account_type)
 );
 
 -- 2. Table Publications (avec support pour 2 images maximum pour la grille)
@@ -99,8 +101,10 @@ CREATE TABLE posts (
   is_trade TINYINT(1) DEFAULT 0,
   trade_price DECIMAL(10,2) DEFAULT NULL,
   last_possession_user_id INT DEFAULT NULL,
+  source VARCHAR(30) NOT NULL DEFAULT 'user',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_posts_source_created (source, created_at, id)
 );
 
 -- 3. Table Likes
@@ -191,11 +195,13 @@ CREATE TABLE reels (
   is_trade TINYINT(1) DEFAULT 0,
   trade_price DECIMAL(10,2) DEFAULT NULL,
   last_possession_user_id INT DEFAULT NULL,
+  source VARCHAR(30) NOT NULL DEFAULT 'user',
   likes_count INT DEFAULT 0,
   comments_count INT DEFAULT 0,
   shares_count INT DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_reels_source_created (source, created_at, id)
 );
 
 CREATE TABLE reel_comments (
@@ -218,6 +224,7 @@ CREATE TABLE statuses (
   media_url VARCHAR(255) NOT NULL,
   media_type VARCHAR(50) NOT NULL,
   media_name VARCHAR(255) DEFAULT NULL,
+  source VARCHAR(30) NOT NULL DEFAULT 'user',
   media_size INT DEFAULT NULL,
   caption TEXT DEFAULT NULL,
   media_fit VARCHAR(20) DEFAULT 'cover',
@@ -225,7 +232,8 @@ CREATE TABLE statuses (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   INDEX idx_statuses_user_created (user_id, created_at),
-  INDEX idx_statuses_expires_at (expires_at)
+  INDEX idx_statuses_expires_at (expires_at),
+  INDEX idx_statuses_source_created (source, created_at, id)
 );
 
 -- 8. Table Events

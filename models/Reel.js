@@ -49,6 +49,9 @@ class Reel {
     if (!columnNames.has('trim_end')) {
       await db.query('ALTER TABLE reels ADD COLUMN trim_end FLOAT DEFAULT NULL');
     }
+    if (!columnNames.has('source')) {
+      await db.query("ALTER TABLE reels ADD COLUMN source VARCHAR(30) NOT NULL DEFAULT 'user'");
+    }
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS reel_daily_unique_views (
@@ -94,6 +97,7 @@ class Reel {
     await ensureIndex('reels', 'idx_reels_created_id', '(created_at DESC, id DESC)');
     await ensureIndex('reels', 'idx_reels_user_created_id', '(user_id, created_at DESC, id DESC)');
     await ensureIndex('reels', 'idx_reels_promo_created_id', '(promo_paid_hashtag_count, promo_daily_target, created_at DESC, id DESC)');
+    await ensureIndex('reels', 'idx_reels_source_created', '(source, created_at DESC, id DESC)');
     await ensureIndex('follows', 'idx_follows_follower_following', '(follower_id, following_id)');
     await ensureIndex('follows', 'idx_follows_following_follower', '(following_id, follower_id)');
 

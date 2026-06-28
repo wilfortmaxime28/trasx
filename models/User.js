@@ -24,6 +24,7 @@ async function ensureEventAccessColumns() {
         ['token_balance', 'DECIMAL(15,4) DEFAULT 0.0000'],
         ['display_name', 'VARCHAR(100) DEFAULT NULL'],
         ['display_name_updated_at', 'TIMESTAMP NULL DEFAULT NULL'],
+        ['account_type', "VARCHAR(30) NOT NULL DEFAULT 'standard'"],
         ['game_matches_played', 'INT DEFAULT 0'],
         ['game_matches_won', 'INT DEFAULT 0']
       ];

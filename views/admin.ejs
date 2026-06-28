@@ -1855,6 +1855,26 @@
     const canManageAdminsFlag = Boolean(typeof canManageAdmins !== 'undefined' ? canManageAdmins : false);
     const canManageUserCertification = Boolean(currentAdminPermissions?.actions?.manage_kyc || currentAdminPermissions?.actions?.manage_users);
     const canManageBalancesFlag = Boolean(currentAdminPermissions?.actions?.manage_balances);
+    const canManageOfficialSeedsFlag = Boolean(currentAdminPermissions?.actions?.manage_official_seeds);
+    const officialSeedStats = (typeof officialSeedSummary === 'object' && officialSeedSummary)
+      ? officialSeedSummary
+      : {
+        targetCount: 100,
+        accountsCount: 0,
+        feedCount: 0,
+        shortsCount: 0,
+        statusCount: 0,
+        mediaLibrary: {
+          avatars: 0,
+          feedImages: 0,
+          shortsVideos: 0,
+          statusMedia: 0,
+          avatarSource: 'fallback-library',
+          feedSource: 'fallback-library',
+          shortsSource: 'fallback-library',
+          statusSource: 'fallback-library'
+        }
+      };
     const adminAccountsList = Array.isArray(typeof adminAccounts !== 'undefined' ? adminAccounts : [])
       ? (typeof adminAccounts !== 'undefined' ? adminAccounts : [])
       : [];
@@ -2766,6 +2786,93 @@
 
       <!-- Users Table -->
       <% if (isPage('users')) { %>
+      <div class="section-card" id="official-seed-module">
+        <div class="section-header">
+          <div>
+            <h3>Comptes officiels TRASX</h3>
+            <p>Comptes gérés par la plateforme pour amorcer le contenu, sans les présenter comme des utilisateurs indépendants.</p>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 18px;">
+          <div style="padding: 16px; border-radius: 16px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.14);">
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Comptes officiels</div>
+            <div style="font-size: 26px; font-weight: 800; color: var(--text-main);"><%= officialSeedStats.accountsCount %> / <%= officialSeedStats.targetCount %></div>
+          </div>
+          <div style="padding: 16px; border-radius: 16px; background: rgba(34, 197, 94, 0.08); border: 1px solid rgba(34, 197, 94, 0.14);">
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Posts feed générés</div>
+            <div style="font-size: 26px; font-weight: 800; color: var(--text-main);"><%= officialSeedStats.feedCount %></div>
+          </div>
+          <div style="padding: 16px; border-radius: 16px; background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.14);">
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Shorts générés</div>
+            <div style="font-size: 26px; font-weight: 800; color: var(--text-main);"><%= officialSeedStats.shortsCount %></div>
+          </div>
+          <div style="padding: 16px; border-radius: 16px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.14);">
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Status générés</div>
+            <div style="font-size: 26px; font-weight: 800; color: var(--text-main);"><%= officialSeedStats.statusCount %></div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; align-items: start;">
+          <div style="padding: 18px; border-radius: 18px; border: 1px solid rgba(148, 163, 184, 0.18); background: rgba(148, 163, 184, 0.06);">
+            <div style="font-size: 13px; font-weight: 700; color: var(--text-main); margin-bottom: 10px;">Bibliothèque média seed</div>
+            <div style="display: grid; gap: 10px;">
+              <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px;">
+                <span style="color: var(--text-muted);">Avatars</span>
+                <strong><%= officialSeedStats.mediaLibrary.avatars %> · <%= officialSeedStats.mediaLibrary.avatarSource === 'official-library' ? 'dossier seed' : 'bibliothèque existante' %></strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px;">
+                <span style="color: var(--text-muted);">Feed</span>
+                <strong><%= officialSeedStats.mediaLibrary.feedImages %> · <%= officialSeedStats.mediaLibrary.feedSource === 'official-library' ? 'dossier seed' : 'bibliothèque existante' %></strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px;">
+                <span style="color: var(--text-muted);">Shorts</span>
+                <strong><%= officialSeedStats.mediaLibrary.shortsVideos %> · <%= officialSeedStats.mediaLibrary.shortsSource === 'official-library' ? 'dossier seed' : 'bibliothèque existante' %></strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px;">
+                <span style="color: var(--text-muted);">Status</span>
+                <strong><%= officialSeedStats.mediaLibrary.statusMedia %> · <%= officialSeedStats.mediaLibrary.statusSource === 'official-library' ? 'dossier seed' : 'bibliothèque existante' %></strong>
+              </div>
+            </div>
+            <div style="margin-top: 14px; font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+              Les comptes créés sont marqués <code>account_type = official_seed</code> et leurs contenus sont enregistrés avec <code>source = official_seed</code>.
+            </div>
+          </div>
+
+          <div style="padding: 18px; border-radius: 18px; border: 1px solid rgba(15, 23, 42, 0.1); background: var(--surface, #fff); display: grid; gap: 12px;">
+            <% if (canManageOfficialSeedsFlag) { %>
+              <form action="/admin/official-seeds/create" method="POST">
+                <input type="hidden" name="redirectTo" value="<%= adminPaths.users || '/admin/users' %>">
+                <button type="submit" class="btn btn-secondary" style="width: 100%;">Créer comptes officiels</button>
+              </form>
+
+              <form action="/admin/official-seeds/generate" method="POST" style="display: grid; gap: 10px;">
+                <input type="hidden" name="redirectTo" value="<%= adminPaths.users || '/admin/users' %>">
+                <select name="content_type" class="compact-select" required>
+                  <option value="feed">Feed</option>
+                  <option value="shorts">Shorts</option>
+                  <option value="status">Status</option>
+                </select>
+                <button type="submit" class="btn btn-success" style="width: 100%;">Générer publications</button>
+              </form>
+
+              <form
+                action="/admin/official-seeds/delete"
+                method="POST"
+                onsubmit="return confirm('Supprimer tous les comptes officiels TRASX et leurs contenus liés ? Cette action est irréversible.')"
+              >
+                <input type="hidden" name="redirectTo" value="<%= adminPaths.users || '/admin/users' %>">
+                <input type="hidden" name="confirm_delete" value="yes">
+                <button type="submit" class="btn" style="width: 100%; background: var(--danger); color: #fff;">Supprimer comptes officiels</button>
+              </form>
+            <% } else { %>
+              <div style="padding: 14px; border-radius: 14px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); font-size: 13px; color: var(--text-main);">
+                Vous pouvez consulter les statistiques, mais vous n’avez pas le droit de gérer les comptes officiels TRASX.
+              </div>
+            <% } %>
+          </div>
+        </div>
+      </div>
+
       <div class="section-card" id="users">
         <div class="section-header">
           <div>

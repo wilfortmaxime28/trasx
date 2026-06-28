@@ -26,7 +26,8 @@ const ADMIN_ACTION_KEYS = [
   'manage_kyc',
   'manage_settings',
   'manage_admins',
-  'manage_disputes'
+  'manage_disputes',
+  'manage_official_seeds'
 ];
 
 let adminSchemaPromise = null;

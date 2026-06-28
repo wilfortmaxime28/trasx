@@ -15,11 +15,13 @@ async function ensureStatusTable() {
           media_size INT DEFAULT NULL,
           caption TEXT DEFAULT NULL,
           media_fit VARCHAR(20) DEFAULT 'cover',
+          source VARCHAR(30) NOT NULL DEFAULT 'user',
           expires_at DATETIME NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
           INDEX idx_statuses_user_created (user_id, created_at),
-          INDEX idx_statuses_expires_at (expires_at)
+          INDEX idx_statuses_expires_at (expires_at),
+          INDEX idx_statuses_source_created (source, created_at)
         )
       `);
 
@@ -62,6 +64,12 @@ async function ensureStatusTable() {
       try {
         await db.query(`ALTER TABLE statuses ADD COLUMN media_fit VARCHAR(20) DEFAULT 'cover'`);
       } catch (e) {}
+      try {
+        await db.query(`ALTER TABLE statuses ADD COLUMN source VARCHAR(30) NOT NULL DEFAULT 'user'`);
+      } catch (e) {}
+      try {
+        await db.query(`ALTER TABLE statuses ADD INDEX idx_statuses_source_created (source, created_at)`);
+      } catch (e) {}
     })().catch((error) => {
       statusSchemaPromise = null;
       throw error;
@@ -93,6 +101,10 @@ function normalizeStatusRow(row, currentUserId = null) {
 }
 
 class Status {
+  static async ensureSchema() {
+    await ensureStatusTable();
+  }
+
   static async purgeExpired() {
     await ensureStatusTable();
     await db.query('DELETE FROM statuses WHERE expires_at <= NOW()');

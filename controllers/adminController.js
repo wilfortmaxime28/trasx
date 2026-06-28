@@ -15,6 +15,7 @@ const db = require('../config/db');
 const { getNumberSetting, setSetting } = require('../utils/appSettings');
 const { createTranslator, normalizeLocale } = require('../utils/i18n');
 const receiptCrypto = require('../utils/receiptCrypto');
+const OfficialSeedService = require('../services/officialSeedService');
 
 const PLATFORM_NAME = 'TrasX';
 const ADMIN_PRIMARY_BALANCE_ENTRY_TYPES = new Set([
@@ -106,7 +107,8 @@ const ADMIN_ACTION_PERMISSIONS = [
   { key: 'manage_kyc', label: 'Traiter les KYC', description: 'Approuver ou rejeter les demandes KYC.' },
   { key: 'manage_settings', label: 'Modifier les paramètres', description: 'Changer règles globales, seuils et configuration.' },
   { key: 'manage_admins', label: 'Gérer les admins', description: 'Créer des admins et personnaliser leurs vues et droits.' },
-  { key: 'manage_disputes', label: 'Gérer les litiges', description: 'Peut débloquer des comptes ou trancher des litiges P2P.' }
+  { key: 'manage_disputes', label: 'Gérer les litiges', description: 'Peut débloquer des comptes ou trancher des litiges P2P.' },
+  { key: 'manage_official_seeds', label: 'Gérer les comptes officiels TRASX', description: 'Créer, alimenter et supprimer les comptes officiels gérés par la plateforme.' }
 ];
 
 const USER_CERTIFICATION_OPTIONS = [
@@ -1019,6 +1021,11 @@ exports.getAdminDashboard = async (req, res) => {
       adminPostComments = await Comment.getAllForAdmin();
     }
 
+    let officialSeedSummary = null;
+    if (adminPage === 'users') {
+      officialSeedSummary = await OfficialSeedService.getSummary();
+    }
+
     res.render('admin', { 
       adminPage,
       adminPageMeta: ADMIN_PAGE_META[adminPage],
@@ -1063,6 +1070,7 @@ exports.getAdminDashboard = async (req, res) => {
       adminConversations,
       adminConversationMessages,
       adminPostComments,
+      officialSeedSummary,
       error: req.query.error || null, 
       success: req.query.success || null 
     });
@@ -1687,6 +1695,94 @@ exports.deleteUser = async (req, res) => {
   } catch (error) {
     console.error(error);
     adminRedirect(req, res, { error: 'Failed to delete user', fallbackPage: 'users' });
+  }
+};
+
+exports.createOfficialSeedAccounts = async (req, res) => {
+  try {
+    const result = await OfficialSeedService.createOfficialSeedAccounts();
+    await ActivityLog.log(req.session.adminId, 'admin', 'create_official_seed_accounts', 'official_seed', null, {
+      createdAccounts: result.createdAccounts,
+      totalAccounts: result.totalAccounts
+    }, req);
+
+    const successMessage = result.createdAccounts > 0
+      ? `${result.createdAccounts} comptes officiels TRASX ont été créés.`
+      : `Les ${result.totalAccounts} comptes officiels TRASX existent déjà.`;
+
+    return adminRedirect(req, res, { success: successMessage, fallbackPage: 'users' });
+  } catch (error) {
+    console.error(error);
+    return adminRedirect(req, res, {
+      error: error?.message || 'Impossible de créer les comptes officiels TRASX pour le moment.',
+      fallbackPage: 'users'
+    });
+  }
+};
+
+exports.generateOfficialSeedContent = async (req, res) => {
+  try {
+    const contentType = String(req.body.content_type || '').trim().toLowerCase();
+    if (!['feed', 'shorts', 'status'].includes(contentType)) {
+      return adminRedirect(req, res, {
+        error: 'Choisissez un type de contenu valide : Feed, Shorts ou Status.',
+        fallbackPage: 'users'
+      });
+    }
+
+    const result = await OfficialSeedService.generateOfficialSeedContent(contentType);
+    await ActivityLog.log(req.session.adminId, 'admin', 'generate_official_seed_content', 'official_seed', null, {
+      contentType: result.contentType,
+      generatedCount: result.generatedCount
+    }, req);
+
+    const labels = {
+      feed: 'feed',
+      shorts: 'shorts',
+      status: 'status'
+    };
+
+    return adminRedirect(req, res, {
+      success: `${result.generatedCount} publications officielles ont été générées pour ${labels[result.contentType]}.`,
+      fallbackPage: 'users'
+    });
+  } catch (error) {
+    console.error(error);
+    return adminRedirect(req, res, {
+      error: error?.message || 'Impossible de générer le contenu officiel pour le moment.',
+      fallbackPage: 'users'
+    });
+  }
+};
+
+exports.deleteOfficialSeedAccounts = async (req, res) => {
+  try {
+    if (String(req.body.confirm_delete || '').trim().toLowerCase() !== 'yes') {
+      return adminRedirect(req, res, {
+        error: 'Confirmation obligatoire pour supprimer les comptes officiels TRASX.',
+        fallbackPage: 'users'
+      });
+    }
+
+    const result = await OfficialSeedService.deleteOfficialSeedAccounts();
+    await ActivityLog.log(req.session.adminId, 'admin', 'delete_official_seed_accounts', 'official_seed', null, {
+      deletedAccounts: result.deletedAccounts,
+      deletedPosts: result.deletedPosts,
+      deletedReels: result.deletedReels,
+      deletedStatuses: result.deletedStatuses
+    }, req);
+
+    const successMessage = result.deletedAccounts > 0
+      ? `${result.deletedAccounts} comptes officiels, ${result.deletedPosts} posts, ${result.deletedReels} shorts et ${result.deletedStatuses} status ont été supprimés.`
+      : 'Aucun compte officiel TRASX à supprimer.';
+
+    return adminRedirect(req, res, { success: successMessage, fallbackPage: 'users' });
+  } catch (error) {
+    console.error(error);
+    return adminRedirect(req, res, {
+      error: error?.message || 'Impossible de supprimer les comptes officiels TRASX pour le moment.',
+      fallbackPage: 'users'
+    });
   }
 };
 

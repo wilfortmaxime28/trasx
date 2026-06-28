@@ -35,7 +35,8 @@ async function ensurePostSchema() {
         ['is_live', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER challenge_end_date'],
         ['live_url', 'VARCHAR(255) DEFAULT NULL AFTER is_live'],
         ['live_price', 'DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER live_url'],
-        ['live_status', "VARCHAR(20) NOT NULL DEFAULT 'active' AFTER live_price"]
+        ['live_status', "VARCHAR(20) NOT NULL DEFAULT 'active' AFTER live_price"],
+        ['source', "VARCHAR(30) NOT NULL DEFAULT 'user' AFTER live_status"]
       ];
 
       const [tableExists] = await db.query("SHOW TABLES LIKE 'posts'");
@@ -97,6 +98,7 @@ async function ensurePostSchema() {
       await ensureIndex('posts', 'idx_posts_user_created_id', '(user_id, created_at DESC, id DESC)');
       await ensureIndex('posts', 'idx_posts_live_created_id', '(is_live, live_status, created_at DESC, id DESC)');
       await ensureIndex('posts', 'idx_posts_promo_created_id', '(promo_paid_hashtag_count, promo_paid_background_price, created_at DESC, id DESC)');
+      await ensureIndex('posts', 'idx_posts_source_created', '(source, created_at DESC, id DESC)');
       await ensureIndex('comments', 'idx_comments_post_created', '(post_id, created_at DESC, id DESC)');
       await ensureIndex('follows', 'idx_follows_follower_following', '(follower_id, following_id)');
       await ensureIndex('follows', 'idx_follows_following_follower', '(following_id, follower_id)');

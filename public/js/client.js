@@ -4675,7 +4675,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showFeedView();
         return;
       }
-      window.location.href = href || '/';
+      navigateWithGameProtection(href || '/');
       return;
     }
 
@@ -4684,7 +4684,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showShortsView();
         return;
       }
-      window.location.href = href || '/?view=shorts';
+      navigateWithGameProtection(href || '/?view=shorts');
       return;
     }
 
@@ -4693,7 +4693,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showBookmarksView();
         return;
       }
-      window.location.href = href || '/?view=bookmarks';
+      navigateWithGameProtection(href || '/?view=bookmarks');
       return;
     }
 
@@ -4702,7 +4702,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showMessagesView();
         return;
       }
-      window.location.href = href || '/?view=messages';
+      navigateWithGameProtection(href || '/?view=messages');
       return;
     }
 
@@ -4711,7 +4711,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showGamesView();
         return;
       }
-      window.location.href = href || '/?view=games';
+      navigateWithGameProtection(href || '/?view=games');
       return;
     }
 
@@ -4720,12 +4720,12 @@ document.addEventListener('DOMContentLoaded', () => {
         window.openSocialListModal('following');
         return;
       }
-      window.location.href = href || '/profile?section=connections';
+      navigateWithGameProtection(href || '/profile?section=connections');
       return;
     }
 
     if (action === 'settings') {
-      window.location.href = href || '/settings';
+      navigateWithGameProtection(href || '/settings');
       return;
     }
 
@@ -4734,16 +4734,16 @@ document.addEventListener('DOMContentLoaded', () => {
         showMarketView();
         return;
       }
-      window.location.href = href || '/?view=market';
+      navigateWithGameProtection(href || '/?view=market');
       return;
     }
 
     if (action === 'events') {
-      window.location.href = href || '/events';
+      navigateWithGameProtection(href || '/events');
       return;
     }
 
-    window.location.href = href || '/';
+    navigateWithGameProtection(href || '/');
   };
 
   navItems.forEach((item) => {
@@ -25801,57 +25801,189 @@ document.addEventListener('DOMContentLoaded', () => {
     return String(game.resultMessage || game.chessState?.statusMessage || '').trim();
   };
 
+  const CHESS_PIECE_SPRITE_SOURCE = '/assets/chess/chess-piece-atlas-green.png';
+  const CHESS_PIECE_SPRITE_POSITIONS = {
+    wp: { x: '0%', y: '0%' },
+    wr: { x: '20%', y: '0%' },
+    wn: { x: '40%', y: '0%' },
+    wb: { x: '60%', y: '0%' },
+    wq: { x: '80%', y: '0%' },
+    wk: { x: '100%', y: '0%' },
+    bp: { x: '0%', y: '100%' },
+    br: { x: '20%', y: '100%' },
+    bn: { x: '40%', y: '100%' },
+    bb: { x: '60%', y: '100%' },
+    bq: { x: '80%', y: '100%' },
+    bk: { x: '100%', y: '100%' }
+  };
+  let chessPieceSpriteReady = false;
+  let chessPieceSpriteAtlasPromise = null;
+
+  const refreshChessBoardIfNeeded = () => {
+    if (activeGame?.gameType === 'echecs' && chessBoardContainer && chessBoardContainer.style.display !== 'none') {
+      buildChessBoard();
+    }
+  };
+
+  const applyChessPieceAtlasUrl = (atlasUrl) => {
+    if (!atlasUrl) return;
+    document.documentElement.style.setProperty('--chess-piece-atlas-url', `url("${atlasUrl}")`);
+    chessPieceSpriteReady = true;
+  };
+
+  const ensureChessPieceSpriteAtlas = () => {
+    if (chessPieceSpriteAtlasPromise) return chessPieceSpriteAtlasPromise;
+
+    chessPieceSpriteAtlasPromise = new Promise((resolve) => {
+      const sourceImage = new Image();
+      sourceImage.decoding = 'async';
+      sourceImage.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = sourceImage.naturalWidth || sourceImage.width;
+          canvas.height = sourceImage.naturalHeight || sourceImage.height;
+          const context = canvas.getContext('2d', { willReadFrequently: true });
+          if (!context) {
+            resolve(null);
+            return;
+          }
+
+          context.drawImage(sourceImage, 0, 0);
+          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+
+          for (let index = 0; index < data.length; index += 4) {
+            const red = data[index];
+            const green = data[index + 1];
+            const blue = data[index + 2];
+            const alpha = data[index + 3];
+            const maxOther = Math.max(red, blue);
+            const greenDominance = green - maxOther;
+
+            if (green > 210 && red < 90 && blue < 90) {
+              data[index + 3] = 0;
+              continue;
+            }
+
+            if (green > 120 && greenDominance > 28) {
+              const alphaRatio = Math.max(0, Math.min(1, (maxOther + 24) / (green + 24)));
+              data[index + 3] = Math.round(alpha * alphaRatio);
+              data[index + 1] = Math.min(green, maxOther + 12);
+              if (data[index + 3] < 8) {
+                data[index + 3] = 0;
+              }
+            }
+          }
+
+          context.putImageData(imageData, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        } catch (error) {
+          console.error('Error preparing chess piece sprite atlas:', error);
+          resolve(null);
+        }
+      };
+      sourceImage.onerror = () => resolve(null);
+      sourceImage.src = CHESS_PIECE_SPRITE_SOURCE;
+    }).then((atlasUrl) => {
+      if (atlasUrl) {
+        applyChessPieceAtlasUrl(atlasUrl);
+      }
+      refreshChessBoardIfNeeded();
+      return atlasUrl;
+    });
+
+    return chessPieceSpriteAtlasPromise;
+  };
+
   const renderChessMoveHistory = (game = activeGame) => {
     const historyHost = document.getElementById('chessMoveHistory');
     const countEl = document.getElementById('chessHistoryCount');
     if (!historyHost || !countEl) return;
 
     const history = Array.isArray(game?.chessState?.moveHistory) ? game.chessState.moveHistory : [];
-    countEl.textContent = `${history.length} ${history.length > 1 ? 'coups' : 'coup'}`;
+    const capturesBySlot = {
+      1: [],
+      2: []
+    };
+
+    history.forEach((entry) => {
+      const slot = Number(entry?.player);
+      if ((slot === 1 || slot === 2) && entry?.captured) {
+        capturesBySlot[slot].push(entry.captured);
+      }
+    });
+
+    const totalCaptures = capturesBySlot[1].length + capturesBySlot[2].length;
+    countEl.textContent = `${totalCaptures} ${totalCaptures > 1 ? 'prises' : 'prise'}`;
     historyHost.innerHTML = '';
 
-    if (!history.length) {
+    if (!totalCaptures) {
       const empty = document.createElement('div');
       empty.className = 'chess-history-empty';
-      empty.textContent = 'Aucun coup joue pour le moment.';
+      empty.textContent = 'Aucune piece capturee pour le moment.';
       historyHost.appendChild(empty);
       return;
     }
 
-    for (let i = 0; i < history.length; i += 2) {
-      const whiteMove = history[i];
-      const blackMove = history[i + 1];
+    const isPlayerOne = game?.player1 && Number(game.player1.id) === Number(window.currentUserId);
+    const isPlayerTwo = game?.player2 && Number(game.player2.id) === Number(window.currentUserId);
+    const captureLanes = isPlayerOne
+      ? [
+          { slot: 1, label: 'Vous' },
+          { slot: 2, label: 'Adversaire' }
+        ]
+      : isPlayerTwo
+        ? [
+            { slot: 2, label: 'Vous' },
+            { slot: 1, label: 'Adversaire' }
+          ]
+        : [
+            { slot: 1, label: 'Blancs' },
+            { slot: 2, label: 'Noirs' }
+          ];
+
+    captureLanes.forEach((lane) => {
       const row = document.createElement('div');
-      row.className = 'chess-history-row';
+      row.className = 'chess-capture-row';
 
-      const index = document.createElement('span');
-      index.className = 'chess-history-index';
-      index.textContent = `${whiteMove?.moveNumber || Math.ceil((i + 1) / 2)}.`;
+      const head = document.createElement('div');
+      head.className = 'chess-capture-row-head';
 
-      const whiteEl = document.createElement('span');
-      whiteEl.className = 'chess-history-move';
-      whiteEl.textContent = whiteMove?.notation || '...';
-      if (whiteMove && history.length - 1 === i) {
-        whiteEl.classList.add('is-last');
+      const label = document.createElement('span');
+      label.className = 'chess-capture-label';
+      label.textContent = lane.label;
+
+      const badge = document.createElement('span');
+      badge.className = 'chess-capture-badge';
+      badge.textContent = String(capturesBySlot[lane.slot].length);
+
+      head.appendChild(label);
+      head.appendChild(badge);
+
+      const piecesList = document.createElement('div');
+      piecesList.className = 'chess-capture-piece-list';
+
+      if (!capturesBySlot[lane.slot].length) {
+        const empty = document.createElement('span');
+        empty.className = 'chess-capture-empty-inline';
+        empty.textContent = 'Aucune';
+        piecesList.appendChild(empty);
+      } else {
+        capturesBySlot[lane.slot].forEach((capturedPiece) => {
+          const chip = document.createElement('span');
+          chip.className = 'chess-capture-chip';
+          chip.innerHTML = getChessPieceSvgMarkup(capturedPiece, { compact: true });
+          piecesList.appendChild(chip);
+        });
       }
 
-      const blackEl = document.createElement('span');
-      blackEl.className = 'chess-history-move';
-      blackEl.textContent = blackMove?.notation || '...';
-      if (blackMove && history.length - 1 === i + 1) {
-        blackEl.classList.add('is-last');
-      }
-
-      row.appendChild(index);
-      row.appendChild(whiteEl);
-      row.appendChild(blackEl);
+      row.appendChild(head);
+      row.appendChild(piecesList);
       historyHost.appendChild(row);
-    }
-
-    historyHost.scrollTop = historyHost.scrollHeight;
+    });
   };
 
-  const getChessPieceSvgMarkup = (piece) => {
+  const getLegacyChessPieceSvgMarkup = (piece) => {
     if (!piece) return '';
     const color = piece[0];
     const type = piece[1];
@@ -25902,6 +26034,17 @@ document.addEventListener('DOMContentLoaded', () => {
       </g>
     </svg>`;
   };
+
+  const getChessPieceSvgMarkup = (piece, { compact = false } = {}) => {
+    if (!piece) return '';
+    const spritePos = CHESS_PIECE_SPRITE_POSITIONS[piece];
+    if (spritePos && chessPieceSpriteReady) {
+      return `<span class="chess-piece-sprite${compact ? ' is-compact' : ''}" style="--piece-x:${spritePos.x}; --piece-y:${spritePos.y};"></span>`;
+    }
+    return getLegacyChessPieceSvgMarkup(piece);
+  };
+
+  ensureChessPieceSpriteAtlas();
 
   const showPromotionOverlay = () => {
     const overlay = document.getElementById('chessPromotionOverlay');
@@ -28161,6 +28304,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let gameConfirmResolver = null;
   let lastGameConfirmFocus = null;
+  let gameLeaveBypassTimer = null;
 
   if (gameConfirmModal && gameConfirmModal.parentElement !== document.body) {
     console.log('[trade-modal] moving gameConfirmModal to document.body', {
@@ -28234,6 +28378,104 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  const hasPlayerInActiveGame = () => Boolean(
+    activeGame &&
+    activeGame.status !== 'finished' &&
+    !window.isSpectatingActiveGame
+  );
+
+  const setGameLeaveBypass = (enabled, durationMs = 2500) => {
+    if (gameLeaveBypassTimer) {
+      window.clearTimeout(gameLeaveBypassTimer);
+      gameLeaveBypassTimer = null;
+    }
+
+    window.isGameLeaveBypassEnabled = !!enabled;
+    if (enabled) {
+      gameLeaveBypassTimer = window.setTimeout(() => {
+        window.isGameLeaveBypassEnabled = false;
+        gameLeaveBypassTimer = null;
+      }, Math.max(600, Number(durationMs) || 2500));
+    }
+  };
+
+  const cleanupActiveGameSession = ({ refreshLobby = true } = {}) => {
+    if (window.tfGameState) {
+      if (window.tfGameState.animationFrameId) {
+        cancelAnimationFrame(window.tfGameState.animationFrameId);
+      }
+      window.tfGameState = null;
+    }
+    if (typeof cleanupGameWebRTC === 'function') {
+      cleanupGameWebRTC();
+    }
+
+    activeGame = null;
+    window.isSpectatingActiveGame = false;
+    lastAnnouncedLudoMessageKey = '';
+    lastAnnouncedLudoGameId = null;
+
+    if (activeGameArea) activeGameArea.style.display = 'none';
+    if (gamesLobby) gamesLobby.style.display = 'flex';
+    if (refreshLobby && typeof loadGamesLobby === 'function') {
+      loadGamesLobby();
+    }
+  };
+
+  const confirmPlayerGameExit = async ({
+    title = 'Quitter la partie ?',
+    message = 'Si vous quittez maintenant, vous perdrez la partie et declarerez forfait. Voulez-vous vraiment quitter ?',
+    confirmLabel = 'Quitter',
+    onConfirmed = null
+  } = {}) => {
+    if (!hasPlayerInActiveGame()) {
+      if (typeof onConfirmed === 'function') {
+        await onConfirmed();
+      }
+      return true;
+    }
+
+    if (window.isGameConfirmDialogOpen) {
+      return false;
+    }
+
+    window.isGameConfirmDialogOpen = true;
+    try {
+      const confirmed = await openGameConfirmDialog({
+        title,
+        message,
+        confirmLabel
+      });
+      if (!confirmed) {
+        return false;
+      }
+
+      const gameId = activeGame?.id;
+      if (gameId && activeGame?.status === 'playing') {
+        socket.emit('game-forfeit', { gameId });
+      }
+
+      cleanupActiveGameSession();
+      setGameLeaveBypass(true);
+
+      if (typeof onConfirmed === 'function') {
+        await onConfirmed();
+      }
+      return true;
+    } finally {
+      window.isGameConfirmDialogOpen = false;
+    }
+  };
+
+  const navigateWithGameProtection = (targetUrl) => {
+    if (!targetUrl) return;
+    confirmPlayerGameExit({
+      onConfirmed: () => {
+        window.location.href = targetUrl;
+      }
+    });
+  };
+
   // Leave active game area
   const performLeaveGame = async () => {
     if (!activeGame) return;
@@ -28252,25 +28494,7 @@ document.addEventListener('DOMContentLoaded', () => {
       socket.emit('game-forfeit', { gameId: activeGame.id });
     }
 
-    if (window.tfGameState) {
-      if (window.tfGameState.animationFrameId) {
-        cancelAnimationFrame(window.tfGameState.animationFrameId);
-      }
-      window.tfGameState = null;
-    }
-    if (typeof cleanupGameWebRTC === 'function') {
-      cleanupGameWebRTC();
-    }
-
-    activeGame = null;
-    window.isSpectatingActiveGame = false;
-    lastAnnouncedLudoMessageKey = '';
-    lastAnnouncedLudoGameId = null;
-
-    if (activeGameArea) activeGameArea.style.display = 'none';
-    if (gamesLobby) gamesLobby.style.display = 'flex';
-
-    loadGamesLobby();
+    cleanupActiveGameSession();
   };
 
   if (leaveGameBtn) leaveGameBtn.addEventListener('click', performLeaveGame);
