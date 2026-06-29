@@ -1121,6 +1121,33 @@ function mergeAssetPools(primaryAssets = [], secondaryAssets = [], limit = Numbe
   return merged.slice(0, limit);
 }
 
+function hasAudioTrack(buffer) {
+  let offset = 0;
+  while (offset < buffer.length - 8) {
+    const size = buffer.readUInt32BE(offset);
+    if (size < 8 || offset + size > buffer.length) break;
+    const type = buffer.toString('ascii', offset + 4, offset + 8);
+    
+    if (type === 'moov' || type === 'trak' || type === 'mdia') {
+      offset += 8;
+      continue;
+    }
+    
+    if (type === 'hdlr') {
+      const handlerOffset = offset + 8 + 4 + 4;
+      if (handlerOffset + 4 <= buffer.length) {
+        const handlerType = buffer.toString('ascii', handlerOffset, handlerOffset + 4);
+        if (handlerType === 'soun') {
+          return true;
+        }
+      }
+    }
+    
+    offset += size;
+  }
+  return false;
+}
+
 async function collectPexelsAssets(queries, targetCount, searchFn, searchOptions = {}) {
   const requestedCount = Math.max(0, Number(targetCount) || 0);
   const queryList = Array.isArray(queries) ? queries.filter(Boolean) : [];
@@ -1226,11 +1253,12 @@ async function preparePexelsMediaPool(kind, targetCount) {
   }
 
   if (kind === 'shorts') {
+    const expandedPoolSize = Math.max(poolSize * 4, 30);
     return collectPexelsAssets(
       buildPexelsVideoQueries('shorts'),
-      poolSize,
+      expandedPoolSize,
       searchPexelsVideos,
-      { perPage: 14, orientation: 'portrait', size: 'small' }
+      { perPage: 40, orientation: 'portrait', size: 'small' }
     );
   }
 
@@ -1358,14 +1386,47 @@ async function prepareOfficialSeedContentPool(kind, targetCount, mediaLibrary) {
     }
 
     const preparedAssets = [];
-    for (let index = 0; index < remotePool.length; index += 1) {
-      const downloaded = await downloadRemoteAsset(
-        remotePool[index],
-        localConfig.destinationDirectory,
-        `${localConfig.stem}-remote-${index + 1}`
-      );
-      remoteDownloadedFiles.push(downloaded.absolutePath);
-      preparedAssets.push(downloaded);
+    if (kind === 'shorts') {
+      for (let index = 0; index < remotePool.length; index += 1) {
+        if (preparedAssets.length >= targetCount) {
+          break;
+        }
+        const downloaded = await downloadRemoteAsset(
+          remotePool[index],
+          localConfig.destinationDirectory,
+          `${localConfig.stem}-remote-${preparedAssets.length + 1}`
+        );
+        
+        let fileBuffer;
+        try {
+          fileBuffer = await fs.readFile(downloaded.absolutePath);
+        } catch (readErr) {
+          console.warn('[OfficialSeed] Failed to read video for audio analysis:', readErr.message);
+        }
+        
+        const videoHasSound = fileBuffer ? hasAudioTrack(fileBuffer) : false;
+        const remainingCandidates = remotePool.length - (index + 1);
+        const neededWithSound = targetCount - preparedAssets.length;
+        
+        if (!videoHasSound && remainingCandidates >= neededWithSound) {
+          await safeUnlink(downloaded.absolutePath);
+          continue;
+        }
+        
+        downloaded.hasSound = videoHasSound;
+        remoteDownloadedFiles.push(downloaded.absolutePath);
+        preparedAssets.push(downloaded);
+      }
+    } else {
+      for (let index = 0; index < remotePool.length; index += 1) {
+        const downloaded = await downloadRemoteAsset(
+          remotePool[index],
+          localConfig.destinationDirectory,
+          `${localConfig.stem}-remote-${index + 1}`
+        );
+        remoteDownloadedFiles.push(downloaded.absolutePath);
+        preparedAssets.push(downloaded);
+      }
     }
 
     if (!preparedAssets.length) {
@@ -1860,7 +1921,8 @@ async function generateOfficialSeedContent(contentType) {
 
       if (normalizedType === 'shorts') {
         const isPexels = mediaAsset.providerLabel === 'Pexels';
-        const sharedAudio = (!isPexels && sharedAudioPool.length)
+        const isSilentPexels = isPexels && mediaAsset.hasSound === false;
+        const sharedAudio = ((!isPexels || isSilentPexels) && sharedAudioPool.length)
           ? sharedAudioPool[(index + Number(user.slotNumber || 0)) % sharedAudioPool.length]
           : null;
         await connection.query(
