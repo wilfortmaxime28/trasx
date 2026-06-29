@@ -1859,7 +1859,8 @@ async function generateOfficialSeedContent(contentType) {
       }
 
       if (normalizedType === 'shorts') {
-        const sharedAudio = sharedAudioPool.length
+        const isPexels = mediaAsset.providerLabel === 'Pexels';
+        const sharedAudio = (!isPexels && sharedAudioPool.length)
           ? sharedAudioPool[(index + Number(user.slotNumber || 0)) % sharedAudioPool.length]
           : null;
         await connection.query(
