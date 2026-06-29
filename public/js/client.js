@@ -2850,7 +2850,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 3. Video Status — load clean URL, seek via currentTime to avoid buffering chops
       statusViewerVideo.src = mediaUrl;
-      statusViewerVideo.muted = !statusViewerVolumeOn;
+      setStatusViewerAudioState(statusViewerVolumeOn);
       statusViewerVideo.preload = 'auto';
       statusViewerVideo.style.display = 'block';
       statusViewerVideo.style.pointerEvents = 'auto';
