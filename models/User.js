@@ -796,13 +796,13 @@ class User {
           u.certification_type,
           EXISTS(
             SELECT 1
-            FROM follows f
-            WHERE f.follower_id = ? AND f.following_id = u.id
+            FROM follows f_view
+            WHERE f_view.follower_id = ? AND f_view.following_id = u.id
           ) AS is_following,
           EXISTS(
             SELECT 1
-            FROM follows f
-            WHERE f.follower_id = u.id AND f.following_id = ?
+            FROM follows f_mut
+            WHERE f_mut.follower_id = ? AND f_mut.following_id = u.id
           ) AS is_mutual
         FROM follows f
         JOIN users u ON f.follower_id = u.id
@@ -831,13 +831,13 @@ class User {
           u.certification_type,
           EXISTS(
             SELECT 1
-            FROM follows f
-            WHERE f.follower_id = ? AND f.following_id = u.id
+            FROM follows f_view
+            WHERE f_view.follower_id = ? AND f_view.following_id = u.id
           ) AS is_following,
           EXISTS(
             SELECT 1
-            FROM follows f
-            WHERE f.follower_id = u.id AND f.following_id = ?
+            FROM follows f_mut
+            WHERE f_mut.follower_id = u.id AND f_mut.following_id = ?
           ) AS is_mutual
         FROM follows f
         JOIN users u ON f.following_id = u.id

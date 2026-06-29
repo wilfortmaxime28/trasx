@@ -4666,7 +4666,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Sidebar Navigation Active States & Page Toggles ---
   const navItems = document.querySelectorAll('.nav-item');
-  const sidebarNavActions = new Set(['feed', 'shorts', 'bookmarks', 'messages', 'connections', 'settings', 'market', 'events', 'games', 'profile']);
+  const sidebarNavActions = new Set(['feed', 'shorts', 'bookmarks', 'messages', 'settings', 'market', 'events', 'games', 'profile']);
 
   const openMenuTarget = (action, href) => {
     const hasFeedLayout = !!(feedMainContent && shortsSection && mobileMessagesSection);
@@ -4716,14 +4716,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (action === 'connections') {
-      if (typeof window.openSocialListModal === 'function' && document.getElementById('socialListModal')) {
-        window.openSocialListModal('following');
-        return;
-      }
-      navigateWithGameProtection(href || '/profile?section=connections');
-      return;
-    }
+
 
     if (action === 'settings') {
       navigateWithGameProtection(href || '/settings');
