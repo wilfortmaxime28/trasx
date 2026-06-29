@@ -4,6 +4,7 @@ const https = require('https');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const db = require('../config/db');
+const { getSetting } = require('../utils/appSettings');
 const User = require('../models/User');
 const Post = require('../models/Post');
 const Reel = require('../models/Reel');
@@ -11,7 +12,8 @@ const Status = require('../models/Status');
 
 const OFFICIAL_SEED_ACCOUNT_TYPE = 'official_seed';
 const OFFICIAL_SEED_SOURCE = 'official_seed';
-const OFFICIAL_SEED_TARGET_COUNT = 100;
+const OFFICIAL_SEED_ACCOUNT_BATCH_SIZE = 100;
+const OFFICIAL_SEED_CONTENT_BATCH_SIZE = 100;
 const OFFICIAL_SEED_PEXELS_API_BASE = 'https://api.pexels.com/v1';
 const OFFICIAL_SEED_REMOTE_TIMEOUT_MS = 25000;
 const OFFICIAL_SEED_REMOTE_MAX_REDIRECTS = 4;
@@ -142,17 +144,63 @@ let mediaLibraryCache = {
   value: null
 };
 
-function getOfficialSeedPexelsApiKey() {
-  return String(
-    process.env.PEXELS_API_KEY
-    || process.env.PIXELS_API_KEY
-    || process.env.TRASX_PEXELS_API_KEY
-    || ''
-  ).trim();
+let officialSeedSettingsCache = {
+  expiresAt: 0,
+  value: null
+};
+
+function invalidateOfficialSeedCaches() {
+  mediaLibraryCache = {
+    expiresAt: 0,
+    value: null
+  };
+  officialSeedSettingsCache = {
+    expiresAt: 0,
+    value: null
+  };
 }
 
-function hasOfficialSeedRemoteMediaProvider() {
-  return Boolean(getOfficialSeedPexelsApiKey());
+async function getOfficialSeedSettings() {
+  if (officialSeedSettingsCache.value && officialSeedSettingsCache.expiresAt > Date.now()) {
+    return officialSeedSettingsCache.value;
+  }
+
+  const apiKey = String(
+    await getSetting(
+      'official_seed_pexels_api_key',
+      process.env.PEXELS_API_KEY
+        || process.env.PIXELS_API_KEY
+        || process.env.TRASX_PEXELS_API_KEY
+        || ''
+    )
+  ).trim();
+
+  const value = {
+    pexelsApiKey: apiKey
+  };
+
+  officialSeedSettingsCache = {
+    value,
+    expiresAt: Date.now() + 15000
+  };
+
+  return value;
+}
+
+function maskOfficialSeedApiKey(apiKey) {
+  const normalized = String(apiKey || '').trim();
+  if (!normalized) return '';
+  if (normalized.length <= 8) return `${normalized.slice(0, 2)}****`;
+  return `${normalized.slice(0, 4)}••••••${normalized.slice(-4)}`;
+}
+
+async function getOfficialSeedPexelsApiKey() {
+  const settings = await getOfficialSeedSettings();
+  return String(settings?.pexelsApiKey || '').trim();
+}
+
+async function hasOfficialSeedRemoteMediaProvider() {
+  return Boolean(await getOfficialSeedPexelsApiKey());
 }
 
 async function ensureColumn(connection, tableName, columnName, definitionSql) {
@@ -535,6 +583,7 @@ async function collectMediaFiles(directoryPaths, predicate) {
 }
 
 async function buildMediaLibrary() {
+  const remoteProviderEnabled = await hasOfficialSeedRemoteMediaProvider();
   const avatarPrimaryDirs = [
     path.join(OFFICIAL_SEED_LIBRARY_ROOT, 'avatars')
   ];
@@ -598,24 +647,24 @@ async function buildMediaLibrary() {
       feedImages: feedImages.length,
       shortsVideos: shortsVideos.length,
       statusMedia: statusMedia.length,
-      avatarSource: hasOfficialSeedRemoteMediaProvider()
+      avatarSource: remoteProviderEnabled
         ? 'internet-pexels'
         : (avatarPrimary.length ? 'official-library' : 'fallback-library'),
       feedSource: feedPrimary.length ? 'official-library' : 'fallback-library',
       shortsSource: shortsPrimary.length ? 'official-library' : 'fallback-library',
       statusSource: statusPrimary.length ? 'official-library' : 'fallback-library',
-      avatarSummaryText: hasOfficialSeedRemoteMediaProvider()
+      avatarSummaryText: remoteProviderEnabled
         ? 'Internet · portraits Pexels actifs'
         : buildLocalSummaryText(avatars.length, avatarPrimary.length ? 'dossier seed' : 'bibliotheque existante'),
-      feedSummaryText: hasOfficialSeedRemoteMediaProvider()
+      feedSummaryText: remoteProviderEnabled
         ? 'Internet · photos et videos Pexels actives'
-        : 'Internet requis · configurez PEXELS_API_KEY',
-      shortsSummaryText: hasOfficialSeedRemoteMediaProvider()
+        : 'Internet requis · enregistrez une clé Pexels',
+      shortsSummaryText: remoteProviderEnabled
         ? 'Internet · Pexels API active'
-        : 'Internet requis · configurez PEXELS_API_KEY',
-      statusSummaryText: hasOfficialSeedRemoteMediaProvider()
+        : 'Internet requis · enregistrez une clé Pexels',
+      statusSummaryText: remoteProviderEnabled
         ? 'Internet · Pexels API active'
-        : 'Internet requis · configurez PEXELS_API_KEY'
+        : 'Internet requis · enregistrez une clé Pexels'
     }
   };
 }
@@ -638,7 +687,7 @@ async function searchPexelsPhotos(query, {
   page = 1,
   orientation = 'portrait'
 } = {}) {
-  const apiKey = getOfficialSeedPexelsApiKey();
+  const apiKey = await getOfficialSeedPexelsApiKey();
   if (!apiKey) return [];
 
   const params = new URLSearchParams({
@@ -665,7 +714,7 @@ async function searchPexelsVideos(query, {
   orientation = 'portrait',
   size = 'small'
 } = {}) {
-  const apiKey = getOfficialSeedPexelsApiKey();
+  const apiKey = await getOfficialSeedPexelsApiKey();
   if (!apiKey) return [];
 
   const params = new URLSearchParams({
@@ -886,7 +935,7 @@ async function preparePexelsMediaPool(kind, targetCount) {
 }
 
 function getOfficialSeedAvatarPoolSize(targetCount) {
-  return Math.min(100, Math.max(24, Number(targetCount) || 24));
+  return Math.max(24, Number(targetCount) || 24);
 }
 
 function buildOfficialSeedHandleCandidates(baseHandle, themeLabel, slotNumber) {
@@ -929,7 +978,7 @@ async function preparePexelsAvatarPool(targetCount) {
 }
 
 async function prepareOfficialSeedAvatarPool(targetCount, mediaLibrary) {
-  if (hasOfficialSeedRemoteMediaProvider()) {
+  if (await hasOfficialSeedRemoteMediaProvider()) {
     const remotePool = await preparePexelsAvatarPool(targetCount);
     if (!remotePool.length) {
       throw new Error('Aucune photo de profil distante valide n’a été trouvée pour les comptes officiels.');
@@ -965,7 +1014,7 @@ async function prepareOfficialSeedAvatarPool(targetCount, mediaLibrary) {
 }
 
 async function prepareOfficialSeedContentPool(kind, targetCount, mediaLibrary) {
-  const remoteEnabled = hasOfficialSeedRemoteMediaProvider();
+  const remoteEnabled = await hasOfficialSeedRemoteMediaProvider();
   const localSourceMap = {
     feed: {
       files: mediaLibrary.feedImages,
@@ -986,7 +1035,7 @@ async function prepareOfficialSeedContentPool(kind, targetCount, mediaLibrary) {
   const localConfig = localSourceMap[kind];
 
   if (!remoteEnabled) {
-    throw new Error('Configurez PEXELS_API_KEY pour télécharger les médias officiels TRASX depuis Internet.');
+    throw new Error('Enregistrez une clé Pexels dans le dashboard admin pour télécharger les médias officiels TRASX depuis Internet.');
   }
 
   const remoteDownloadedFiles = [];
@@ -1159,6 +1208,7 @@ async function getOfficialSeedUsers(connection = db) {
 async function getOfficialSeedSummary(connection = db) {
   await ensureSchema(connection);
   const mediaLibrary = await getMediaLibrary();
+  const officialSeedPexelsApiKey = await getOfficialSeedPexelsApiKey();
 
   const [[accountsRow]] = await connection.query(
     'SELECT COUNT(*) AS total FROM users WHERE account_type = ?',
@@ -1193,12 +1243,15 @@ async function getOfficialSeedSummary(connection = db) {
   );
 
   return {
-    targetCount: OFFICIAL_SEED_TARGET_COUNT,
+    accountBatchSize: OFFICIAL_SEED_ACCOUNT_BATCH_SIZE,
+    contentBatchSize: OFFICIAL_SEED_CONTENT_BATCH_SIZE,
     accountsCount: Number(accountsRow?.total || 0),
     feedCount: Number(feedRow?.total || 0),
     shortsCount: Number(shortsRow?.total || 0),
     statusCount: Number(statusRow?.total || 0),
-    mediaLibrary: mediaLibrary.summary
+    mediaLibrary: mediaLibrary.summary,
+    remoteKeyConfigured: Boolean(officialSeedPexelsApiKey),
+    remoteKeyPreview: maskOfficialSeedApiKey(officialSeedPexelsApiKey)
   };
 }
 
@@ -1283,29 +1336,18 @@ async function createOfficialSeedAccounts() {
     await ensureSchema(connection);
 
     const existingUsers = await getOfficialSeedUsers(connection);
-    const existingSeedSlots = new Set(
-      existingUsers
-        .map((user) => Number(user.seed_slot || user.slotNumber))
-        .filter((slot) => Number.isInteger(slot) && slot > 0)
-    );
     const [allUsers] = await connection.query('SELECT username, email FROM users');
     const usedUsernames = new Set(allUsers.map((user) => String(user.username || '').toLowerCase()).filter(Boolean));
     const usedEmails = new Set(allUsers.map((user) => String(user.email || '').toLowerCase()).filter(Boolean));
     const missingDescriptors = [];
+    const currentMaxSlot = existingUsers.reduce((maxSlot, user) => {
+      const slot = Number(user.seed_slot || user.slotNumber || 0);
+      return Number.isInteger(slot) && slot > maxSlot ? slot : maxSlot;
+    }, 0);
 
-    for (let slotNumber = 1; slotNumber <= OFFICIAL_SEED_TARGET_COUNT; slotNumber += 1) {
-      if (!existingSeedSlots.has(slotNumber)) {
-        missingDescriptors.push(buildUniqueOfficialSeedDescriptor(slotNumber, usedUsernames, usedEmails));
-      }
-    }
-
-    if (!missingDescriptors.length) {
-      await connection.commit();
-      return {
-        createdAccounts: 0,
-        totalAccounts: existingUsers.length,
-        summary: await getOfficialSeedSummary()
-      };
+    for (let index = 1; index <= OFFICIAL_SEED_ACCOUNT_BATCH_SIZE; index += 1) {
+      const slotNumber = currentMaxSlot + index;
+      missingDescriptors.push(buildUniqueOfficialSeedDescriptor(slotNumber, usedUsernames, usedEmails));
     }
 
     const mediaLibrary = await getMediaLibrary();
@@ -1396,7 +1438,8 @@ async function generateOfficialSeedContent(contentType) {
     }
 
     const mediaLibrary = await getMediaLibrary();
-    const preparedPool = await prepareOfficialSeedContentPool(normalizedType, officialUsers.length, mediaLibrary);
+    const generationCount = OFFICIAL_SEED_CONTENT_BATCH_SIZE;
+    const preparedPool = await prepareOfficialSeedContentPool(normalizedType, generationCount, mediaLibrary);
     const preparedAssets = Array.isArray(preparedPool?.assets) ? preparedPool.assets : [];
     preparedAssets.forEach((asset) => {
       if (asset?.absolutePath) createdFiles.push(asset.absolutePath);
@@ -1414,8 +1457,8 @@ async function generateOfficialSeedContent(contentType) {
 
     await connection.beginTransaction();
 
-    for (let index = 0; index < officialUsers.length; index += 1) {
-      const user = officialUsers[index];
+    for (let index = 0; index < generationCount; index += 1) {
+      const user = officialUsers[index % officialUsers.length];
       const mediaAsset = preparedAssets[index % preparedAssets.length];
 
       if (normalizedType === 'feed') {
@@ -1518,7 +1561,7 @@ async function generateOfficialSeedContent(contentType) {
     const summary = await getOfficialSeedSummary();
 
     return {
-      generatedCount: officialUsers.length,
+      generatedCount: generationCount,
       contentType: normalizedType,
       sourceMode: preparedPool.sourceMode,
       summary
@@ -1640,7 +1683,9 @@ async function deleteOfficialSeedAccounts() {
 module.exports = {
   OFFICIAL_SEED_ACCOUNT_TYPE,
   OFFICIAL_SEED_SOURCE,
-  OFFICIAL_SEED_TARGET_COUNT,
+  OFFICIAL_SEED_ACCOUNT_BATCH_SIZE,
+  OFFICIAL_SEED_CONTENT_BATCH_SIZE,
+  invalidateCaches: invalidateOfficialSeedCaches,
   ensureSchema,
   getSummary: getOfficialSeedSummary,
   createOfficialSeedAccounts,

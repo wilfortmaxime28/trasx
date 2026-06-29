@@ -85,6 +85,7 @@ router.post('/kyc-review', requireAdminAction('manage_kyc'), adminController.rev
 router.post('/user-delete', requireAdminAction('manage_users'), adminController.deleteUser);
 router.post('/user-freeze', requireAdminAction('manage_users'), adminController.freezeUserAccount);
 router.post('/user-freeze-all', requireAdminAction('manage_users'), adminController.freezeAllAccounts);
+router.post('/official-seeds/settings', requireAdminAction('manage_official_seeds'), adminController.updateOfficialSeedSettings);
 router.post('/official-seeds/create', requireAdminAction('manage_official_seeds'), adminController.createOfficialSeedAccounts);
 router.post('/official-seeds/generate', requireAdminAction('manage_official_seeds'), adminController.generateOfficialSeedContent);
 router.post('/official-seeds/delete', requireAdminAction('manage_official_seeds'), adminController.deleteOfficialSeedAccounts);

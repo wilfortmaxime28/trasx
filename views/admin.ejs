@@ -1859,11 +1859,14 @@
     const officialSeedStats = (typeof officialSeedSummary === 'object' && officialSeedSummary)
       ? officialSeedSummary
       : {
-        targetCount: 100,
+        accountBatchSize: 100,
+        contentBatchSize: 100,
         accountsCount: 0,
         feedCount: 0,
         shortsCount: 0,
         statusCount: 0,
+        remoteKeyConfigured: false,
+        remoteKeyPreview: '',
         mediaLibrary: {
           avatars: 0,
           feedImages: 0,
@@ -1872,7 +1875,11 @@
           avatarSource: 'fallback-library',
           feedSource: 'fallback-library',
           shortsSource: 'fallback-library',
-          statusSource: 'fallback-library'
+          statusSource: 'fallback-library',
+          avatarSummaryText: 'Aucun média',
+          feedSummaryText: 'Aucun média',
+          shortsSummaryText: 'Aucun média',
+          statusSummaryText: 'Aucun média'
         }
       };
     const adminAccountsList = Array.isArray(typeof adminAccounts !== 'undefined' ? adminAccounts : [])
@@ -2796,19 +2803,23 @@
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 18px;">
           <div style="padding: 16px; border-radius: 16px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.14);">
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Comptes officiels</div>
-            <div style="font-size: 26px; font-weight: 800; color: var(--text-main);"><%= officialSeedStats.accountsCount %> / <%= officialSeedStats.targetCount %></div>
+            <div style="font-size: 26px; font-weight: 800; color: var(--text-main);"><%= officialSeedStats.accountsCount %></div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">+<%= officialSeedStats.accountBatchSize %> par clic</div>
           </div>
           <div style="padding: 16px; border-radius: 16px; background: rgba(34, 197, 94, 0.08); border: 1px solid rgba(34, 197, 94, 0.14);">
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Posts feed générés</div>
             <div style="font-size: 26px; font-weight: 800; color: var(--text-main);"><%= officialSeedStats.feedCount %></div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">+<%= officialSeedStats.contentBatchSize %> par clic</div>
           </div>
           <div style="padding: 16px; border-radius: 16px; background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.14);">
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Shorts générés</div>
             <div style="font-size: 26px; font-weight: 800; color: var(--text-main);"><%= officialSeedStats.shortsCount %></div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">+<%= officialSeedStats.contentBatchSize %> par clic</div>
           </div>
           <div style="padding: 16px; border-radius: 16px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.14);">
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Status générés</div>
             <div style="font-size: 26px; font-weight: 800; color: var(--text-main);"><%= officialSeedStats.statusCount %></div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">+<%= officialSeedStats.contentBatchSize %> par clic</div>
           </div>
         </div>
 
@@ -2837,15 +2848,39 @@
               Les comptes créés sont marqués <code>account_type = official_seed</code> et leurs contenus sont enregistrés avec <code>source = official_seed</code>.
             </div>
             <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.5;">
-              Les photos de profil et les médias Internet utilisent <code>PEXELS_API_KEY</code> lorsqu'elle est configurée sur le serveur.
+              Les photos de profil et les médias Internet utilisent la clé Pexels enregistrée dans le dashboard admin.
             </div>
           </div>
 
           <div style="padding: 18px; border-radius: 18px; border: 1px solid rgba(15, 23, 42, 0.1); background: var(--surface, #fff); display: grid; gap: 12px;">
             <% if (canManageOfficialSeedsFlag) { %>
+              <form action="/admin/official-seeds/settings" method="POST" style="display: grid; gap: 10px;">
+                <input type="hidden" name="redirectTo" value="<%= adminPaths.users || '/admin/users' %>">
+                <div style="display: grid; gap: 6px;">
+                  <label for="officialSeedPexelsApiKey" style="font-size: 12px; font-weight: 700; color: var(--text-main);">Clé API Pexels</label>
+                  <input
+                    id="officialSeedPexelsApiKey"
+                    type="text"
+                    name="official_seed_pexels_api_key"
+                    class="compact-input"
+                    placeholder="Collez votre clé Pexels"
+                    value=""
+                    autocomplete="off"
+                  >
+                  <div style="font-size: 12px; color: var(--text-muted);">
+                    <% if (officialSeedStats.remoteKeyConfigured) { %>
+                      Clé active : <strong><%= officialSeedStats.remoteKeyPreview %></strong>
+                    <% } else { %>
+                      Aucune clé enregistrée pour le moment.
+                    <% } %>
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-secondary" style="width: 100%;">Enregistrer la clé Pexels</button>
+              </form>
+
               <form action="/admin/official-seeds/create" method="POST">
                 <input type="hidden" name="redirectTo" value="<%= adminPaths.users || '/admin/users' %>">
-                <button type="submit" class="btn btn-secondary" style="width: 100%;">Créer comptes officiels</button>
+                <button type="submit" class="btn btn-secondary" style="width: 100%;">Créer 100 comptes officiels</button>
               </form>
 
               <form action="/admin/official-seeds/generate" method="POST" style="display: grid; gap: 10px;">
@@ -2855,7 +2890,7 @@
                   <option value="shorts">Shorts</option>
                   <option value="status">Status</option>
                 </select>
-                <button type="submit" class="btn btn-success" style="width: 100%;">Générer publications</button>
+                <button type="submit" class="btn btn-success" style="width: 100%;">Générer 100 publications</button>
               </form>
 
               <form

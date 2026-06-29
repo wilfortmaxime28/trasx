@@ -1706,15 +1706,39 @@ exports.createOfficialSeedAccounts = async (req, res) => {
       totalAccounts: result.totalAccounts
     }, req);
 
-    const successMessage = result.createdAccounts > 0
-      ? `${result.createdAccounts} comptes officiels TRASX ont été créés.`
-      : `Les ${result.totalAccounts} comptes officiels TRASX existent déjà.`;
+    const successMessage = `${result.createdAccounts} comptes officiels TRASX ont été ajoutés. Total actuel : ${result.totalAccounts}.`;
 
     return adminRedirect(req, res, { success: successMessage, fallbackPage: 'users' });
   } catch (error) {
     console.error(error);
     return adminRedirect(req, res, {
       error: error?.message || 'Impossible de créer les comptes officiels TRASX pour le moment.',
+      fallbackPage: 'users'
+    });
+  }
+};
+
+exports.updateOfficialSeedSettings = async (req, res) => {
+  try {
+    const pexelsApiKey = String(req.body.official_seed_pexels_api_key || '').trim();
+    await setSetting('official_seed_pexels_api_key', pexelsApiKey);
+    OfficialSeedService.invalidateCaches();
+
+    await ActivityLog.log(req.session.adminId, 'admin', 'update_official_seed_settings', 'official_seed', null, {
+      remoteMediaProvider: 'pexels',
+      keyConfigured: Boolean(pexelsApiKey)
+    }, req);
+
+    return adminRedirect(req, res, {
+      success: pexelsApiKey
+        ? 'Clé Pexels enregistrée pour les comptes officiels TRASX.'
+        : 'Clé Pexels supprimée des comptes officiels TRASX.',
+      fallbackPage: 'users'
+    });
+  } catch (error) {
+    console.error(error);
+    return adminRedirect(req, res, {
+      error: 'Impossible de mettre à jour la clé Pexels des comptes officiels.',
       fallbackPage: 'users'
     });
   }
