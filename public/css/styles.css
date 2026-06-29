@@ -2670,11 +2670,12 @@ html {
 
   .auth-shell {
     padding: 0;
+    align-items: flex-start;
   }
 
   .auth-card {
     width: 100%;
-    min-height: 100dvh;
+    min-height: auto;
     border-radius: 0;
     box-shadow: none;
   }
