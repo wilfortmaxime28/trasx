@@ -26198,12 +26198,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (step === -1) {
       return LUDO_YARD_COORDS[playerSlot]?.[tokenIndex] || null;
     }
-    if (step >= 0 && step < 52) {
+    if (step >= 0 && step < 51) {
       const startIndex = LUDO_START_INDICES[playerSlot] || 0;
       return LUDO_LOOP_COORDS[(startIndex + step) % 52] || null;
     }
-    if (step >= 52 && step <= 57) {
-      return LUDO_HOME_LANES[playerSlot]?.[step - 52] || null;
+    if (step >= 51 && step <= 57) {
+      return LUDO_HOME_LANES[playerSlot]?.[step - 51] || null;
     }
     return null;
   };

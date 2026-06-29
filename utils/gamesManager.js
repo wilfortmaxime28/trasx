@@ -1963,7 +1963,7 @@ class GamesManager {
   }
 
   getLudoGlobalIndex(playerSlot, step) {
-    if (!Number.isInteger(step) || step < 0 || step >= LUDO_LOOP_LENGTH) {
+    if (!Number.isInteger(step) || step < 0 || step >= 51) {
       return null;
     }
     const startIndex = LUDO_START_INDICES[playerSlot] || 0;
@@ -1979,7 +1979,7 @@ class GamesManager {
 
     const tokens = [];
     playerState.tokens.forEach((step, tokenIndex) => {
-      if (!Number.isInteger(step) || step < 0 || step >= LUDO_LOOP_LENGTH) return;
+      if (!Number.isInteger(step) || step < 0 || step >= 51) return;
       if (this.getLudoGlobalIndex(playerSlot, step) === globalIndex) {
         tokens.push(tokenIndex);
       }
@@ -2003,23 +2003,6 @@ class GamesManager {
   }
 
   hasLudoBlockadeOnPath(game, playerSlot, fromStep, toStep) {
-    const ludoState = game?.ludoState;
-    if (!ludoState || !Number.isInteger(fromStep) || !Number.isInteger(toStep)) {
-      return false;
-    }
-
-    if (fromStep < 0 || toStep <= fromStep + 1) {
-      return false;
-    }
-
-    const lastLoopStep = Math.min(toStep, LUDO_LOOP_LENGTH - 1);
-    for (let step = fromStep + 1; step < lastLoopStep; step += 1) {
-      const globalIndex = this.getLudoGlobalIndex(playerSlot, step);
-      if (this.getLudoBlockadeOwnerAtGlobalIndex(ludoState, globalIndex) !== null) {
-        return true;
-      }
-    }
-
     return false;
   }
 
@@ -2072,7 +2055,7 @@ class GamesManager {
         opponentTokensAtTarget: []
       };
 
-      if (targetStep < LUDO_LOOP_LENGTH) {
+      if (targetStep < 51) {
         const globalIndex = this.getLudoGlobalIndex(playerSlot, targetStep);
         move.globalIndex = globalIndex;
         move.isSafe = this.isLudoSafeSquare(globalIndex);
@@ -2090,17 +2073,13 @@ class GamesManager {
           });
         });
 
-        if (move.opponentTokensAtTarget.length > 0 && move.isSafe) {
-          return;
+        if (move.isSafe) {
+          move.willCapture = false;
+        } else {
+          move.willCapture = move.opponentTokensAtTarget.length === 1;
         }
-
-        if (!move.isSafe && move.opponentTokensAtTarget.length > 1) {
-          return;
-        }
-
-        move.willCapture = !move.isSafe && move.opponentTokensAtTarget.length === 1;
       } else {
-        move.homeLaneIndex = targetStep - LUDO_LOOP_LENGTH;
+        move.homeLaneIndex = targetStep - 51;
       }
 
       moves.push(move);
@@ -2303,7 +2282,7 @@ class GamesManager {
         if (move.willCapture) score += 650;
         if (move.entersBoard) score += 280;
         if (move.isSafe) score += 120;
-        if (move.toStep >= LUDO_LOOP_LENGTH) score += 80;
+        if (move.toStep >= 51) score += 80;
         return { move, score };
       })
       .sort((a, b) => b.score - a.score);
