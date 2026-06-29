@@ -2905,6 +2905,26 @@
                   </div>
                 </div>
 
+                <div style="display: grid; gap: 6px;">
+                  <label for="officialSeedJamendoClientId" style="font-size: 12px; font-weight: 700; color: var(--text-main);">Clé Client ID Jamendo (Audio)</label>
+                  <input
+                    id="officialSeedJamendoClientId"
+                    type="text"
+                    name="official_seed_jamendo_client_id"
+                    class="compact-input"
+                    placeholder="Collez votre Client ID Jamendo"
+                    value="<%= officialSeedStats.jamendoClientId || '' %>"
+                    autocomplete="off"
+                  >
+                  <div style="font-size: 12px; color: var(--text-muted);">
+                    <% if (officialSeedStats.jamendoClientId) { %>
+                      Clé active : <strong><%= officialSeedStats.jamendoKeyPreview %></strong>
+                    <% } else { %>
+                      Aucune clé Jamendo enregistrée. Les vidéos muettes utiliseront les sons locaux de la plateforme en fallback.
+                    <% } %>
+                  </div>
+                </div>
+
                 <button type="submit" class="btn btn-secondary" style="width: 100%;">Enregistrer les paramètres d'API</button>
               </form>
 

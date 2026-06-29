@@ -427,10 +427,19 @@ async function getOfficialSeedSettings() {
     )
   ).trim().toLowerCase();
 
+  const jamendoClientId = String(
+    await getSetting(
+      'official_seed_jamendo_client_id',
+      process.env.JAMENDO_CLIENT_ID
+        || ''
+    )
+  ).trim();
+
   const value = {
     pexelsApiKey,
     pixabayApiKey,
-    mediaProvider
+    mediaProvider,
+    jamendoClientId
   };
 
   officialSeedSettingsCache = {
@@ -456,6 +465,11 @@ async function getOfficialSeedPexelsApiKey() {
 async function getOfficialSeedPixabayApiKey() {
   const settings = await getOfficialSeedSettings();
   return String(settings?.pixabayApiKey || '').trim();
+}
+
+async function getOfficialSeedJamendoClientId() {
+  const settings = await getOfficialSeedSettings();
+  return String(settings?.jamendoClientId || '').trim();
 }
 
 async function hasOfficialSeedRemoteMediaProvider() {
@@ -1180,6 +1194,65 @@ async function searchPixabayVideos(query, {
     : [];
 }
 
+const THEME_MUSIC_TAGS = {
+  'Culture': ['world', 'african', 'tribal', 'acoustic'],
+  'Sport': ['rock', 'workout', 'energy', 'electronic'],
+  'Nature': ['ambient', 'acoustic', 'chillout', 'relax'],
+  'Travel': ['chillout', 'pop', 'happy', 'lofi'],
+  'Food': ['jazz', 'acoustic', 'happy', 'lounge'],
+  'Fashion': ['pop', 'lounge', 'electronic', 'house'],
+  'Art': ['ambient', 'indie', 'experimental', 'lofi'],
+  'Studio': ['lofi', 'chillout', 'beats', 'jazz']
+};
+
+async function searchJamendoAudio(themeLabel, limit = 10) {
+  const settings = await getOfficialSeedSettings();
+  const clientId = settings.jamendoClientId;
+  if (!clientId) return null;
+
+  const tags = THEME_MUSIC_TAGS[themeLabel] || ['lofi', 'pop', 'chillout', 'electronic'];
+  const selectedTag = tags[Math.floor(Math.random() * tags.length)];
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    format: 'json',
+    limit: String(limit),
+    order: 'popularity_total',
+    tags: selectedTag,
+    audio_format: 'mp32'
+  });
+
+  try {
+    const payload = await fetchRemoteJson(`https://api.jamendo.com/v3.0/tracks/?${params.toString()}`);
+    if (payload?.headers?.status === 'success' && Array.isArray(payload?.results) && payload.results.length > 0) {
+      const validTracks = payload.results.filter(t => t.audio && (t.audiodownload_allowed === undefined || t.audiodownload_allowed === true));
+      return validTracks.length > 0 ? validTracks : payload.results;
+    }
+  } catch (err) {
+    console.warn('[OfficialSeed] Error calling Jamendo API:', err.message);
+  }
+  return null;
+}
+
+async function downloadJamendoTrack(track, destinationDirectory) {
+  await ensureDirectory(destinationDirectory);
+  const audioUrl = track.audio || track.audiodownload;
+  if (!audioUrl) throw new Error('No audio URL found for Jamendo track');
+
+  const response = await requestRemoteResource(audioUrl, {
+    maxBytes: 15 * 1024 * 1024
+  });
+
+  const fileName = `jamendo-${track.id}-${Date.now()}.mp3`;
+  const destinationPath = path.join(destinationDirectory, fileName);
+  await fs.writeFile(destinationPath, response.data);
+
+  return {
+    publicUrl: toPublicUrl(destinationPath),
+    soundName: `${track.name} - ${track.artist_name}`
+  };
+}
+
 function dedupeRemoteAssets(assets = []) {
   const seen = new Set();
   return (Array.isArray(assets) ? assets : []).filter((asset) => {
@@ -1843,7 +1916,9 @@ async function getOfficialSeedSummary(connection = db) {
     pexelsApiKey: settings.pexelsApiKey,
     pixabayApiKey: settings.pixabayApiKey,
     pexelsKeyPreview: maskOfficialSeedApiKey(settings.pexelsApiKey),
-    pixabayKeyPreview: maskOfficialSeedApiKey(settings.pixabayApiKey)
+    pixabayKeyPreview: maskOfficialSeedApiKey(settings.pixabayApiKey),
+    jamendoClientId: settings.jamendoClientId,
+    jamendoKeyPreview: maskOfficialSeedApiKey(settings.jamendoClientId)
   };
 }
 
@@ -2043,6 +2118,26 @@ async function generateOfficialSeedContent(contentType) {
       if (asset?.absolutePath) createdFiles.push(asset.absolutePath);
     });
 
+    const jamendoThemeAudioMap = {};
+    if (normalizedType === 'shorts') {
+      const jamendoClientId = await getOfficialSeedJamendoClientId();
+      if (jamendoClientId) {
+        console.log('[OfficialSeed] Jamendo Client ID detected. Pre-fetching themed sound tracks...');
+        const uniqueThemes = [...new Set(officialUsers.map((u) => u.theme_label).filter(Boolean))];
+        for (const themeLabel of uniqueThemes) {
+          try {
+            const tracks = await searchJamendoAudio(themeLabel, 15);
+            if (tracks && tracks.length > 0) {
+              jamendoThemeAudioMap[themeLabel] = tracks;
+              console.log(`[OfficialSeed] Loaded ${tracks.length} tracks from Jamendo for theme: ${themeLabel}`);
+            }
+          } catch (err) {
+            console.warn(`[OfficialSeed] Jamendo fetch failed for theme ${themeLabel}:`, err.message);
+          }
+        }
+      }
+    }
+
     if (!preparedAssets.length) {
       if (normalizedType === 'feed') {
         throw new Error('Aucun media image ou video disponible pour alimenter le feed officiel.');
@@ -2091,11 +2186,43 @@ async function generateOfficialSeedContent(contentType) {
       }
 
       if (normalizedType === 'shorts') {
-        const isPexels = mediaAsset.providerLabel === 'Pexels';
-        const isSilentPexels = isPexels && mediaAsset.hasSound === false;
-        const sharedAudio = ((!isPexels || isSilentPexels) && sharedAudioPool.length)
-          ? sharedAudioPool[(index + Number(user.slotNumber || 0)) % sharedAudioPool.length]
-          : null;
+        const isRemoteProvider = ['Pexels', 'Pixabay'].includes(mediaAsset.providerLabel);
+        const isSilentVideo = isRemoteProvider && mediaAsset.hasSound === false;
+
+        let assignedAudioUrl = null;
+        let assignedSoundName = null;
+
+        if (isSilentVideo) {
+          const userTheme = user.theme_label || 'Studio';
+          const themeTracks = jamendoThemeAudioMap[userTheme] || [];
+
+          if (themeTracks.length > 0) {
+            const trackIndex = (index + Number(user.slotNumber || 0)) % themeTracks.length;
+            const selectedTrack = themeTracks[trackIndex];
+
+            try {
+              const downloadedAudio = await downloadJamendoTrack(selectedTrack, OFFICIAL_SEED_FALLBACK_AUDIO_UPLOAD_DIR);
+              if (downloadedAudio && downloadedAudio.publicUrl) {
+                assignedAudioUrl = downloadedAudio.publicUrl;
+                assignedSoundName = downloadedAudio.soundName;
+                createdFiles.push(path.join(PUBLIC_ROOT, assignedAudioUrl));
+                console.log(`[OfficialSeed] Associated Jamendo track "${assignedSoundName}" to short of ${user.username}`);
+              }
+            } catch (dlErr) {
+              console.warn(`[OfficialSeed] Failed to download Jamendo track ${selectedTrack.id}:`, dlErr.message);
+            }
+          }
+
+          if (!assignedAudioUrl && sharedAudioPool.length) {
+            const sharedAudio = sharedAudioPool[(index + Number(user.slotNumber || 0)) % sharedAudioPool.length];
+            assignedAudioUrl = sharedAudio.audio_url;
+            assignedSoundName = buildShortSoundName(user, index, sharedAudio, batchSeed);
+          }
+        } else {
+          assignedAudioUrl = null;
+          assignedSoundName = buildShortSoundName(user, index, null, batchSeed);
+        }
+
         await connection.query(
           `
             INSERT INTO reels (
@@ -2117,12 +2244,12 @@ async function generateOfficialSeedContent(contentType) {
           [
             user.id,
             mediaAsset.publicUrl,
-            buildShortSoundName(user, index, sharedAudio, batchSeed),
+            assignedSoundName,
             appendOfficialSeedMediaCredit(buildShortCaption(user, index, batchSeed), mediaAsset, 'Video'),
             'video',
-            sharedAudio ? sharedAudio.audio_url : null,
+            assignedAudioUrl,
             0,
-            sharedAudio ? OFFICIAL_SEED_SHORT_AUDIO_DURATION : 30,
+            assignedAudioUrl ? OFFICIAL_SEED_SHORT_AUDIO_DURATION : 30,
             'cover',
             0,
             null,

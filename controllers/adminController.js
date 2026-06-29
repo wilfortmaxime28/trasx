@@ -1722,10 +1722,12 @@ exports.updateOfficialSeedSettings = async (req, res) => {
   try {
     const pexelsApiKey = String(req.body.official_seed_pexels_api_key || '').trim();
     const pixabayApiKey = String(req.body.official_seed_pixabay_api_key || '').trim();
+    const jamendoClientId = String(req.body.official_seed_jamendo_client_id || '').trim();
     const mediaProvider = String(req.body.official_seed_media_provider || 'pexels').trim().toLowerCase();
 
     await setSetting('official_seed_pexels_api_key', pexelsApiKey);
     await setSetting('official_seed_pixabay_api_key', pixabayApiKey);
+    await setSetting('official_seed_jamendo_client_id', jamendoClientId);
     await setSetting('official_seed_media_provider', mediaProvider);
 
     OfficialSeedService.invalidateCaches();
@@ -1733,7 +1735,8 @@ exports.updateOfficialSeedSettings = async (req, res) => {
     await ActivityLog.log(req.session.adminId, 'admin', 'update_official_seed_settings', 'official_seed', null, {
       remoteMediaProvider: mediaProvider,
       pexelsKeyConfigured: Boolean(pexelsApiKey),
-      pixabayKeyConfigured: Boolean(pixabayApiKey)
+      pixabayKeyConfigured: Boolean(pixabayApiKey),
+      jamendoKeyConfigured: Boolean(jamendoClientId)
     }, req);
 
     return adminRedirect(req, res, {
