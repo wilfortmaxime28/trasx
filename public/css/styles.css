@@ -1402,6 +1402,8 @@ select:-webkit-autofill {
 .auth-page {
   min-height: 100dvh;
   margin: 0;
+  width: 100%;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(24, 119, 242, 0.08), transparent 26%),
     radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.09), transparent 24%),
@@ -2644,7 +2646,7 @@ select:-webkit-autofill {
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .hidden-post-card {
     grid-template-columns: 1fr;
   }
@@ -2740,6 +2742,17 @@ select:-webkit-autofill {
   .auth-visual-copy p {
     font-size: 10.5px !important;
     line-height: 1.3 !important;
+  }
+
+  .auth-card {
+    border: none !important;
+    outline: none !important;
+  }
+
+  @media (max-width: 480px) {
+    .auth-social-grid {
+      grid-template-columns: 1fr !important;
+    }
   }
 }
 
