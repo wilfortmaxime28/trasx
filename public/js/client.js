@@ -8126,7 +8126,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="author-details">
               <h3 class="author-name">${post.author_name}${renderCertificationBadgeHtml(post.author_certification_type, 6)}</h3>
-              <span class="post-time">Just now</span>
+              <span class="post-time">${formatRelativeTime(post.created_at || new Date())}</span>
             </div>
           </a>
           ${Number(post.user_id) !== Number(window.currentUserId) ? `
