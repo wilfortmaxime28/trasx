@@ -4666,7 +4666,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Sidebar Navigation Active States & Page Toggles ---
   const navItems = document.querySelectorAll('.nav-item');
-  const sidebarNavActions = new Set(['feed', 'shorts', 'bookmarks', 'messages', 'connections', 'settings', 'market', 'events', 'games', 'profile']);
+  const sidebarNavActions = new Set(['feed', 'shorts', 'bookmarks', 'messages', 'connections', 'settings', 'market', 'events', 'games']);
 
   const openMenuTarget = (action, href) => {
     const hasFeedLayout = !!(feedMainContent && shortsSection && mobileMessagesSection);
@@ -4741,15 +4741,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (action === 'events') {
       navigateWithGameProtection(href || '/events');
-      return;
-    }
-
-    if (action === 'profile') {
-      if (hasFeedLayout) {
-        showProfileView();
-        return;
-      }
-      navigateWithGameProtection(href || '/profile');
       return;
     }
 
@@ -10897,10 +10888,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (mobileProfileBtn) {
     mobileProfileBtn.addEventListener('click', (e) => {
-      if (feedMainContent) {
-        e.preventDefault();
-        showProfileView();
-      }
+      // Allow normal navigation to /profile
     });
   }
 
@@ -10967,10 +10955,6 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (view === 'market') {
       const marketSidebarBtn = document.querySelector('.sidebar-nav .nav-item[data-nav-action="market"]');
       if (marketSidebarBtn) marketSidebarBtn.classList.add('active');
-    } else if (view === 'profile') {
-      const profileSidebarBtn = document.querySelector('.sidebar-nav .nav-item[data-nav-action="profile"]');
-      if (profileSidebarBtn) profileSidebarBtn.classList.add('active');
-      if (mobileProfileBtn) mobileProfileBtn.classList.add('active');
     } else {
       const feedNavItem = document.querySelector('.sidebar-nav .nav-item:first-child');
       if (feedNavItem) feedNavItem.classList.add('active');
@@ -11022,8 +11006,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const showShortsViewNow = () => {
     cleanupGameOverlays();
     if (feedMainContent && shortsSection && mobileMessagesSection) {
-      const profileSec = document.getElementById('profileSection');
-      if (profileSec) profileSec.style.display = 'none';
       const storiesWrapper = document.querySelector('.stories-wrapper');
       const createPostCard = document.querySelector('.create-post-card');
       const postsContainer = document.getElementById('postsContainer');
@@ -11359,8 +11341,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const showFeedViewNow = (scrollToTop = true) => {
     cleanupGameOverlays();
     if (feedMainContent && shortsSection && mobileMessagesSection) {
-      const profileSec = document.getElementById('profileSection');
-      if (profileSec) profileSec.style.display = 'none';
       shortsSection.style.display = 'none';
       feedMainContent.style.display = 'flex';
       mobileMessagesSection.style.display = 'none';
@@ -11415,8 +11395,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const showMessagesViewNow = () => {
     cleanupGameOverlays();
     if (feedMainContent && shortsSection && mobileMessagesSection) {
-      const profileSec = document.getElementById('profileSection');
-      if (profileSec) profileSec.style.display = 'none';
       const storiesWrapper = document.querySelector('.stories-wrapper');
       const createPostCard = document.querySelector('.create-post-card');
       const postsContainer = document.getElementById('postsContainer');
@@ -11449,8 +11427,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const showMarketViewNow = () => {
     cleanupGameOverlays();
     if (feedMainContent && marketSection && shortsSection && mobileMessagesSection) {
-      const profileSec = document.getElementById('profileSection');
-      if (profileSec) profileSec.style.display = 'none';
       const storiesWrapper = document.querySelector('.stories-wrapper');
       const createPostCard = document.querySelector('.create-post-card');
       const postsContainer = document.getElementById('postsContainer');
@@ -11512,95 +11488,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  const showProfileViewNow = async () => {
-    cleanupGameOverlays();
-    const profileSec = document.getElementById('profileSection');
-    if (feedMainContent && shortsSection && mobileMessagesSection && profileSec) {
-      const storiesWrapper = document.querySelector('.stories-wrapper');
-      const createPostCard = document.querySelector('.create-post-card');
-      const postsContainer = document.getElementById('postsContainer');
-      if (storiesWrapper) storiesWrapper.style.display = 'none';
-      if (createPostCard) createPostCard.style.display = 'none';
-      if (postsContainer) postsContainer.style.display = 'none';
-
-      shortsSection.style.display = 'none';
-      mobileMessagesSection.style.display = 'none';
-      if (marketSection) marketSection.style.display = 'none';
-      if (gamesSection) gamesSection.style.display = 'none';
-      feedMainContent.style.display = 'none';
-      
-      profileSec.style.display = 'block';
-
-      document.body.classList.remove('viewing-shorts');
-      document.body.classList.remove('viewing-messages');
-      document.body.classList.remove('viewing-market');
-      document.body.classList.remove('viewing-games');
-      document.body.classList.add('viewing-profile');
-      window.currentView = 'profile';
-      updateNavActiveStates('profile');
-      updateUrlView('profile');
-
-      if (typeof window.stopShortsPlayback === 'function') {
-        window.stopShortsPlayback();
-      }
-
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-
-      if (profileSec.getAttribute('data-loaded') !== 'true') {
-        try {
-          const response = await fetch('/profile');
-          if (response.ok) {
-            const html = await response.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const wrapper = doc.querySelector('.profile-page-wrapper');
-            if (wrapper) {
-              profileSec.innerHTML = '';
-              profileSec.appendChild(wrapper);
-              profileSec.setAttribute('data-loaded', 'true');
-              
-              const scripts = doc.querySelectorAll('script');
-              scripts.forEach(oldScript => {
-                const newScript = document.createElement('script');
-                if (oldScript.src) {
-                  newScript.src = oldScript.src;
-                } else {
-                  newScript.textContent = oldScript.textContent;
-                }
-                document.body.appendChild(newScript);
-              });
-
-              if (window.lucide && typeof window.lucide.createIcons === 'function') {
-                window.lucide.createIcons();
-              }
-            } else {
-              profileSec.innerHTML = '<div style="padding: 20px; text-align: center; color: red;">Erreur de chargement du profil</div>';
-            }
-          } else {
-            profileSec.innerHTML = '<div style="padding: 20px; text-align: center; color: red;">Erreur de chargement du profil</div>';
-          }
-        } catch (err) {
-          console.error(err);
-          profileSec.innerHTML = '<div style="padding: 20px; text-align: center; color: red;">Erreur de connexion</div>';
-        }
-      }
-    } else {
-      window.location.href = '/profile';
-    }
-  };
-
-  const showProfileView = () => confirmPlayerGameExit({
-    onConfirmed: () => {
-      showProfileViewNow();
-    }
-  });
-
   window.showShortsView = showShortsView;
   window.showBookmarksView = showBookmarksView;
   window.showFeedView = showFeedView;
   window.showMessagesView = showMessagesView;
   window.showMarketView = showMarketView;
-  window.showProfileView = showProfileView;
 
   if (backToFeedBtn) {
     backToFeedBtn.addEventListener('click', (e) => {
@@ -30174,8 +30066,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (createPostCard) createPostCard.style.display = 'none';
       if (postsContainer) postsContainer.style.display = 'none';
       
-      const profileSec = document.getElementById('profileSection');
-      if (profileSec) profileSec.style.display = 'none';
       shortsSection.style.display = 'none';
       mobileMessagesSection.style.display = 'none';
       if (marketSection) marketSection.style.display = 'none';
