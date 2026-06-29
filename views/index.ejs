@@ -5356,28 +5356,6 @@ function getYouTubeId(url) {
         </style>
         <script>
           (function() {
-            // Prevent accidental refresh / back actions when playing
-            window.addEventListener('beforeunload', function (e) {
-              const ludo = document.getElementById('ludoBoardContainer');
-              const chess = document.getElementById('chessBoardContainer');
-              const football = document.getElementById('tableFootballBoardContainer');
-              const connect4 = document.getElementById('connectFourBoardContainer');
-              const gomoku = document.getElementById('gomokuBoardContainer');
-
-              const isPlaying = (ludo && ludo.style.display !== 'none') ||
-                                (chess && chess.style.display !== 'none') ||
-                                (football && football.style.display !== 'none') ||
-                                (connect4 && connect4.style.display !== 'none') ||
-                                (gomoku && gomoku.style.display !== 'none');
-
-              if (isPlaying) {
-                e.preventDefault();
-                const msg = "Une partie est actuellement en cours. Si vous actualisez ou quittez la page, vos progrès seront perdus.";
-                e.returnValue = msg;
-                return msg;
-              }
-            });
-
             // Optimize page lifecycle to prevent OS from killing/refreshing the background tab
             document.addEventListener('visibilitychange', function() {
               if (document.hidden) {
