@@ -5193,6 +5193,61 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  const activeTypingAudioIntervals = {};
+
+  const playMechanicalKeyClick = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const audioCtx = new AudioCtx();
+      
+      // 1. High pitch click (frequency variation for different keys)
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      const freq = 1200 + Math.random() * 400;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      
+      gain.gain.setValueAtTime(0, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.012, audioCtx.currentTime + 0.002);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.015);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.02);
+
+      // 2. Short impact noise burst
+      const bufferSize = audioCtx.sampleRate * 0.02;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1000;
+      filter.Q.value = 3;
+
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.setValueAtTime(0.006, audioCtx.currentTime);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.018);
+
+      noise.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(audioCtx.destination);
+      noise.start();
+      noise.stop(audioCtx.currentTime + 0.02);
+
+      setTimeout(() => audioCtx.close(), 100);
+    } catch (err) {
+      // Ignored
+    }
+  };
+
   const playTypingSound = (type) => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -5252,7 +5307,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="avatar" style="width: 28px; height: 28px; border-radius: 50%; overflow: hidden; flex-shrink: 0; margin-bottom: 4px;">
             <img src="${partnerAvatar}" style="width: 100%; height: 100%; object-fit: cover;">
           </div>
-          <div class="chat-msg-bubble" style="background: var(--bg-card, rgba(0,0,0,0.05)); border: 1px solid var(--border-color); padding: 10px 16px; border-radius: 18px; border-bottom-left-radius: 4px; display: inline-flex; align-items: center; gap: 4px; height: 32px; box-sizing: border-box;">
+          <div class="chat-msg-bubble" style="background: var(--bg-card, rgba(0,0,0,0.05)); border: 1px solid var(--border-color); padding: 10px 16px; border-radius: 18px; border-bottom-left-radius: 4px; display: inline-flex; align-items: center; gap: 4px; height: 32px; box-sizing: border-box; animation: typing-indicator-bounce 0.28s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;">
             <div class="typing-dot"></div>
             <div class="typing-dot"></div>
             <div class="typing-dot"></div>
@@ -5266,11 +5321,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
         chatMsgArea.appendChild(indicator);
         chatMsgArea.scrollTop = chatMsgArea.scrollHeight;
+
+        // Play typing start sound
         playTypingSound('start');
+
+        // Start playing typing sounds periodically at random human typing speeds
+        if (activeTypingAudioIntervals[senderId]) {
+          clearTimeout(activeTypingAudioIntervals[senderId]);
+        }
+        const scheduleNextClick = () => {
+          if (!document.getElementById(`chat-typing-indicator-${senderId}`)) {
+            return;
+          }
+          playMechanicalKeyClick();
+          const nextDelay = 80 + Math.random() * 200;
+          activeTypingAudioIntervals[senderId] = setTimeout(scheduleNextClick, nextDelay);
+        };
+        scheduleNextClick();
       }
     } else {
       if (indicator) {
         indicator.remove();
+        if (activeTypingAudioIntervals[senderId]) {
+          clearTimeout(activeTypingAudioIntervals[senderId]);
+          delete activeTypingAudioIntervals[senderId];
+        }
         playTypingSound('pause');
       }
     }
