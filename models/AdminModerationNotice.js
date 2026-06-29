@@ -145,6 +145,7 @@ class AdminModerationNotice {
         LEFT JOIN posts p ON p.id = amn.post_id
         WHERE amn.target_user_id = ?
           AND amn.status = 'active'
+          AND amn.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
         ORDER BY amn.updated_at DESC, amn.created_at DESC
       `,
       [userId]
