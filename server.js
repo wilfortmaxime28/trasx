@@ -557,10 +557,13 @@ app.use(async (req, res, next) => {
 
   try {
     const { getSetting } = require('./utils/appSettings');
-    const showLinks = await getSetting('show_app_download_links', '1');
-    res.locals.showDownloadLinks = (showLinks === '1');
+    const showAndroid = await getSetting('show_app_download_android', '1');
+    const showIos = await getSetting('show_app_download_ios', '1');
+    res.locals.showDownloadAndroid = (showAndroid === '1');
+    res.locals.showDownloadIos = (showIos === '1');
   } catch (err) {
-    res.locals.showDownloadLinks = true;
+    res.locals.showDownloadAndroid = true;
+    res.locals.showDownloadIos = true;
   }
 
   next();
@@ -7525,13 +7528,21 @@ server.listen(PORT, async () => {
           await setSetting('withdrawal_fee_percent', '30');
           console.log('Initialized default withdrawal_fee_percent: 30');
         }
-        const hasShowDownload = await getSetting('show_app_download_links');
-        if (hasShowDownload === null) {
+        const hasShowAndroid = await getSetting('show_app_download_android');
+        if (hasShowAndroid === null) {
           await db.query(
             "INSERT INTO app_settings (setting_key, setting_value, description) VALUES (?, ?, ?)",
-            ['show_app_download_links', '1', 'Afficher les boutons de téléchargement d\'applications Android et iPhone (1 = Oui, 0 = Non)']
+            ['show_app_download_android', '1', 'Afficher le bouton de téléchargement Android (1 = Oui, 0 = Non)']
           );
-          console.log('Initialized default show_app_download_links: 1');
+          console.log('Initialized default show_app_download_android: 1');
+        }
+        const hasShowIos = await getSetting('show_app_download_ios');
+        if (hasShowIos === null) {
+          await db.query(
+            "INSERT INTO app_settings (setting_key, setting_value, description) VALUES (?, ?, ?)",
+            ['show_app_download_ios', '1', 'Afficher le bouton de téléchargement iPhone (1 = Oui, 0 = Non)']
+          );
+          console.log('Initialized default show_app_download_ios: 1');
         }
       } catch (settErr) {
         console.error('Failed to initialize default appSettings:', settErr);

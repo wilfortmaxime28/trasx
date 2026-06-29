@@ -4144,6 +4144,28 @@
                 <button type="submit" class="btn" style="width: fit-content;">Enregistrer les paramètres tarifaires</button>
               </form>
             </div>
+
+            <div style="border: 1px solid var(--border); border-radius: 18px; padding: 20px; background: var(--card-soft);">
+              <div style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; margin-bottom: 6px;">Boutons de téléchargement d'applications</div>
+              <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Affichez ou masquez individuellement les boutons de téléchargement d'applications sur la page de connexion.</div>
+              <form action="/admin/settings" method="POST" style="display: grid; gap: 12px;">
+                <div class="form-group">
+                  <label>Bouton de téléchargement Android</label>
+                  <select name="show_app_download_android" style="padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit;">
+                    <option value="1" <%= Number(showAppDownloadAndroid) === 1 ? 'selected' : '' %>>Afficher</option>
+                    <option value="0" <%= Number(showAppDownloadAndroid) === 0 ? 'selected' : '' %>>Masquer</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Bouton de téléchargement iPhone</label>
+                  <select name="show_app_download_ios" style="padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit;">
+                    <option value="1" <%= Number(showAppDownloadIos) === 1 ? 'selected' : '' %>>Afficher</option>
+                    <option value="0" <%= Number(showAppDownloadIos) === 0 ? 'selected' : '' %>>Masquer</option>
+                  </select>
+                </div>
+                <button type="submit" class="btn" style="width: fit-content;">Enregistrer les paramètres d'affichage</button>
+              </form>
+            </div>
           </div>
         </div>
       </div>

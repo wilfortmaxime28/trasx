@@ -42,8 +42,9 @@
             </form>
           <% } %>
 
-          <% if (typeof showDownloadLinks !== 'undefined' && showDownloadLinks) { %>
+          <% if ((typeof showDownloadAndroid !== 'undefined' && showDownloadAndroid) || (typeof showDownloadIos !== 'undefined' && showDownloadIos)) { %>
           <div class="auth-social-grid" aria-hidden="true">
+            <% if (typeof showDownloadAndroid !== 'undefined' && showDownloadAndroid) { %>
             <a href="/assets/trasx.apk" download="trasx.apk" class="auth-social-btn">
               <span class="auth-social-logo auth-social-logo-google" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -52,6 +53,8 @@
               </span>
               <span><%= tText("Télécharger Android") %></span>
             </a>
+            <% } %>
+            <% if (typeof showDownloadIos !== 'undefined' && showDownloadIos) { %>
             <a href="/assets/trasx.ipa" download="trasx.ipa" class="auth-social-btn">
               <span class="auth-social-logo auth-social-logo-facebook" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="currentColor">
@@ -60,6 +63,7 @@
               </span>
               <span><%= tText("Télécharger iPhone") %></span>
             </a>
+            <% } %>
           </div>
           <% } %>
 

@@ -840,6 +840,8 @@ exports.getAdminDashboard = async (req, res) => {
     const paidBackgroundViewBonusPerDollar = await getNumberSetting('paid_background_view_bonus_per_dollar', 100);
     const minWithdrawalAmount = await getNumberSetting('min_withdrawal_amount', 50);
     const withdrawalFeePercent = await getNumberSetting('withdrawal_fee_percent', 30);
+    const showAppDownloadAndroid = await getNumberSetting('show_app_download_android', 1);
+    const showAppDownloadIos = await getNumberSetting('show_app_download_ios', 1);
     const platformRevenueSummary = await PlatformRevenue.getSummary();
     const platformRevenueEntries = await PlatformRevenue.getRecentEntries(25);
     const postsForReview = await Post.getAllForAdmin();
@@ -1047,6 +1049,8 @@ exports.getAdminDashboard = async (req, res) => {
       paidBackgroundViewBonusPerDollar,
       minWithdrawalAmount,
       withdrawalFeePercent,
+      showAppDownloadAndroid,
+      showAppDownloadIos,
       platformRevenueSummary,
       platformRevenueEntries,
       postsForReview,
@@ -1238,6 +1242,8 @@ exports.updateSettings = async (req, res) => {
         || key === 'paid_background_view_bonus_per_dollar'
         || key === 'min_withdrawal_amount'
         || key === 'withdrawal_fee_percent'
+        || key === 'show_app_download_android'
+        || key === 'show_app_download_ios'
       ) {
         let val = settings[key];
         if (key === 'token_price_usd' || key === 'events_unlock_fee' || key === 'min_withdrawal_amount' || key === 'withdrawal_fee_percent') {
