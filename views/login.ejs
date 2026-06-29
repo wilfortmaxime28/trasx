@@ -65,15 +65,15 @@
 
 
 
-          <form class="auth-form" action="/auth/login" method="POST">
+          <form class="auth-form" action="/auth/login" method="POST" autocomplete="on">
             <label class="auth-input-wrap" for="email">
               <span class="auth-input-icon">✉</span>
-              <input class="auth-input auth-input-inline" id="email" type="text" name="email" required placeholder="<%= tText('Email') %>" autocomplete="username">
+              <input class="auth-input auth-input-inline" id="email" type="email" name="email" required placeholder="<%= tText('Email') %>" autocomplete="email">
             </label>
 
             <label class="auth-input-wrap" for="password">
               <span class="auth-input-icon">•</span>
-              <input class="auth-input auth-input-inline" id="password" type="password" name="password" required placeholder="<%= tText('Password') %>" autocomplete="current-password">
+              <input class="auth-input auth-input-inline" id="password" type="password" name="password" required placeholder="<%= tText('Password') %>" autocomplete="current-password" id="password">
             </label>
 
             <div class="auth-inline-meta">
