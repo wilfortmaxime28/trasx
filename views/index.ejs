@@ -3730,6 +3730,13 @@ function getYouTubeId(url) {
                     </div>
                 </div>
               </div>
+              
+              <!-- Profile Section loaded via AJAX for SPA transitions -->
+              <div class="profile-container-section" id="profileSection" style="display: none; width: 100%;">
+                <div style="display: flex; align-items: center; justify-content: center; padding: 40px;">
+                  <div class="spinner" style="border: 4px solid var(--border-color); border-top: 4px solid var(--primary); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite;"></div>
+                </div>
+              </div>
             </main>
 
             <%- include('partials/rightSidebar') %>
