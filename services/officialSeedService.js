@@ -15,6 +15,7 @@ const OFFICIAL_SEED_SOURCE = 'official_seed';
 const OFFICIAL_SEED_ACCOUNT_BATCH_SIZE = 100;
 const OFFICIAL_SEED_CONTENT_BATCH_SIZE = 100;
 const OFFICIAL_SEED_PEXELS_API_BASE = 'https://api.pexels.com/v1';
+const OFFICIAL_SEED_PIXABAY_API_BASE = 'https://pixabay.com/api';
 const OFFICIAL_SEED_REMOTE_TIMEOUT_MS = 25000;
 const OFFICIAL_SEED_REMOTE_MAX_REDIRECTS = 4;
 const OFFICIAL_SEED_REMOTE_MIN_POOL = 12;
@@ -401,7 +402,7 @@ async function getOfficialSeedSettings() {
     return officialSeedSettingsCache.value;
   }
 
-  const apiKey = String(
+  const pexelsApiKey = String(
     await getSetting(
       'official_seed_pexels_api_key',
       process.env.PEXELS_API_KEY
@@ -411,8 +412,25 @@ async function getOfficialSeedSettings() {
     )
   ).trim();
 
+  const pixabayApiKey = String(
+    await getSetting(
+      'official_seed_pixabay_api_key',
+      process.env.PIXABAY_API_KEY
+        || ''
+    )
+  ).trim();
+
+  const mediaProvider = String(
+    await getSetting(
+      'official_seed_media_provider',
+      'pexels'
+    )
+  ).trim().toLowerCase();
+
   const value = {
-    pexelsApiKey: apiKey
+    pexelsApiKey,
+    pixabayApiKey,
+    mediaProvider
   };
 
   officialSeedSettingsCache = {
@@ -435,8 +453,17 @@ async function getOfficialSeedPexelsApiKey() {
   return String(settings?.pexelsApiKey || '').trim();
 }
 
+async function getOfficialSeedPixabayApiKey() {
+  const settings = await getOfficialSeedSettings();
+  return String(settings?.pixabayApiKey || '').trim();
+}
+
 async function hasOfficialSeedRemoteMediaProvider() {
-  return Boolean(await getOfficialSeedPexelsApiKey());
+  const settings = await getOfficialSeedSettings();
+  if (settings.mediaProvider === 'pixabay') {
+    return Boolean(settings.pixabayApiKey);
+  }
+  return Boolean(settings.pexelsApiKey);
 }
 
 async function ensureColumn(connection, tableName, columnName, definitionSql) {
@@ -734,6 +761,39 @@ function normalizePexelsVideoAsset(video, preferredOrientation = 'portrait') {
     sourcePageUrl: video.url || '',
     providerLabel: 'Pexels',
     previewUrl: video.video_pictures?.[0]?.picture || video.image || '',
+    duration: Number(video.duration || 0)
+  };
+}
+
+function normalizePixabayPhotoAsset(photo) {
+  if (!photo || !photo.largeImageURL) return null;
+  return {
+    mediaType: 'image',
+    remoteUrl: photo.largeImageURL,
+    mimeType: guessMimeType(photo.largeImageURL),
+    creditName: photo.user || '',
+    creditUrl: photo.pageURL || '',
+    sourcePageUrl: photo.pageURL || '',
+    providerLabel: 'Pixabay',
+    alt: photo.tags || ''
+  };
+}
+
+function normalizePixabayVideoAsset(video) {
+  if (!video || !video.videos) return null;
+  const formats = video.videos;
+  const selectedFormat = formats.medium || formats.small || formats.large || formats.tiny;
+  if (!selectedFormat || !selectedFormat.url) return null;
+
+  return {
+    mediaType: 'video',
+    remoteUrl: selectedFormat.url,
+    mimeType: 'video/mp4',
+    creditName: video.user || '',
+    creditUrl: video.pageURL || '',
+    sourcePageUrl: video.pageURL || '',
+    providerLabel: 'Pixabay',
+    previewUrl: video.userImageURL || '',
     duration: Number(video.duration || 0)
   };
 }
@@ -1067,6 +1127,59 @@ async function searchPexelsVideos(query, {
     : [];
 }
 
+async function searchPixabayPhotos(query, {
+  perPage = 18,
+  page = 1,
+  orientation = 'vertical'
+} = {}) {
+  const apiKey = await getOfficialSeedPixabayApiKey();
+  if (!apiKey) return [];
+
+  const params = new URLSearchParams({
+    key: apiKey,
+    q: String(query || '').trim() || 'people',
+    per_page: String(Math.min(80, Math.max(3, Number(perPage) || 18))),
+    page: String(Math.max(1, Number(page) || 1)),
+    orientation: orientation === 'portrait' ? 'vertical' : (orientation === 'landscape' ? 'horizontal' : orientation),
+    safesearch: 'true'
+  });
+
+  const payload = await fetchRemoteJson(`https://pixabay.com/api/?${params.toString()}`);
+
+  return Array.isArray(payload?.hits)
+    ? payload.hits
+        .map((photo) => normalizePixabayPhotoAsset(photo))
+        .filter(Boolean)
+    : [];
+}
+
+async function searchPixabayVideos(query, {
+  perPage = 18,
+  page = 1,
+  orientation = 'vertical'
+} = {}) {
+  const apiKey = await getOfficialSeedPixabayApiKey();
+  if (!apiKey) return [];
+
+  const params = new URLSearchParams({
+    key: apiKey,
+    q: String(query || '').trim() || 'people',
+    per_page: String(Math.min(80, Math.max(3, Number(perPage) || 18))),
+    page: String(Math.max(1, Number(page) || 1)),
+    orientation: orientation === 'portrait' ? 'vertical' : (orientation === 'landscape' ? 'horizontal' : orientation),
+    safesearch: 'true'
+  });
+
+  const payload = await fetchRemoteJson(`https://pixabay.com/api/videos/?${params.toString()}`);
+
+  return Array.isArray(payload?.hits)
+    ? payload.hits
+        .filter((video) => Number(video?.duration || 0) <= 35)
+        .map((video) => normalizePixabayVideoAsset(video))
+        .filter(Boolean)
+    : [];
+}
+
 function dedupeRemoteAssets(assets = []) {
   const seen = new Set();
   return (Array.isArray(assets) ? assets : []).filter((asset) => {
@@ -1274,6 +1387,50 @@ async function preparePexelsMediaPool(kind, targetCount) {
   return [];
 }
 
+async function preparePixabayAvatarPool(targetCount) {
+  const poolSize = getOfficialSeedAvatarPoolSize(targetCount);
+  return collectPexelsAssets(
+    buildPexelsPhotoQueries('avatar'),
+    poolSize,
+    searchPixabayPhotos,
+    { perPage: 40, orientation: 'vertical' }
+  );
+}
+
+async function preparePixabayMediaPool(kind, targetCount) {
+  const poolSize = getOfficialSeedPoolSize(targetCount);
+
+  if (kind === 'feed') {
+    return collectPexelsAssets(
+      buildPexelsPhotoQueries('feed'),
+      poolSize,
+      searchPixabayPhotos,
+      { perPage: 18, orientation: 'horizontal' }
+    );
+  }
+
+  if (kind === 'shorts') {
+    const expandedPoolSize = Math.max(poolSize * 4, 30);
+    return collectPexelsAssets(
+      buildPexelsVideoQueries('shorts'),
+      expandedPoolSize,
+      searchPixabayVideos,
+      { perPage: 40, orientation: 'vertical' }
+    );
+  }
+
+  if (kind === 'status') {
+    return collectPexelsAssets(
+      buildPexelsPhotoQueries('status'),
+      poolSize,
+      searchPixabayPhotos,
+      { perPage: 14, orientation: 'vertical' }
+    );
+  }
+
+  return [];
+}
+
 function getOfficialSeedAvatarPoolSize(targetCount) {
   return Math.max(24, Number(targetCount) || 24);
 }
@@ -1319,7 +1476,10 @@ async function preparePexelsAvatarPool(targetCount) {
 
 async function prepareOfficialSeedAvatarPool(targetCount, mediaLibrary) {
   if (await hasOfficialSeedRemoteMediaProvider()) {
-    const remotePool = await preparePexelsAvatarPool(targetCount);
+    const settings = await getOfficialSeedSettings();
+    const remotePool = settings.mediaProvider === 'pixabay'
+      ? await preparePixabayAvatarPool(targetCount)
+      : await preparePexelsAvatarPool(targetCount);
     if (!remotePool.length) {
       throw new Error('Aucune photo de profil distante valide n’a été trouvée pour les comptes officiels.');
     }
@@ -1336,7 +1496,7 @@ async function prepareOfficialSeedAvatarPool(targetCount, mediaLibrary) {
 
     return {
       assets: preparedAssets,
-      sourceMode: 'internet-pexels'
+      sourceMode: settings.mediaProvider === 'pixabay' ? 'internet-pixabay' : 'internet-pexels'
     };
   }
 
@@ -1375,12 +1535,16 @@ async function prepareOfficialSeedContentPool(kind, targetCount, mediaLibrary) {
   const localConfig = localSourceMap[kind];
 
   if (!remoteEnabled) {
-    throw new Error('Enregistrez une clé Pexels dans le dashboard admin pour télécharger les médias officiels TRASX depuis Internet.');
+    throw new Error('Enregistrez une clé API (Pexels ou Pixabay) active dans le dashboard admin pour télécharger les médias officiels.');
   }
 
   const remoteDownloadedFiles = [];
   try {
-    const remotePool = await preparePexelsMediaPool(kind, targetCount);
+    const settings = await getOfficialSeedSettings();
+    const remotePool = settings.mediaProvider === 'pixabay'
+      ? await preparePixabayMediaPool(kind, targetCount)
+      : await preparePexelsMediaPool(kind, targetCount);
+
     if (!remotePool.length) {
       throw new Error('Aucun média distant n’a été trouvé pour ce type de publication.');
     }
@@ -1435,7 +1599,7 @@ async function prepareOfficialSeedContentPool(kind, targetCount, mediaLibrary) {
 
     return {
       assets: preparedAssets,
-      sourceMode: 'internet-pexels'
+      sourceMode: settings.mediaProvider === 'pixabay' ? 'internet-pixabay' : 'internet-pexels'
     };
   } catch (error) {
     await Promise.all(remoteDownloadedFiles.map((filePath) => safeUnlink(filePath)));
@@ -1629,7 +1793,9 @@ async function getOfficialSeedUsers(connection = db) {
 async function getOfficialSeedSummary(connection = db) {
   await ensureSchema(connection);
   const mediaLibrary = await getMediaLibrary();
-  const officialSeedPexelsApiKey = await getOfficialSeedPexelsApiKey();
+  const settings = await getOfficialSeedSettings();
+
+  const activeKey = settings.mediaProvider === 'pixabay' ? settings.pixabayApiKey : settings.pexelsApiKey;
 
   const [[accountsRow]] = await connection.query(
     'SELECT COUNT(*) AS total FROM users WHERE account_type = ?',
@@ -1671,8 +1837,13 @@ async function getOfficialSeedSummary(connection = db) {
     shortsCount: Number(shortsRow?.total || 0),
     statusCount: Number(statusRow?.total || 0),
     mediaLibrary: mediaLibrary.summary,
-    remoteKeyConfigured: Boolean(officialSeedPexelsApiKey),
-    remoteKeyPreview: maskOfficialSeedApiKey(officialSeedPexelsApiKey)
+    remoteKeyConfigured: Boolean(activeKey),
+    remoteKeyPreview: maskOfficialSeedApiKey(activeKey),
+    mediaProvider: settings.mediaProvider,
+    pexelsApiKey: settings.pexelsApiKey,
+    pixabayApiKey: settings.pixabayApiKey,
+    pexelsKeyPreview: maskOfficialSeedApiKey(settings.pexelsApiKey),
+    pixabayKeyPreview: maskOfficialSeedApiKey(settings.pixabayApiKey)
   };
 }
 

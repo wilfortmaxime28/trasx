@@ -2854,8 +2854,17 @@
 
           <div style="padding: 18px; border-radius: 18px; border: 1px solid rgba(15, 23, 42, 0.1); background: var(--surface, #fff); display: grid; gap: 12px;">
             <% if (canManageOfficialSeedsFlag) { %>
-              <form action="/admin/official-seeds/settings" method="POST" style="display: grid; gap: 10px;">
+              <form action="/admin/official-seeds/settings" method="POST" style="display: grid; gap: 12px;">
                 <input type="hidden" name="redirectTo" value="<%= adminPaths.users || '/admin/users' %>">
+                
+                <div style="display: grid; gap: 6px;">
+                  <label for="officialSeedMediaProvider" style="font-size: 12px; font-weight: 700; color: var(--text-main);">Fournisseur de Médias</label>
+                  <select id="officialSeedMediaProvider" name="official_seed_media_provider" class="compact-select" style="width: 100%;">
+                    <option value="pexels" <%= officialSeedStats.mediaProvider === 'pexels' ? 'selected' : '' %>>Pexels (Photos & Vidéos)</option>
+                    <option value="pixabay" <%= officialSeedStats.mediaProvider === 'pixabay' ? 'selected' : '' %>>Pixabay (Photos & Vidéos)</option>
+                  </select>
+                </div>
+
                 <div style="display: grid; gap: 6px;">
                   <label for="officialSeedPexelsApiKey" style="font-size: 12px; font-weight: 700; color: var(--text-main);">Clé API Pexels</label>
                   <input
@@ -2864,18 +2873,39 @@
                     name="official_seed_pexels_api_key"
                     class="compact-input"
                     placeholder="Collez votre clé Pexels"
-                    value=""
+                    value="<%= officialSeedStats.pexelsApiKey || '' %>"
                     autocomplete="off"
                   >
                   <div style="font-size: 12px; color: var(--text-muted);">
-                    <% if (officialSeedStats.remoteKeyConfigured) { %>
-                      Clé active : <strong><%= officialSeedStats.remoteKeyPreview %></strong>
+                    <% if (officialSeedStats.pexelsApiKey) { %>
+                      Clé active : <strong><%= officialSeedStats.pexelsKeyPreview %></strong>
                     <% } else { %>
-                      Aucune clé enregistrée pour le moment.
+                      Aucune clé Pexels enregistrée.
                     <% } %>
                   </div>
                 </div>
-                <button type="submit" class="btn btn-secondary" style="width: 100%;">Enregistrer la clé Pexels</button>
+
+                <div style="display: grid; gap: 6px;">
+                  <label for="officialSeedPixabayApiKey" style="font-size: 12px; font-weight: 700; color: var(--text-main);">Clé API Pixabay</label>
+                  <input
+                    id="officialSeedPixabayApiKey"
+                    type="text"
+                    name="official_seed_pixabay_api_key"
+                    class="compact-input"
+                    placeholder="Collez votre clé Pixabay"
+                    value="<%= officialSeedStats.pixabayApiKey || '' %>"
+                    autocomplete="off"
+                  >
+                  <div style="font-size: 12px; color: var(--text-muted);">
+                    <% if (officialSeedStats.pixabayApiKey) { %>
+                      Clé active : <strong><%= officialSeedStats.pixabayKeyPreview %></strong>
+                    <% } else { %>
+                      Aucune clé Pixabay enregistrée.
+                    <% } %>
+                  </div>
+                </div>
+
+                <button type="submit" class="btn btn-secondary" style="width: 100%;">Enregistrer les paramètres d'API</button>
               </form>
 
               <form action="/admin/official-seeds/create" method="POST">

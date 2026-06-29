@@ -1721,24 +1721,29 @@ exports.createOfficialSeedAccounts = async (req, res) => {
 exports.updateOfficialSeedSettings = async (req, res) => {
   try {
     const pexelsApiKey = String(req.body.official_seed_pexels_api_key || '').trim();
+    const pixabayApiKey = String(req.body.official_seed_pixabay_api_key || '').trim();
+    const mediaProvider = String(req.body.official_seed_media_provider || 'pexels').trim().toLowerCase();
+
     await setSetting('official_seed_pexels_api_key', pexelsApiKey);
+    await setSetting('official_seed_pixabay_api_key', pixabayApiKey);
+    await setSetting('official_seed_media_provider', mediaProvider);
+
     OfficialSeedService.invalidateCaches();
 
     await ActivityLog.log(req.session.adminId, 'admin', 'update_official_seed_settings', 'official_seed', null, {
-      remoteMediaProvider: 'pexels',
-      keyConfigured: Boolean(pexelsApiKey)
+      remoteMediaProvider: mediaProvider,
+      pexelsKeyConfigured: Boolean(pexelsApiKey),
+      pixabayKeyConfigured: Boolean(pixabayApiKey)
     }, req);
 
     return adminRedirect(req, res, {
-      success: pexelsApiKey
-        ? 'Clé Pexels enregistrée pour les comptes officiels TRASX.'
-        : 'Clé Pexels supprimée des comptes officiels TRASX.',
+      success: 'Paramètres et clés API des comptes officiels mis à jour avec succès.',
       fallbackPage: 'users'
     });
   } catch (error) {
     console.error(error);
     return adminRedirect(req, res, {
-      error: 'Impossible de mettre à jour la clé Pexels des comptes officiels.',
+      error: 'Impossible de mettre à jour les paramètres des comptes officiels.',
       fallbackPage: 'users'
     });
   }
