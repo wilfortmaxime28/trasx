@@ -1399,6 +1399,10 @@ select:-webkit-autofill {
   animation: spin 0.8s linear infinite;
 }
 
+html {
+  background-color: #e9eef7;
+}
+
 .auth-page {
   min-height: 100dvh;
   margin: 0;
@@ -1410,6 +1414,7 @@ select:-webkit-autofill {
     #e9eef7;
   color: #111827;
   font-family: 'Inter', sans-serif;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 .auth-shell {
