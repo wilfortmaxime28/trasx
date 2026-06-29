@@ -2818,23 +2818,26 @@
             <div style="display: grid; gap: 10px;">
               <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px;">
                 <span style="color: var(--text-muted);">Avatars</span>
-                <strong><%= officialSeedStats.mediaLibrary.avatars %> · <%= officialSeedStats.mediaLibrary.avatarSource === 'official-library' ? 'dossier seed' : 'bibliothèque existante' %></strong>
+                <strong><%= officialSeedStats.mediaLibrary.avatarSummaryText %></strong>
               </div>
               <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px;">
                 <span style="color: var(--text-muted);">Feed</span>
-                <strong><%= officialSeedStats.mediaLibrary.feedImages %> · <%= officialSeedStats.mediaLibrary.feedSource === 'official-library' ? 'dossier seed' : 'bibliothèque existante' %></strong>
+                <strong><%= officialSeedStats.mediaLibrary.feedSummaryText %></strong>
               </div>
               <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px;">
                 <span style="color: var(--text-muted);">Shorts</span>
-                <strong><%= officialSeedStats.mediaLibrary.shortsVideos %> · <%= officialSeedStats.mediaLibrary.shortsSource === 'official-library' ? 'dossier seed' : 'bibliothèque existante' %></strong>
+                <strong><%= officialSeedStats.mediaLibrary.shortsSummaryText %></strong>
               </div>
               <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px;">
                 <span style="color: var(--text-muted);">Status</span>
-                <strong><%= officialSeedStats.mediaLibrary.statusMedia %> · <%= officialSeedStats.mediaLibrary.statusSource === 'official-library' ? 'dossier seed' : 'bibliothèque existante' %></strong>
+                <strong><%= officialSeedStats.mediaLibrary.statusSummaryText %></strong>
               </div>
             </div>
             <div style="margin-top: 14px; font-size: 12px; color: var(--text-muted); line-height: 1.5;">
               Les comptes créés sont marqués <code>account_type = official_seed</code> et leurs contenus sont enregistrés avec <code>source = official_seed</code>.
+            </div>
+            <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+              Les photos de profil et les médias Internet utilisent <code>PEXELS_API_KEY</code> lorsqu'elle est configurée sur le serveur.
             </div>
           </div>
 

@@ -1733,7 +1733,8 @@ exports.generateOfficialSeedContent = async (req, res) => {
     const result = await OfficialSeedService.generateOfficialSeedContent(contentType);
     await ActivityLog.log(req.session.adminId, 'admin', 'generate_official_seed_content', 'official_seed', null, {
       contentType: result.contentType,
-      generatedCount: result.generatedCount
+      generatedCount: result.generatedCount,
+      sourceMode: result.sourceMode || 'unknown'
     }, req);
 
     const labels = {
@@ -1741,9 +1742,12 @@ exports.generateOfficialSeedContent = async (req, res) => {
       shorts: 'shorts',
       status: 'status'
     };
+    const sourceLabel = result.sourceMode === 'internet-pexels'
+      ? 'via Internet'
+      : 'avec la source configurée';
 
     return adminRedirect(req, res, {
-      success: `${result.generatedCount} publications officielles ont été générées pour ${labels[result.contentType]}.`,
+      success: `${result.generatedCount} publications officielles ont été générées pour ${labels[result.contentType]} ${sourceLabel}.`,
       fallbackPage: 'users'
     });
   } catch (error) {
