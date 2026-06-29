@@ -40,6 +40,9 @@
         data-audio-duration="<%= reel.audio_duration || 30 %>"
         data-trim-start="<%= reel.trim_start %>"
         data-trim-end="<%= reel.trim_end %>"></video>
+      <% if (reel.audio_url) { %>
+        <audio data-lazy-src="<%= reel.audio_url %>" class="reel-audio-track" preload="none" style="display:none;"></audio>
+      <% } %>
     <% } else if (reel.media_type === 'image_audio') { %>
       <div class="reel-video-container"
         style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;">

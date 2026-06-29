@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.currentView = 'feed';
   window.feedVideosMuted = false;
+  window.reelsAudioUnlocked = false;
   let wasReelDragging = false;
   const userTypingStates = {};
   const userTypingTimers = {};
@@ -10598,7 +10599,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (type === 'follow' && actorUsername) {
-          window.location.href = `/profile/u/${actorUsername}`;
+          navigateWithGameProtection(`/profile/u/${actorUsername}`);
           return;
         }
 
@@ -10607,7 +10608,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (mobileMessagesSection || document.getElementById('postsContainer')) {
             showMessagesView();
           } else {
-            window.location.href = '/?view=messages';
+            navigateWithGameProtection('/?view=messages');
           }
           return;
         }
@@ -10617,7 +10618,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (gamesSection || document.getElementById('postsContainer')) {
             showGamesView();
           } else {
-            window.location.href = '/?view=games';
+            navigateWithGameProtection('/?view=games');
           }
           return;
         }
@@ -10627,7 +10628,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (marketSection || document.getElementById('postsContainer')) {
             showMarketView();
           } else {
-            window.location.href = '/?view=market';
+            navigateWithGameProtection('/?view=market');
           }
           return;
         }
@@ -10695,9 +10696,9 @@ document.addEventListener('DOMContentLoaded', () => {
           } else {
             // Redirect to feed page with post_id and comment_id param
             if (commentId) {
-              window.location.href = `/?post_id=${postId}&comment_id=${commentId}`;
+              navigateWithGameProtection(`/?post_id=${postId}&comment_id=${commentId}`);
             } else {
-              window.location.href = `/?post_id=${postId}`;
+              navigateWithGameProtection(`/?post_id=${postId}`);
             }
           }
         }
@@ -11002,7 +11003,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const showShortsView = () => {
+  const showShortsViewNow = () => {
     cleanupGameOverlays();
     if (feedMainContent && shortsSection && mobileMessagesSection) {
       const storiesWrapper = document.querySelector('.stories-wrapper');
@@ -11274,7 +11275,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  const showBookmarksView = () => {
+  const showBookmarksViewNow = () => {
     cleanupGameOverlays();
     if (feedMainContent && shortsSection && mobileMessagesSection) {
       shortsSection.style.display = 'none';
@@ -11337,7 +11338,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const showFeedView = (scrollToTop = true) => {
+  const showFeedViewNow = (scrollToTop = true) => {
     cleanupGameOverlays();
     if (feedMainContent && shortsSection && mobileMessagesSection) {
       shortsSection.style.display = 'none';
@@ -11391,7 +11392,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const showMessagesView = () => {
+  const showMessagesViewNow = () => {
     cleanupGameOverlays();
     if (feedMainContent && shortsSection && mobileMessagesSection) {
       const storiesWrapper = document.querySelector('.stories-wrapper');
@@ -11423,7 +11424,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const showMarketView = () => {
+  const showMarketViewNow = () => {
     cleanupGameOverlays();
     if (feedMainContent && marketSection && shortsSection && mobileMessagesSection) {
       const storiesWrapper = document.querySelector('.stories-wrapper');
@@ -11456,6 +11457,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.location.href = '/?view=market';
   };
+
+  const showShortsView = () => confirmPlayerGameExit({
+    onConfirmed: () => {
+      showShortsViewNow();
+    }
+  });
+
+  const showBookmarksView = () => confirmPlayerGameExit({
+    onConfirmed: () => {
+      showBookmarksViewNow();
+    }
+  });
+
+  const showFeedView = (scrollToTop = true) => confirmPlayerGameExit({
+    onConfirmed: () => {
+      showFeedViewNow(scrollToTop);
+    }
+  });
+
+  const showMessagesView = () => confirmPlayerGameExit({
+    onConfirmed: () => {
+      showMessagesViewNow();
+    }
+  });
+
+  const showMarketView = () => confirmPlayerGameExit({
+    onConfirmed: () => {
+      showMarketViewNow();
+    }
+  });
+
+  window.showShortsView = showShortsView;
+  window.showBookmarksView = showBookmarksView;
+  window.showFeedView = showFeedView;
+  window.showMessagesView = showMessagesView;
+  window.showMarketView = showMarketView;
 
   if (backToFeedBtn) {
     backToFeedBtn.addEventListener('click', (e) => {
@@ -11492,12 +11529,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const getMediaElements = (card) => {
     const video = card.querySelector('video.reel-video');
     if (video) {
+      const audio = card.querySelector('.reel-audio-track');
       const start = video.getAttribute('data-trim-start') !== null && video.getAttribute('data-trim-start') !== '' && video.getAttribute('data-trim-start') !== 'null' ? parseFloat(video.getAttribute('data-trim-start')) : parseFloat(video.getAttribute('data-audio-start') || 0);
       const end = video.getAttribute('data-trim-end') !== null && video.getAttribute('data-trim-end') !== '' && video.getAttribute('data-trim-end') !== 'null' ? parseFloat(video.getAttribute('data-trim-end')) : null;
       const duration = end !== null ? (end - start) : parseFloat(video.getAttribute('data-audio-duration') || 30);
       return {
         main: video,
-        audio: null,
+        audio: audio || null,
         type: 'video',
         start: start,
         end: end,
@@ -11585,10 +11623,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (media.type === 'video') {
       rememberReelMediaSource(media.main);
-      if (typeof window.ensureLazyVideoLoaded === 'function') {
-        return window.ensureLazyVideoLoaded(media.main).then(() => card);
+      const videoPromise = typeof window.ensureLazyVideoLoaded === 'function'
+        ? window.ensureLazyVideoLoaded(media.main)
+        : Promise.resolve(media.main);
+      if (media.audio) {
+        rememberReelMediaSource(media.audio);
+        return Promise.all([videoPromise, ensureLazyAudioLoaded(media.audio)]).then(() => card);
       }
-      return Promise.resolve(card);
+      return videoPromise.then(() => card);
     }
 
     if (media.audio) {
@@ -11605,17 +11647,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (media.type === 'video') {
       rememberReelMediaSource(media.main);
-      if (typeof window.prefetchLazyVideo === 'function') {
-        return window.prefetchLazyVideo(media.main).then(() => card);
+      const videoPromise = typeof window.prefetchLazyVideo === 'function'
+        ? window.prefetchLazyVideo(media.main)
+        : (
+          typeof window.ensureLazyVideoLoaded === 'function'
+            ? window.ensureLazyVideoLoaded(media.main, { preload: 'auto' }).then(() => {
+                media.main.preload = 'auto';
+                return media.main;
+              })
+            : Promise.resolve().then(() => {
+                media.main.preload = 'auto';
+                return media.main;
+              })
+        );
+      if (media.audio) {
+        rememberReelMediaSource(media.audio);
+        media.audio.preload = 'auto';
+        return Promise.all([videoPromise, ensureLazyAudioLoaded(media.audio)]).then(() => card);
       }
-      if (typeof window.ensureLazyVideoLoaded === 'function') {
-        return window.ensureLazyVideoLoaded(media.main, { preload: 'auto' }).then(() => {
-          media.main.preload = 'auto';
-          return card;
-        });
-      }
-      media.main.preload = 'auto';
-      return Promise.resolve(card);
+      return videoPromise.then(() => card);
     }
 
     if (media.audio) {
@@ -11845,6 +11895,9 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       if (media.type === 'video') {
         media.main.currentTime = startValue;
+        if (media.audio) {
+          media.audio.currentTime = startValue;
+        }
       } else if (media.audio) {
         media.audio.currentTime = startValue;
       }
@@ -11892,6 +11945,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (media.type === 'video') {
       unloadMediaElementSource(media.main);
+      if (media.audio) {
+        unloadMediaElementSource(media.audio);
+      }
       return;
     }
 
@@ -12001,6 +12057,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (refreshedMedia.type === 'video') {
         refreshedMedia.main.currentTime = startVal;
+        if (refreshedMedia.audio) {
+          refreshedMedia.audio.currentTime = startVal;
+        }
       } else if (refreshedMedia.audio) {
         refreshedMedia.audio.currentTime = startVal;
       }
@@ -12036,6 +12095,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (media.main.currentTime < start) {
         media.main.currentTime = start;
       }
+      if (media.audio && media.audio.currentTime < start) {
+        media.audio.currentTime = start;
+      }
 
       if (!media.main.dataset.hasTimeupdate) {
         media.main.dataset.hasTimeupdate = "true";
@@ -12044,6 +12106,14 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!currentMedia) return;
           const startVal = currentMedia.start;
           const loopEndVal = currentMedia.end !== null ? currentMedia.end : (startVal + currentMedia.duration);
+          if (currentMedia.audio && !currentMedia.audio.paused) {
+            const drift = Math.abs((currentMedia.audio.currentTime || 0) - (media.main.currentTime || 0));
+            if (drift > 0.35) {
+              try {
+                currentMedia.audio.currentTime = Math.max(startVal, media.main.currentTime);
+              } catch (_) {}
+            }
+          }
           if (media.main.currentTime <= startVal + 0.12) {
             media.main.dataset.loopEndCueActive = '0';
           }
@@ -12058,6 +12128,33 @@ document.addEventListener('DOMContentLoaded', () => {
         media.main.dataset.hasEndedOverlay = 'true';
         media.main.addEventListener('ended', () => {
           reelEndOverlayController?.show();
+        });
+      }
+
+      if (media.audio) {
+        media.main.muted = true;
+        media.audio.loop = false;
+        media.audio.dataset.loopEndCueActive = '0';
+
+        const playVideo = media.main.play();
+        const playAudio = media.audio.play();
+
+        return Promise.allSettled([playVideo, playAudio]).then((results) => {
+          const [videoResult, audioResult] = results;
+          if (videoResult?.status === 'rejected') {
+            throw videoResult.reason;
+          }
+          if (audioResult?.status === 'rejected') {
+            console.log('External reel audio blocked, falling back to native video audio:', audioResult.reason);
+            media.main.muted = window.reelsAudioUnlocked !== true;
+          }
+          if (playOverlay) playOverlay.style.opacity = '0';
+        }).catch((err) => {
+          console.log("Autoplay with sound blocked, playing muted:", err);
+          media.main.muted = true;
+          return media.main.play().then(() => {
+            if (playOverlay) playOverlay.style.opacity = '0';
+          });
         });
       }
 
@@ -12133,6 +12230,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (media.type === 'video') {
       media.main.pause();
+      if (media.audio) {
+        media.audio.pause();
+      }
       return;
     }
 
@@ -12188,6 +12288,32 @@ document.addEventListener('DOMContentLoaded', () => {
       if (playOverlay) playOverlay.style.opacity = '1';
     });
   };
+
+  const unlockReelsAudio = () => {
+    window.reelsAudioUnlocked = true;
+    ['pointerdown', 'touchstart', 'keydown'].forEach((eventName) => {
+      document.removeEventListener(eventName, unlockReelsAudio);
+    });
+
+    if (!activeReelCard || window.currentView !== 'shorts') return;
+
+    const media = getMediaElements(activeReelCard);
+    if (!media) return;
+
+    if (media.type === 'video' && media.audio) {
+      playMedia(activeReelCard).catch(() => {});
+      return;
+    }
+
+    if (media.type === 'video' && media.main?.muted) {
+      media.main.muted = false;
+      media.main.play().catch(() => {});
+    }
+  };
+
+  ['pointerdown', 'touchstart', 'keydown'].forEach((eventName) => {
+    document.addEventListener(eventName, unlockReelsAudio, { passive: true });
+  });
 
   const refreshActiveReelCard = () => {
     if (isAnyModalOpen() || document.visibilityState === 'hidden') {
@@ -13099,6 +13225,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const targetTime = media.start + (pct * durationVal);
 
       track.currentTime = targetTime;
+      if (media.type === 'video' && media.audio) {
+        try {
+          media.audio.currentTime = targetTime;
+        } catch (_) {}
+      }
       if (currentTimeEl) currentTimeEl.textContent = formatTime(pct * durationVal);
     });
 
@@ -22195,7 +22326,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res && res.error) {
           showToast(res.error);
         } else if (res && res.game) {
-          const isPlayer = res.game.player1.id === window.currentUserId || (res.game.player2 && res.game.player2.id === window.currentUserId);
+          const isPlayer = isCurrentUserGameParticipant(res.game);
           initActiveGame(res.game, !isPlayer);
           showGamesView();
         }
@@ -22418,6 +22549,44 @@ document.addEventListener('DOMContentLoaded', () => {
     echecs: 'Echecs'
   };
 
+  const getConfiguredLudoTotalSlots = (game) => {
+    if (game?.gameType !== 'ludo') return 2;
+    return 2;
+  };
+
+  const getGamePlayerSlots = (game) => {
+    if (game?.gameType === 'ludo') {
+      return [1, 2, 3, 4].slice(0, getConfiguredLudoTotalSlots(game));
+    }
+    return [1, 2];
+  };
+
+  const getGamePlayerBySlot = (game, slot) => {
+    if (!game || !Number.isInteger(Number(slot))) return null;
+    return game[`player${Number(slot)}`] || null;
+  };
+
+  const getCurrentTurnPlayer = (game) => {
+    if (!game) return null;
+    return getGamePlayerBySlot(game, Number(game.currentPlayer || 1))
+      || (game.currentPlayer === 1 ? game.player1 : game.player2)
+      || null;
+  };
+
+  const getCurrentUserGameSlot = (game) => {
+    if (!game || window.currentUserId === undefined || window.currentUserId === null) return 0;
+    const normalizedUserId = String(window.currentUserId);
+    for (const slot of getGamePlayerSlots(game)) {
+      const player = getGamePlayerBySlot(game, slot);
+      if (player && String(player.id) === normalizedUserId) {
+        return slot;
+      }
+    }
+    return 0;
+  };
+
+  const isCurrentUserGameParticipant = (game) => getCurrentUserGameSlot(game) > 0;
+
   const getPlayerLevelData = (player = {}) => {
     const rawMatchesPlayed = Number(player.matchesPlayed ?? player.matches_played ?? player.game_matches_played ?? 0);
     const rawMatchesWon = Number(player.matchesWon ?? player.wins ?? player.game_matches_won ?? 0);
@@ -22453,6 +22622,33 @@ document.addEventListener('DOMContentLoaded', () => {
     return parts.join(' • ');
   };
 
+  const resolveGamePlayerAvatar = (player = null) => {
+    const candidates = [
+      player?.avatar,
+      player?.avatar_url,
+      player?.avatarUrl,
+      player?.profile_picture,
+      player?.profilePicture,
+      player?.photo_url,
+      player?.photoUrl,
+      player?.picture
+    ];
+
+    if (
+      player
+      && window.currentUserId !== undefined
+      && window.currentUserId !== null
+      && String(player.id) === String(window.currentUserId)
+      && typeof window.currentUserAvatar === 'string'
+      && window.currentUserAvatar.trim()
+    ) {
+      candidates.unshift(window.currentUserAvatar);
+    }
+
+    const resolved = candidates.find((value) => typeof value === 'string' && value.trim());
+    return resolved || '/assets/avatar_placeholder.jpg';
+  };
+
   const syncActiveGamePlayerCard = (slot, player, fallbackName) => {
     const nameEl = document.getElementById(`gamePlayer${slot}Name`);
     const avatarEl = document.getElementById(`gamePlayer${slot}Avatar`);
@@ -22460,7 +22656,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const playerName = player?.name || fallbackName;
 
     if (nameEl) nameEl.textContent = playerName;
-    if (avatarEl) avatarEl.src = player?.avatar || '/assets/avatar_placeholder.jpg';
+    if (avatarEl) {
+      avatarEl.onerror = () => {
+        avatarEl.onerror = null;
+        avatarEl.src = '/assets/avatar_placeholder.jpg';
+      };
+      avatarEl.src = resolveGamePlayerAvatar(player);
+    }
     if (levelEl) {
       levelEl.textContent = player
         ? formatPlayerLevelLine(player, { includeTitle: true })
@@ -22532,6 +22734,9 @@ document.addEventListener('DOMContentLoaded', () => {
           if (typeof updateTableFootballSetupVisibility === 'function') {
             updateTableFootballSetupVisibility();
           }
+          if (typeof updateLudoSetupVisibility === 'function') {
+            updateLudoSetupVisibility();
+          }
         }
       }
     }
@@ -22590,7 +22795,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div>
             <h4 style="margin: 0 0 8px 0; font-weight: 700; color: var(--text-primary);">Comment jouer :</h4>
             <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px;">
-              <li>Le jeu se joue ici en duel, avec 4 pions rouges contre 4 pions verts.</li>
+              <li>Le Ludo fonctionne ici en duel, avec les pions rouges contre les pions verts.</li>
               <li>Cliquez sur <strong>Lancer</strong> pour tirer le de. Un <strong>6</strong> permet de sortir un pion et donne un tour supplementaire.</li>
               <li>Quand plusieurs pions peuvent avancer, cliquez sur le pion que vous voulez deplacer.</li>
               <li>Si vous tombez sur un pion adverse hors case sure, il retourne a sa base.</li>
@@ -22725,14 +22930,85 @@ document.addEventListener('DOMContentLoaded', () => {
   // Available bots list
   let availableBots = [];
   let selectedBotId = null;
+  let selectedLudoBotIds = [];
+
+  const setupModeRadios = document.querySelectorAll('input[name="setupMode"]');
+  const setupBetAmountWrapper = document.getElementById('setupBetAmountWrapper');
+  const setupModeGroupWrapper = document.getElementById('setupModeGroupWrapper');
+  const setupOpponentGroupWrapper = document.getElementById('setupOpponentGroupWrapper');
+  const setupRoundsWrapper = document.getElementById('setupRoundsWrapper');
+  const setupLudoModeWrapper = document.getElementById('setupLudoModeWrapper');
+  const setupGameRounds = document.getElementById('setupGameRounds');
+  const setupOpponentRadios = document.querySelectorAll('input[name="setupOpponent"]');
+  const setupBotChoiceWrapper = document.getElementById('setupBotChoiceWrapper');
+  const setupBotChoiceLabel = document.querySelector('#setupBotChoiceWrapper .setup-group-label');
+  const setupPlayerChoiceWrapper = document.getElementById('setupPlayerChoiceWrapper');
+  const setupLudoHint = document.getElementById('setupLudoHint');
+  const setupLudoModeRadios = document.querySelectorAll('input[name="setupLudoMode"]');
+  const setupLudoOpponentCountRadios = document.querySelectorAll('input[name="setupLudoOpponentCount"]');
+
+  const getIsLudoSetupActive = () => {
+    const activeGameTypeRadio = document.querySelector('input[name="setupGameType"]:checked');
+    return activeGameTypeRadio && activeGameTypeRadio.value === 'ludo';
+  };
+
+  const getSelectedLudoMode = () => {
+    const activeRadio = document.querySelector('input[name="setupLudoMode"]:checked');
+    return activeRadio?.value === 'players' ? 'players' : 'bots';
+  };
+
+  const getSelectedLudoOpponentCount = () => {
+    return 1;
+  };
+
+  const isLudoBotsSetupActive = () => getIsLudoSetupActive() && getSelectedLudoMode() === 'bots';
+
+  const syncSelectedLudoBots = ({ autoFill = false } = {}) => {
+    const selectionLimit = getSelectedLudoOpponentCount();
+    const availableIds = new Set(availableBots.map((bot) => Number(bot.id)));
+
+    const nextSelectedIds = selectedLudoBotIds
+      .map((botId) => Number(botId))
+      .filter((botId) => availableIds.has(botId))
+      .slice(0, selectionLimit);
+
+    if (autoFill && availableBots.length > 0) {
+      availableBots.forEach((bot) => {
+        if (nextSelectedIds.length >= selectionLimit) return;
+        if (!nextSelectedIds.includes(Number(bot.id))) {
+          nextSelectedIds.push(Number(bot.id));
+        }
+      });
+    }
+
+    selectedLudoBotIds = nextSelectedIds;
+  };
+
+  const updateLudoSetupHint = () => {
+    if (!setupLudoHint) return;
+    if (!getIsLudoSetupActive()) {
+      setupLudoHint.textContent = '';
+      return;
+    }
+
+    if (getSelectedLudoMode() === 'bots') {
+      const selectedBot = availableBots.find((bot) => Number(bot.id) === Number(selectedBotId));
+      setupLudoHint.textContent = selectedBot
+        ? `Le Ludo se lance en duel contre ${selectedBot.name}.`
+        : 'Choisissez un robot pour lancer une partie de Ludo à 2 joueurs.';
+    } else {
+      setupLudoHint.textContent = "Le salon Ludo restera public jusqu'à l'arrivée d'un autre joueur pour démarrer le duel.";
+    }
+  };
 
   const loadBotsList = () => {
     if (!socket || !socket.connected) return;
     socket.emit('bots-list-get', (bots = []) => {
-      availableBots = bots;
-      if (bots.length > 0 && !selectedBotId) {
-        selectedBotId = bots[0].id;
+      availableBots = Array.isArray(bots) ? bots : [];
+      if (availableBots.length > 0 && !selectedBotId) {
+        selectedBotId = availableBots[0].id;
       }
+      syncSelectedLudoBots({ autoFill: isLudoBotsSetupActive() });
       renderBotsSelectionGrid();
     });
   };
@@ -22740,17 +23016,30 @@ document.addEventListener('DOMContentLoaded', () => {
   const renderBotsSelectionGrid = () => {
     const grid = document.getElementById('botsSelectionGrid');
     if (!grid) return;
+    const isLudoMultiSelect = isLudoBotsSetupActive() && getSelectedLudoOpponentCount() > 1;
+    const selectionLimit = isLudoMultiSelect ? getSelectedLudoOpponentCount() : 1;
+
+    if (setupBotChoiceLabel) {
+      if (isLudoMultiSelect) {
+        setupBotChoiceLabel.textContent = `Choisissez vos robots (${selectedLudoBotIds.length}/${selectionLimit})`;
+      } else {
+        setupBotChoiceLabel.textContent = 'Choisissez votre Robot Adversaire';
+      }
+    }
 
     if (availableBots.length === 0) {
       grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); font-size: 12px; padding: 10px;">Aucun robot disponible.</div>';
+      updateLudoSetupHint();
       return;
     }
 
     grid.innerHTML = availableBots.map((bot) => {
-      const isSelected = selectedBotId === bot.id;
+      const isSelected = isLudoMultiSelect
+        ? selectedLudoBotIds.includes(Number(bot.id))
+        : Number(selectedBotId) === Number(bot.id);
       const { level, levelTitle, matchesPlayed, matchesWon } = getPlayerLevelData(bot);
       return `
-        <div class="bot-select-card ${isSelected ? 'active' : ''}" data-bot-id="${bot.id}">
+        <div class="bot-select-card ${isSelected ? 'active' : ''} ${isLudoMultiSelect && isSelected ? 'is-multi-selected' : ''}" data-bot-id="${bot.id}">
           <div class="bot-card-glow"></div>
           <span class="bot-status-indicator online" title="Disponible"></span>
           <div class="bot-avatar-wrapper">
@@ -22774,15 +23063,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // Attach click listeners to cards
     grid.querySelectorAll('.bot-select-card').forEach(card => {
       card.addEventListener('click', () => {
-        selectedBotId = parseInt(card.getAttribute('data-bot-id'), 10);
+        const botId = parseInt(card.getAttribute('data-bot-id'), 10);
+        if (isLudoMultiSelect) {
+          if (selectedLudoBotIds.includes(botId)) {
+            selectedLudoBotIds = selectedLudoBotIds.filter((entry) => Number(entry) !== Number(botId));
+          } else if (selectedLudoBotIds.length >= selectionLimit) {
+            showToast(`Vous pouvez choisir jusqu'à ${selectionLimit} robot${selectionLimit > 1 ? 's' : ''} pour cette partie.`);
+          } else {
+            selectedLudoBotIds = [...selectedLudoBotIds, botId];
+          }
+        } else {
+          selectedBotId = botId;
+        }
+        updateLudoSetupHint();
         renderBotsSelectionGrid();
       });
     });
   };
 
-  // Toggle custom bet input visibility when mode changes
-  const setupModeRadios = document.querySelectorAll('input[name="setupMode"]');
-  const setupBetAmountWrapper = document.getElementById('setupBetAmountWrapper');
   setupModeRadios.forEach(radio => {
     radio.addEventListener('change', () => {
       if (setupBetAmountWrapper) {
@@ -22792,9 +23090,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Toggle bot selection vs player search visibility when opponent changes
-  const setupOpponentRadios = document.querySelectorAll('input[name="setupOpponent"]');
-  const setupBotChoiceWrapper = document.getElementById('setupBotChoiceWrapper');
-  const setupPlayerChoiceWrapper = document.getElementById('setupPlayerChoiceWrapper');
   setupOpponentRadios.forEach(radio => {
     radio.addEventListener('change', async () => {
       if (radio.value === 'bot') {
@@ -22808,6 +23103,55 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
+
+  const updateLudoSetupVisibility = () => {
+    const isLudo = getIsLudoSetupActive();
+    const ludoMode = getSelectedLudoMode();
+    const shouldShowLudoBots = isLudo && ludoMode === 'bots';
+
+    if (setupLudoModeWrapper) {
+      setupLudoModeWrapper.style.display = isLudo ? 'block' : 'none';
+    }
+    if (setupOpponentGroupWrapper) {
+      setupOpponentGroupWrapper.style.display = isLudo ? 'none' : '';
+    }
+    if (setupModeGroupWrapper) {
+      setupModeGroupWrapper.style.display = isLudo ? 'none' : '';
+    }
+    if (setupRoundsWrapper) {
+      setupRoundsWrapper.style.display = isLudo ? 'none' : '';
+    }
+    if (setupBetAmountWrapper && isLudo) {
+      setupBetAmountWrapper.style.display = 'none';
+    }
+    if (setupBotChoiceWrapper) {
+      setupBotChoiceWrapper.style.display = isLudo
+        ? (shouldShowLudoBots ? 'block' : 'none')
+        : (document.querySelector('input[name="setupOpponent"]:checked')?.value === 'bot' ? 'block' : 'none');
+    }
+    if (setupPlayerChoiceWrapper) {
+      setupPlayerChoiceWrapper.style.display = isLudo ? 'none' : (document.querySelector('input[name="setupOpponent"]:checked')?.value === 'player' ? 'block' : 'none');
+    }
+
+    if (isLudo) {
+      const freeRadio = document.querySelector('input[name="setupMode"][value="free"]');
+      if (freeRadio) {
+        freeRadio.checked = true;
+        freeRadio.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (setupGameRounds) {
+        setupGameRounds.value = '1';
+      }
+    }
+
+    if (shouldShowLudoBots) {
+      syncSelectedLudoBots({ autoFill: true });
+      loadBotsList();
+    }
+
+    updateLudoSetupHint();
+    renderBotsSelectionGrid();
+  };
 
   // Toggle spectator price input based on paid live toggle
   const setupGameLiveModeRadios = document.querySelectorAll('input[name="setupGameLiveMode"]');
@@ -22852,14 +23196,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const setupGameTypeRadios = document.querySelectorAll('input[name="setupGameType"]');
   setupGameTypeRadios.forEach(radio => {
-    radio.addEventListener('change', updateTableFootballSetupVisibility);
+    radio.addEventListener('change', () => {
+      updateTableFootballSetupVisibility();
+      updateLudoSetupVisibility();
+    });
   });
   setupOpponentRadios.forEach(radio => {
-    radio.addEventListener('change', updateTableFootballSetupVisibility);
+    radio.addEventListener('change', () => {
+      updateTableFootballSetupVisibility();
+      updateLudoSetupVisibility();
+    });
+  });
+  setupLudoModeRadios.forEach((radio) => {
+    radio.addEventListener('change', () => {
+      updateLudoSetupVisibility();
+    });
+  });
+  setupLudoOpponentCountRadios.forEach((radio) => {
+    radio.addEventListener('change', () => {
+      syncSelectedLudoBots({ autoFill: isLudoBotsSetupActive() });
+      updateLudoSetupVisibility();
+    });
   });
 
   // Run initially
-  setTimeout(updateTableFootballSetupVisibility, 50);
+  setTimeout(() => {
+    updateTableFootballSetupVisibility();
+    updateLudoSetupVisibility();
+  }, 50);
 
   // Player search autocomplete logic
   let selectedOpponentPlayerId = null;
@@ -23055,17 +23419,28 @@ document.addEventListener('DOMContentLoaded', () => {
       const opponentRadio = document.querySelector('input[name="setupOpponent"]:checked');
       const modeRadio = document.querySelector('input[name="setupMode"]:checked');
 
-      if (!gameTypeRadio || !opponentRadio || !modeRadio) {
+      if (!gameTypeRadio) {
         showToast("Veuillez sélectionner toutes les options de jeu.");
         return;
       }
 
       const gameType = gameTypeRadio.value;
-      const opponentType = opponentRadio.value;
-      const entryMode = modeRadio.value;
+      const isLudo = gameType === 'ludo';
+      const ludoModeRadio = isLudo ? document.querySelector('input[name="setupLudoMode"]:checked') : null;
+      const ludoPartyMode = isLudo ? (ludoModeRadio?.value === 'players' ? 'players' : 'bots') : null;
+      const ludoOpponentCount = isLudo ? 1 : null;
+      const opponentType = isLudo
+        ? (ludoPartyMode === 'players' ? 'player' : 'bot')
+        : opponentRadio?.value;
+      const entryMode = isLudo ? 'free' : modeRadio?.value;
+
+      if (!isLudo && (!opponentRadio || !modeRadio)) {
+        showToast("Veuillez sélectionner toutes les options de jeu.");
+        return;
+      }
 
       let betAmount = 1.00;
-      if (entryMode === 'paid') {
+      if (!isLudo && entryMode === 'paid') {
         const betInput = document.getElementById('setupBetAmount');
         betAmount = betInput ? parseFloat(betInput.value || 1.00) : 1.00;
         if (isNaN(betAmount) || betAmount < 0.10) {
@@ -23084,7 +23459,20 @@ document.addEventListener('DOMContentLoaded', () => {
       const livePrice = livePriceInput ? parseFloat(livePriceInput.value || 0.50) : 0.50;
 
       let opponentId = null;
-      if (opponentType === 'bot') {
+      if (isLudo) {
+        if (ludoPartyMode === 'bots') {
+          if (!selectedBotId && availableBots.length > 0) {
+            selectedBotId = availableBots[0].id;
+          }
+          if (!selectedBotId) {
+            showToast("Veuillez sélectionner un robot pour démarrer cette partie de Ludo.");
+            return;
+          }
+          opponentId = `bot_${selectedBotId}`;
+        } else {
+          opponentId = null;
+        }
+      } else if (opponentType === 'bot') {
         if (!selectedBotId && availableBots.length > 0) {
           selectedBotId = availableBots[0].id;
         }
@@ -23116,12 +23504,15 @@ document.addEventListener('DOMContentLoaded', () => {
         liveMode,
         livePrice,
         team1: document.getElementById('setupTfTeam1')?.value || 'FR',
-        team2: document.getElementById('setupTfTeam2')?.value || 'BR'
+        team2: document.getElementById('setupTfTeam2')?.value || 'BR',
+        ludoPartyMode,
+        ludoOpponentCount,
+        ludoBotIds: isLudo && ludoPartyMode === 'bots' && selectedBotId ? [selectedBotId] : []
       }, (res) => {
         if (res && res.error) {
           showToast(res.error);
         } else if (res && res.game) {
-          if (opponentType === 'player') {
+          if (opponentType === 'player' && !isLudo) {
             // Show waiting popup for direct invitations
             showGameInviteWaitingModal(res.game);
           } else {
@@ -23139,9 +23530,9 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.emit('games-list-get', (games = []) => {
       renderLobbyLists(games);
     });
-    // Load bots list if setup opponent is bot
+    // Load bots list if setup opponent is bot or if Ludo bot mode is active
     const opponentRadio = document.querySelector('input[name="setupOpponent"]:checked');
-    if (opponentRadio && opponentRadio.value === 'bot') {
+    if (isLudoBotsSetupActive() || (!getIsLudoSetupActive() && opponentRadio && opponentRadio.value === 'bot')) {
       loadBotsList();
     }
   }
@@ -23207,10 +23598,18 @@ document.addEventListener('DOMContentLoaded', () => {
         gamesWaitingList.innerHTML = `<div style="text-align: center; padding: 20px 0; color: var(--text-muted); font-size: 12px;">Aucune partie disponible pour le moment. Créez-en une pour attendre un adversaire !</div>`;
       } else {
         gamesWaitingList.innerHTML = waitingGames.map(game => {
-          const isOwner = game.player1.id === window.currentUserId;
+          const participantSlots = getGamePlayerSlots(game);
+          const isJoined = participantSlots.some((slot) => Number(getGamePlayerBySlot(game, slot)?.id) === Number(window.currentUserId));
           const betLabel = game.mode === 'paid' ? `Payant (${parseFloat(game.betAmount || 0).toFixed(2)} $)` : 'Gratuit';
           const playerLevelChip = formatPlayerLevelChip(game.player1);
           const playerLevelLine = formatPlayerLevelLine(game.player1);
+          const joinedPlayers = Number(game.joinedPlayers || participantSlots.filter((slot) => !!getGamePlayerBySlot(game, slot)).length);
+          const maxPlayers = game.gameType === 'ludo'
+            ? getGamePlayerSlots(game).length
+            : Number(game.maxPlayers || 2);
+          const waitingCountLabel = game.gameType === 'ludo' || maxPlayers > 2
+            ? ` • ${joinedPlayers}/${maxPlayers} joueurs`
+            : '';
           return `
             <div class="game-list-item">
               <div class="game-item-left">
@@ -23219,11 +23618,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="game-item-details">
                   <div class="game-item-title">${escapeHtml(game.player1.name)} <span style="display: inline-flex; align-items: center; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--bg-input); border: 1px solid var(--border-color); font-size: 10px; font-weight: 800; color: var(--text-secondary);">${escapeHtml(playerLevelChip)}</span></div>
-                  <span class="game-item-sub">${gameNames[game.gameType] || 'Jeu'} • ${betLabel} • ${escapeHtml(playerLevelLine)}</span>
+                  <span class="game-item-sub">${gameNames[game.gameType] || 'Jeu'} • ${betLabel}${waitingCountLabel} • ${escapeHtml(playerLevelLine)}</span>
                 </div>
               </div>
               <div>
-                ${isOwner ? `
+                ${isJoined ? `
                   <span class="game-item-btn-waiting">Attente...</span>
                 ` : `
                   <button class="join-game-action-btn settings-primary-btn" data-game-id="${game.id}" data-game-type="${game.gameType}" style="height: 30px; font-size: 11.5px; padding: 0 14px; border-radius: 8px; font-weight: 700; background: var(--primary); color: white; border: none; cursor: pointer;">Rejoindre</button>
@@ -23279,12 +23678,25 @@ document.addEventListener('DOMContentLoaded', () => {
         gamesPlayingList.innerHTML = `<div class="games-list-empty">Aucun live en cours. Jouez contre un robot ou un autre joueur pour lancer le direct !</div>`;
       } else {
         gamesPlayingList.innerHTML = playingGames.map(game => {
-          const isPlayer = game.player1.id === window.currentUserId || (game.player2 && game.player2.id === window.currentUserId);
+          const participantSlots = getGamePlayerSlots(game);
+          const isPlayer = participantSlots.some((slot) => Number(getGamePlayerBySlot(game, slot)?.id) === Number(window.currentUserId));
+          const playerNames = participantSlots
+            .map((slot) => getGamePlayerBySlot(game, slot)?.name)
+            .filter(Boolean);
           const p2Name = game.player2 ? game.player2.name : 'Robot';
           const betLabel = game.mode === 'paid' ? `Payant (${parseFloat(game.betAmount || 0).toFixed(2)} $)` : 'Gratuit';
-          const versusLevelLine = game.player2
-            ? `${formatPlayerLevelChip(game.player1)} vs ${formatPlayerLevelChip(game.player2)}`
-            : formatPlayerLevelChip(game.player1);
+          const versusLevelLine = game.gameType === 'ludo'
+            ? `${Number(game.joinedPlayers || playerNames.length)}/${getGamePlayerSlots(game).length} joueurs`
+            : Number(game.maxPlayers || 2) > 2
+            ? `${Number(game.joinedPlayers || playerNames.length)}/${Number(game.maxPlayers || 4)} joueurs`
+            : (game.player2
+              ? `${formatPlayerLevelChip(game.player1)} vs ${formatPlayerLevelChip(game.player2)}`
+              : formatPlayerLevelChip(game.player1));
+          const titleText = game.gameType === 'ludo' && playerNames.length > 2
+            ? playerNames.join(' • ')
+            : Number(game.maxPlayers || 2) > 2
+            ? playerNames.join(' • ')
+            : `${game.player1.name} vs ${p2Name}`;
           return `
             <div class="game-list-item">
               <div class="game-item-left">
@@ -23294,7 +23706,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   <img class="game-item-vs-avatar p2" src="${game.player2 ? game.player2.avatar : '/assets/avatar_placeholder.jpg'}">
                 </div>
                 <div class="game-item-details" style="margin-left: 4px;">
-                  <div class="game-item-title">${escapeHtml(game.player1.name)} vs ${escapeHtml(p2Name)}</div>
+                  <div class="game-item-title">${escapeHtml(titleText)}</div>
                   <span class="game-item-sub">
                     ${gameNames[game.gameType] || 'Jeu'} • 
                     ${betLabel} • 
@@ -23628,13 +24040,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const canShowReplayButton = () => {
     if (!activeGame || window.isSpectatingActiveGame) return false;
-    const isPlayer = activeGame.player1.id === window.currentUserId || (activeGame.player2 && activeGame.player2.id === window.currentUserId);
+    const isPlayer = isCurrentUserGameParticipant(activeGame);
     return isPlayer && Number(activeGame.rounds || 1) > 1;
   };
 
   const updateActiveGameSubtitle = () => {
     const subEl = document.getElementById('activeGameSub');
     if (!subEl || !activeGame) return;
+
+    if (activeGame.gameType === 'ludo') {
+      const totalPlayers = getGamePlayerSlots(activeGame).length;
+      const modeBits = activeGame.opponentType === 'bot'
+        ? `${Math.max(1, totalPlayers - 1)} robot${Math.max(1, totalPlayers - 1) > 1 ? 's' : ''}`
+        : `${Math.max(1, totalPlayers - 1)} joueur${Math.max(1, totalPlayers - 1) > 1 ? 's' : ''}`;
+      subEl.textContent = `Mode Gratuit • ${totalPlayers} joueurs • ${modeBits}`;
+      return;
+    }
 
     const modeLabel = activeGame.mode === 'paid'
       ? `Mode Payant (${parseFloat(activeGame.betAmount || 0).toFixed(2)} $)`
@@ -24030,6 +24451,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     activeGame = game;
+    clearLudoMoveAnimation();
     window.isSpectatingActiveGame = isSpectating;
     // Reset scores for new game sessions (non-rematch)
     let isRematch = false;
@@ -24063,6 +24485,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (activeGameArea) activeGameArea.style.display = 'grid';
     if (activeGameArea) {
       activeGameArea.classList.toggle('domino-mode', game.gameType === 'domino');
+      activeGameArea.classList.toggle('ludo-mode', game.gameType === 'ludo');
     }
 
     // Show/Hide active game info button depending on rules support
@@ -24072,11 +24495,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Show/Hide WebRTC Controls
-    const isPlayer = Number(game.player1.id) === Number(window.currentUserId) || 
-                     (game.player2 && Number(game.player2.id) === Number(window.currentUserId));
+    const isPlayer = isCurrentUserGameParticipant(game);
     const webrtcControls = document.getElementById('webrtcControls');
     if (webrtcControls) {
-      webrtcControls.style.display = (isPlayer && !isSpectating && game.opponentType === 'player') ? 'inline-flex' : 'none';
+      webrtcControls.style.display = (isPlayer && !isSpectating && game.opponentType === 'player' && getGamePlayerSlots(game).length === 2) ? 'inline-flex' : 'none';
     }
 
     // Connect to WebRTC streams if camera is active
@@ -24115,11 +24537,11 @@ document.addEventListener('DOMContentLoaded', () => {
     updateScoreboardDisplay();
 
     // Show/hide gift buttons dynamically for spectators
-    const isSpectator = window.isSpectatingActiveGame || (game.player1.id !== window.currentUserId && (!game.player2 || game.player2.id !== window.currentUserId));
+    const isSpectator = window.isSpectatingActiveGame || !isCurrentUserGameParticipant(game);
     const sendGiftP1Btn = document.getElementById('sendGiftP1Btn');
     const sendGiftP2Btn = document.getElementById('sendGiftP2Btn');
     if (sendGiftP1Btn && sendGiftP2Btn) {
-      if (isSpectator) {
+      if (isSpectator && getGamePlayerSlots(game).length === 2) {
         sendGiftP1Btn.style.display = 'inline-flex';
         if (game.player2 && !game.player2.isBot && game.opponentType === 'player') {
           sendGiftP2Btn.style.display = 'inline-flex';
@@ -24134,7 +24556,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Show/Hide Forfeit Button
     if (forfeitGameBtn) {
-      const isPlayer = game.player1.id === window.currentUserId || (game.player2 && game.player2.id === window.currentUserId);
+      const isPlayer = isCurrentUserGameParticipant(game);
       forfeitGameBtn.style.display = (isPlayer && !isSpectating && game.status === 'playing') ? 'block' : 'none';
     }
 
@@ -24307,7 +24729,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (activeGame.status === 'waiting') {
-      gameTurnStatus.textContent = "En attente d'un adversaire...";
+      if (activeGame.gameType === 'ludo') {
+        const joinedPlayers = Number(activeGame.joinedPlayers || getGamePlayerSlots(activeGame).filter((slot) => !!getGamePlayerBySlot(activeGame, slot)).length);
+        const maxPlayers = getGamePlayerSlots(activeGame).length;
+        gameTurnStatus.textContent = `En attente des joueurs... ${joinedPlayers}/${maxPlayers}`;
+      } else {
+        gameTurnStatus.textContent = "En attente d'un adversaire...";
+      }
       gameTurnStatus.className = 'game-turn-status-bar waiting';
       gameTurnStatus.removeAttribute('style');
       return;
@@ -24337,7 +24765,10 @@ document.addEventListener('DOMContentLoaded', () => {
         textSpan.textContent = "Partie terminée : Match nul !";
         gameTurnStatus.className = 'game-turn-status-bar finished-draw';
       } else {
-        const winnerName = activeGame.winner === activeGame.player1.id ? activeGame.player1.name : (activeGame.player2 ? activeGame.player2.name : 'Robot');
+        const winnerPlayer = getGamePlayerSlots(activeGame)
+          .map((slot) => getGamePlayerBySlot(activeGame, slot))
+          .find((player) => player && String(player.id) === String(activeGame.winner));
+        const winnerName = winnerPlayer?.name || 'Robot';
         textSpan.textContent = `Partie terminée : Victoire de ${winnerName} !`;
         gameTurnStatus.className = 'game-turn-status-bar finished-win';
       }
@@ -24355,8 +24786,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const activePlayer = activeGame.currentPlayer === 1 ? activeGame.player1 : activeGame.player2;
-    const isMyTurn = activePlayer && activePlayer.id === window.currentUserId && !window.isSpectatingActiveGame;
+    const activePlayer = getCurrentTurnPlayer(activeGame);
+    const isMyTurn = Number(getCurrentUserGameSlot(activeGame)) === Number(activeGame.currentPlayer) && !window.isSpectatingActiveGame;
     
     const getSymbolLabel = (playerSymbol, gameType) => {
       if (gameType === 'domino') return '';
@@ -24364,7 +24795,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return playerSymbol === 1 ? ' (Rouge)' : ' (Jaune)';
       }
       if (gameType === 'ludo') {
-        return playerSymbol === 1 ? ' (Rouges)' : ' (Verts)';
+        if (playerSymbol === 1) return ' (Rouges)';
+        if (playerSymbol === 2) return ' (Verts)';
+        if (playerSymbol === 3) return ' (Jaunes)';
+        if (playerSymbol === 4) return ' (Bleus)';
+        return '';
       }
       if (gameType === 'gomoku') {
         return playerSymbol === 1 ? ' (Noir)' : ' (Blanc)';
@@ -25098,7 +25533,7 @@ document.addEventListener('DOMContentLoaded', () => {
     { r: 7, c: 0 }, { r: 6, c: 0 }
   ];
   const LUDO_FINAL_STEP = 57;
-  const LUDO_START_INDICES = { 1: 0, 2: 13 };
+  const LUDO_START_INDICES = { 1: 0, 2: 13, 3: 26, 4: 39 };
   const LUDO_SAFE_INDICES = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
   const LUDO_HOME_LANES = {
     1: [
@@ -25108,6 +25543,14 @@ document.addEventListener('DOMContentLoaded', () => {
     2: [
       { r: 1, c: 7 }, { r: 2, c: 7 }, { r: 3, c: 7 },
       { r: 4, c: 7 }, { r: 5, c: 7 }, { r: 6, c: 7 }
+    ],
+    3: [
+      { r: 7, c: 13 }, { r: 7, c: 12 }, { r: 7, c: 11 },
+      { r: 7, c: 10 }, { r: 7, c: 9 }, { r: 7, c: 8 }
+    ],
+    4: [
+      { r: 13, c: 7 }, { r: 12, c: 7 }, { r: 11, c: 7 },
+      { r: 10, c: 7 }, { r: 9, c: 7 }, { r: 8, c: 7 }
     ]
   };
   const LUDO_YARD_COORDS = {
@@ -25116,18 +25559,14 @@ document.addEventListener('DOMContentLoaded', () => {
     ],
     2: [
       { r: 2, c: 10 }, { r: 2, c: 12 }, { r: 4, c: 10 }, { r: 4, c: 12 }
+    ],
+    3: [
+      { r: 10, c: 10 }, { r: 10, c: 12 }, { r: 12, c: 10 }, { r: 12, c: 12 }
+    ],
+    4: [
+      { r: 10, c: 2 }, { r: 10, c: 4 }, { r: 12, c: 2 }, { r: 12, c: 4 }
     ]
   };
-  const LUDO_DECOR_TOKENS = [
-    { r: 10, c: 2, color: 'blue' },
-    { r: 10, c: 4, color: 'blue' },
-    { r: 12, c: 2, color: 'blue' },
-    { r: 12, c: 4, color: 'blue' },
-    { r: 10, c: 10, color: 'yellow' },
-    { r: 10, c: 12, color: 'yellow' },
-    { r: 12, c: 10, color: 'yellow' },
-    { r: 12, c: 12, color: 'yellow' }
-  ];
   const LUDO_LANE_SECTION_COORDS = {
     top: Array.from({ length: 6 }, (_, rowOffset) => (
       Array.from({ length: 3 }, (_, colOffset) => ({ r: rowOffset, c: 6 + colOffset }))
@@ -25145,8 +25584,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const LUDO_HOME_DISPLAY_META = [
     { color: 'red', coords: LUDO_YARD_COORDS[1] },
     { color: 'green', coords: LUDO_YARD_COORDS[2] },
-    { color: 'blue', coords: LUDO_DECOR_TOKENS.filter((token) => token.color === 'blue').map(({ r, c }) => ({ r, c })) },
-    { color: 'yellow', coords: LUDO_DECOR_TOKENS.filter((token) => token.color === 'yellow').map(({ r, c }) => ({ r, c })) }
+    { color: 'blue', coords: LUDO_YARD_COORDS[4] },
+    { color: 'yellow', coords: LUDO_YARD_COORDS[3] }
   ];
   const LUDO_LOOP_INDEX_MAP = new Map(
     LUDO_LOOP_COORDS.map((coord, index) => [`${coord.r},${coord.c}`, index])
@@ -25154,10 +25593,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const LUDO_HOME_META = new Map([
     ...LUDO_HOME_LANES[1].map((coord) => [`${coord.r},${coord.c}`, 'home-red']),
     ...LUDO_HOME_LANES[2].map((coord) => [`${coord.r},${coord.c}`, 'home-green']),
-    ...[{ r: 7, c: 8 }, { r: 7, c: 9 }, { r: 7, c: 10 }, { r: 7, c: 11 }, { r: 7, c: 12 }, { r: 7, c: 13 }]
-      .map((coord) => [`${coord.r},${coord.c}`, 'home-yellow']),
-    ...[{ r: 8, c: 7 }, { r: 9, c: 7 }, { r: 10, c: 7 }, { r: 11, c: 7 }, { r: 12, c: 7 }, { r: 13, c: 7 }]
-      .map((coord) => [`${coord.r},${coord.c}`, 'home-blue'])
+    ...LUDO_HOME_LANES[3].map((coord) => [`${coord.r},${coord.c}`, 'home-yellow']),
+    ...LUDO_HOME_LANES[4].map((coord) => [`${coord.r},${coord.c}`, 'home-blue'])
   ]);
   const LUDO_ARROW_META = new Map([
     ['7,0', 'entry-red'],
@@ -25172,12 +25609,17 @@ document.addEventListener('DOMContentLoaded', () => {
     ['8,2', 'star-blue']
   ]);
   const LUDO_DICE_ROLL_DURATION = 960;
+  const LUDO_MOVE_STEP_DURATION = 240;
+  const LUDO_MOVE_FINISH_DELAY = 180;
   let ludoDiceRollTimer = null;
   let ludoDiceRollStartedAt = 0;
   let lastRenderedLudoRollNonce = 0;
   let lastRenderedLudoGameId = null;
   let lastAnnouncedLudoMessageKey = '';
   let lastAnnouncedLudoGameId = null;
+  let ludoMoveAnimationTimer = null;
+  let ludoMoveAnimationState = null;
+  let lastAnimatedLudoMoveKey = '';
 
   const getValidLudoDieValue = (value) => {
     const parsed = Number(value);
@@ -25185,19 +25627,173 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const getLudoCurrentUserSlot = (game) => {
-    if (!game) return 0;
+    return getCurrentUserGameSlot(game);
+  };
 
-    const currentUserId = String(window.currentUserId ?? '');
-    if (!currentUserId) return 0;
-
-    if (game.player1 && String(game.player1.id) === currentUserId) {
-      return 1;
-    }
-    if (game.player2 && String(game.player2.id) === currentUserId) {
-      return 2;
+  const clearLudoMoveAnimation = ({ preserveLastKey = false } = {}) => {
+    if (ludoMoveAnimationTimer) {
+      window.clearTimeout(ludoMoveAnimationTimer);
+      ludoMoveAnimationTimer = null;
     }
 
-    return 0;
+    ludoMoveAnimationState = null;
+
+    if (!preserveLastKey) {
+      lastAnimatedLudoMoveKey = '';
+    }
+  };
+
+  const getLudoMoveAnimationKey = (game) => {
+    if (
+      !game
+      || game.gameType !== 'ludo'
+      || game.lastMove?.gameType !== 'ludo'
+      || game.lastMove?.type !== 'move'
+    ) {
+      return '';
+    }
+
+    return [
+      game.id,
+      Number(game.ludoState?.rollNonce || 0),
+      Number(game.lastMove?.player || 0),
+      Number(game.lastMove?.tokenIndex ?? -1),
+      Number(game.lastMove?.fromStep ?? -2),
+      Number(game.lastMove?.toStep ?? -2),
+      Number(game.lastMove?.roll || 0),
+      Number(game.lastMove?.capturedTokens?.length || 0),
+      game.lastMove?.reachedHome ? '1' : '0'
+    ].join(':');
+  };
+
+  const buildLudoMoveAnimationPath = (fromStep, toStep) => {
+    const start = Number(fromStep);
+    const end = Number(toStep);
+
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start === end) {
+      return [];
+    }
+
+    if (end < start) {
+      return [start, end];
+    }
+
+    const path = [];
+    for (let step = start; step <= end; step += 1) {
+      path.push(step);
+    }
+    return path;
+  };
+
+  const getAnimatedLudoTokenStep = (playerSlot, tokenIndex, actualStep) => {
+    if (!ludoMoveAnimationState || ludoMoveAnimationState.gameId !== activeGame?.id) {
+      return actualStep;
+    }
+
+    if (
+      Number(ludoMoveAnimationState.playerSlot) === Number(playerSlot)
+      && Number(ludoMoveAnimationState.tokenIndex) === Number(tokenIndex)
+    ) {
+      return ludoMoveAnimationState.currentStep;
+    }
+
+    const preservedStep = ludoMoveAnimationState.preservedCapturedSteps?.[`${playerSlot}:${tokenIndex}`];
+    if (Number.isInteger(preservedStep)) {
+      return preservedStep;
+    }
+
+    return actualStep;
+  };
+
+  const startLudoMoveAnimation = (previousGame, nextGame) => {
+    if (!nextGame || nextGame.gameType !== 'ludo') {
+      clearLudoMoveAnimation();
+      return false;
+    }
+
+    const moveKey = getLudoMoveAnimationKey(nextGame);
+    if (!moveKey) {
+      clearLudoMoveAnimation();
+      return false;
+    }
+
+    if (!previousGame || previousGame.id !== nextGame.id) {
+      clearLudoMoveAnimation({ preserveLastKey: true });
+      lastAnimatedLudoMoveKey = moveKey;
+      return false;
+    }
+
+    const previousMoveKey = getLudoMoveAnimationKey(previousGame);
+    if (moveKey === previousMoveKey || moveKey === lastAnimatedLudoMoveKey) {
+      clearLudoMoveAnimation({ preserveLastKey: true });
+      lastAnimatedLudoMoveKey = moveKey;
+      return false;
+    }
+
+    const pathSteps = buildLudoMoveAnimationPath(nextGame.lastMove?.fromStep, nextGame.lastMove?.toStep);
+    if (pathSteps.length === 0) {
+      clearLudoMoveAnimation({ preserveLastKey: true });
+      lastAnimatedLudoMoveKey = moveKey;
+      return false;
+    }
+
+    const preservedCapturedSteps = {};
+    const capturedTokens = Array.isArray(nextGame.lastMove?.capturedTokens) ? nextGame.lastMove.capturedTokens : [];
+
+    capturedTokens.forEach((capturedToken) => {
+      const capturedSlot = Number(capturedToken?.playerSlot || 0);
+      const capturedIndex = Number(capturedToken?.tokenIndex ?? -1);
+      const previousStep = previousGame?.ludoState?.players?.[capturedSlot]?.tokens?.[capturedIndex];
+
+      if (Number.isInteger(previousStep) && previousStep >= 0 && previousStep < LUDO_FINAL_STEP) {
+        preservedCapturedSteps[`${capturedSlot}:${capturedIndex}`] = previousStep;
+      }
+    });
+
+    clearLudoMoveAnimation({ preserveLastKey: true });
+    lastAnimatedLudoMoveKey = moveKey;
+    ludoMoveAnimationState = {
+      gameId: nextGame.id,
+      moveKey,
+      playerSlot: Number(nextGame.lastMove?.player || 0),
+      tokenIndex: Number(nextGame.lastMove?.tokenIndex ?? -1),
+      currentStep: pathSteps[0],
+      pathSteps,
+      pathIndex: 0,
+      preservedCapturedSteps
+    };
+
+    const advance = () => {
+      if (
+        !ludoMoveAnimationState
+        || ludoMoveAnimationState.moveKey !== moveKey
+        || activeGame?.id !== nextGame.id
+      ) {
+        return;
+      }
+
+      const nextPathIndex = ludoMoveAnimationState.pathIndex + 1;
+      if (nextPathIndex >= ludoMoveAnimationState.pathSteps.length) {
+        ludoMoveAnimationTimer = window.setTimeout(() => {
+          if (!ludoMoveAnimationState || ludoMoveAnimationState.moveKey !== moveKey) {
+            return;
+          }
+
+          ludoMoveAnimationTimer = null;
+          ludoMoveAnimationState = null;
+          buildLudoBoard();
+        }, LUDO_MOVE_FINISH_DELAY);
+        return;
+      }
+
+      ludoMoveAnimationState.pathIndex = nextPathIndex;
+      ludoMoveAnimationState.currentStep = ludoMoveAnimationState.pathSteps[nextPathIndex];
+      buildLudoBoard();
+      ludoMoveAnimationTimer = window.setTimeout(advance, LUDO_MOVE_STEP_DURATION);
+    };
+
+    ludoMoveAnimationTimer = window.setTimeout(advance, LUDO_MOVE_STEP_DURATION);
+    return true;
   };
 
   const setLudoDiceValue = (value = null) => {
@@ -25395,8 +25991,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const getLudoTokenColorClass = (tokenRef) => {
     if (tokenRef === 1 || tokenRef === 'red') return 'is-red';
     if (tokenRef === 2 || tokenRef === 'green') return 'is-green';
-    if (tokenRef === 'blue') return 'is-blue';
-    if (tokenRef === 'yellow') return 'is-yellow';
+    if (tokenRef === 3 || tokenRef === 'yellow') return 'is-yellow';
+    if (tokenRef === 4 || tokenRef === 'blue') return 'is-blue';
     return 'is-red';
   };
 
@@ -25558,29 +26154,43 @@ document.addEventListener('DOMContentLoaded', () => {
     ludoBoard.innerHTML = '';
 
     const ludoState = activeGame.ludoState;
+    const isAnimatingLudoMove = Boolean(
+      ludoMoveAnimationState
+      && ludoMoveAnimationState.gameId === activeGame.id
+    );
     const mySlot = getLudoCurrentUserSlot(activeGame);
     const isMyTurn = mySlot > 0
       && !window.isSpectatingActiveGame
       && activeGame.status === 'playing'
       && activeGame.currentPlayer === mySlot;
     const legalMoves = Array.isArray(ludoState.legalMoves) ? ludoState.legalMoves : [];
-    const currentPlayer = activeGame.currentPlayer === 1 ? activeGame.player1 : activeGame.player2;
+    const currentPlayer = getCurrentTurnPlayer(activeGame);
     const currentDieValue = getValidLudoDieValue(ludoState?.currentDie);
+    const totalLudoPlayers = getConfiguredLudoTotalSlots(activeGame);
+    const isMultiPlayerMode = totalLudoPlayers > 2;
+    const maxPlayers = totalLudoPlayers;
 
     syncLudoDiceFromState(ludoState);
-
     if (ludoRollBtn) {
-      ludoRollBtn.disabled = !isMyTurn || ludoState.hasRolled || activeGame.status !== 'playing';
+      ludoRollBtn.disabled = isAnimatingLudoMove || !isMyTurn || ludoState.hasRolled || activeGame.status !== 'playing';
       ludoRollBtn.textContent = activeGame.status === 'finished' ? 'Termine' : 'Lancer';
     }
 
     if (ludoStatusPill) {
       if (activeGame.status === 'finished') {
         ludoStatusPill.textContent = 'Partie terminee';
+      } else if (activeGame.status === 'waiting') {
+        const joinedPlayers = Number(activeGame.joinedPlayers || getGamePlayerSlots(activeGame).filter((slot) => !!getGamePlayerBySlot(activeGame, slot)).length);
+        const maxPlayers = totalLudoPlayers;
+        ludoStatusPill.textContent = `Salon Ludo ${joinedPlayers}/${maxPlayers}`;
+      } else if (isAnimatingLudoMove) {
+        ludoStatusPill.textContent = 'Deplacement en cours';
       } else if (ludoState.hasRolled && currentDieValue !== null) {
         ludoStatusPill.textContent = isMyTurn
           ? `De ${currentDieValue} - Choisissez un pion`
           : `${currentPlayer ? currentPlayer.name : 'Tour adverse'} - De ${currentDieValue}`;
+      } else if (isMultiPlayerMode) {
+        ludoStatusPill.textContent = isMyTurn ? `Ludo ${maxPlayers} joueurs` : `Tour de ${currentPlayer ? currentPlayer.name : 'la table'}`;
       } else if (isMyTurn) {
         ludoStatusPill.textContent = 'Votre tour';
       } else {
@@ -25591,6 +26201,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ludoHelperText) {
       if (activeGame.status === 'finished') {
         ludoHelperText.textContent = ludoState.turnMessage || 'La manche est terminee.';
+      } else if (activeGame.status === 'waiting') {
+        const joinedPlayers = Number(activeGame.joinedPlayers || getGamePlayerSlots(activeGame).filter((slot) => !!getGamePlayerBySlot(activeGame, slot)).length);
+        ludoHelperText.textContent = `En attente des autres joueurs... ${joinedPlayers}/${maxPlayers} connectés.`;
+      } else if (isAnimatingLudoMove) {
+        ludoHelperText.textContent = 'Les pions avancent case par case pour mieux suivre le tour.';
       } else if (isMyTurn && !ludoState.hasRolled) {
         ludoHelperText.textContent = 'Lancez le de pour jouer.';
       } else {
@@ -25604,14 +26219,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const finishedTokenGroups = {
       red: [],
       green: [],
-      blue: [],
-      yellow: []
+      yellow: [],
+      blue: []
     };
-    [1, 2].forEach((playerSlot) => {
+    getGamePlayerSlots(activeGame).forEach((playerSlot) => {
+      if (!getGamePlayerBySlot(activeGame, playerSlot)) return;
       const tokens = ludoState.players?.[playerSlot]?.tokens || [];
-      tokens.forEach((step, tokenIndex) => {
+      tokens.forEach((rawStep, tokenIndex) => {
+        const step = getAnimatedLudoTokenStep(playerSlot, tokenIndex, rawStep);
         if (step === LUDO_FINAL_STEP) {
-          const colorKey = playerSlot === 1 ? 'red' : playerSlot === 2 ? 'green' : 'red';
+          const colorKey = playerSlot === 1
+            ? 'red'
+            : playerSlot === 2
+              ? 'green'
+              : playerSlot === 3
+                ? 'yellow'
+                : 'blue';
           finishedTokenGroups[colorKey].push({
             playerSlot,
             tokenIndex,
@@ -25635,7 +26258,7 @@ document.addEventListener('DOMContentLoaded', () => {
           tokenIndex,
           isYard: step === -1,
           isFinished: false,
-          isLegal: playerSlot === mySlot && isMyTurn && ludoState.hasRolled && legalMoves.includes(tokenIndex),
+          isLegal: !isAnimatingLudoMove && playerSlot === mySlot && isMyTurn && ludoState.hasRolled && legalMoves.includes(tokenIndex),
           isLast: activeGame.lastMove
             && activeGame.lastMove.gameType === 'ludo'
             && activeGame.lastMove.type === 'move'
@@ -25644,21 +26267,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         tokenMap.set(key, bucket);
       });
-    });
-
-    LUDO_DECOR_TOKENS.forEach((decorToken, decorIndex) => {
-      const key = `${decorToken.r},${decorToken.c}`;
-      const bucket = tokenMap.get(key) || [];
-      bucket.push({
-        playerSlot: 0,
-        tokenIndex: decorIndex,
-        color: decorToken.color,
-        isDecor: true,
-        isYard: true,
-        isLegal: false,
-        isLast: false
-      });
-      tokenMap.set(key, bucket);
     });
 
     const boardShell = document.createElement('div');
@@ -28410,12 +29018,17 @@ document.addEventListener('DOMContentLoaded', () => {
       cleanupGameWebRTC();
     }
 
+    clearLudoMoveAnimation();
     activeGame = null;
     window.isSpectatingActiveGame = false;
     lastAnnouncedLudoMessageKey = '';
     lastAnnouncedLudoGameId = null;
 
     if (activeGameArea) activeGameArea.style.display = 'none';
+    if (activeGameArea) {
+      activeGameArea.classList.remove('domino-mode');
+      activeGameArea.classList.remove('ludo-mode');
+    }
     if (gamesLobby) gamesLobby.style.display = 'flex';
     if (refreshLobby && typeof loadGamesLobby === 'function') {
       loadGamesLobby();
@@ -28482,16 +29095,21 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (window.isSpectatingActiveGame) {
       socket.emit('game-spectate-leave', { gameId: activeGame.id });
-    } else if (activeGame.status === 'playing') {
+    } else if (activeGame.status !== 'finished') {
+      const isPlayingGame = activeGame.status === 'playing';
       const confirmed = await openGameConfirmDialog({
-        title: 'Abandonner la partie ?',
-        message: 'Voulez-vous vraiment abandonner la partie ? Cela sera comptabilise comme une defaite.',
-        confirmLabel: 'Abandonner'
+        title: isPlayingGame ? 'Abandonner la partie ?' : 'Quitter la partie ?',
+        message: isPlayingGame
+          ? 'Voulez-vous vraiment abandonner la partie ? Cela sera comptabilise comme une defaite.'
+          : 'Voulez-vous vraiment quitter cette partie avant la fin ?',
+        confirmLabel: isPlayingGame ? 'Abandonner' : 'Quitter'
       });
       if (!confirmed) {
         return;
       }
-      socket.emit('game-forfeit', { gameId: activeGame.id });
+      if (isPlayingGame) {
+        socket.emit('game-forfeit', { gameId: activeGame.id });
+      }
     }
 
     cleanupActiveGameSession();
@@ -28972,8 +29590,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('game-started', (game) => {
-      const isPlayer = Number(game.player1.id) === Number(window.currentUserId) || 
-                       (game.player2 && Number(game.player2.id) === Number(window.currentUserId));
+      const isPlayer = isCurrentUserGameParticipant(game);
       if (isPlayer || (activeGame && activeGame.id === game.id)) {
         const waitingModal = document.getElementById('gameInviteWaitingModal');
         if (waitingModal) waitingModal.remove();
@@ -28990,6 +29607,7 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('game-state-updated', (data) => {
       const { game, botMove } = data;
       if (activeGame && activeGame.id === game.id) {
+        const previousGame = activeGame;
         activeGame = game;
         if (game.gameType === 'echecs') {
           selectedSquare = null;
@@ -28999,11 +29617,11 @@ document.addEventListener('DOMContentLoaded', () => {
         syncActiveGamePlayers(game);
 
         // Show/hide gift buttons dynamically for spectators
-        const isSpectator = window.isSpectatingActiveGame || (game.player1.id !== window.currentUserId && (!game.player2 || game.player2.id !== window.currentUserId));
+        const isSpectator = window.isSpectatingActiveGame || !isCurrentUserGameParticipant(game);
         const sendGiftP1Btn = document.getElementById('sendGiftP1Btn');
         const sendGiftP2Btn = document.getElementById('sendGiftP2Btn');
         if (sendGiftP1Btn && sendGiftP2Btn) {
-          if (isSpectator) {
+          if (isSpectator && getGamePlayerSlots(game).length === 2) {
             sendGiftP1Btn.style.display = 'inline-flex';
             if (game.player2 && !game.player2.isBot && game.opponentType === 'player') {
               sendGiftP2Btn.style.display = 'inline-flex';
@@ -29018,17 +29636,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Render board
         if (game.gameType === 'domino') {
+          clearLudoMoveAnimation();
           buildDominoBoard();
         } else if (game.gameType === 'connect4') {
+          clearLudoMoveAnimation();
           buildConnectFourBoard();
         } else if (game.gameType === 'ludo') {
+          startLudoMoveAnimation(previousGame, game);
           buildLudoBoard();
         } else if (game.gameType === 'gomoku') {
+          clearLudoMoveAnimation();
           buildGomokuBoard();
         } else if (game.gameType === 'tablefootball') {
+          clearLudoMoveAnimation();
           buildTableFootballBoard();
         } else if (game.gameType === 'echecs') {
+          clearLudoMoveAnimation();
           buildChessBoard();
+        } else {
+          clearLudoMoveAnimation();
         }
 
         if (game.lastMove) {
@@ -29036,7 +29662,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (forfeitGameBtn) {
-          const isPlayer = game.player1.id === window.currentUserId || (game.player2 && game.player2.id === window.currentUserId);
+          const isPlayer = isCurrentUserGameParticipant(game);
           forfeitGameBtn.style.display = (isPlayer && !window.isSpectatingActiveGame && game.status === 'playing') ? 'block' : 'none';
         }
 
@@ -29097,10 +29723,15 @@ document.addEventListener('DOMContentLoaded', () => {
         winnerName = 'Match Nul !';
       } else if (activeGame.player1 && String(data.winnerId) === String(activeGame.player1.id)) {
         winnerName = `🏆 ${p1Name} remporte la victoire !`;
-      } else if (activeGame.player2 && String(data.winnerId) === String(activeGame.player2.id)) {
-        winnerName = `🏆 ${p2Name} remporte la victoire !`;
       } else {
-        winnerName = 'Partie terminée.';
+        const winnerPlayer = getGamePlayerSlots(activeGame)
+          .map((slot) => getGamePlayerBySlot(activeGame, slot))
+          .find((player) => player && String(data.winnerId) === String(player.id));
+        if (winnerPlayer) {
+          winnerName = `🏆 ${winnerPlayer.name || winnerPlayer.username || 'Un joueur'} remporte la victoire !`;
+        } else {
+          winnerName = 'Partie terminée.';
+        }
       }
 
       const winnerEl = document.createElement('div');
@@ -29125,9 +29756,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const s2 = activeGame.dominoScores.player2 || 0;
         scoreDisplay = `${p1Name}   ${s1}  —  ${s2}   ${p2Name}`;
       } else if (activeGame.gameType === 'ludo' && activeGame.ludoState?.players && (!activeGame.rounds || Number(activeGame.rounds) <= 1)) {
-        const s1 = activeGame.ludoState.players[1]?.finishedTokens || 0;
-        const s2 = activeGame.ludoState.players[2]?.finishedTokens || 0;
-        scoreDisplay = `${p1Name}   ${s1}  —  ${s2}   ${p2Name}`;
+        scoreDisplay = getGamePlayerSlots(activeGame).map((slot) => {
+          const player = getGamePlayerBySlot(activeGame, slot);
+          const playerName = player?.name || `Joueur ${slot}`;
+          const finished = Number(activeGame.ludoState.players?.[slot]?.finishedTokens || 0);
+          return `${playerName}: ${finished}`;
+        }).join(' • ');
       } else if (activeGame.rounds && Number(activeGame.rounds) > 1) {
         const p1Rounds = activeGame.roundWins ? Number(activeGame.roundWins.player1 || 0) : 0;
         const p2Rounds = activeGame.roundWins ? Number(activeGame.roundWins.player2 || 0) : 0;
@@ -29224,9 +29858,10 @@ document.addEventListener('DOMContentLoaded', () => {
         updateTurnIndicator();
         highlightWinner(winningStones);
 
-        const isPlayer = activeGame.player1.id === window.currentUserId || (activeGame.player2 && activeGame.player2.id === window.currentUserId);
+        const isPlayer = isCurrentUserGameParticipant(activeGame);
         const isRealPlayer = isPlayer && !window.isSpectatingActiveGame;
         const chessMessage = activeGame.gameType === 'echecs' ? (message || getChessResultStatusText(activeGame) || '') : '';
+        const shouldTrackLocalScore = !(activeGame.gameType === 'ludo' && getGamePlayerSlots(activeGame).length > 2);
 
         if (isRealPlayer) {
           if (winnerId === 'cancelled') {
@@ -29242,13 +29877,13 @@ document.addEventListener('DOMContentLoaded', () => {
           } else if (winnerId === 'draw') {
             showToast(chessMessage || "Match nul !");
             showGameResultOverlay('draw', chessMessage);
-          } else if (winnerId === window.currentUserId) {
+          } else if (String(winnerId) === String(window.currentUserId)) {
             showToast(chessMessage || "Victoire ! Vous avez gagné !");
-            updateStoredScore(true);
+            if (shouldTrackLocalScore) updateStoredScore(true);
             showGameResultOverlay('win', chessMessage);
           } else {
             showToast(chessMessage || "Partie terminée.");
-            updateStoredScore(false);
+            if (shouldTrackLocalScore) updateStoredScore(false);
             showGameResultOverlay('lose', chessMessage);
           }
         } else {
@@ -29407,8 +30042,13 @@ document.addEventListener('DOMContentLoaded', () => {
         let winnerName = "Égalité";
         if (roundWinnerId === activeGame.player1.id) {
           winnerName = activeGame.player1.name;
-        } else if (activeGame.player2 && roundWinnerId === activeGame.player2.id) {
-          winnerName = activeGame.player2.name;
+        } else {
+          const roundWinner = getGamePlayerSlots(activeGame)
+            .map((slot) => getGamePlayerBySlot(activeGame, slot))
+            .find((player) => player && String(roundWinnerId) === String(player.id));
+          if (roundWinner) {
+            winnerName = roundWinner.name;
+          }
         }
         
         showToast(`Manche terminée ! Gagnant : ${winnerName}. Prochaine partie dans quelques secondes...`);
@@ -32235,8 +32875,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Game Leaving Protection ---
   window.addEventListener('beforeunload', (event) => {
-    const isPlayerInActiveGame = activeGame && activeGame.status !== 'finished' && !window.isSpectatingActiveGame;
-    if (isPlayerInActiveGame) {
+    if (hasPlayerInActiveGame() && !window.isGameLeaveBypassEnabled) {
       event.preventDefault();
       event.returnValue = 'Si vous quittez maintenant, vous perdrez la partie et déclarerez forfait.';
       return event.returnValue;
@@ -32244,40 +32883,45 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.addEventListener('click', async (event) => {
-    const isPlayerInActiveGame = activeGame && activeGame.status !== 'finished' && !window.isSpectatingActiveGame;
-    if (!isPlayerInActiveGame) return;
+    if (!hasPlayerInActiveGame() || window.isGameLeaveBypassEnabled) return;
+    if (event.defaultPrevented) return;
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 
-    // Find closest anchor tag
-    const anchor = event.target.closest('a');
-    if (!anchor) return;
+    const anchor = event.target.closest('a[href]');
+    if (!anchor || gameConfirmModal?.contains(anchor)) return;
+    if (anchor.target === '_blank' || anchor.hasAttribute('download')) return;
 
     const href = anchor.getAttribute('href');
-    if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
-
-    // Check if the confirmation dialog is already open to prevent double triggers
-    if (window.isGameConfirmDialogOpen) return;
-
-    // Intercept click
-    event.preventDefault();
-    event.stopPropagation();
-
-    window.isGameConfirmDialogOpen = true;
-    const confirmed = await openGameConfirmDialog({
-      title: 'Quitter la partie ?',
-      message: 'Si vous quittez maintenant, vous perdrez la partie et déclarerez forfait. Voulez-vous vraiment quitter ?',
-      confirmLabel: 'Quitter'
-    });
-    window.isGameConfirmDialogOpen = false;
-
-    if (confirmed) {
-      // Emit forfeit so the game ends correctly on server and databases
-      socket.emit('game-forfeit', { gameId: activeGame.id });
-      // Navigate to the target page
-      setTimeout(() => {
-        window.location.href = href;
-      }, 100);
+    if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) {
+      return;
     }
-  });
+
+    try {
+      const targetUrl = new URL(href, window.location.href);
+      const currentUrl = new URL(window.location.href);
+      if (
+        targetUrl.origin === currentUrl.origin &&
+        targetUrl.pathname === currentUrl.pathname &&
+        targetUrl.search === currentUrl.search &&
+        targetUrl.hash
+      ) {
+        return;
+      }
+    } catch (_) {}
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    if (window.isGameConfirmDialogOpen) {
+      return;
+    }
+
+    await confirmPlayerGameExit({
+      onConfirmed: () => {
+        window.location.href = href;
+      }
+    });
+  }, true);
 
   // Apply navigation query state at the end of DOMContentLoaded to prevent TDZ errors
   applyNavigationQueryState();

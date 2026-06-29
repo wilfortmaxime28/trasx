@@ -3579,12 +3579,11 @@ const broadcastGameStarted = async (gameId) => {
   if (!game) return;
 
   const roomNames = [`game:${gameId}`];
-  if (game.player1?.id) {
-    roomNames.push(`user:${game.player1.id}`);
-  }
-  if (game.player2?.id) {
-    roomNames.push(`user:${game.player2.id}`);
-  }
+  gamesManager.getGameParticipants(game).forEach((player) => {
+    if (player?.id) {
+      roomNames.push(`user:${player.id}`);
+    }
+  });
 
   const socketMap = new Map();
   for (const roomName of roomNames) {
@@ -3640,9 +3639,7 @@ async function handleScheduledBotResult(gameId, botResult, { allowLudoFollowUp =
     && botResult.game
     && botResult.game.gameType === 'ludo'
     && botResult.continueTurn === true
-    && botResult.game.currentPlayer === 2
-    && botResult.game.player2
-    && botResult.game.player2.isBot
+    && gamesManager.getGamePlayerBySlot(botResult.game, botResult.game.currentPlayer)?.isBot
   ) {
     const followUpDelay = botResult.botAction === 'roll'
       ? (1500 + Math.random() * 1000)
@@ -3683,7 +3680,8 @@ function scheduleBotMove(gameId, delayOverride = null) {
   const game = gamesManager.games[gameId];
   if (!game || game.status !== 'playing') return;
 
-  const nextPlayer = game.currentPlayer === 1 ? game.player1 : game.player2;
+  const nextPlayer = gamesManager.getGamePlayerBySlot(game, Number(game.currentPlayer || 1))
+    || (game.currentPlayer === 1 ? game.player1 : game.player2);
   if (!nextPlayer || !nextPlayer.isBot) return;
 
   const isTableFootball = game.gameType === 'tablefootball';
@@ -3696,7 +3694,7 @@ function scheduleBotMove(gameId, delayOverride = null) {
   const chessPieceCount = isChess && Array.isArray(game.chessState?.board)
     ? game.chessState.board.flat().filter(Boolean).length
     : 0;
-  const chessBotLevel = isChess ? Math.max(1, Number(game.player2?.level || 1)) : 1;
+  const chessBotLevel = isChess ? Math.max(1, Number(nextPlayer?.level || 1)) : 1;
 
   const delay = (delayOverride !== null && Number.isFinite(Number(delayOverride)))
     ? Number(delayOverride)
@@ -6270,12 +6268,13 @@ io.on('connection', (socket) => {
       const user = await User.getById(currentUserId);
       if (!user) throw new Error('Utilisateur introuvable.');
 
-      const { gameType, opponentType, entryMode, opponentId, betAmount, rounds, liveMode, livePrice, team1, team2 } = data || {};
+      const { gameType, opponentType, entryMode, opponentId, betAmount, rounds, liveMode, livePrice, team1, team2, ludoPartyMode, ludoOpponentCount, ludoBotIds } = data || {};
       
       const isP2PInvite = opponentType === 'player' && opponentId && !String(opponentId).startsWith('bot_');
 
       const game = await gamesManager.createGame(
-        currentUserId, user, gameType, opponentType, entryMode, opponentId, betAmount, rounds, liveMode, livePrice, team1, team2
+        currentUserId, user, gameType, opponentType, entryMode, opponentId, betAmount, rounds, liveMode, livePrice, team1, team2,
+        { ludoPartyMode, ludoOpponentCount, ludoBotIds }
       );
       
       socket.join(`game:${game.id}`);
@@ -6533,8 +6532,11 @@ io.on('connection', (socket) => {
 
       socket.join(`game:${game.id}`);
 
-      // Notify the room that game has started
-      await broadcastGameStarted(game.id);
+      if (game.status === 'playing') {
+        await broadcastGameStarted(game.id);
+      } else {
+        await broadcastGameState(game.id, null);
+      }
 
       // Broadcast list updates
       io.emit('game-list-updated', gamesManager.getLiveGames());
@@ -6559,10 +6561,12 @@ io.on('connection', (socket) => {
         if (game) {
           const currentUserId = session?.userId;
           if (currentUserId) {
-            if (Number(game.player1.id) === Number(currentUserId)) {
-              game.player1.socketId = socket.id;
-            } else if (game.player2 && Number(game.player2.id) === Number(currentUserId)) {
-              game.player2.socketId = socket.id;
+            for (const slot of gamesManager.getGamePlayerSlots(game)) {
+              const player = gamesManager.getGamePlayerBySlot(game, slot);
+              if (player && Number(player.id) === Number(currentUserId)) {
+                player.socketId = socket.id;
+                break;
+              }
             }
           }
         }
@@ -7066,7 +7070,8 @@ io.on('connection', (socket) => {
           const isTableFootballShot = result.game.gameType === 'tablefootball' && promotion === 'shot';
 
           // Schedule bot move with a thinking delay (only when turn has truly switched to the bot)
-          const nextPlayerObj = result.game.currentPlayer === 1 ? result.game.player1 : result.game.player2;
+          const nextPlayerObj = gamesManager.getGamePlayerBySlot(result.game, Number(result.game.currentPlayer || 1))
+            || (result.game.currentPlayer === 1 ? result.game.player1 : result.game.player2);
           if (nextPlayerObj && nextPlayerObj.isBot && !result.roundWinnerId && !isTableFootballShot) {
             scheduleBotMove(gameId);
           }
@@ -7138,7 +7143,8 @@ io.on('connection', (socket) => {
         await broadcastGameState(gameId, null);
 
         // If next player is bot, trigger bot play
-        const nextPlayer = result.game.currentPlayer === 1 ? result.game.player1 : result.game.player2;
+        const nextPlayer = gamesManager.getGamePlayerBySlot(result.game, Number(result.game.currentPlayer || 1))
+          || (result.game.currentPlayer === 1 ? result.game.player1 : result.game.player2);
         if (nextPlayer && nextPlayer.isBot) {
           scheduleBotMove(gameId);
         }
@@ -7167,7 +7173,7 @@ io.on('connection', (socket) => {
       const game = gamesManager.games[gameId];
       if (!game) throw new Error('Partie introuvable ou terminée.');
 
-      const isPlayer = game.player1.id === currentUserId || (game.player2 && game.player2.id === currentUserId);
+      const isPlayer = gamesManager.getGameParticipants(game).some((player) => Number(player.id) === Number(currentUserId));
       if (!isPlayer && game.liveMode === 'paid') {
         const price = parseFloat(game.livePrice || 0.50);
         if (price > 0) {
@@ -7345,9 +7351,8 @@ io.on('connection', (socket) => {
       try {
         const liveGames = gamesManager.getLiveGames();
         for (const game of liveGames) {
-          const isPlayer1 = Number(game.player1.id) === Number(currentUserId);
-          const isPlayer2 = game.player2 && Number(game.player2.id) === Number(currentUserId);
-          if ((isPlayer1 || isPlayer2) && game.status !== 'finished') {
+          const isPlayer = gamesManager.getGameParticipants(game).some((player) => Number(player.id) === Number(currentUserId));
+          if (isPlayer && game.status !== 'finished') {
             io.to(`game:${game.id}`).emit('game-opponent-network-status', {
               userId: currentUserId,
               status: 'offline'

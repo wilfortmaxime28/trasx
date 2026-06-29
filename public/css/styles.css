@@ -11323,7 +11323,7 @@ body[data-theme="dark"] .compose-contact-chip {
     word-spacing: -0.03em;
     letter-spacing: -0.01em;
   }
-}
+
 
   .btn-text-label {
     display: none !important;
@@ -15937,6 +15937,31 @@ body[data-theme="dark"] .active-game-area.domino-mode .game-board-wrapper {
   padding: 0;
 }
 
+.active-game-area.ludo-mode {
+  gap: 18px;
+}
+
+.active-game-area.ludo-mode .game-arena-left {
+  gap: 10px;
+}
+
+.active-game-area.ludo-mode .game-turn-status-bar {
+  display: none;
+}
+
+.active-game-area.ludo-mode .game-board-wrapper,
+body[data-theme="dark"] .active-game-area.ludo-mode .game-board-wrapper {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 4px 0 0;
+}
+
+.active-game-area.ludo-mode .ludo-card {
+  width: min(100%, 900px);
+  margin: 0 auto;
+}
+
 .domino-board-container {
   width: 100%;
   max-width: 980px;
@@ -17323,11 +17348,7 @@ body[data-theme="dark"] .connectfour-grid {
 .ludo-cell.entry-red::before,
 .ludo-cell.entry-green::before,
 .ludo-cell.entry-blue::before,
-.ludo-cell.entry-yellow::before,
-.ludo-cell.star-red::before,
-.ludo-cell.star-green::before,
-.ludo-cell.star-blue::before,
-.ludo-cell.star-yellow::before {
+.ludo-cell.entry-yellow::before {
   position: absolute;
   inset: 0;
   display: flex;
@@ -17366,13 +17387,38 @@ body[data-theme="dark"] .connectfour-grid {
 .ludo-cell.star-green::before,
 .ludo-cell.star-blue::before,
 .ludo-cell.star-yellow::before {
-  content: '★';
-  font-size: clamp(18px, 2.2vw, 26px);
-  -webkit-text-stroke: 0.9px rgba(255, 255, 255, 0.92);
-  paint-order: stroke fill;
-  text-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.18),
-    0 0 5px rgba(255, 255, 255, 0.72);
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: clamp(12px, 1.6vw, 18px);
+  height: clamp(12px, 1.6vw, 18px);
+  border: 2px solid currentColor;
+  border-radius: 999px;
+  background:
+    linear-gradient(currentColor, currentColor) center / 2px 70% no-repeat,
+    linear-gradient(currentColor, currentColor) center / 70% 2px no-repeat,
+    rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.42),
+    0 2px 4px rgba(15, 23, 42, 0.18);
+  transform: translate(-50%, -50%);
+}
+
+.ludo-cell.star-red::after,
+.ludo-cell.star-green::after,
+.ludo-cell.star-blue::after,
+.ludo-cell.star-yellow::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: clamp(3px, 0.4vw, 5px);
+  height: clamp(3px, 0.4vw, 5px);
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.86);
 }
 
 .ludo-cell.star-red::before {
@@ -17388,6 +17434,22 @@ body[data-theme="dark"] .connectfour-grid {
 }
 
 .ludo-cell.star-yellow::before {
+  color: #ffc400;
+}
+
+.ludo-cell.star-red::after {
+  color: #f01812;
+}
+
+.ludo-cell.star-green::after {
+  color: #149447;
+}
+
+.ludo-cell.star-blue::after {
+  color: #062b9b;
+}
+
+.ludo-cell.star-yellow::after {
   color: #ffc400;
 }
 
@@ -17492,7 +17554,7 @@ body[data-theme="dark"] .connectfour-grid {
   box-shadow: none;
   border-radius: 0;
   user-select: none;
-  transition: transform 0.14s ease, box-shadow 0.14s ease, opacity 0.14s ease;
+  transition: transform 0.21s ease, box-shadow 0.18s ease, opacity 0.18s ease;
 }
 
 .ludo-token::before {
@@ -17814,12 +17876,24 @@ body[data-theme="dark"] .ludo-dice-face {
   .ludo-cell.entry-red::before,
   .ludo-cell.entry-green::before,
   .ludo-cell.entry-yellow::before,
-  .ludo-cell.entry-blue::before,
+  .ludo-cell.entry-blue::before {
+    font-size: clamp(14px, 4vw, 20px);
+  }
+
   .ludo-cell.star-red::before,
   .ludo-cell.star-green::before,
   .ludo-cell.star-blue::before,
   .ludo-cell.star-yellow::before {
-    font-size: clamp(14px, 4vw, 20px);
+    width: clamp(8px, 2.4vw, 13px);
+    height: clamp(8px, 2.4vw, 13px);
+  }
+
+  .ludo-cell.star-red::after,
+  .ludo-cell.star-green::after,
+  .ludo-cell.star-blue::after,
+  .ludo-cell.star-yellow::after {
+    width: clamp(3px, 0.9vw, 5px);
+    height: clamp(3px, 0.9vw, 5px);
   }
 
   .ludo-token {
@@ -20344,6 +20418,10 @@ body[data-theme="dark"] .market-container-section {
     padding: 10px !important;
     border-radius: 16px !important;
   }
+  .active-game-area.ludo-mode .game-board-wrapper {
+    padding: 2px 0 0 !important;
+    border-radius: 0 !important;
+  }
   .connectfour-grid-container {
     padding: 10px !important;
     border-radius: 16px !important;
@@ -20448,6 +20526,10 @@ body[data-theme="dark"] .market-container-section {
       width: 100% !important;
       box-sizing: border-box !important;
     }
+    .active-game-area.ludo-mode .game-board-wrapper {
+      padding: 0 !important;
+      border-radius: 0 !important;
+    }
     .connectfour-grid-container {
       padding: 8px !important;
       border-radius: 16px !important;
@@ -20535,6 +20617,21 @@ body[data-theme="dark"] .market-container-section {
 .bot-select-card.active .bot-card-glow {
   opacity: 1;
   background: radial-gradient(circle at 50% -20%, rgba(124, 77, 255, 0.3) 0%, transparent 60%);
+}
+
+.bot-select-card.is-multi-selected::after {
+  content: "Choisi";
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #ffffff;
+  background: linear-gradient(135deg, #7c4dff 0%, #4f46e5 100%);
+  box-shadow: 0 8px 18px rgba(79, 70, 229, 0.22);
 }
 
 /* Online Indicator badge */

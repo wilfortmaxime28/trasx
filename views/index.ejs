@@ -2941,7 +2941,7 @@ function getYouTubeId(url) {
 
                         <div class="setup-row-grid">
                           <!-- Choice 2: Select Opponent -->
-                          <div class="setup-option-group">
+                          <div class="setup-option-group" id="setupOpponentGroupWrapper">
                             <span class="setup-group-label">Adversaire</span>
                             <div class="sub-choices-grid">
                               <label class="sub-choice-option active">
@@ -2962,7 +2962,7 @@ function getYouTubeId(url) {
                           </div>
 
                           <!-- Choice 3: Entry Mode -->
-                          <div class="setup-option-group">
+                          <div class="setup-option-group" id="setupModeGroupWrapper">
                             <span class="setup-group-label"><%= tText("Type de Partie") %></span>
                             <div class="sub-choices-grid">
                               <label class="sub-choice-option active">
@@ -2980,6 +2980,29 @@ function getYouTubeId(url) {
                                 </div>
                               </label>
                             </div>
+                          </div>
+                        </div>
+
+                        <div class="setup-option-group" id="setupLudoModeWrapper" style="display: none; margin-top: 15px; margin-bottom: 15px;">
+                          <span class="setup-group-label">Adversaire du Ludo</span>
+                          <div class="sub-choices-grid">
+                            <label class="sub-choice-option active">
+                              <input type="radio" name="setupLudoMode" value="bots" checked>
+                              <div class="choice-card-content">
+                                <i data-lucide="bot"></i>
+                                <span>Robots</span>
+                              </div>
+                            </label>
+                            <label class="sub-choice-option">
+                              <input type="radio" name="setupLudoMode" value="players">
+                              <div class="choice-card-content">
+                                <i data-lucide="users-round"></i>
+                                <span>Utilisateurs</span>
+                              </div>
+                            </label>
+                          </div>
+                          <div id="setupLudoHint" class="setup-ludo-hint" style="margin-top: 10px; font-size: 12px; line-height: 1.5; color: var(--text-muted);">
+                            Le Ludo fonctionne de nouveau en duel, avec 2 joueurs uniquement.
                           </div>
                         </div>
 
@@ -3024,7 +3047,7 @@ function getYouTubeId(url) {
                         </div>
 
                         <!-- Select Game Rounds (impair, max 7) -->
-                        <div class="setup-option-group" style="margin-top: 15px; margin-bottom: 15px;">
+                        <div class="setup-option-group" id="setupRoundsWrapper" style="margin-top: 15px; margin-bottom: 15px;">
                           <span class="setup-group-label"><%= tText("Nombre de parties (impair, max 7)") %></span>
                           <select id="setupGameRounds" name="setupGameRounds" style="width: 100%; height: 48px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: #fff; font-size: 1rem; padding: 0 14px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--accent-color, #7c4dff)'" onblur="this.style.borderColor='rgba(255, 255, 255, 0.1)'">
                             <option value="1" style="background: var(--bg-card); color: #fff;"><%= tText("1 partie (Unique)") %></option>
@@ -3193,7 +3216,6 @@ function getYouTubeId(url) {
                     
                     <!-- Players Scoreboard -->
                     <div class="game-scoreboard">
-                      
                       <!-- Player 1 -->
                       <div class="scoreboard-player p1">
                         <div class="player-avatar-wrap" style="position: relative; cursor: pointer;">

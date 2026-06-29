@@ -23,12 +23,14 @@ const OFFICIAL_SEED_REMOTE_DOWNLOAD_LIMITS = {
   image: 12 * 1024 * 1024,
   video: 40 * 1024 * 1024
 };
+const OFFICIAL_SEED_SHORT_AUDIO_DURATION = 24;
 const OFFICIAL_SEED_HTTP_HEADERS = {
   'User-Agent': 'TRASX Official Seed Bot/1.0',
   'Accept': '*/*'
 };
 
 const PUBLIC_ROOT = path.join(__dirname, '../public');
+const OFFICIAL_SEED_FALLBACK_AUDIO_UPLOAD_DIR = path.join(PUBLIC_ROOT, 'uploads/reels');
 const OFFICIAL_SEED_LIBRARY_ROOT = path.join(PUBLIC_ROOT, 'assets/official-seed-media');
 const OFFICIAL_SEED_UPLOAD_ROOT = path.join(PUBLIC_ROOT, 'uploads/official-seed');
 const OFFICIAL_SEED_AVATAR_UPLOAD_DIR = path.join(OFFICIAL_SEED_UPLOAD_ROOT, 'avatars');
@@ -40,19 +42,22 @@ const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm', '.ogg']);
 
 const OFFICIAL_SEED_FIRST_NAMES = [
-  'Amelie', 'Sofia', 'Emma', 'Chloe', 'Jade', 'Camille', 'Lina', 'Sarah', 'Elena', 'Mila',
+  'Amina', 'Nadia', 'Yara', 'Safiya', 'Mariam', 'Aya', 'Leila', 'Fatou', 'Ndeye', 'Imane',
+  'Sofia', 'Emma', 'Chloe', 'Jade', 'Camille', 'Lina', 'Elena', 'Mila', 'Clara', 'Louise',
+  'Maya', 'Nina', 'Eva', 'Rose', 'Alicia', 'Iris', 'Nora', 'Yasmine', 'Kiara', 'Selena',
+  'Naomi', 'Ines', 'Mia', 'Sara', 'Talia', 'Rania', 'Samira', 'Mina', 'Laila', 'Ariane',
   'Noah', 'Lucas', 'Ethan', 'Gabriel', 'Nathan', 'Julien', 'Matteo', 'Daniel', 'Samuel', 'David',
-  'Ines', 'Lea', 'Maya', 'Anais', 'Mia', 'Nina', 'Eva', 'Rose', 'Clara', 'Louise',
-  'Alicia', 'Maelle', 'Iris', 'Celine', 'Nora', 'Yasmine', 'Melissa', 'Ariana', 'Kiara', 'Selena',
-  'Hugo', 'Leo', 'Adam', 'Louis', 'Maxime', 'Raphael', 'Theo', 'Victor', 'Amos', 'Kenzo',
-  'Rayan', 'Yanis', 'Mathis', 'Arthur', 'Bastien', 'Enzo', 'Marius', 'Alexis', 'Kevin', 'Andre'
+  'Hugo', 'Leo', 'Adam', 'Louis', 'Raphael', 'Theo', 'Victor', 'Amos', 'Kenzo', 'Rayan',
+  'Yanis', 'Mathis', 'Arthur', 'Bastien', 'Marius', 'Alexis', 'Andre', 'Karim', 'Amadou', 'Idriss',
+  'Koffi', 'Junior', 'Malik', 'Nabil', 'Mehdi', 'Ariel', 'Sami', 'Anis', 'Hassan', 'Ilyas'
 ];
 
 const OFFICIAL_SEED_LAST_NAMES = [
-  'Pierre', 'Dubois', 'Laurent', 'Morel', 'Bernard', 'Joseph', 'Martin', 'Garcia', 'Thomas', 'Petit',
-  'Mercier', 'Roux', 'Simon', 'Fontaine', 'Durand', 'Morin', 'Lopez', 'Charles', 'Benoit', 'Michel',
-  'Renaud', 'Colin', 'Blanchard', 'Henry', 'Baptiste', 'Germain', 'Leroy', 'Marchand', 'Robin', 'Masson',
-  'Delorme', 'Baron', 'Chevalier', 'Renard', 'Moulin', 'Pascal', 'Roche', 'Descamps', 'Valentin', 'Navarro'
+  'Diallo', 'Ndiaye', 'Mensah', 'Mbaye', 'Traore', 'Sow', 'Diop', 'Kone', 'Keita', 'Ouattara',
+  'Joseph', 'Pierre', 'Toussaint', 'Baptiste', 'Charles', 'Desir', 'Jean', 'Laurent', 'Morel', 'Bernard',
+  'Dubois', 'Martin', 'Garcia', 'Thomas', 'Petit', 'Mercier', 'Roux', 'Simon', 'Fontaine', 'Durand',
+  'Morin', 'Lopez', 'Michel', 'Renaud', 'Henry', 'Leroy', 'Marchand', 'Robin', 'Masson', 'Navarro',
+  'Tanaka', 'Sato', 'Nakamura', 'Patel', 'Sharma', 'Khan', 'Rahman', 'Benali', 'Haddad', 'Farah'
 ];
 
 const OFFICIAL_SEED_USERNAME_SUFFIXES = [
@@ -61,82 +66,313 @@ const OFFICIAL_SEED_USERNAME_SUFFIXES = [
 ];
 
 const PROFILE_THEMES = [
-  { label: 'Culture', country: 'France', tag: '#CultureTRASX' },
-  { label: 'Sport', country: 'Brazil', tag: '#SportTRASX' },
-  { label: 'Music', country: 'United States', tag: '#MusicTRASX' },
-  { label: 'Tech', country: 'Canada', tag: '#TechTRASX' },
-  { label: 'Lifestyle', country: 'Spain', tag: '#LifestyleTRASX' },
-  { label: 'Gaming', country: 'Japan', tag: '#GamingTRASX' },
-  { label: 'Humour', country: 'Haiti', tag: '#HumourTRASX' },
-  { label: 'Newsroom', country: 'United Kingdom', tag: '#InsideTRASX' },
-  { label: 'Motion', country: 'South Korea', tag: '#MotionTRASX' },
-  { label: 'Studio', country: 'Nigeria', tag: '#StudioTRASX' }
+  {
+    label: 'Culture',
+    country: 'Senegal',
+    region: 'West Africa',
+    tag: '#CultureTRASX',
+    cultureTag: '#AfriqueCreative',
+    avatarKeywords: 'west african creator portrait',
+    photoKeywords: 'west african culture art people community',
+    videoKeywords: 'west african culture dance street people',
+    bioHeadline: 'culture africaine et scenes creatives ouvertes sur le monde',
+    feedAngles: [
+      'Les scenes culturelles africaines apportent de la couleur, de la memoire et beaucoup d energie.',
+      'Quand heritage visuel et creation moderne se rencontrent, le contenu gagne tout de suite en relief.',
+      'Montrer des references culturelles fortes aide le feed a garder une vraie personnalite.'
+    ],
+    shortAngles: [
+      'Ambiance culturelle vive, details nets et mouvement naturel dans le cadre.',
+      'Une capsule qui fait circuler l energie du terrain sans perdre l elegance visuelle.',
+      'Quelques secondes suffisent pour montrer une scene qui a du caractere.'
+    ],
+    statusAngles: [
+      'Instant culture partage depuis une scene africaine qui inspire.',
+      'Petit signal visuel depuis une ambiance ouverte, vivante et chaleureuse.',
+      'Pause rapide autour d une scene culturelle qui attire vraiment l oeil.'
+    ]
+  },
+  {
+    label: 'Sport',
+    country: 'Brazil',
+    region: 'Latin America',
+    tag: '#SportTRASX',
+    cultureTag: '#PulseLatine',
+    avatarKeywords: 'latin athlete portrait outdoors',
+    photoKeywords: 'latin america sport training people stadium',
+    videoKeywords: 'latin america football training running people',
+    bioHeadline: 'sport, discipline et mouvements qui parlent a plusieurs cultures',
+    feedAngles: [
+      'Le sport raconte bien la rigueur, la repetition et l envie de progresser ensemble.',
+      'Les contenus sportifs tiennent mieux quand ils montrent le rythme et l effort reel.',
+      'Une bonne scene de sport garde toujours quelque chose de collectif et direct.'
+    ],
+    shortAngles: [
+      'Rythme rapide, geste net et energie immediate.',
+      'Un format court qui donne tout de suite une sensation de mouvement propre.',
+      'Un passage sportif simple, intense et facile a retenir.'
+    ],
+    statusAngles: [
+      'Petit passage sport pour garder le tempo sur TRASX.',
+      'Mise a jour rapide autour d une scene active et motivee.',
+      'Un moment sportif propre et direct avant la suite du flux.'
+    ]
+  },
+  {
+    label: 'Music',
+    country: 'Nigeria',
+    region: 'West Africa',
+    tag: '#MusicTRASX',
+    cultureTag: '#AfroPulse',
+    avatarKeywords: 'african music artist portrait',
+    photoKeywords: 'african music studio artist lifestyle',
+    videoKeywords: 'afrobeats music studio performance people',
+    bioHeadline: 'musique, vibration et creation connectee entre Afrique et autres scenes',
+    feedAngles: [
+      'La musique garde le feed vivant quand l image et le rythme avancent ensemble.',
+      'Les scenes afro et globales donnent une identite forte a des contenus tres courts.',
+      'Un bon angle musical fait exister une ambiance avant meme la premiere phrase.'
+    ],
+    shortAngles: [
+      'Beat visuel, cadence propre et ambiance directe.',
+      'Une coupe courte pour faire monter l energie sans forcer la narration.',
+      'Le bon rythme suffit parfois a porter tout le short.'
+    ],
+    statusAngles: [
+      'Signal musique du moment avec une ambiance chaude et propre.',
+      'Instant rapide autour d une vibration qui donne envie de rester.',
+      'Mini capsule audio visuelle pour garder la presence vivante.'
+    ]
+  },
+  {
+    label: 'Tech',
+    country: 'India',
+    region: 'South Asia',
+    tag: '#TechTRASX',
+    cultureTag: '#FutureMakers',
+    avatarKeywords: 'south asian tech creator portrait',
+    photoKeywords: 'south asian technology startup creator laptop',
+    videoKeywords: 'south asian technology startup office creator',
+    bioHeadline: 'tech utile, execution rapide et creation pensee pour des usages reels',
+    feedAngles: [
+      'La technologie la plus convaincante reste celle qui simplifie vraiment les usages.',
+      'Un contenu tech propre montre a la fois l idee, le contexte et l humain derriere.',
+      'Le bon signal tech melange precision, calme et clartes visuelles.'
+    ],
+    shortAngles: [
+      'Plan court, interface nette, execution sans bruit.',
+      'Un short tech efficace montre juste ce qu il faut pour donner envie de voir plus.',
+      'Des gestes simples, une idee claire et un rythme qui reste lisible.'
+    ],
+    statusAngles: [
+      'Point rapide depuis une scene tech qui reste claire et utile.',
+      'Petit passage produit, outils et gestes concrets.',
+      'Mise a jour courte depuis un univers tech propre et fluide.'
+    ]
+  },
+  {
+    label: 'Lifestyle',
+    country: 'France',
+    region: 'Europe',
+    tag: '#LifestyleTRASX',
+    cultureTag: '#CityRhythm',
+    avatarKeywords: 'european lifestyle creator portrait',
+    photoKeywords: 'europe lifestyle city people fashion editorial',
+    videoKeywords: 'europe lifestyle city walk fashion people',
+    bioHeadline: 'lifestyle, design du quotidien et details qui rendent une page plus chic',
+    feedAngles: [
+      'Le lifestyle fonctionne mieux quand il reste simple, propre et sincere.',
+      'Des details bien cadres suffisent souvent a installer une atmosphere complete.',
+      'Le quotidien devient plus fort visuellement quand il garde une ligne claire.'
+    ],
+    shortAngles: [
+      'Petit moment lifestyle, propre, mobile et facile a suivre.',
+      'Une coupe douce qui laisse la scene respirer et rester elegante.',
+      'Format vertical, ambiance visuelle legere et finitions soignees.'
+    ],
+    statusAngles: [
+      'Pause lifestyle depuis une scene claire et bien cadree.',
+      'Instant du quotidien qui garde une touche nette et inspiree.',
+      'Petit passage visuel pour rendre le flux plus doux et plus chic.'
+    ]
+  },
+  {
+    label: 'Gaming',
+    country: 'Japan',
+    region: 'East Asia',
+    tag: '#GamingTRASX',
+    cultureTag: '#PlayCulture',
+    avatarKeywords: 'east asian gamer portrait setup',
+    photoKeywords: 'east asia gaming setup player neon',
+    videoKeywords: 'gaming setup player neon reaction movement',
+    bioHeadline: 'gaming, precision, reflexes et univers qui accrochent tout de suite',
+    feedAngles: [
+      'Le gaming vit mieux quand on voit a la fois la tension et la maitrise du moment.',
+      'Les contenus de jeu gagnent quand le cadre reste lisible et nerveux a la fois.',
+      'Une vraie scene gaming donne du rythme sans saturer l ecran.'
+    ],
+    shortAngles: [
+      'Un short nerveux, propre et tres lisible.',
+      'Reaction rapide, decor fort et sensation de timing reussi.',
+      'Quelques secondes suffisent pour transmettre un vrai moment de jeu.'
+    ],
+    statusAngles: [
+      'Petit signal gaming pour garder le flux bien reveille.',
+      'Instant rapide depuis un setup qui attire tout de suite le regard.',
+      'Pause courte, cadre net et ambiance de jeu assumee.'
+    ]
+  },
+  {
+    label: 'Humour',
+    country: 'Haiti',
+    region: 'Caribbean',
+    tag: '#HumourTRASX',
+    cultureTag: '#SmileCaribbean',
+    avatarKeywords: 'caribbean smiling portrait creator',
+    photoKeywords: 'caribbean friends laughter lifestyle people',
+    videoKeywords: 'caribbean friends laughing street lifestyle',
+    bioHeadline: 'humour, chaleur humaine et contenus qui respirent sans forcer',
+    feedAngles: [
+      'Un peu d humour bien dose garde la page plus humaine et plus memorable.',
+      'Le contenu leger marche mieux quand il reste naturel et bien observe.',
+      'Une scene simple et souriante peut tenir le regard plus longtemps qu un long texte.'
+    ],
+    shortAngles: [
+      'Petit moment leger, rythme propre et sourire immediat.',
+      'Une coupe courte qui garde l humour simple et visuel.',
+      'Le bon format pour un instant fun sans surcharge.'
+    ],
+    statusAngles: [
+      'Pause legere venue d une scene souriante et vivante.',
+      'Petit moment de respiration dans le flux officiel.',
+      'Mise a jour courte pour garder le feed plus chaleureux.'
+    ]
+  },
+  {
+    label: 'Newsroom',
+    country: 'Canada',
+    region: 'North America',
+    tag: '#InsideTRASX',
+    cultureTag: '#InsideVoices',
+    avatarKeywords: 'north american newsroom portrait professional',
+    photoKeywords: 'north america newsroom office team professional',
+    videoKeywords: 'newsroom office team meeting professional',
+    bioHeadline: 'coulisses, coordination et informations propres sur la vie de la plateforme',
+    feedAngles: [
+      'Les coulisses racontent mieux une plateforme quand elles restent claires et ouvertes.',
+      'Montrer les details internes avec sobriete renforce la confiance dans le produit.',
+      'Une newsroom moderne doit rester lisible, calme et transparente.'
+    ],
+    shortAngles: [
+      'Short interne, message direct et execution propre.',
+      'Quelques secondes pour montrer une dynamique d equipe claire.',
+      'Un format court pour garder la relation produit communaute bien vivante.'
+    ],
+    statusAngles: [
+      'Point rapide depuis les coulisses de TRASX.',
+      'Signal court autour du travail d equipe et des evolutions internes.',
+      'Petit passage newsroom pour garder la plateforme proche de sa communaute.'
+    ]
+  },
+  {
+    label: 'Motion',
+    country: 'South Africa',
+    region: 'Southern Africa',
+    tag: '#MotionTRASX',
+    cultureTag: '#MoveWithStyle',
+    avatarKeywords: 'south african dancer portrait creator',
+    photoKeywords: 'south africa dance motion creator people',
+    videoKeywords: 'south africa dance movement performance people',
+    bioHeadline: 'mouvement, choregraphie visuelle et scenes qui tiennent le regard',
+    feedAngles: [
+      'Le mouvement garde un contenu vivant quand la lecture visuelle reste propre.',
+      'Une bonne scene dynamique fait circuler l energie sans perdre la clarte.',
+      'Les contenus en mouvement gagnent tout de suite quand la composition reste nette.'
+    ],
+    shortAngles: [
+      'Mouvement franc, details visibles et energie continue.',
+      'Un plan vertical pense pour donner du souffle a la scene.',
+      'Le bon dosage entre vitesse, lisibilite et style.'
+    ],
+    statusAngles: [
+      'Capsule rapide autour d une scene qui bouge avec style.',
+      'Petit moment dynamique pour donner du relief au flux.',
+      'Un passage court ou le mouvement suffit a raconter la scene.'
+    ]
+  },
+  {
+    label: 'Studio',
+    country: 'Morocco',
+    region: 'North Africa',
+    tag: '#StudioTRASX',
+    cultureTag: '#StudioNomad',
+    avatarKeywords: 'north african creative portrait studio',
+    photoKeywords: 'north africa creative studio people design',
+    videoKeywords: 'north africa creative studio process people',
+    bioHeadline: 'studio creatif, execution propre et regards melanges entre Afrique et autres horizons',
+    feedAngles: [
+      'Les contenus studio tiennent mieux quand ils montrent la matiere, le geste et la patience.',
+      'Un cadre creatif solide donne une vraie profondeur meme a une publication tres simple.',
+      'Le travail de fond cree souvent les posts les plus durables dans le feed.'
+    ],
+    shortAngles: [
+      'Petit extrait de creation, cadence souple et details propres.',
+      'Un short studio pour montrer le geste sans surjouer la scene.',
+      'Processus, texture et rythme dans un format rapide.'
+    ],
+    statusAngles: [
+      'Instant studio pour garder une presence visuelle soignee.',
+      'Petit signal creatif depuis une scene de travail propre et calme.',
+      'Mise a jour courte pour montrer le process sans casser le rythme.'
+    ]
+  }
 ];
 
 const FEED_OPENERS = [
-  'Petit signal positif de la journée',
-  'Le feed TRASX démarre avec une note propre',
-  'Un contenu simple, visuel et clair pour lancer la discussion',
-  'On garde le rythme avec une publication légère et utile',
-  'Une publication pensée pour donner de la vie au feed'
+  'Petit signal positif du moment',
+  'Le feed TRASX repart avec une note propre et vivante',
+  'Une publication claire pour remettre du rythme dans la page',
+  'On garde le tempo avec un contenu simple mais bien pense',
+  'Une touche visuelle pour relancer la conversation',
+  'Un passage rapide pour garder le flux actif et elegant'
 ];
-
-const FEED_BODY_VARIANTS = {
-  Culture: [
-    'La culture circule mieux quand on la partage avec une vraie intention.',
-    'Un bon visuel peut ouvrir une vraie conversation sur les idées et les tendances.'
-  ],
-  Sport: [
-    'La discipline et l energie collective restent toujours des moteurs puissants.',
-    'Le sport raconte souvent les meilleurs exemples de constance et de mental.'
-  ],
-  Music: [
-    'Le son, le rythme et l image peuvent porter une ambiance en quelques secondes.',
-    'Une bonne vibration musicale transforme vite un moment simple en souvenir fort.'
-  ],
-  Tech: [
-    'La technologie utile reste celle qui rend les usages plus fluides et plus humains.',
-    'Construire vite, mais proprement, change tout dans une plateforme qui veut durer.'
-  ],
-  Lifestyle: [
-    'Les petites habitudes elegantes construisent souvent les plus grands resultats.',
-    'Le lifestyle, c est aussi la facon de rendre le quotidien plus net et plus inspire.'
-  ],
-  Gaming: [
-    'Le jeu apprend le timing, la lecture et la capacite de rebondir sans bruit.',
-    'Les univers gaming vivent mieux quand la communaute partage ses moments forts.'
-  ],
-  Humour: [
-    'Un peu d humour bien place fait parfois plus de bien qu un long discours.',
-    'Le contenu leger garde souvent l audience plus longtemps qu on ne le pense.'
-  ],
-  Newsroom: [
-    'Les coulisses d une plateforme meritent aussi des formats simples et transparents.',
-    'Partager les mouvements internes aide a creer une relation plus saine avec la communaute.'
-  ],
-  Motion: [
-    'Le mouvement attire l oeil, mais la coherence retient vraiment l utilisateur.',
-    'Une bonne dynamique visuelle donne du souffle a tout le produit.'
-  ],
-  Studio: [
-    'Un studio creatif solide avance avec regularite, details et identite.',
-    'Le travail de fond produit souvent les contenus les plus durables.'
-  ]
-};
 
 const SHORTS_HOOKS = [
   'Format court, energie directe.',
   'Quelques secondes pour installer une ambiance nette.',
   'Un short simple pour garder le flux vivant.',
   'Contenu vertical, rythme rapide, message clair.',
-  'Le bon format pour une attention immediate.'
+  'Le bon format pour une attention immediate.',
+  'Un passage court pour capter l oeil sans ralentir le flux.'
 ];
 
 const STATUS_HOOKS = [
   'Mise a jour officielle TRASX.',
   'Instant rapide depuis les comptes officiels.',
   'Signal court pour garder la presence active.',
-  'Petit passage dans les status de la plateforme.'
+  'Petit passage dans les status de la plateforme.',
+  'Une capsule visuelle pour garder le lien actif.'
+];
+
+const FEED_CLOSERS = [
+  'On melange les references africaines et globales pour garder un affichage plus riche.',
+  'Le but reste simple: varier les regards, les rythmes et les cultures dans le meme flux.',
+  'Le feed gagne quand plusieurs scenes du monde se rencontrent sans se ressembler.',
+  'Plus le melange est naturel, plus le contenu parait vivant.'
+];
+
+const SHORTS_CLOSERS = [
+  'Le mix des cultures garde le scroll plus vivant.',
+  'Afrique, Caraibes, Asie, Europe et Ameriques doivent se croiser naturellement ici.',
+  'Un short plus fort commence souvent par un vrai melange d ambiances.',
+  'Le flux vertical reste plus riche quand les scenes changent vraiment.'
+];
+
+const STATUS_CLOSERS = [
+  'Toujours avec un melange de references africaines et globales.',
+  'Pour garder la plateforme ouverte a plusieurs scenes du monde.',
+  'Le but est de faire respirer le flux avec des regards melanges.',
+  'On garde le signal court, mais jamais uniforme.'
 ];
 
 let mediaLibraryCache = {
@@ -293,57 +529,151 @@ function rotateList(items, offset = 0) {
   return list.slice(normalizedOffset).concat(list.slice(0, normalizedOffset));
 }
 
+function buildSeedHash(...parts) {
+  const input = parts
+    .flatMap((part) => Array.isArray(part) ? part : [part])
+    .map((part) => String(part ?? ''))
+    .join('|');
+
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = ((hash << 5) - hash) + input.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function pickSeededOption(options, ...seedParts) {
+  const list = Array.isArray(options) ? options.filter(Boolean) : [];
+  if (!list.length) return '';
+  return list[buildSeedHash(...seedParts) % list.length];
+}
+
+function shuffleListBySeed(items, ...seedParts) {
+  const list = Array.isArray(items) ? items.slice() : [];
+  if (list.length <= 1) return list;
+
+  return list
+    .map((item, index) => ({
+      item,
+      rank: buildSeedHash(
+        ...seedParts,
+        index,
+        item?.id,
+        item?.slotNumber,
+        item?.seed_slot,
+        item?.username,
+        item?.publicUrl,
+        item?.remoteUrl,
+        item?.audio_url
+      )
+    }))
+    .sort((left, right) => left.rank - right.rank)
+    .map((entry) => entry.item);
+}
+
 function buildLocalSummaryText(count, label) {
   const total = Number(count) || 0;
   return `${total} media · ${label}`;
 }
 
-function getThemeKeyword(themeLabel = 'Studio') {
+function getThemeProfileForSlot(slotNumber = 1) {
+  const safeSlot = Math.max(1, Number(slotNumber) || 1);
+  return PROFILE_THEMES[(safeSlot - 1) % PROFILE_THEMES.length];
+}
+
+function getThemeProfileByLabel(themeLabel = 'Studio') {
   const normalized = String(themeLabel || 'Studio').trim().toLowerCase();
-  if (normalized === 'culture') return 'art culture people';
-  if (normalized === 'sport') return 'sport training people';
-  if (normalized === 'music') return 'music studio artist';
-  if (normalized === 'tech') return 'technology laptop creator';
-  if (normalized === 'lifestyle') return 'lifestyle city people';
-  if (normalized === 'gaming') return 'gaming setup player';
-  if (normalized === 'humour') return 'friends laughing fun';
-  if (normalized === 'newsroom') return 'team newsroom office';
-  if (normalized === 'motion') return 'dance motion people';
-  return 'creative studio people';
+  return PROFILE_THEMES.find((theme) => String(theme.label || '').trim().toLowerCase() === normalized) || null;
+}
+
+function resolveThemeProfile(user = {}) {
+  return getThemeProfileByLabel(user?.theme_label)
+    || getThemeProfileForSlot(Number(user?.slotNumber || user?.seed_slot || 1));
+}
+
+function isAfricanTheme(theme = {}) {
+  const region = String(theme?.region || '').toLowerCase();
+  const country = String(theme?.country || '').toLowerCase();
+  return region.includes('africa') || ['senegal', 'nigeria'].includes(country);
+}
+
+function pickMixedCultureTheme(theme = {}, slotIndex = 0, batchSeed = 0, kind = 'feed') {
+  const oppositeCultureThemes = PROFILE_THEMES.filter((candidate) => (
+    candidate
+    && candidate.label !== theme.label
+    && isAfricanTheme(candidate) !== isAfricanTheme(theme)
+  ));
+  const fallbackThemes = PROFILE_THEMES.filter((candidate) => candidate && candidate.label !== theme.label);
+  return pickSeededOption(
+    oppositeCultureThemes.length ? oppositeCultureThemes : fallbackThemes,
+    kind,
+    'culture-partner',
+    batchSeed,
+    theme.label,
+    slotIndex
+  ) || theme;
+}
+
+function buildCultureBridgeLine(theme = {}, partnerTheme = {}, slotIndex = 0, batchSeed = 0, kind = 'feed') {
+  const templates = [
+    `${theme.region} rencontre ${String(partnerTheme.region || '').toLowerCase()} pour garder une presence moins repetitive.`,
+    `On relie ${theme.country} et ${partnerTheme.country} dans le meme flux pour croiser Afrique et autres scenes du monde.`,
+    `${theme.label} avance ici avec un pont visuel entre ${theme.region.toLowerCase()} et ${String(partnerTheme.region || '').toLowerCase()}.`,
+    `Le rendu reste plus vivant quand ${theme.region.toLowerCase()} se melange a ${String(partnerTheme.region || '').toLowerCase()} sans copier la meme formule.`
+  ];
+
+  return pickSeededOption(
+    templates,
+    kind,
+    'culture-bridge-line',
+    batchSeed,
+    theme.label,
+    partnerTheme.label,
+    slotIndex
+  );
 }
 
 function buildPexelsPhotoQueries(kind = 'feed') {
   if (kind === 'avatar') {
-    return [
-      'portrait smiling woman natural light',
-      'portrait smiling man natural light',
-      'casual creator portrait outdoors',
-      'friendly professional portrait person',
-      'young adult portrait soft daylight',
-      'editorial face portrait lifestyle',
-      'street portrait confident person'
-    ];
+    return PROFILE_THEMES.flatMap((theme) => [
+      `${theme.avatarKeywords} smiling portrait natural light`,
+      `${theme.avatarKeywords} friendly portrait outdoors`
+    ]);
   }
 
-  return PROFILE_THEMES.map((theme) => {
-    const keyword = getThemeKeyword(theme.label);
+  return PROFILE_THEMES.flatMap((theme) => {
     if (kind === 'status') {
-      return `${keyword} vertical story moment`;
+      return [
+        `${theme.photoKeywords} vertical story moment`,
+        `${theme.photoKeywords} mobile lifestyle portrait`
+      ];
     }
-    return `${keyword} lifestyle editorial`;
+    return [
+      `${theme.photoKeywords} editorial social moment`,
+      `${theme.photoKeywords} community lifestyle portrait`
+    ];
   });
 }
 
 function buildPexelsVideoQueries(kind = 'shorts') {
-  return PROFILE_THEMES.map((theme) => {
-    const keyword = getThemeKeyword(theme.label);
+  return PROFILE_THEMES.flatMap((theme) => {
     if (kind === 'status') {
-      return `${keyword} short vertical clip`;
+      return [
+        `${theme.videoKeywords} short vertical clip`,
+        `${theme.videoKeywords} portrait motion story`
+      ];
     }
     if (kind === 'feed') {
-      return `${keyword} lifestyle cinematic clip`;
+      return [
+        `${theme.videoKeywords} lifestyle cinematic clip`,
+        `${theme.videoKeywords} editorial social clip`
+      ];
     }
-    return `${keyword} vertical motion`;
+    return [
+      `${theme.videoKeywords} vertical motion`,
+      `${theme.videoKeywords} mobile short video`
+    ];
   });
 }
 
@@ -657,13 +987,13 @@ async function buildMediaLibrary() {
         ? 'Internet · portraits Pexels actifs'
         : buildLocalSummaryText(avatars.length, avatarPrimary.length ? 'dossier seed' : 'bibliotheque existante'),
       feedSummaryText: remoteProviderEnabled
-        ? 'Internet · photos et videos Pexels actives'
+        ? 'Internet · selection feed Pexels mixee'
         : 'Internet requis · enregistrez une clé Pexels',
       shortsSummaryText: remoteProviderEnabled
-        ? 'Internet · Pexels API active'
+        ? 'Internet · shorts Pexels + audio de la plateforme'
         : 'Internet requis · enregistrez une clé Pexels',
       statusSummaryText: remoteProviderEnabled
-        ? 'Internet · Pexels API active'
+        ? 'Internet · selection status Pexels mixee'
         : 'Internet requis · enregistrez une clé Pexels'
     }
   };
@@ -887,21 +1217,12 @@ async function preparePexelsMediaPool(kind, targetCount) {
   const poolSize = getOfficialSeedPoolSize(targetCount);
 
   if (kind === 'feed') {
-    const videoPoolTarget = Math.max(1, Math.floor(poolSize * 0.35));
-    const images = await collectPexelsAssets(
+    return collectPexelsAssets(
       buildPexelsPhotoQueries('feed'),
       poolSize,
       searchPexelsPhotos,
       { perPage: 18, orientation: 'landscape' }
     );
-    const videos = await collectPexelsAssets(
-      buildPexelsVideoQueries('feed'),
-      videoPoolTarget,
-      searchPexelsVideos,
-      { perPage: 14, orientation: 'landscape', size: 'medium' }
-    );
-
-    return mergeAssetPools(images, videos, poolSize);
   }
 
   if (kind === 'shorts') {
@@ -914,21 +1235,12 @@ async function preparePexelsMediaPool(kind, targetCount) {
   }
 
   if (kind === 'status') {
-    const videoPoolTarget = Math.max(3, Math.floor(poolSize * 0.4));
-    const images = await collectPexelsAssets(
+    return collectPexelsAssets(
       buildPexelsPhotoQueries('status'),
       poolSize,
       searchPexelsPhotos,
       { perPage: 14, orientation: 'portrait' }
     );
-    const videos = await collectPexelsAssets(
-      buildPexelsVideoQueries('status'),
-      videoPoolTarget,
-      searchPexelsVideos,
-      { perPage: 10, orientation: 'portrait', size: 'small' }
-    );
-
-    return mergeAssetPools(images, videos, poolSize);
   }
 
   return [];
@@ -1071,7 +1383,7 @@ async function prepareOfficialSeedContentPool(kind, targetCount, mediaLibrary) {
 }
 
 function buildProfileDescriptor(slotNumber) {
-  const theme = PROFILE_THEMES[(slotNumber - 1) % PROFILE_THEMES.length];
+  const theme = getThemeProfileForSlot(slotNumber);
   const combinationsCount = OFFICIAL_SEED_FIRST_NAMES.length * OFFICIAL_SEED_LAST_NAMES.length;
   const pairIndex = (((slotNumber - 1) * 37) % combinationsCount + combinationsCount) % combinationsCount;
   const firstName = OFFICIAL_SEED_FIRST_NAMES[pairIndex % OFFICIAL_SEED_FIRST_NAMES.length];
@@ -1090,7 +1402,7 @@ function buildProfileDescriptor(slotNumber) {
     displayName,
     firstName,
     lastName,
-    bio: `Compte officiel TRASX gere par la plateforme pour animer le contenu initial autour de ${theme.label.toLowerCase()}. ${theme.tag} #OfficialTRASX`,
+    bio: `Compte officiel TRASX gere par la plateforme pour animer le contenu initial autour de ${theme.label.toLowerCase()}, ${theme.bioHeadline}, avec un vrai melange entre ${theme.region.toLowerCase()} et autres cultures. ${theme.tag} ${theme.cultureTag} #OfficialTRASX`,
     country: theme.country
   };
 }
@@ -1122,33 +1434,43 @@ function buildUniqueOfficialSeedDescriptor(slotNumber, usedUsernames, usedEmails
   throw new Error(`Impossible de générer un identifiant unique propre pour le compte officiel #${slotNumber}.`);
 }
 
-function buildFeedContent(user, slotIndex) {
-  const themeLabel = String(user.theme_label || 'Studio');
-  const tag = String(user.theme_tag || '#OfficialTRASX');
-  const bodyOptions = FEED_BODY_VARIANTS[themeLabel] || FEED_BODY_VARIANTS.Studio;
-  const opener = FEED_OPENERS[slotIndex % FEED_OPENERS.length];
-  const body = bodyOptions[slotIndex % bodyOptions.length];
-  return `${opener}. ${body} ${tag} #OfficialTRASX #Trasx`;
+function buildFeedContent(user, slotIndex, batchSeed = 0) {
+  const theme = resolveThemeProfile(user);
+  const partnerTheme = pickMixedCultureTheme(theme, slotIndex, batchSeed, 'feed');
+  const opener = pickSeededOption(FEED_OPENERS, 'feed-opener', batchSeed, user?.slotNumber, slotIndex, theme.label);
+  const body = pickSeededOption(theme.feedAngles, 'feed-body', batchSeed, user?.slotNumber, slotIndex, theme.region);
+  const cultureLine = buildCultureBridgeLine(theme, partnerTheme, slotIndex, batchSeed, 'feed');
+  const closer = pickSeededOption(FEED_CLOSERS, 'feed-closer', batchSeed, user?.slotNumber, slotIndex, theme.cultureTag);
+  return `${opener}. ${body} ${cultureLine} ${closer} ${theme.tag} ${theme.cultureTag} ${partnerTheme.tag} #OfficialTRASX #Trasx`;
 }
 
-function buildShortCaption(user, slotIndex) {
-  const themeLabel = String(user.theme_label || 'Studio');
-  const tag = String(user.theme_tag || '#OfficialTRASX');
-  const hook = SHORTS_HOOKS[slotIndex % SHORTS_HOOKS.length];
-  return `${hook} Univers ${themeLabel.toLowerCase()} en avant sur TRASX. ${tag} #ShortsTRASX`;
+function buildShortCaption(user, slotIndex, batchSeed = 0) {
+  const theme = resolveThemeProfile(user);
+  const partnerTheme = pickMixedCultureTheme(theme, slotIndex, batchSeed, 'shorts');
+  const hook = pickSeededOption(SHORTS_HOOKS, 'short-hook', batchSeed, user?.slotNumber, slotIndex, theme.label);
+  const angle = pickSeededOption(theme.shortAngles, 'short-angle', batchSeed, user?.slotNumber, slotIndex, theme.region);
+  const cultureLine = buildCultureBridgeLine(theme, partnerTheme, slotIndex, batchSeed, 'shorts');
+  const closer = pickSeededOption(SHORTS_CLOSERS, 'short-closer', batchSeed, user?.slotNumber, slotIndex, theme.cultureTag);
+  return `${hook} ${angle} ${cultureLine} ${closer} ${theme.tag} ${theme.cultureTag} ${partnerTheme.tag} #ShortsTRASX`;
 }
 
-function buildShortSoundName(user, slotIndex) {
-  const themeLabel = String(user.theme_label || 'Studio');
-  const soundLabels = ['Pulse', 'Flow', 'Beat', 'Motion', 'Signal'];
-  return `TRASX ${themeLabel} ${soundLabels[slotIndex % soundLabels.length]}`;
+function buildShortSoundName(user, slotIndex, selectedAudio = null, batchSeed = 0) {
+  const explicitTitle = String(selectedAudio?.title || '').trim();
+  if (explicitTitle) return explicitTitle;
+  const theme = resolveThemeProfile(user);
+  const soundLabels = ['Pulse', 'Flow', 'Beat', 'Motion', 'Signal', 'Wave', 'Cut'];
+  const pickedLabel = pickSeededOption(soundLabels, 'short-sound', batchSeed, user?.slotNumber, slotIndex, theme.region);
+  return `TRASX ${theme.label} ${pickedLabel}`;
 }
 
-function buildStatusCaption(user, slotIndex) {
-  const themeLabel = String(user.theme_label || 'Studio');
-  const tag = String(user.theme_tag || '#OfficialTRASX');
-  const hook = STATUS_HOOKS[slotIndex % STATUS_HOOKS.length];
-  return `${hook} Capsule ${themeLabel.toLowerCase()} du moment. ${tag}`;
+function buildStatusCaption(user, slotIndex, batchSeed = 0) {
+  const theme = resolveThemeProfile(user);
+  const partnerTheme = pickMixedCultureTheme(theme, slotIndex, batchSeed, 'status');
+  const hook = pickSeededOption(STATUS_HOOKS, 'status-hook', batchSeed, user?.slotNumber, slotIndex, theme.label);
+  const angle = pickSeededOption(theme.statusAngles, 'status-angle', batchSeed, user?.slotNumber, slotIndex, theme.region);
+  const cultureLine = buildCultureBridgeLine(theme, partnerTheme, slotIndex, batchSeed, 'status');
+  const closer = pickSeededOption(STATUS_CLOSERS, 'status-closer', batchSeed, user?.slotNumber, slotIndex, theme.cultureTag);
+  return `${hook} ${angle} ${cultureLine} ${closer} ${theme.tag} ${theme.cultureTag} ${partnerTheme.tag}`;
 }
 
 async function copyLibraryAsset(sourcePath, destinationDirectory, targetStem) {
@@ -1171,6 +1493,37 @@ function normalizeContentType(contentType) {
     return normalized;
   }
   return null;
+}
+
+async function getOfficialSeedSharedAudioPool() {
+  const sharedAudios = await Reel.getSharedAudios();
+  const normalizedSharedAudios = (Array.isArray(sharedAudios) ? sharedAudios : [])
+    .filter((audio) => String(audio?.audio_url || '').trim());
+
+  let fallbackAudioEntries = [];
+  try {
+    const localAudioFiles = await fs.readdir(OFFICIAL_SEED_FALLBACK_AUDIO_UPLOAD_DIR, { withFileTypes: true });
+    fallbackAudioEntries = localAudioFiles
+      .filter((entry) => entry.isFile() && ['.mp3', '.wav', '.ogg', '.m4a', '.aac'].includes(path.extname(entry.name).toLowerCase()))
+      .map((entry, index) => ({
+        title: `TRASX Seed Mix ${index + 1}`,
+        audio_url: `/uploads/reels/${entry.name}`
+      }));
+  } catch (_) {
+    fallbackAudioEntries = [];
+  }
+
+  const mergedAudios = [...normalizedSharedAudios, ...fallbackAudioEntries];
+  const seenAudioUrls = new Set();
+
+  return mergedAudios.filter((audio) => {
+    const audioUrl = String(audio?.audio_url || '').trim();
+    if (!audioUrl || seenAudioUrls.has(audioUrl)) {
+      return false;
+    }
+    seenAudioUrls.add(audioUrl);
+    return true;
+  });
 }
 
 async function getOfficialSeedUsers(connection = db) {
@@ -1197,12 +1550,19 @@ async function getOfficialSeedUsers(connection = db) {
     [OFFICIAL_SEED_ACCOUNT_TYPE]
   );
 
-  return rows.map((row, index) => ({
-    ...row,
-    slotNumber: Number(row.seed_slot) > 0 ? Number(row.seed_slot) : index + 1,
-    theme_label: PROFILE_THEMES[index % PROFILE_THEMES.length].label,
-    theme_tag: PROFILE_THEMES[index % PROFILE_THEMES.length].tag
-  }));
+  return rows.map((row, index) => {
+    const slotNumber = Number(row.seed_slot) > 0 ? Number(row.seed_slot) : index + 1;
+    const theme = getThemeProfileForSlot(slotNumber);
+    return {
+      ...row,
+      slotNumber,
+      theme_label: theme.label,
+      theme_tag: theme.tag,
+      theme_region: theme.region,
+      theme_culture_tag: theme.cultureTag,
+      theme_bio_headline: theme.bioHeadline
+    };
+  });
 }
 
 async function getOfficialSeedSummary(connection = db) {
@@ -1441,6 +1801,12 @@ async function generateOfficialSeedContent(contentType) {
     const generationCount = OFFICIAL_SEED_CONTENT_BATCH_SIZE;
     const preparedPool = await prepareOfficialSeedContentPool(normalizedType, generationCount, mediaLibrary);
     const preparedAssets = Array.isArray(preparedPool?.assets) ? preparedPool.assets : [];
+    const batchSeed = Date.now();
+    const mixedUsers = shuffleListBySeed(officialUsers, normalizedType, 'users', batchSeed);
+    const mixedAssets = shuffleListBySeed(preparedAssets, normalizedType, 'assets', batchSeed);
+    const sharedAudioPool = normalizedType === 'shorts'
+      ? shuffleListBySeed(await getOfficialSeedSharedAudioPool(), normalizedType, 'audios', batchSeed)
+      : [];
     preparedAssets.forEach((asset) => {
       if (asset?.absolutePath) createdFiles.push(asset.absolutePath);
     });
@@ -1455,11 +1821,15 @@ async function generateOfficialSeedContent(contentType) {
       throw new Error('Aucun media disponible pour alimenter les status officiels.');
     }
 
+    if (normalizedType === 'shorts' && !sharedAudioPool.length) {
+      throw new Error('Aucun audio partage ou fallback n’est disponible pour donner du son aux shorts officiels.');
+    }
+
     await connection.beginTransaction();
 
     for (let index = 0; index < generationCount; index += 1) {
-      const user = officialUsers[index % officialUsers.length];
-      const mediaAsset = preparedAssets[index % preparedAssets.length];
+      const user = mixedUsers[index % mixedUsers.length];
+      const mediaAsset = mixedAssets[index % mixedAssets.length];
 
       if (normalizedType === 'feed') {
         const isVideoFeedAsset = mediaAsset.mediaType === 'video';
@@ -1477,7 +1847,7 @@ async function generateOfficialSeedContent(contentType) {
           `,
           [
             user.id,
-            appendOfficialSeedMediaCredit(buildFeedContent(user, index), mediaAsset, isVideoFeedAsset ? 'Video' : 'Photo'),
+            appendOfficialSeedMediaCredit(buildFeedContent(user, index, batchSeed), mediaAsset, isVideoFeedAsset ? 'Video' : 'Photo'),
             mediaAsset.publicUrl,
             isVideoFeedAsset ? 'video' : 'image',
             isVideoFeedAsset ? (mediaAsset.thumbnailUrl || null) : null,
@@ -1489,6 +1859,9 @@ async function generateOfficialSeedContent(contentType) {
       }
 
       if (normalizedType === 'shorts') {
+        const sharedAudio = sharedAudioPool.length
+          ? sharedAudioPool[(index + Number(user.slotNumber || 0)) % sharedAudioPool.length]
+          : null;
         await connection.query(
           `
             INSERT INTO reels (
@@ -1510,12 +1883,12 @@ async function generateOfficialSeedContent(contentType) {
           [
             user.id,
             mediaAsset.publicUrl,
-            buildShortSoundName(user, index),
-            appendOfficialSeedMediaCredit(buildShortCaption(user, index), mediaAsset, 'Video'),
+            buildShortSoundName(user, index, sharedAudio, batchSeed),
+            appendOfficialSeedMediaCredit(buildShortCaption(user, index, batchSeed), mediaAsset, 'Video'),
             'video',
-            null,
+            sharedAudio ? sharedAudio.audio_url : null,
             0,
-            30,
+            sharedAudio ? OFFICIAL_SEED_SHORT_AUDIO_DURATION : 30,
             'cover',
             0,
             null,
@@ -1547,7 +1920,7 @@ async function generateOfficialSeedContent(contentType) {
           mediaAsset.mediaName,
           mediaAsset.mediaSize,
           appendOfficialSeedMediaCredit(
-            buildStatusCaption(user, index),
+            buildStatusCaption(user, index, batchSeed),
             mediaAsset,
             mediaAsset.mediaType === 'video' ? 'Video' : 'Photo'
           ),
