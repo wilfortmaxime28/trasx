@@ -187,23 +187,23 @@
       style="position: absolute; right: 10px; bottom: 90px; display: flex; flex-direction: column; gap: 10px; align-items: center; color: white; z-index: 5;">
       <button type="button" class="reel-action-btn reel-like-btn" data-reel-id="<%= reel.id %>" data-likes="<%= Number(reel.likes_count || 0) %>"
         style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
-        <div style="width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.35); display: grid; place-items: center;">
+        <span class="reel-action-icon-shell" aria-hidden="true">
           <i data-lucide="heart" style="width: 10px; height: 10px;"></i>
-        </div>
+        </span>
         <span class="like-count" style="font-size: 9px; font-weight: 600; line-height: 1.1;"><%= formatNumber(reel.likes_count) %></span>
       </button>
       <button type="button" class="reel-action-btn reel-comment-btn" data-reel-id="<%= reel.id %>" data-comments="<%= Number(reel.comments_count || 0) %>"
         style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
-        <div style="width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.35); display: grid; place-items: center;">
-          <i data-lucide="message-square" style="width: 10px; height: 10px;"></i>
-        </div>
+        <span class="reel-action-icon-shell" aria-hidden="true">
+          <i data-lucide="message-circle" style="width: 10px; height: 10px;"></i>
+        </span>
         <span class="comment-count" style="font-size: 9px; font-weight: 600; line-height: 1.1;"><%= formatNumber(reel.comments_count) %></span>
       </button>
       <button type="button" class="reel-action-btn reel-share-btn" data-reel-id="<%= reel.id %>" data-shares="<%= Number(reel.shares_count || 0) %>"
         style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
-        <div style="width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.35); display: grid; place-items: center;">
+        <span class="reel-action-icon-shell" aria-hidden="true">
           <i data-lucide="share-2" style="width: 10px; height: 10px;"></i>
-        </div>
+        </span>
         <span class="share-count" style="font-size: 9px; font-weight: 600; line-height: 1.1;"><%= formatNumber(reel.shares_count) %></span>
       </button>
       <% if (reel.is_trade) { %>
@@ -216,9 +216,9 @@
           onclick="window.handleReelTradeClick && window.handleReelTradeClick(this)"
           onpointerup="window.handleReelTradeClick && window.handleReelTradeClick(this)"
           style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
-          <div style="width: 18px; height: 18px; border-radius: 50%; background: rgba(124, 58, 237, 0.85); display: grid; place-items: center;">
+          <span class="reel-trade-icon-shell" aria-hidden="true">
             <i data-lucide="repeat" style="width: 10px; height: 10px;"></i>
-          </div>
+          </span>
           <span style="font-size: 9px; font-weight: 600; line-height: 1.1;">Trade</span>
           <strong class="reel-trade-price-val" style="font-size: 8px; line-height: 1.1; margin-top: -1px;">$<%= reelTradePrice.toFixed(2) %></strong>
         </button>

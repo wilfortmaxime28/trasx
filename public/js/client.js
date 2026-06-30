@@ -3481,6 +3481,59 @@ document.addEventListener('DOMContentLoaded', () => {
     return false;
   };
 
+  const refreshProfilePostViewerPlayback = () => {
+    if (!document.body.classList.contains('profile-post-viewer-open')) return false;
+    const overlay = document.getElementById('profilePostViewerOverlay');
+    if (!overlay) return false;
+
+    const activeCard = overlay.querySelector('.profile-post-viewer-card.active') || overlay.querySelector('.profile-post-viewer-card');
+    document.querySelectorAll('.post-video').forEach((video) => {
+      if (!overlay.contains(video) && !video.paused) {
+        video.pause();
+      }
+    });
+
+    const activeVideo = activeCard?.querySelector('.post-video');
+    overlay.querySelectorAll('.profile-post-viewer-card').forEach((card) => {
+      if (card === activeCard) return;
+      card.querySelectorAll('.post-video').forEach((video) => {
+        if (!video.paused) {
+          video.pause();
+        }
+      });
+    });
+
+    if (!activeVideo) return true;
+
+    const targetMuted = (typeof window.feedVideosMuted !== 'undefined' ? window.feedVideosMuted : false);
+    activeVideo.muted = targetMuted;
+
+    const playActiveVideo = () => {
+      if (activeVideo.ended) {
+        activeVideo.currentTime = 0;
+      }
+      if (activeVideo.paused) {
+        const playPromise = activeVideo.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            if (!targetMuted && err?.name === 'NotAllowedError') {
+              activeVideo.muted = true;
+              activeVideo.play().catch(() => {});
+            }
+          });
+        }
+      }
+    };
+
+    if (typeof window.ensureLazyVideoLoaded === 'function') {
+      window.ensureLazyVideoLoaded(activeVideo).then(playActiveVideo).catch(() => {});
+    } else {
+      playActiveVideo();
+    }
+
+    return true;
+  };
+
   const pauseAllFeedVideos = () => {
     document.querySelectorAll('.post-video').forEach(video => {
       if (!video.paused) {
@@ -3490,6 +3543,10 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const updateActiveAutoplayVideo = () => {
+    if (refreshProfilePostViewerPlayback()) {
+      return;
+    }
+
     if (isAnyModalOpen() || document.visibilityState === 'hidden') {
       pauseAllFeedVideos();
       return;
@@ -7539,15 +7596,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   socket.on('post-shared', (data) => {
     const { postId, shares_count } = data;
-    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
-    if (postCard) {
+    getPostCardsById(postId).forEach((postCard) => {
       const shareBtn = postCard.querySelector('.share-btn');
       if (shareBtn) {
         shareBtn.setAttribute('data-shares', shares_count);
         const countNode = shareBtn.querySelector('.share-count');
         if (countNode) countNode.textContent = formatNumber(shares_count);
       }
-    }
+    });
   });
 
   // 2. Response for bookmark toggle
@@ -7605,10 +7661,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 3. Comment append in real time
   socket.on('comment-created', (data) => {
-    getPostCardsById(data.postId).forEach((postCard) => {
+    getPostCardsById(data.postId).forEach((postCard, index) => {
       appendCommentToPostCard(postCard, data, {
         incrementCount: true,
-        showToastOnInsert: true
+        showToastOnInsert: index === 0
       });
     });
   });
@@ -8478,41 +8534,2769 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.showConfirmationModal = showConfirmationModal;
 
-  const showTikTokPreviewModal = (initialItem, type) => {
+  const buildProfilePreviewHash = (itemId, itemType) => (
+    itemType === 'reel' ? `#reel-${Number(itemId || 0)}` : `#post-${Number(itemId || 0)}`
+  );
+
+  const getProfilePreviewItems = (type, fallbackItem = null) => {
+    if (type === 'post' && Array.isArray(window.profilePostsList) && window.profilePostsList.length) {
+      return window.profilePostsList.map((item) => ({ id: item.id, data: item, type: 'post' }));
+    }
+    if (type === 'reel' && Array.isArray(window.profileReelsList) && window.profileReelsList.length) {
+      return window.profileReelsList.map((item) => ({ id: item.id, data: item, type: 'reel' }));
+    }
+
+    const activeGrid = document.querySelector('.profile-grid-container.active');
+    const gridItems = activeGrid ? Array.from(activeGrid.querySelectorAll('.grid-item')) : [];
+    const itemsFromGrid = gridItems.map((el) => {
+      try {
+        const dataJson = el.getAttribute('data-json');
+        if (!dataJson) return null;
+        return {
+          id: el.getAttribute('data-post-id') || el.getAttribute('data-reel-id'),
+          data: JSON.parse(dataJson),
+          type: el.hasAttribute('data-post-id') ? 'post' : 'reel'
+        };
+      } catch (_) {
+        return null;
+      }
+    }).filter(Boolean);
+
+    if (itemsFromGrid.length) return itemsFromGrid;
+    if (!fallbackItem) return [];
+    return [{ id: fallbackItem.id, data: fallbackItem, type }];
+  };
+
+  const getProfileHeaderInfo = () => {
+    const wrapper = document.querySelector('.profile-page-wrapper');
+    const nameEl = wrapper?.querySelector('#profileDisplayName, [id^="profileDisplayName-"]')
+      || document.getElementById('profileDisplayName')
+      || document.querySelector('[id^="profileDisplayName-"]');
+    const avatarEl = wrapper?.querySelector('.profile-avatar-circle')
+      || document.querySelector('.profile-avatar-circle');
+    const messageBtn = wrapper?.querySelector('.profile-message-btn[data-profile-message-id]')
+      || document.querySelector('.profile-message-btn[data-profile-message-id]');
+    const gameRequestBtn = wrapper?.querySelector('.profile-game-request-btn[data-user-id]')
+      || document.querySelector('.profile-game-request-btn[data-user-id]');
+    const usernameText = [
+      messageBtn?.dataset.profileMessageUsername,
+      gameRequestBtn?.dataset.userUsername,
+      ...Array.from(wrapper?.querySelectorAll('p') || []).map((el) => String(el.textContent || '').trim())
+    ].find((text) => String(text || '').trim().startsWith('@') || String(text || '').trim().length > 0) || '';
+    const resolvedUsername = String(usernameText || '')
+      .trim()
+      .replace(/^@+/, '');
+    const resolvedName = String(
+      nameEl?.textContent
+      || messageBtn?.dataset.profileMessageName
+      || gameRequestBtn?.dataset.userName
+      || ''
+    ).trim();
+
+    return {
+      name: resolvedName || 'Utilisateur',
+      avatar: avatarEl ? avatarEl.src : '/assets/avatar_placeholder.jpg',
+      username: resolvedUsername || String(window.currentUsername || '').trim().replace(/^@+/, '')
+    };
+  };
+
+  const switchProfilePreviewGrid = (gridName) => {
+    const tabSelector = gridName === 'shorts'
+      ? '.profile-tab[onclick*="shorts"]'
+      : '.profile-tab[onclick*="posts"]';
+    const targetTab = document.querySelector(tabSelector);
+    if (targetTab && typeof switchGrid === 'function') {
+      switchGrid(gridName, targetTab);
+    }
+  };
+
+  const highlightProfileGridItem = (itemType, itemId) => {
+    const selector = itemType === 'reel'
+      ? `.grid-item[data-reel-id="${itemId}"]`
+      : `.grid-item[data-post-id="${itemId}"]`;
+    const gridItem = document.querySelector(selector);
+    if (!gridItem) return;
+    gridItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    gridItem.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
+    gridItem.style.boxShadow = '0 0 20px 4px var(--primary)';
+    gridItem.style.borderColor = 'var(--primary)';
+    setTimeout(() => {
+      gridItem.style.boxShadow = '';
+      gridItem.style.borderColor = '';
+    }, 3000);
+  };
+
+  const getResolvedProfileReelMediaUrl = (reel = {}) => {
+    let mediaUrl = String(reel.video_url || reel.image_url || reel.media_url || '').trim();
+    if (mediaUrl && mediaUrl.includes('unsplash.com') && (!reel.media_type || String(reel.media_type).toLowerCase() === 'video')) {
+      const videoUrls = [
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4'
+      ];
+      const videoIdx = (Number(reel.id || 1) - 1) % videoUrls.length;
+      mediaUrl = videoUrls[videoIdx >= 0 ? videoIdx : 0];
+    }
+    return mediaUrl;
+  };
+
+  const buildProfileReelCommentsDrawerHtml = (reel) => {
+    const commentsCount = Number(reel?.comments_count || 0);
+    const formattedCount = typeof formatNumber === 'function'
+      ? formatNumber(commentsCount)
+      : String(commentsCount);
+
+    return `
+      <div class="reel-comments-drawer" data-reel-id="${Number(reel?.id || 0)}" data-profile-viewer-drawer="1">
+        <div class="reel-comments-header">
+          <span class="reel-comments-title">Comments (<span class="drawer-comments-count" data-count="${commentsCount}">${formattedCount}</span>)</span>
+          <button class="close-comments-drawer-btn" type="button"><i data-lucide="x"></i></button>
+        </div>
+        <div class="reel-comments-list"></div>
+        <form class="reel-comment-form" data-reel-id="${Number(reel?.id || 0)}">
+          <div class="reel-reply-context" style="display: none;">
+            <span class="reel-reply-context-text"></span>
+            <button type="button" class="reel-cancel-reply-btn" title="Cancel reply" aria-label="Cancel reply"><i data-lucide="x"></i></button>
+          </div>
+          <div class="reel-comment-input-wrap">
+            <input type="text" placeholder="Add comment..." class="reel-comment-input" autocomplete="off">
+            <div class="reel-comment-tools">
+              <button type="button" class="reel-comment-tool-btn emoji-trigger-btn" title="Add emoji" aria-label="Add emoji"><i data-lucide="smile"></i></button>
+              <button type="button" class="reel-comment-tool-btn reel-voice-trigger-btn" title="Record voice note" aria-label="Record voice note"><i data-lucide="mic"></i></button>
+            </div>
+            <div class="reel-voice-recording-overlay" style="display: none;">
+              <div class="reel-recording-status">
+                <span class="recording-indicator"></span>
+                <span class="recording-timer">00:00</span>
+              </div>
+              <div class="reel-recording-actions">
+                <button type="button" class="reel-cancel-recording-btn" title="Cancel" aria-label="Cancel"><i data-lucide="trash-2"></i></button>
+                <button type="button" class="reel-stop-recording-btn" title="Send voice note" aria-label="Send voice note"><i data-lucide="check"></i></button>
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="reel-comment-submit-btn" disabled aria-label="Send comment"><i data-lucide="send"></i></button>
+        </form>
+      </div>
+    `;
+  };
+
+  const buildProfileReelCardHtml = (reel, reelIndex) => {
+    const mediaType = String(reel?.media_type || 'video').toLowerCase();
+    const rawResolvedMediaUrl = getResolvedProfileReelMediaUrl(reel);
+    const resolvedMediaUrl = escapeHtml(rawResolvedMediaUrl);
+    const posterUrl = escapeHtml(mediaType === 'image_audio' ? rawResolvedMediaUrl : String(reel?.thumbnail_url || '').trim());
+    const reelMediaFit = reel?.media_fit === 'contain' ? 'contain' : 'cover';
+    const reelVisualReady = mediaType === 'video' ? '0' : '1';
+    const profileAuthorInfo = getProfileHeaderInfo();
+    const authorAvatar = escapeHtml(reel?.author_avatar || reel?.avatar || profileAuthorInfo.avatar || '/assets/avatar_placeholder.jpg');
+    const authorName = escapeHtml(
+      reel?.author_name
+      || reel?.name
+      || `${reel?.first_name || ''} ${reel?.last_name || ''}`.trim()
+      || reel?.author_username
+      || reel?.username
+      || profileAuthorInfo.name
+      || 'Utilisateur'
+    );
+    const authorUsername = escapeHtml(String(reel?.author_username || reel?.username || profileAuthorInfo.username || '').trim().replace(/^@+/, ''));
+    const certType = escapeHtml(reel?.author_certification_type || 'None');
+    const caption = escapeHtml(reel?.caption || reel?.content || '');
+    const soundName = escapeHtml(reel?.sound_name || 'Original sound');
+    const createdAt = reel?.created_at
+      ? new Date(reel.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })
+      : '';
+    const likesCount = Number(reel?.likes_count || 0);
+    const commentsCount = Number(reel?.comments_count || 0);
+    const sharesCount = Number(reel?.shares_count || 0);
+    const tradePrice = Number(reel?.trade_price || 0);
+    const isTrade = Boolean(reel?.is_trade);
+    const isPossessor = Number(reel?.last_possession_user_id || 0) === Number(window.currentUserId || 0);
+    const canFollowAuthor = Number(window.currentUserId || 0) !== Number(reel?.user_id || 0) && Number(reel?.user_id || 0) > 0;
+    const isAuthorFollowed = typeof resolveFollowState === 'function'
+      ? resolveFollowState(Number(reel?.user_id || 0), !!reel?.is_author_following)
+      : !!reel?.is_author_following;
+    const verifiedHtml = certType !== 'None'
+      ? `
+        <span class="verified-badge-small" title="${certType}" data-type="${certType}" style="display: inline-flex; margin-left: 4px;">
+          <i data-lucide="badge-check"></i>
+        </span>
+      `
+      : '';
+    const followHtml = canFollowAuthor
+      ? `
+        <span class="reel-follow-toggle-btn"
+          data-follow-target-id="${Number(reel?.user_id || 0)}"
+          data-following="${isAuthorFollowed ? '1' : '0'}"
+          style="font-size: 11px; font-weight: 700; color: #3b82f6; margin-left: 6px; cursor: pointer;">
+          • ${isAuthorFollowed ? 'Following' : 'Follow'}
+        </span>
+      `
+      : '';
+    const tradeHtml = isTrade
+      ? `
+        <button type="button"
+          class="reel-action-btn reel-trade-btn ${isPossessor ? 'disabled' : ''}"
+          data-reel-id="${Number(reel?.id || 0)}"
+          data-price="${tradePrice}"
+          data-possessor-id="${Number(reel?.last_possession_user_id || 0)}"
+          aria-disabled="${isPossessor ? 'true' : 'false'}"
+          onclick="window.handleReelTradeClick && window.handleReelTradeClick(this)"
+          onpointerup="window.handleReelTradeClick && window.handleReelTradeClick(this)"
+          style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
+          <span class="reel-trade-icon-shell" aria-hidden="true">
+            <i data-lucide="repeat" style="width: 10px; height: 10px;"></i>
+          </span>
+          <span style="font-size: 9px; font-weight: 600; line-height: 1.1;">Trade</span>
+          <strong class="reel-trade-price-val" style="font-size: 8px; line-height: 1.1; margin-top: -1px;">$${tradePrice.toFixed(2)}</strong>
+        </button>
+      `
+      : '';
+
+    let mediaMarkup = '';
+    if (!mediaType || mediaType === 'video') {
+      mediaMarkup = `
+        <div class="reel-poster-shell ${posterUrl ? 'has-thumb' : 'no-thumb'}" aria-hidden="true">
+          ${posterUrl ? `<img src="${posterUrl}" class="reel-poster-image" loading="lazy" decoding="async" alt="">` : ''}
+          <div class="reel-poster-scrim"></div>
+        </div>
+        <video data-lazy-src="${resolvedMediaUrl}" ${posterUrl ? `poster="${posterUrl}"` : ''} muted playsinline preload="none" data-load-on-play="1" class="reel-video"
+          style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: ${reelMediaFit}; z-index: 2; cursor: pointer;"
+          data-media-type="video" data-media-fit="${reelMediaFit}"
+          data-audio-start="${Number(reel?.audio_start_time || 0)}"
+          data-audio-duration="${Number(reel?.audio_duration || 30)}"
+          data-trim-start="${reel?.trim_start ?? ''}"
+          data-trim-end="${reel?.trim_end ?? ''}"></video>
+        ${reel?.audio_url ? `<audio data-lazy-src="${escapeHtml(reel.audio_url)}" class="reel-audio-track" preload="none" style="display:none;"></audio>` : ''}
+      `;
+    } else if (mediaType === 'image_audio') {
+      mediaMarkup = `
+        <div class="reel-video-container" style="position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1;">
+          <img src="${resolvedMediaUrl}" class="reel-video" loading="lazy"
+            style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: ${reelMediaFit}; cursor: pointer;"
+            data-media-type="image_audio" data-media-fit="${reelMediaFit}"
+            data-audio-start="${Number(reel?.audio_start_time || 0)}"
+            data-audio-duration="${Number(reel?.audio_duration || 30)}">
+          ${reel?.audio_url ? `<audio data-lazy-src="${escapeHtml(reel.audio_url)}" class="reel-audio-track" preload="none" style="display:none;"></audio>` : ''}
+        </div>
+      `;
+    } else if (mediaType === 'voice') {
+      mediaMarkup = `
+        <div class="reel-video"
+          style="position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; cursor: pointer; background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: white;"
+          data-media-type="voice" data-audio-start="${Number(reel?.audio_start_time || 0)}"
+          data-audio-duration="${Number(reel?.audio_duration || 30)}">
+          <div style="width: 80px; height: 80px; border-radius: 50%; background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); display: grid; place-items: center; box-shadow: 0 8px 32px rgba(0,0,0,0.3); border: 1.5px solid rgba(255,255,255,0.25);">
+            <i data-lucide="mic" style="width: 32px; height: 32px;"></i>
+          </div>
+          <div class="voice-wave-container" style="display: flex; gap: 4px; align-items: center; height: 40px; margin-top: 10px;">
+            <span class="voice-bar animated" style="width: 4px; height: 20px; background: white; border-radius: 2px;"></span>
+            <span class="voice-bar animated" style="width: 4px; height: 36px; background: white; border-radius: 2px;"></span>
+            <span class="voice-bar animated" style="width: 4px; height: 15px; background: white; border-radius: 2px;"></span>
+            <span class="voice-bar animated" style="width: 4px; height: 30px; background: white; border-radius: 2px;"></span>
+            <span class="voice-bar animated" style="width: 4px; height: 25px; background: white; border-radius: 2px;"></span>
+          </div>
+          <span style="font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 700; opacity: 0.95; letter-spacing: 0.5px;">VOICE NOTE SHORT</span>
+          ${reel?.audio_url ? `<audio data-lazy-src="${escapeHtml(reel.audio_url)}" class="reel-audio-track" preload="none" style="display:none;"></audio>` : ''}
+        </div>
+      `;
+    } else if (mediaType === 'audio') {
+      mediaMarkup = `
+        <div class="reel-video"
+          style="position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; cursor: pointer; background: linear-gradient(135deg, #1e1b4b 0%, #311042 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: white;"
+          data-media-type="audio" data-audio-start="${Number(reel?.audio_start_time || 0)}"
+          data-audio-duration="${Number(reel?.audio_duration || 30)}">
+          <div class="reel-turntable">
+            <div class="reel-turntable-plinth"></div>
+            <div class="reel-turntable-platter-ring"></div>
+            <div class="spinning-vinyl">
+              <span class="vinyl-groove vinyl-groove--outer"></span>
+              <span class="vinyl-groove vinyl-groove--mid"></span>
+              <span class="vinyl-groove vinyl-groove--inner"></span>
+              <span class="vinyl-highlight"></span>
+              <div class="vinyl-label">
+                <span class="vinyl-label-core"></span>
+              </div>
+            </div>
+            <div class="reel-tonearm">
+              <span class="reel-tonearm-base"></span>
+              <span class="reel-tonearm-bar"></span>
+              <span class="reel-tonearm-head"></span>
+              <span class="reel-tonearm-needle"></span>
+            </div>
+          </div>
+          <div style="text-align: center; padding: 0 20px; width: 100%; max-width: 200px; margin: 0 auto; overflow: hidden;">
+            <div class="reel-music-scroller-wrap" style="max-width: 100% !important; justify-content: center; margin: 0 auto;">
+              <div class="reel-music-scroller-track">
+                <h4 class="reel-music-scroller-text" style="font-size: 15px !important; font-weight: 800; font-family: 'Outfit', sans-serif; margin: 0;">${soundName}</h4>
+                <h4 class="reel-music-scroller-text" aria-hidden="true" style="font-size: 15px !important; font-weight: 800; font-family: 'Outfit', sans-serif; margin: 0;">${soundName}</h4>
+              </div>
+            </div>
+            <p style="font-size: 11px; opacity: 0.7; margin-top: 4px;">Music Track Short</p>
+          </div>
+          ${reel?.audio_url ? `<audio data-lazy-src="${escapeHtml(reel.audio_url)}" class="reel-audio-track" preload="none" style="display:none;"></audio>` : ''}
+        </div>
+      `;
+    }
+
+    const formatMetric = (value) => typeof formatNumber === 'function' ? formatNumber(value) : String(value);
+
+    return `
+      <div class="reel-card profile-reel-viewer-card" id="profile-reel-viewer-${Number(reel?.id || 0)}" data-reel-id="${Number(reel?.id || 0)}"
+        data-author-username="${authorUsername}" data-user-id="${Number(reel?.user_id || 0)}"
+        data-progressive-item="reel" data-progressive-index="${Number(reelIndex || 0)}"
+        data-visual-ready="${reelVisualReady}" data-thumb-src="${posterUrl}" data-profile-reel-viewer-card="1">
+        ${mediaMarkup}
+        <div class="reel-loader-container">
+          <div class="tiktok-loader">
+            <div class="loader-dot dot-1"></div>
+            <div class="loader-dot dot-2"></div>
+          </div>
+        </div>
+        <div class="reel-play-overlay" style="position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 2; transition: opacity 0.2s; opacity: 0;">
+          <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: grid; place-items: center; border: 1.5px solid rgba(255,255,255,0.4);">
+            <i data-lucide="play" style="color: white; fill: white; width: 20px; height: 20px; margin-left: 3px;"></i>
+          </div>
+        </div>
+        <div class="reel-details-overlay" style="position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.38) 40%, transparent 65%); padding: 24px 20px; color: white; display: flex; flex-direction: column; gap: 12px; pointer-events: auto; z-index: 4;">
+          <div class="reel-progress-container" style="display: flex; align-items: center; gap: 8px; width: 100%; margin-bottom: -5px;">
+            <span class="reel-current-time" style="font-size: 10px; font-family: monospace; opacity: 0.8; min-width: 28px;">0:00</span>
+            <input type="range" class="reel-progress-slider" min="0" max="100" value="0" step="0.1" style="flex: 1; -webkit-appearance: none; height: 3px; border-radius: 999px; background: rgba(255,255,255,0.3); outline: none; cursor: pointer;">
+            <span class="reel-duration" style="font-size: 10px; font-family: monospace; opacity: 0.8; min-width: 28px; text-align: right;">0:00</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%;">
+            <div class="avatar" style="width: 36px; height: 36px; border: 2px solid white; overflow: hidden; flex-shrink: 0;">
+              <img src="${authorAvatar}" style="width:100%; height:100%; object-fit:cover;">
+            </div>
+            <div style="min-width: 0; flex: 1;">
+              <h4 style="font-size: 13.5px; font-weight: 700; color: white; margin: 0;">
+                ${authorName}
+                ${verifiedHtml}
+                ${followHtml}
+                ${createdAt ? `<span style="font-size: 11px; color: rgba(255,255,255,0.6); margin-left: 6px;">• ${createdAt}</span>` : ''}
+              </h4>
+              <div class="reel-music-scroller-wrap">
+                <i data-lucide="music" style="width: 10px; height: 10px; flex-shrink: 0;"></i>
+                <div class="reel-music-scroller-track">
+                  <span class="reel-music-scroller-text">${soundName}</span>
+                  <span class="reel-music-scroller-text" aria-hidden="true">${soundName}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="formatted-hashtag-text reel-caption-text" style="font-size: 13px; color: rgba(255,255,255,0.95); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 0;">${caption}</p>
+        </div>
+        <div class="reel-actions-container" style="position: absolute; right: 10px; bottom: 90px; display: flex; flex-direction: column; gap: 10px; align-items: center; color: white; z-index: 5;">
+          <button type="button" class="reel-action-btn reel-like-btn" data-reel-id="${Number(reel?.id || 0)}" data-likes="${likesCount}" style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
+            <span class="reel-action-icon-shell" aria-hidden="true">
+              <i data-lucide="heart" style="width: 10px; height: 10px;"></i>
+            </span>
+            <span class="like-count" style="font-size: 9px; font-weight: 600; line-height: 1.1;">${formatMetric(likesCount)}</span>
+          </button>
+          <button type="button" class="reel-action-btn reel-comment-btn" data-reel-id="${Number(reel?.id || 0)}" data-comments="${commentsCount}" style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
+            <span class="reel-action-icon-shell" aria-hidden="true">
+              <i data-lucide="message-circle" style="width: 10px; height: 10px;"></i>
+            </span>
+            <span class="comment-count" style="font-size: 9px; font-weight: 600; line-height: 1.1;">${formatMetric(commentsCount)}</span>
+          </button>
+          <button type="button" class="reel-action-btn reel-share-btn" data-reel-id="${Number(reel?.id || 0)}" data-shares="${sharesCount}" style="display: flex; flex-direction: column; align-items: center; gap: 2px; color: white; background: none; border: none; padding: 0; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
+            <span class="reel-action-icon-shell" aria-hidden="true">
+              <i data-lucide="share-2" style="width: 10px; height: 10px;"></i>
+            </span>
+            <span class="share-count" style="font-size: 9px; font-weight: 600; line-height: 1.1;">${formatMetric(sharesCount)}</span>
+          </button>
+          ${tradeHtml}
+        </div>
+        ${buildProfileReelCommentsDrawerHtml(reel)}
+      </div>
+    `;
+  };
+
+  const applyProfileReelViewerMediaFit = (card) => {
+    if (!(card instanceof Element)) return;
+    const mediaEl = card.querySelector('video.reel-video, img.reel-video');
+    const nonVisualMediaType = card.querySelector('.reel-video[data-media-type="voice"], .reel-video[data-media-type="audio"]');
+
+    if (nonVisualMediaType) {
+      card.setAttribute('data-viewer-media-shape', 'centered');
+      return;
+    }
+
+    if (!mediaEl) return;
+
+    const applyFit = (width, height) => {
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+      const isLandscape = width > height;
+      const fitValue = isLandscape ? 'contain' : 'cover';
+      mediaEl.setAttribute('data-media-fit', fitValue);
+      mediaEl.style.objectFit = fitValue;
+      card.setAttribute('data-viewer-media-shape', isLandscape ? 'landscape' : 'portrait');
+    };
+
+    if (mediaEl.tagName === 'VIDEO') {
+      const bindVideo = () => applyFit(mediaEl.videoWidth, mediaEl.videoHeight);
+      if (mediaEl.readyState >= 1) bindVideo();
+      mediaEl.addEventListener('loadedmetadata', bindVideo);
+      mediaEl.addEventListener('loadeddata', bindVideo);
+      return;
+    }
+
+    const bindImage = () => applyFit(mediaEl.naturalWidth, mediaEl.naturalHeight);
+    if (mediaEl.complete) bindImage();
+    mediaEl.addEventListener('load', bindImage);
+  };
+
+  const showProfileReelsViewer = (initialItem, options = {}) => {
     pauseAllFeedVideos();
     if (typeof clearActiveReelCard === 'function') {
       clearActiveReelCard();
     }
 
-    const existing = document.getElementById('tiktokPreviewModal');
-    if (existing) existing.remove();
-
-    let itemsList = [];
-    if (type === 'post' && window.profilePostsList && window.profilePostsList.length > 0) {
-      itemsList = window.profilePostsList.map(item => ({ id: item.id, data: item, type: 'post' }));
-    } else if (type === 'reel' && window.profileReelsList && window.profileReelsList.length > 0) {
-      itemsList = window.profileReelsList.map(item => ({ id: item.id, data: item, type: 'reel' }));
-    } else {
-      const activeGrid = document.querySelector('.profile-grid-container.active');
-      const gridItems = activeGrid ? Array.from(activeGrid.querySelectorAll('.grid-item')) : [];
-      itemsList = gridItems.map(el => {
-        try {
-          const dataJson = el.getAttribute('data-json');
-          if (!dataJson) return null;
-          return {
-            id: el.getAttribute('data-post-id') || el.getAttribute('data-reel-id'),
-            data: JSON.parse(dataJson),
-            type: el.hasAttribute('data-post-id') ? 'post' : 'reel'
-          };
-        } catch (e) {
-          return null;
-        }
-      }).filter(Boolean);
+    if (typeof window.__closeTikTokPreviewModal === 'function') {
+      window.__closeTikTokPreviewModal({ immediate: true, restoreUrl: false, suppressFollowUp: true });
     }
 
-    let currentIndex = itemsList.findIndex(x => String(x.id) === String(initialItem.id));
+    const itemsList = getProfilePreviewItems('reel', initialItem);
+    if (!itemsList.length) return;
+
+    let currentIndex = itemsList.findIndex((item) => String(item.id) === String(initialItem?.id));
+    if (currentIndex === -1) currentIndex = 0;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'profileReelViewerOverlay';
+    overlay.className = 'profile-reel-viewer-overlay';
+    overlay.innerHTML = `
+      <button type="button" class="profile-reel-viewer-close" aria-label="Close reels viewer">
+        <i data-lucide="arrow-left"></i>
+      </button>
+      <div class="profile-reel-viewer-count">${currentIndex + 1} / ${itemsList.length}</div>
+      <div class="profile-reel-viewer-feed" data-profile-reel-viewer-feed="1">
+        ${itemsList.map((item, index) => buildProfileReelCardHtml(item.data || item, index)).join('')}
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const reelsFeed = overlay.querySelector('.profile-reel-viewer-feed');
+    const reelCards = Array.from(overlay.querySelectorAll('.reel-card'));
+    const countEl = overlay.querySelector('.profile-reel-viewer-count');
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousCommentsDrawerOpen = document.body.classList.contains('comments-drawer-open');
+    const previousViewingShortsState = document.body.classList.contains('viewing-shorts');
+
+    document.body.style.overflow = 'hidden';
+    document.body.classList.add('profile-reel-viewer-open');
+    document.body.classList.remove('comments-drawer-open');
+    document.body.classList.remove('viewing-shorts');
+    window.removeEventListener('hashchange', handleProfileHashNavigation);
+
+    const session = {
+      modal: overlay,
+      itemsList,
+      currentIndex,
+      baseHash: typeof options.baseHash === 'string' ? options.baseHash : String(window.location.hash || ''),
+      openedViaHash: options.openedViaHash === true,
+      historyManaged: false,
+      currentHash: '',
+      suppressFollowUp: false
+    };
+    window.__profilePreviewSession = session;
+
+    const viewerState = {
+      activeCard: null,
+      visibilityRatios: new Map(),
+      observer: null,
+      scrollTimer: null
+    };
+
+    const syncOverlayDrawersToViewport = () => {
+      const isMobile = window.matchMedia('(max-width: 768px)').matches;
+      document.querySelectorAll('.reel-comments-drawer[data-profile-viewer-drawer="1"]').forEach((drawer) => {
+        const reelId = drawer.getAttribute('data-reel-id');
+        const card = overlay.querySelector(`.reel-card[data-reel-id="${reelId}"]`);
+        if (isMobile) {
+          if (drawer.parentElement !== document.body) {
+            document.body.appendChild(drawer);
+          }
+        } else if (card && drawer.parentElement !== card) {
+          card.appendChild(drawer);
+        }
+      });
+    };
+
+    reelCards.forEach((card) => {
+      initReelVisualState(card);
+      initReelCardEvents(card);
+      syncReelFollowButtonState(card);
+      applyProfileReelViewerMediaFit(card);
+    });
+    syncOverlayDrawersToViewport();
+    if (typeof window.initLazyMedia === 'function') {
+      window.initLazyMedia(overlay);
+    }
+    if (typeof lucide !== 'undefined') {
+      try { lucide.createIcons(); } catch (_) {}
+    }
+
+    const updateViewerCounter = () => {
+      if (countEl) countEl.textContent = `${session.currentIndex + 1} / ${itemsList.length}`;
+    };
+
+    const syncHistoryForCurrentItem = (replaceOnly = false) => {
+      const currentItemWrapper = itemsList[session.currentIndex];
+      if (!currentItemWrapper) return;
+      const nextHash = buildProfilePreviewHash(currentItemWrapper.id, 'reel');
+      session.currentHash = nextHash;
+      const nextUrl = `${window.location.pathname}${window.location.search}${nextHash}`;
+      if (!replaceOnly && !session.historyManaged && !session.openedViaHash) {
+        window.history.pushState({
+          ...(window.history.state || {}),
+          profilePreviewOpen: true,
+          profilePreviewHash: nextHash
+        }, '', nextUrl);
+        session.historyManaged = true;
+        return;
+      }
+      window.history.replaceState({
+        ...(window.history.state || {}),
+        profilePreviewOpen: true,
+        profilePreviewHash: nextHash
+      }, '', nextUrl);
+    };
+
+    const stopViewerCardPlayback = (card) => {
+      if (!card) return;
+      card.classList.remove('active');
+      pauseMedia(card);
+      resetReelMediaToStart(card);
+      closeReelCommentsDrawer(card);
+    };
+
+    const maintainViewerMediaWindow = (centerCard) => {
+      const centerIndex = reelCards.indexOf(centerCard);
+      if (centerIndex === -1) return;
+
+      const keepNextCount = 5;
+      const keepStart = Math.max(0, centerIndex - 1);
+      const keepEnd = Math.min(reelCards.length - 1, centerIndex + keepNextCount);
+
+      reelCards.forEach((card, index) => {
+        if (index >= keepStart && index <= keepEnd) {
+          if (index <= centerIndex) {
+            ensureReelCardMediaLoaded(card).catch(() => {});
+          } else {
+            prefetchReelCardMedia(card).catch(() => {});
+          }
+        } else {
+          unloadReelCardMedia(card);
+        }
+      });
+    };
+
+    const activateViewerCard = (card, { syncHistory = true } = {}) => {
+      if (!card) return;
+      if (viewerState.activeCard && viewerState.activeCard !== card) {
+        stopViewerCardPlayback(viewerState.activeCard);
+      }
+
+      viewerState.activeCard = card;
+      card.classList.add('active');
+      maintainViewerMediaWindow(card);
+
+      const nextIndex = reelCards.indexOf(card);
+      if (nextIndex !== -1 && nextIndex !== session.currentIndex) {
+        session.currentIndex = nextIndex;
+        updateViewerCounter();
+        if (syncHistory) syncHistoryForCurrentItem(true);
+      } else {
+        updateViewerCounter();
+      }
+
+      playMedia(card).catch(() => {
+        const playOverlay = card.querySelector('.reel-play-overlay');
+        if (playOverlay) playOverlay.style.opacity = '1';
+      });
+    };
+
+    const refreshViewerActiveCard = () => {
+      let candidateCard = null;
+      let candidateRatio = 0;
+
+      viewerState.visibilityRatios.forEach((ratio, card) => {
+        if (ratio > candidateRatio) {
+          candidateRatio = ratio;
+          candidateCard = card;
+        }
+      });
+
+      if (!candidateCard || candidateRatio < 0.55) {
+        const feedRect = reelsFeed.getBoundingClientRect();
+        let closestDistance = Infinity;
+        reelCards.forEach((card) => {
+          const distance = Math.abs(card.getBoundingClientRect().top - feedRect.top);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            candidateCard = card;
+          }
+        });
+      }
+
+      if (!candidateCard) return;
+      if (viewerState.activeCard === candidateCard) {
+        maintainViewerMediaWindow(candidateCard);
+        return;
+      }
+      activateViewerCard(candidateCard);
+    };
+
+    viewerState.observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        viewerState.visibilityRatios.set(entry.target, entry.isIntersecting ? entry.intersectionRatio : 0);
+      });
+      refreshViewerActiveCard();
+    }, {
+      root: reelsFeed,
+      rootMargin: '0px',
+      threshold: [0, 0.2, 0.45, 0.65, 0.85]
+    });
+
+    reelCards.forEach((card) => {
+      viewerState.visibilityRatios.set(card, 0);
+      viewerState.observer.observe(card);
+    });
+
+    const scrollToCardIndex = (targetIndex, { immediate = false, updateHistory = true } = {}) => {
+      if (targetIndex < 0 || targetIndex >= reelCards.length) return;
+      const targetCard = reelCards[targetIndex];
+      if (!targetCard) return;
+
+      const previousIndex = session.currentIndex;
+      session.currentIndex = targetIndex;
+      updateViewerCounter();
+      if (updateHistory) {
+        syncHistoryForCurrentItem(previousIndex !== targetIndex);
+      } else {
+        session.currentHash = buildProfilePreviewHash(itemsList[targetIndex].id, 'reel');
+      }
+
+      ensureReelCardMediaLoaded(targetCard).catch(() => {});
+      maintainViewerMediaWindow(targetCard);
+
+      const targetScrollTop = reelsFeed.scrollTop + (targetCard.getBoundingClientRect().top - reelsFeed.getBoundingClientRect().top);
+      reelsFeed.scrollTo({ top: targetScrollTop, behavior: immediate ? 'auto' : 'smooth' });
+
+      window.clearTimeout(viewerState.scrollTimer);
+      viewerState.scrollTimer = window.setTimeout(() => {
+        activateViewerCard(targetCard, { syncHistory: false });
+      }, immediate ? 0 : 180);
+    };
+
+    const closeViewer = ({
+      fromHistory = false,
+      restoreUrl = true,
+      immediate = false,
+      suppressFollowUp = false
+    } = {}) => {
+      if (!document.body.contains(overlay)) return;
+      session.suppressFollowUp = suppressFollowUp;
+
+      if (!fromHistory && restoreUrl && session.historyManaged && window.location.hash === session.currentHash) {
+        window.history.back();
+        return;
+      }
+
+      window.clearTimeout(viewerState.scrollTimer);
+      viewerState.scrollTimer = null;
+
+      reelCards.forEach((card) => {
+        try {
+          viewerState.observer?.unobserve(card);
+        } catch (_) {}
+        viewerState.visibilityRatios.delete(card);
+      });
+      viewerState.observer?.disconnect();
+
+      if (viewerState.activeCard) {
+        stopViewerCardPlayback(viewerState.activeCard);
+      }
+
+      overlay.querySelectorAll('.reel-comments-drawer[data-profile-viewer-drawer="1"]').forEach((drawer) => {
+        drawer.classList.remove('open');
+      });
+      document.querySelectorAll('.reel-comments-drawer[data-profile-viewer-drawer="1"]').forEach((drawer) => {
+        drawer.remove();
+      });
+
+      document.body.classList.remove('profile-reel-viewer-open');
+      document.body.classList.toggle('viewing-shorts', previousViewingShortsState);
+      document.body.classList.toggle('comments-drawer-open', previousCommentsDrawerOpen);
+      document.body.style.overflow = previousBodyOverflow;
+
+      if (restoreUrl && !fromHistory) {
+        const restoreUrlValue = `${window.location.pathname}${window.location.search}${session.baseHash || ''}`;
+        window.history.replaceState({
+          ...(window.history.state || {}),
+          profilePreviewOpen: false
+        }, '', restoreUrlValue);
+      }
+
+      if (window.__closeTikTokPreviewModal === closeViewer) {
+        window.__closeTikTokPreviewModal = null;
+      }
+      if (window.__profilePreviewSession?.modal === overlay) {
+        window.__profilePreviewSession = null;
+      }
+
+      window.removeEventListener('popstate', historySyncHandler);
+      window.removeEventListener('hashchange', historySyncHandler);
+      window.removeEventListener('resize', syncOverlayDrawersToViewport);
+      document.removeEventListener('keydown', keyHandler);
+      overlay.removeEventListener('click', overlayVideoClickHandler, true);
+      window.addEventListener('hashchange', handleProfileHashNavigation);
+
+      const finalizeRemove = () => {
+        overlay.remove();
+        if (!session.suppressFollowUp && !window.location.hash && session.openedViaHash) {
+          const currentItemWrapper = itemsList[session.currentIndex];
+          if (currentItemWrapper) {
+            highlightProfileGridItem('reel', currentItemWrapper.id);
+          }
+        } else if (!session.suppressFollowUp && window.location.hash) {
+          setTimeout(handleProfileHashNavigation, 0);
+        }
+      };
+
+      if (immediate) {
+        finalizeRemove();
+        return;
+      }
+
+      overlay.classList.remove('is-open');
+      setTimeout(finalizeRemove, 220);
+    };
+
+    const historySyncHandler = () => {
+      if (!window.__profilePreviewSession || window.__profilePreviewSession.modal !== overlay) return;
+      if (window.location.hash === session.currentHash) return;
+
+      const targetHash = String(window.location.hash || '').trim();
+      const targetMatch = targetHash.match(/^#reel-(\d+)$/);
+      if (targetMatch) {
+        const nextIndex = itemsList.findIndex((entry) => String(entry.id) === String(targetMatch[1]));
+        if (nextIndex !== -1) {
+          scrollToCardIndex(nextIndex, { updateHistory: false });
+          return;
+        }
+      }
+
+      closeViewer({ fromHistory: true, restoreUrl: false, suppressFollowUp: false });
+    };
+
+    const keyHandler = (event) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.isContentEditable
+      )) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeViewer();
+        }
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeViewer();
+        return;
+      }
+      if (event.key === 'ArrowDown' || event.key === 'PageDown' || (event.key === ' ' && !event.shiftKey)) {
+        event.preventDefault();
+        scrollToCardIndex(Math.min(reelCards.length - 1, session.currentIndex + 1));
+      } else if (event.key === 'ArrowUp' || event.key === 'PageUp' || (event.key === ' ' && event.shiftKey)) {
+        event.preventDefault();
+        scrollToCardIndex(Math.max(0, session.currentIndex - 1));
+      }
+    };
+
+    const overlayVideoClickHandler = (event) => {
+      const video = event.target.closest('.reel-video');
+      if (!video || !overlay.contains(video)) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const card = video.closest('.reel-card');
+      const playOverlay = card?.querySelector('.reel-play-overlay');
+      const media = getMediaElements(card);
+      if (!card || !media) return;
+
+      const isPaused = media.type === 'video'
+        ? media.main.paused
+        : (media.audio ? media.audio.paused : true);
+
+      if (isPaused) {
+        if (viewerState.activeCard !== card) {
+          activateViewerCard(card);
+          showPlayPauseFlash(card, 'play');
+          return;
+        }
+        playMedia(card).then(() => {
+          showPlayPauseFlash(card, 'play');
+        }).catch(() => {});
+      } else {
+        pauseMedia(card);
+        if (playOverlay) playOverlay.style.opacity = '1';
+        showPlayPauseFlash(card, 'pause');
+      }
+    };
+
+    overlay.addEventListener('click', overlayVideoClickHandler, true);
+    overlay.querySelector('.profile-reel-viewer-close')?.addEventListener('click', () => closeViewer());
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) {
+        closeViewer();
+      }
+    });
+    reelsFeed.addEventListener('scroll', () => {
+      window.clearTimeout(viewerState.scrollTimer);
+      viewerState.scrollTimer = window.setTimeout(() => {
+        refreshViewerActiveCard();
+      }, 90);
+    }, { passive: true });
+
+    window.addEventListener('resize', syncOverlayDrawersToViewport);
+    window.addEventListener('popstate', historySyncHandler);
+    window.addEventListener('hashchange', historySyncHandler);
+    document.addEventListener('keydown', keyHandler);
+    window.__closeTikTokPreviewModal = closeViewer;
+
+    scrollToCardIndex(currentIndex, { immediate: true, updateHistory: false });
+    syncHistoryForCurrentItem(false);
+    updateViewerCounter();
+    overlay.offsetHeight;
+    overlay.classList.add('is-open');
+  };
+
+  const buildProfileShortViewerCommentsHtml = (reel) => (
+    buildProfileReelCommentsDrawerHtml(reel)
+      .replace('class="reel-comments-drawer"', 'class="reel-comments-drawer profile-short-viewer-comments-sheet"')
+  );
+
+  const buildProfileShortViewerMediaHtml = (reel) => {
+    const mediaType = String(reel?.media_type || 'video').toLowerCase();
+    const resolvedMediaUrl = escapeHtml(getResolvedProfileReelMediaUrl(reel));
+    const posterUrl = escapeHtml(mediaType === 'image_audio' ? resolvedMediaUrl : String(reel?.thumbnail_url || '').trim());
+    const mediaFit = reel?.media_fit === 'contain' ? 'contain' : 'cover';
+    const trimStart = Number.isFinite(Number(reel?.trim_start)) ? Number(reel.trim_start) : Number(reel?.audio_start_time || 0);
+    const trimEnd = Number.isFinite(Number(reel?.trim_end)) ? Number(reel.trim_end) : null;
+    const mediaDuration = trimEnd !== null
+      ? Math.max(0.1, trimEnd - trimStart)
+      : Math.max(0.1, Number(reel?.audio_duration || 30));
+    const audioUrl = reel?.audio_url ? escapeHtml(reel.audio_url) : '';
+
+    if (!mediaType || mediaType === 'video') {
+      return `
+        <div class="profile-short-viewer-media-shell" data-media-kind="video">
+          <video
+            class="profile-short-viewer-video"
+            data-src="${resolvedMediaUrl}"
+            ${posterUrl ? `poster="${posterUrl}"` : ''}
+            data-fit="${mediaFit}"
+            data-start="${trimStart}"
+            data-end="${trimEnd !== null ? trimEnd : ''}"
+            data-duration="${mediaDuration}"
+            playsinline
+            preload="none"></video>
+          ${audioUrl ? `<audio class="profile-short-viewer-audio" data-src="${audioUrl}" preload="none"></audio>` : ''}
+          <div class="profile-short-viewer-loader" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <button type="button" class="profile-short-viewer-play-indicator" aria-label="Play or pause short">
+            <i data-lucide="play"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    if (mediaType === 'image_audio') {
+      return `
+        <div class="profile-short-viewer-media-shell profile-short-viewer-media-shell-image" data-media-kind="image_audio">
+          <img
+            class="profile-short-viewer-image"
+            src="${posterUrl || resolvedMediaUrl}"
+            data-src="${resolvedMediaUrl}"
+            data-fit="${mediaFit}"
+            alt="Short illustration">
+          ${audioUrl ? `<audio class="profile-short-viewer-audio" data-src="${audioUrl}" preload="none"></audio>` : ''}
+          <button type="button" class="profile-short-viewer-play-indicator" aria-label="Play or pause short">
+            <i data-lucide="play"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    if (mediaType === 'voice') {
+      return `
+        <div class="profile-short-viewer-media-shell profile-short-viewer-media-shell-voice" data-media-kind="voice">
+          <div class="profile-short-viewer-voice-surface">
+            <div class="profile-short-viewer-voice-orb">
+              <i data-lucide="mic"></i>
+            </div>
+            <div class="profile-short-viewer-voice-bars">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <strong>Voice Short</strong>
+          </div>
+          ${audioUrl ? `<audio class="profile-short-viewer-audio" data-src="${audioUrl}" preload="none"></audio>` : ''}
+          <button type="button" class="profile-short-viewer-play-indicator" aria-label="Play or pause short">
+            <i data-lucide="play"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="profile-short-viewer-media-shell profile-short-viewer-media-shell-audio" data-media-kind="audio">
+        <div class="profile-short-viewer-audio-surface">
+          <div class="profile-short-viewer-vinyl">
+            <span class="profile-short-viewer-vinyl-ring ring-1"></span>
+            <span class="profile-short-viewer-vinyl-ring ring-2"></span>
+            <span class="profile-short-viewer-vinyl-core"></span>
+          </div>
+          <strong>${escapeHtml(reel?.sound_name || 'Original sound')}</strong>
+          <span>Music Short</span>
+        </div>
+        ${audioUrl ? `<audio class="profile-short-viewer-audio" data-src="${audioUrl}" preload="none"></audio>` : ''}
+        <button type="button" class="profile-short-viewer-play-indicator" aria-label="Play or pause short">
+          <i data-lucide="play"></i>
+        </button>
+      </div>
+    `;
+  };
+
+  const buildProfileShortViewerCardHtml = (reel, reelIndex) => {
+    const profileAuthorInfo = getProfileHeaderInfo();
+    const likesCount = Number(reel?.likes_count || 0);
+    const commentsCount = Number(reel?.comments_count || 0);
+    const sharesCount = Number(reel?.shares_count || 0);
+    const tradePrice = Number(reel?.trade_price || 0);
+    const isTrade = Boolean(reel?.is_trade);
+    const isPossessor = Number(reel?.last_possession_user_id || 0) === Number(window.currentUserId || 0);
+    const authorAvatar = escapeHtml(reel?.author_avatar || reel?.avatar || profileAuthorInfo.avatar || '/assets/avatar_placeholder.jpg');
+    const authorName = escapeHtml(
+      reel?.author_name
+      || reel?.name
+      || `${reel?.first_name || ''} ${reel?.last_name || ''}`.trim()
+      || reel?.author_username
+      || reel?.username
+      || profileAuthorInfo.name
+      || 'Utilisateur'
+    );
+    const authorUsername = escapeHtml(String(reel?.author_username || reel?.username || profileAuthorInfo.username || '').trim().replace(/^@+/, ''));
+    const certificationBadge = typeof renderCertificationBadgeHtml === 'function'
+      ? renderCertificationBadgeHtml(reel?.author_certification_type, 0)
+      : '';
+    const canFollowAuthor = Number(window.currentUserId || 0) !== Number(reel?.user_id || 0) && Number(reel?.user_id || 0) > 0;
+    const isAuthorFollowed = typeof resolveFollowState === 'function'
+      ? resolveFollowState(Number(reel?.user_id || 0), !!reel?.is_author_following)
+      : !!reel?.is_author_following;
+    const createdAtText = reel?.created_at ? formatRelativeTime(reel.created_at) : '';
+    const captionHtml = typeof renderHashtagRichText === 'function'
+      ? renderHashtagRichText(reel?.caption || reel?.content || '')
+      : escapeHtml(reel?.caption || reel?.content || '');
+    const soundLabel = escapeHtml(reel?.sound_name || 'Original sound');
+    const isLiked = Number(reel?.is_liked) === 1 || reel?.is_liked === true;
+    const tradeButton = isTrade ? `
+      <button type="button"
+        class="profile-short-viewer-action reel-trade-btn ${isPossessor ? 'disabled' : ''}"
+        data-reel-id="${Number(reel?.id || 0)}"
+        data-price="${tradePrice}"
+        data-possessor-id="${Number(reel?.last_possession_user_id || 0)}"
+        aria-disabled="${isPossessor ? 'true' : 'false'}">
+        <span class="profile-short-viewer-action-icon">
+          <i data-lucide="repeat"></i>
+        </span>
+        <span class="profile-short-viewer-action-count">$${tradePrice.toFixed(2)}</span>
+      </button>
+    ` : '';
+
+    return `
+      <article
+        class="profile-short-viewer-card"
+        id="profile-short-viewer-${Number(reel?.id || reelIndex || 0)}"
+        data-reel-id="${Number(reel?.id || 0)}"
+        data-user-id="${Number(reel?.user_id || 0)}"
+        data-author-username="${authorUsername}"
+        data-media-type="${escapeHtml(String(reel?.media_type || 'video').toLowerCase())}">
+        <div class="profile-short-viewer-stage">
+          ${buildProfileShortViewerMediaHtml(reel)}
+          <div class="profile-short-viewer-scrim"></div>
+          <div class="profile-short-viewer-topbar">
+            <div class="profile-short-viewer-progress">
+              <span class="profile-short-viewer-time current">0:00</span>
+              <input type="range" class="profile-short-viewer-slider" min="0" max="100" value="0" step="0.1" aria-label="Progression du short">
+              <span class="profile-short-viewer-time duration">0:00</span>
+            </div>
+          </div>
+          <div class="profile-short-viewer-meta">
+            <div class="profile-short-viewer-author">
+              <img src="${authorAvatar}" alt="${authorName}">
+              <div class="profile-short-viewer-author-copy">
+                <div class="profile-short-viewer-author-line">
+                  <strong>${authorName}</strong>
+                  ${certificationBadge}
+                  ${canFollowAuthor ? `
+                    <button type="button"
+                      class="profile-short-viewer-follow reel-follow-toggle-btn"
+                      data-follow-target-id="${Number(reel?.user_id || 0)}"
+                      data-following="${isAuthorFollowed ? '1' : '0'}">
+                      ${isAuthorFollowed ? 'Following' : 'Follow'}
+                    </button>
+                  ` : ''}
+                </div>
+                <div class="profile-short-viewer-author-subline">
+                  ${authorUsername ? `<span>@${authorUsername}</span>` : ''}
+                  ${createdAtText ? `<span>• ${escapeHtml(createdAtText)}</span>` : ''}
+                </div>
+              </div>
+            </div>
+            <p class="profile-short-viewer-caption formatted-hashtag-text" data-raw-text="${escapeHtml(reel?.caption || reel?.content || '')}">${captionHtml}</p>
+            <div class="profile-short-viewer-sound">
+              <i data-lucide="music"></i>
+              <span>${soundLabel}</span>
+            </div>
+          </div>
+          <div class="profile-short-viewer-actions">
+            <button type="button" class="profile-short-viewer-action reel-like-btn ${isLiked ? 'liked' : ''}" data-reel-id="${Number(reel?.id || 0)}" data-likes="${likesCount}">
+              <span class="profile-short-viewer-action-icon"><i data-lucide="heart"></i></span>
+              <span class="profile-short-viewer-action-count like-count">${formatNumber(likesCount)}</span>
+            </button>
+            <button type="button" class="profile-short-viewer-action reel-comment-btn" data-reel-id="${Number(reel?.id || 0)}" data-comments="${commentsCount}">
+              <span class="profile-short-viewer-action-icon"><i data-lucide="message-circle"></i></span>
+              <span class="profile-short-viewer-action-count comment-count">${formatNumber(commentsCount)}</span>
+            </button>
+            <button type="button" class="profile-short-viewer-action profile-short-viewer-share-btn reel-share-btn" data-reel-id="${Number(reel?.id || 0)}" data-shares="${sharesCount}">
+              <span class="profile-short-viewer-action-icon"><i data-lucide="share-2"></i></span>
+              <span class="profile-short-viewer-action-count share-count">${formatNumber(sharesCount)}</span>
+            </button>
+            ${tradeButton}
+          </div>
+          ${buildProfileShortViewerCommentsHtml(reel)}
+        </div>
+      </article>
+    `;
+  };
+
+  const showIsolatedProfileReelsViewer = (initialItem, options = {}) => {
+    pauseAllFeedVideos();
+    if (typeof clearActiveReelCard === 'function') {
+      clearActiveReelCard();
+    }
+
+    if (typeof window.__closeTikTokPreviewModal === 'function') {
+      window.__closeTikTokPreviewModal({ immediate: true, restoreUrl: false, suppressFollowUp: true });
+    }
+
+    const itemsList = getProfilePreviewItems('reel', initialItem);
+    if (!itemsList.length) return;
+
+    let currentIndex = itemsList.findIndex((item) => String(item.id) === String(initialItem?.id));
+    if (currentIndex === -1) currentIndex = 0;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'profileShortViewerOverlay';
+    overlay.className = 'profile-short-viewer-overlay';
+    overlay.innerHTML = `
+      <button type="button" class="profile-short-viewer-close" aria-label="Fermer l apercu des shorts">
+        <i data-lucide="arrow-left"></i>
+      </button>
+      <div class="profile-short-viewer-count">${currentIndex + 1} / ${itemsList.length}</div>
+      <div class="profile-short-viewer-feed">
+        ${itemsList.map((item, index) => buildProfileShortViewerCardHtml(item.data || item, index)).join('')}
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const viewerFeed = overlay.querySelector('.profile-short-viewer-feed');
+    const cards = Array.from(overlay.querySelectorAll('.profile-short-viewer-card'));
+    const countEl = overlay.querySelector('.profile-short-viewer-count');
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousCommentsDrawerOpen = document.body.classList.contains('comments-drawer-open');
+    const previousViewingShortsState = document.body.classList.contains('viewing-shorts');
+
+    document.body.style.overflow = 'hidden';
+    document.body.classList.add('profile-short-viewer-open');
+    document.body.classList.remove('comments-drawer-open');
+    document.body.classList.remove('viewing-shorts');
+    window.removeEventListener('hashchange', handleProfileHashNavigation);
+
+    const session = {
+      modal: overlay,
+      itemsList,
+      currentIndex,
+      baseHash: typeof options.baseHash === 'string' ? options.baseHash : String(window.location.hash || ''),
+      openedViaHash: options.openedViaHash === true,
+      historyManaged: false,
+      currentHash: '',
+      suppressFollowUp: false
+    };
+    window.__profilePreviewSession = session;
+
+    let activeCard = null;
+    const visibilityRatios = new Map();
+    let scrollTimer = null;
+    const commentJoinState = new Set();
+
+    const formatTime = (seconds) => {
+      const safeSeconds = Number.isFinite(seconds) && seconds >= 0 ? Math.floor(seconds) : 0;
+      const mins = Math.floor(safeSeconds / 60);
+      const secs = safeSeconds % 60;
+      return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    };
+
+    const updateViewerCounter = () => {
+      if (countEl) countEl.textContent = `${session.currentIndex + 1} / ${itemsList.length}`;
+    };
+
+    const syncHistoryForCurrentItem = (replaceOnly = false) => {
+      const currentItemWrapper = itemsList[session.currentIndex];
+      if (!currentItemWrapper) return;
+      const nextHash = buildProfilePreviewHash(currentItemWrapper.id, 'reel');
+      session.currentHash = nextHash;
+      const nextUrl = `${window.location.pathname}${window.location.search}${nextHash}`;
+      if (!replaceOnly && !session.historyManaged && !session.openedViaHash) {
+        window.history.pushState({
+          ...(window.history.state || {}),
+          profilePreviewOpen: true,
+          profilePreviewHash: nextHash
+        }, '', nextUrl);
+        session.historyManaged = true;
+        return;
+      }
+      window.history.replaceState({
+        ...(window.history.state || {}),
+        profilePreviewOpen: true,
+        profilePreviewHash: nextHash
+      }, '', nextUrl);
+    };
+
+    const getCardMediaState = (card) => {
+      if (!(card instanceof Element)) return null;
+      const kind = String(card.getAttribute('data-media-type') || 'video').toLowerCase();
+      const video = card.querySelector('.profile-short-viewer-video');
+      const image = card.querySelector('.profile-short-viewer-image');
+      const audio = card.querySelector('.profile-short-viewer-audio');
+      const baseTrack = video || audio;
+      const start = Number(baseTrack?.getAttribute('data-start') || 0);
+      const endAttr = baseTrack?.getAttribute('data-end');
+      const end = endAttr !== null && endAttr !== '' ? Number(endAttr) : null;
+      const duration = Number(baseTrack?.getAttribute('data-duration') || 30);
+      return {
+        kind,
+        video,
+        image,
+        audio,
+        start: Number.isFinite(start) ? start : 0,
+        end: Number.isFinite(end) ? end : null,
+        duration: Number.isFinite(duration) && duration > 0 ? duration : 30
+      };
+    };
+
+    const ensureMediaElementLoaded = (mediaEl) => {
+      if (!(mediaEl instanceof HTMLMediaElement)) return Promise.resolve(mediaEl);
+      if (mediaEl.currentSrc || mediaEl.getAttribute('src')) return Promise.resolve(mediaEl);
+      const source = String(mediaEl.getAttribute('data-src') || '').trim();
+      if (!source) return Promise.resolve(mediaEl);
+
+      return new Promise((resolve) => {
+        let completed = false;
+        const finish = () => {
+          if (completed) return;
+          completed = true;
+          mediaEl.removeEventListener('loadedmetadata', finish);
+          mediaEl.removeEventListener('loadeddata', finish);
+          mediaEl.removeEventListener('canplay', finish);
+          resolve(mediaEl);
+        };
+
+        mediaEl.addEventListener('loadedmetadata', finish, { once: true });
+        mediaEl.addEventListener('loadeddata', finish, { once: true });
+        mediaEl.addEventListener('canplay', finish, { once: true });
+        mediaEl.setAttribute('src', source);
+        if ('preload' in mediaEl && !mediaEl.preload) {
+          mediaEl.preload = mediaEl instanceof HTMLVideoElement ? 'metadata' : 'auto';
+        }
+        try {
+          mediaEl.load();
+        } catch (_) {}
+        window.setTimeout(finish, 1800);
+      });
+    };
+
+    const ensureCardMediaLoaded = async (card) => {
+      const state = getCardMediaState(card);
+      if (!state) return state;
+      if (state.video) {
+        await ensureMediaElementLoaded(state.video);
+      }
+      if (state.audio) {
+        await ensureMediaElementLoaded(state.audio);
+      }
+      return getCardMediaState(card);
+    };
+
+    const setCardLoaderVisible = (card, visible) => {
+      const loader = card?.querySelector('.profile-short-viewer-loader');
+      if (!loader) return;
+      loader.classList.toggle('is-visible', !!visible);
+    };
+
+    const setCardPausedState = (card, paused) => {
+      if (!(card instanceof Element)) return;
+      card.classList.toggle('is-paused', !!paused);
+      const icon = card.querySelector('.profile-short-viewer-play-indicator i, .profile-short-viewer-play-indicator svg');
+      if (!icon) return;
+      icon.setAttribute('data-lucide', paused ? 'play' : 'pause');
+      if (typeof lucide !== 'undefined') {
+        try { lucide.createIcons({ node: icon.parentElement || icon }); } catch (_) {}
+      }
+    };
+
+    const updateCardProgress = (card) => {
+      const state = getCardMediaState(card);
+      if (!state) return;
+      const slider = card.querySelector('.profile-short-viewer-slider');
+      const currentTimeEl = card.querySelector('.profile-short-viewer-time.current');
+      const durationEl = card.querySelector('.profile-short-viewer-time.duration');
+      if (!slider || !currentTimeEl || !durationEl) return;
+
+      const track = state.kind === 'video' ? state.video : state.audio;
+      if (!track) return;
+
+      const currentAbs = Number(track.currentTime || 0);
+      const currentRelative = Math.max(0, currentAbs - state.start);
+      const duration = state.duration;
+      currentTimeEl.textContent = formatTime(currentRelative);
+      durationEl.textContent = formatTime(duration);
+      if (duration > 0) {
+        slider.value = String(Math.max(0, Math.min(100, (currentRelative / duration) * 100)));
+      }
+    };
+
+    const closeCardComments = (card) => {
+      const drawer = card?.querySelector('.profile-short-viewer-comments-sheet');
+      if (!drawer) return;
+      drawer.classList.remove('open');
+      const reelId = Number(card.getAttribute('data-reel-id') || 0);
+      if (reelId && commentJoinState.has(reelId)) {
+        socket.emit('reel-comments-leave', { reelId });
+        commentJoinState.delete(reelId);
+      }
+      if (!overlay.querySelector('.profile-short-viewer-comments-sheet.open')) {
+        document.body.classList.remove('comments-drawer-open');
+      }
+    };
+
+    const openCardComments = (card) => {
+      if (!card) return;
+      cards.forEach((candidate) => {
+        if (candidate !== card) closeCardComments(candidate);
+      });
+
+      const drawer = card.querySelector('.profile-short-viewer-comments-sheet');
+      const list = drawer?.querySelector('.reel-comments-list');
+      const reelId = Number(card.getAttribute('data-reel-id') || 0);
+      if (!drawer || !list || !reelId) return;
+
+      drawer.classList.add('open');
+      document.body.classList.add('comments-drawer-open');
+      if (!commentJoinState.has(reelId)) {
+        socket.emit('reel-comments-join', { reelId });
+        commentJoinState.add(reelId);
+      }
+      list.innerHTML = '<div style="text-align: center; color: rgba(255,255,255,0.6); padding: 20px; font-size: 13px;"><div class="spinner" style="display:inline-block; width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.25); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 8px;"></div><div>Loading comments...</div></div>';
+      socket.emit('reel-comments-fetch', { reelId }, (response) => {
+        if (response?.success) {
+          renderReelComments(list, response.comments);
+        } else {
+          list.innerHTML = '<div style="text-align: center; color: rgba(255,255,255,0.5); padding: 20px; font-size: 13px;">Failed to load comments</div>';
+        }
+      });
+    };
+
+    const syncExternalAudio = (card) => {
+      const state = getCardMediaState(card);
+      if (!state?.video || !state.audio || state.audio.paused || state.video.paused) return;
+      const drift = Math.abs((state.audio.currentTime || 0) - (state.video.currentTime || 0));
+      if (drift > 0.35) {
+        try {
+          state.audio.currentTime = state.video.currentTime;
+        } catch (_) {}
+      }
+    };
+
+    const loopCardMedia = (card) => {
+      const state = getCardMediaState(card);
+      if (!state) return;
+      if (card.__profileShortLooping) return;
+      card.__profileShortLooping = true;
+      const resetPoint = state.start;
+      try {
+        if (state.video) state.video.currentTime = resetPoint;
+        if (state.audio) state.audio.currentTime = resetPoint;
+      } catch (_) {}
+      if (card === activeCard) {
+        window.setTimeout(() => {
+          card.__profileShortLooping = false;
+          playCard(card).catch(() => {});
+        }, 60);
+      } else {
+        card.__profileShortLooping = false;
+      }
+    };
+
+    const pauseCard = (card, { reset = false } = {}) => {
+      const state = getCardMediaState(card);
+      if (!state) return;
+      if (state.video) {
+        try { state.video.pause(); } catch (_) {}
+      }
+      if (state.audio) {
+        try { state.audio.pause(); } catch (_) {}
+      }
+      if (reset) {
+        try {
+          if (state.video) state.video.currentTime = state.start;
+          if (state.audio) state.audio.currentTime = state.start;
+        } catch (_) {}
+        updateCardProgress(card);
+      }
+      setCardLoaderVisible(card, false);
+      setCardPausedState(card, true);
+      card.classList.remove('is-playing');
+    };
+
+    const playCard = async (card) => {
+      const state = await ensureCardMediaLoaded(card);
+      if (!state) return;
+
+      setCardLoaderVisible(card, state.kind === 'video');
+
+      const loopEnd = state.end !== null ? state.end : (state.start + state.duration);
+      const seekToStartIfNeeded = () => {
+        try {
+          const current = state.kind === 'video' ? Number(state.video?.currentTime || 0) : Number(state.audio?.currentTime || 0);
+          if (!Number.isFinite(current) || current < state.start || current >= loopEnd) {
+            if (state.video) state.video.currentTime = state.start;
+            if (state.audio) state.audio.currentTime = state.start;
+          }
+        } catch (_) {}
+      };
+
+      seekToStartIfNeeded();
+
+      if (state.kind === 'video' && state.video) {
+        state.video.muted = !!state.audio;
+        try {
+          const videoPlay = state.video.play();
+          if (state.audio) {
+            const audioPlay = state.audio.play();
+            const results = await Promise.allSettled([videoPlay, audioPlay]);
+            if (results[0]?.status === 'rejected') throw results[0].reason;
+            if (results[1]?.status === 'rejected') {
+              state.video.muted = false;
+            }
+          } else {
+            await videoPlay;
+          }
+        } catch (error) {
+          state.video.muted = true;
+          try { await state.video.play(); } catch (_) {}
+        }
+      } else if (state.audio) {
+        try {
+          await state.audio.play();
+        } catch (_) {}
+      }
+
+      setCardLoaderVisible(card, false);
+      setCardPausedState(card, false);
+      card.classList.add('is-playing');
+      updateCardProgress(card);
+    };
+
+    const preloadNearbyCards = (centerIndex) => {
+      cards.forEach((card, index) => {
+        if (Math.abs(index - centerIndex) <= 1) {
+          ensureCardMediaLoaded(card).catch(() => {});
+        } else if (Math.abs(index - centerIndex) > 3) {
+          const state = getCardMediaState(card);
+          if (!state) return;
+          if (state.video && state.video.getAttribute('src')) {
+            try { state.video.pause(); } catch (_) {}
+            state.video.removeAttribute('src');
+            try { state.video.load(); } catch (_) {}
+          }
+          if (state.audio && state.audio.getAttribute('src')) {
+            try { state.audio.pause(); } catch (_) {}
+            state.audio.removeAttribute('src');
+            try { state.audio.load(); } catch (_) {}
+          }
+        }
+      });
+    };
+
+    const stopCard = (card) => {
+      if (!card) return;
+      card.classList.remove('active');
+      pauseCard(card, { reset: true });
+      closeCardComments(card);
+    };
+
+    const activateCard = (card, { syncHistory = true } = {}) => {
+      if (!card) return;
+      if (activeCard && activeCard !== card) {
+        stopCard(activeCard);
+      }
+      activeCard = card;
+      card.classList.add('active');
+      const nextIndex = cards.indexOf(card);
+      if (nextIndex !== -1 && nextIndex !== session.currentIndex) {
+        session.currentIndex = nextIndex;
+        updateViewerCounter();
+        if (syncHistory) syncHistoryForCurrentItem(true);
+      } else {
+        updateViewerCounter();
+      }
+      preloadNearbyCards(session.currentIndex);
+      playCard(card).catch(() => {
+        setCardLoaderVisible(card, false);
+        setCardPausedState(card, true);
+      });
+    };
+
+    const refreshActiveCard = () => {
+      let candidateCard = null;
+      let candidateRatio = 0;
+
+      visibilityRatios.forEach((ratio, card) => {
+        if (ratio > candidateRatio) {
+          candidateRatio = ratio;
+          candidateCard = card;
+        }
+      });
+
+      if (!candidateCard || candidateRatio < 0.55) {
+        const feedRect = viewerFeed.getBoundingClientRect();
+        let closestDistance = Infinity;
+        cards.forEach((card) => {
+          const distance = Math.abs(card.getBoundingClientRect().top - feedRect.top);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            candidateCard = card;
+          }
+        });
+      }
+
+      if (!candidateCard) return;
+      if (candidateCard === activeCard) return;
+      activateCard(candidateCard);
+    };
+
+    const cardObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        visibilityRatios.set(entry.target, entry.isIntersecting ? entry.intersectionRatio : 0);
+      });
+      refreshActiveCard();
+    }, {
+      root: viewerFeed,
+      rootMargin: '0px',
+      threshold: [0, 0.2, 0.45, 0.65, 0.85]
+    });
+
+    const scrollToCardIndex = (targetIndex, { immediate = false, updateHistory = true } = {}) => {
+      if (targetIndex < 0 || targetIndex >= cards.length) return;
+      const targetCard = cards[targetIndex];
+      if (!targetCard) return;
+      const previousIndex = session.currentIndex;
+      session.currentIndex = targetIndex;
+      updateViewerCounter();
+      if (updateHistory) {
+        syncHistoryForCurrentItem(previousIndex !== targetIndex);
+      } else {
+        session.currentHash = buildProfilePreviewHash(itemsList[targetIndex].id, 'reel');
+      }
+      preloadNearbyCards(targetIndex);
+      const targetTop = viewerFeed.scrollTop + (targetCard.getBoundingClientRect().top - viewerFeed.getBoundingClientRect().top);
+      viewerFeed.scrollTo({ top: targetTop, behavior: immediate ? 'auto' : 'smooth' });
+      window.clearTimeout(scrollTimer);
+      scrollTimer = window.setTimeout(() => {
+        activateCard(targetCard, { syncHistory: false });
+      }, immediate ? 0 : 180);
+    };
+
+    const updateRealtimeCounts = (card, type, nextCount) => {
+      const button = card.querySelector(`.reel-${type}-btn`);
+      const countNode = button?.querySelector(`.${type}-count`);
+      if (!button || !countNode) return;
+      const attrName = type === 'like' ? 'data-likes' : type === 'comment' ? 'data-comments' : 'data-shares';
+      button.setAttribute(attrName, String(nextCount));
+      countNode.textContent = formatNumber(nextCount);
+    };
+
+    const handleShareAction = async (card) => {
+      const reelId = Number(card.getAttribute('data-reel-id') || 0);
+      if (!reelId) return;
+      const reel = (window.profileReelsList || []).find((entry) => Number(entry.id) === reelId) || initialItem;
+      const shareUrl = `${window.location.origin}/?view=shorts#reel-${reelId}`;
+      const shareText = (reel?.caption || reel?.content || 'Découvrez ce short sur TRASX').trim();
+      let shared = false;
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'TRASX Short',
+            text: shareText,
+            url: shareUrl
+          });
+          shared = true;
+        } catch (_) {}
+      }
+
+      if (!shared) {
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          shared = true;
+          showToast('Lien du short copie.');
+        } catch (_) {
+          showToast('Impossible de partager ce short pour le moment.');
+        }
+      }
+
+      if (!shared) return;
+
+      const shareBtn = card.querySelector('.reel-share-btn');
+      const currentCount = Number(shareBtn?.getAttribute('data-shares') || 0) + 1;
+      updateRealtimeCounts(card, 'share', currentCount);
+      incrementReelShareUi(reelId);
+      socket.emit('reel-share-add', { reelId });
+    };
+
+    const bindCard = (card) => {
+      if (!card || card.dataset.profileShortViewerBound === '1') return;
+      card.dataset.profileShortViewerBound = '1';
+
+      const state = getCardMediaState(card);
+      const progressSlider = card.querySelector('.profile-short-viewer-slider');
+      const stage = card.querySelector('.profile-short-viewer-stage');
+      const playIndicator = card.querySelector('.profile-short-viewer-play-indicator');
+      const commentBtn = card.querySelector('.reel-comment-btn');
+      const likeBtn = card.querySelector('.reel-like-btn');
+      const shareBtn = card.querySelector('.profile-short-viewer-share-btn');
+      const tradeBtn = card.querySelector('.reel-trade-btn');
+      const followBtn = card.querySelector('.reel-follow-toggle-btn');
+      const commentsDrawer = card.querySelector('.profile-short-viewer-comments-sheet');
+      const commentsCloseBtn = commentsDrawer?.querySelector('.close-comments-drawer-btn');
+
+      if (followBtn) {
+        syncReelFollowButtonState(card);
+        followBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          handleFollowToggleClick(followBtn);
+        });
+      }
+
+      if (likeBtn) {
+        likeBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const isLiked = !likeBtn.classList.contains('liked');
+          likeBtn.classList.toggle('liked', isLiked);
+          const nextCount = Math.max(0, Number(likeBtn.getAttribute('data-likes') || 0) + (isLiked ? 1 : -1));
+          updateRealtimeCounts(card, 'like', nextCount);
+          socket.emit('reel-like-toggle', {
+            reelId: Number(card.getAttribute('data-reel-id') || 0),
+            isLiked
+          });
+        });
+      }
+
+      if (commentBtn) {
+        commentBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openCardComments(card);
+        });
+      }
+
+      if (commentsCloseBtn) {
+        commentsCloseBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          closeCardComments(card);
+        });
+      }
+
+      if (shareBtn) {
+        shareBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          handleShareAction(card).catch(() => {});
+        });
+      }
+
+      if (tradeBtn) {
+        tradeBtn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          requestReelTrade(tradeBtn, event).catch(() => {});
+        });
+      }
+
+      const togglePlayback = (event) => {
+        if (event) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        const isPaused = card.classList.contains('is-paused') || !card.classList.contains('is-playing');
+        if (activeCard !== card) {
+          activateCard(card);
+          return;
+        }
+        if (isPaused) {
+          playCard(card).catch(() => {});
+        } else {
+          pauseCard(card);
+        }
+      };
+
+      stage?.addEventListener('click', (event) => {
+        if (
+          event.target.closest('.profile-short-viewer-actions') ||
+          event.target.closest('.reel-comments-drawer') ||
+          event.target.closest('.profile-short-viewer-close') ||
+          event.target.closest('input') ||
+          event.target.closest('button') ||
+          event.target.closest('a')
+        ) {
+          return;
+        }
+        togglePlayback(event);
+      });
+
+      playIndicator?.addEventListener('click', togglePlayback);
+
+      if (progressSlider) {
+        progressSlider.addEventListener('input', (event) => {
+          const currentState = getCardMediaState(card);
+          if (!currentState) return;
+          const percent = Number(event.target.value || 0) / 100;
+          const targetTime = currentState.start + (percent * currentState.duration);
+          try {
+            if (currentState.video) currentState.video.currentTime = targetTime;
+            if (currentState.audio) currentState.audio.currentTime = targetTime;
+          } catch (_) {}
+          updateCardProgress(card);
+        });
+      }
+
+      if (state?.video) {
+        const onVideoTimeUpdate = () => {
+          syncExternalAudio(card);
+          const currentState = getCardMediaState(card);
+          const loopEnd = currentState?.end !== null ? currentState.end : (currentState.start + currentState.duration);
+          if ((state.video.currentTime || 0) >= loopEnd - 0.05) {
+            loopCardMedia(card);
+            return;
+          }
+          updateCardProgress(card);
+        };
+
+        state.video.addEventListener('loadedmetadata', () => updateCardProgress(card));
+        state.video.addEventListener('loadeddata', () => {
+          setCardLoaderVisible(card, false);
+          updateCardProgress(card);
+        });
+        state.video.addEventListener('canplay', () => setCardLoaderVisible(card, false));
+        state.video.addEventListener('playing', () => {
+          setCardLoaderVisible(card, false);
+          setCardPausedState(card, false);
+        });
+        state.video.addEventListener('waiting', () => setCardLoaderVisible(card, true));
+        state.video.addEventListener('pause', () => setCardPausedState(card, true));
+        state.video.addEventListener('timeupdate', onVideoTimeUpdate);
+        state.video.addEventListener('ended', () => loopCardMedia(card));
+      }
+
+      if (state?.audio) {
+        state.audio.addEventListener('loadedmetadata', () => updateCardProgress(card));
+        state.audio.addEventListener('timeupdate', () => {
+          if (!state.video) {
+            const currentState = getCardMediaState(card);
+            const loopEnd = currentState?.end !== null ? currentState.end : (currentState.start + currentState.duration);
+            if ((state.audio.currentTime || 0) >= loopEnd - 0.05) {
+              loopCardMedia(card);
+              return;
+            }
+          }
+          updateCardProgress(card);
+        });
+        state.audio.addEventListener('ended', () => loopCardMedia(card));
+        state.audio.addEventListener('playing', () => setCardPausedState(card, false));
+        state.audio.addEventListener('pause', () => {
+          if (!state.video || state.video.paused) {
+            setCardPausedState(card, true);
+          }
+        });
+      }
+
+      setCardPausedState(card, true);
+      updateCardProgress(card);
+      cardObserver.observe(card);
+      visibilityRatios.set(card, 0);
+    };
+
+    const historySyncHandler = () => {
+      if (!window.__profilePreviewSession || window.__profilePreviewSession.modal !== overlay) return;
+      if (window.location.hash === session.currentHash) return;
+      const targetHash = String(window.location.hash || '').trim();
+      const targetMatch = targetHash.match(/^#reel-(\d+)$/);
+      if (targetMatch) {
+        const nextIndex = itemsList.findIndex((entry) => String(entry.id) === String(targetMatch[1]));
+        if (nextIndex !== -1) {
+          scrollToCardIndex(nextIndex, { updateHistory: false });
+          return;
+        }
+      }
+      closeViewer({ fromHistory: true, restoreUrl: false, suppressFollowUp: false });
+    };
+
+    const keyHandler = (event) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeViewer();
+        }
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeViewer();
+        return;
+      }
+
+      if (event.key === 'ArrowDown' || event.key === 'PageDown' || (event.key === ' ' && !event.shiftKey)) {
+        event.preventDefault();
+        scrollToCardIndex(Math.min(cards.length - 1, session.currentIndex + 1));
+      } else if (event.key === 'ArrowUp' || event.key === 'PageUp' || (event.key === ' ' && event.shiftKey)) {
+        event.preventDefault();
+        scrollToCardIndex(Math.max(0, session.currentIndex - 1));
+      }
+    };
+
+    const closeViewer = ({
+      fromHistory = false,
+      restoreUrl = true,
+      immediate = false,
+      suppressFollowUp = false
+    } = {}) => {
+      if (!document.body.contains(overlay)) return;
+      session.suppressFollowUp = suppressFollowUp;
+
+      if (!fromHistory && restoreUrl && session.historyManaged && window.location.hash === session.currentHash) {
+        window.history.back();
+        return;
+      }
+
+      window.clearTimeout(scrollTimer);
+      scrollTimer = null;
+      cards.forEach((card) => {
+        try {
+          cardObserver.unobserve(card);
+        } catch (_) {}
+        stopCard(card);
+      });
+      cardObserver.disconnect();
+      commentJoinState.forEach((reelId) => {
+        socket.emit('reel-comments-leave', { reelId });
+      });
+      commentJoinState.clear();
+
+      document.body.classList.remove('profile-short-viewer-open');
+      document.body.classList.toggle('comments-drawer-open', previousCommentsDrawerOpen);
+      document.body.classList.toggle('viewing-shorts', previousViewingShortsState);
+      document.body.style.overflow = previousBodyOverflow;
+
+      if (restoreUrl && !fromHistory) {
+        const restoreUrlValue = `${window.location.pathname}${window.location.search}${session.baseHash || ''}`;
+        window.history.replaceState({
+          ...(window.history.state || {}),
+          profilePreviewOpen: false
+        }, '', restoreUrlValue);
+      }
+
+      if (window.__closeTikTokPreviewModal === closeViewer) {
+        window.__closeTikTokPreviewModal = null;
+      }
+      if (window.__profilePreviewSession?.modal === overlay) {
+        window.__profilePreviewSession = null;
+      }
+
+      document.removeEventListener('keydown', keyHandler);
+      window.removeEventListener('popstate', historySyncHandler);
+      window.removeEventListener('hashchange', historySyncHandler);
+      window.addEventListener('hashchange', handleProfileHashNavigation);
+
+      const finalizeRemove = () => {
+        overlay.remove();
+        if (!session.suppressFollowUp && !window.location.hash && session.openedViaHash) {
+          const currentItemWrapper = itemsList[session.currentIndex];
+          if (currentItemWrapper) {
+            highlightProfileGridItem('reel', currentItemWrapper.id);
+          }
+        } else if (!session.suppressFollowUp && window.location.hash) {
+          setTimeout(handleProfileHashNavigation, 0);
+        }
+      };
+
+      if (immediate) {
+        finalizeRemove();
+        return;
+      }
+
+      overlay.classList.remove('is-open');
+      window.setTimeout(finalizeRemove, 220);
+    };
+
+    cards.forEach(bindCard);
+
+    viewerFeed.addEventListener('scroll', () => {
+      window.clearTimeout(scrollTimer);
+      scrollTimer = window.setTimeout(() => {
+        refreshActiveCard();
+      }, 90);
+    }, { passive: true });
+
+    overlay.querySelector('.profile-short-viewer-close')?.addEventListener('click', () => closeViewer());
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) {
+        closeViewer();
+      }
+    });
+
+    window.addEventListener('popstate', historySyncHandler);
+    window.addEventListener('hashchange', historySyncHandler);
+    document.addEventListener('keydown', keyHandler);
+    window.__closeTikTokPreviewModal = closeViewer;
+
+    if (typeof lucide !== 'undefined') {
+      try { lucide.createIcons({ node: overlay }); } catch (_) {}
+    }
+
+    scrollToCardIndex(currentIndex, { immediate: true, updateHistory: false });
+    syncHistoryForCurrentItem(false);
+    updateViewerCounter();
+    overlay.offsetHeight;
+    overlay.classList.add('is-open');
+  };
+
+  const buildProfilePostCommentsSheetHtml = (post) => {
+    const currentAvatar = escapeHtml(window.currentUserAvatar || '/images/default-avatar.png');
+    return `
+      <div class="profile-post-comments-sheet post-comments-section" data-bottom-sheet="1">
+        <div class="profile-post-comments-sheet-grabber" aria-hidden="true"></div>
+        <div class="profile-post-comments-sheet-header">
+          <h3>Commentaires</h3>
+          <button type="button" class="close-post-comments-sheet-btn" aria-label="Fermer les commentaires">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <div class="comments-list profile-post-comments-list">
+          <div class="comments-loading-state">Chargement des commentaires...</div>
+        </div>
+        <div class="comment-input-row profile-post-comments-input-row">
+          <div class="avatar profile-post-comments-avatar">
+            <img src="${currentAvatar}" alt="Votre avatar">
+          </div>
+          <div class="profile-post-comments-input-wrap">
+            <input type="text" placeholder="Ecrire un commentaire..." class="comment-input profile-post-comments-input">
+            <button type="button" class="submit-comment-btn profile-post-comments-submit" aria-label="Envoyer le commentaire">
+              <i data-lucide="send"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
+  const buildProfilePostViewerMediaHtml = (post) => {
+    const isLive = Number(post?.is_live) === 1;
+    const hasTextCustomizations = post?.text_color || post?.text_alignment || post?.text_position || post?.text_font || post?.text_size;
+    const postImages = [post?.image_url, post?.image_url_2, post?.image_url_3, post?.image_url_4].filter(Boolean);
+    const canDownload = Number(post?.allow_download) !== 0;
+
+    if (isLive) {
+      const ytId = getYouTubeId(post?.live_url);
+      const thumbnail = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : (post?.thumbnail_url || post?.image_url || '');
+      return `
+        <div class="profile-post-viewer-visual profile-post-viewer-visual-live" data-viewer-media-kind="live">
+          <div class="profile-post-viewer-live-shell">
+            <img src="${escapeHtml(thumbnail || '/assets/avatar_placeholder.jpg')}" class="profile-post-viewer-primary-media" alt="Apercu live">
+            <div class="profile-post-viewer-live-overlay">
+              <span class="profile-post-viewer-live-badge">
+                <span class="profile-post-viewer-live-dot"></span>
+                LIVE
+              </span>
+              ${post?.live_url ? `
+                <a href="${escapeHtml(post.live_url)}" target="_blank" rel="noopener" class="profile-post-viewer-live-link">
+                  Ouvrir le live
+                </a>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    if (post?.media_type === 'video' && post?.image_url) {
+      return `
+        <div class="profile-post-viewer-visual profile-post-viewer-visual-video" data-viewer-media-kind="video">
+          <div class="post-single-video profile-post-viewer-video-host">
+            <div class="post-video-shell">
+              <video
+                data-lazy-src="${escapeHtml(post.image_url)}"
+                class="post-video profile-post-viewer-primary-media"
+                preload="none"
+                data-load-on-play="1"
+                playsinline
+                poster="${escapeHtml(post.thumbnail_url || '')}"
+                oncontextmenu="return false;"></video>
+              <div class="post-video-loading-overlay" aria-hidden="true">
+                <div class="post-video-loading-icon">
+                  <i data-lucide="play"></i>
+                </div>
+              </div>
+              <div class="video-pulse-overlay" aria-hidden="true">
+                <i data-lucide="play"></i>
+              </div>
+              <div class="custom-video-controls">
+                <div class="video-controls-left">
+                  <button type="button" class="video-control-btn" data-video-control="play" aria-label="Play video" title="Play">
+                    <i data-lucide="play"></i>
+                  </button>
+                </div>
+                <div class="video-controls-center">
+                  <span class="video-time video-current-time">0:00</span>
+                  <input type="range" class="video-progress-slider" min="0" max="100" value="0" step="0.1" aria-label="Video progress">
+                  <span class="video-time video-duration">0:00</span>
+                </div>
+                <div class="video-controls-right">
+                  <button type="button" class="video-control-btn" data-video-control="mute" aria-label="Mute" title="Sound">
+                    <i data-lucide="volume-2"></i>
+                  </button>
+                  <input type="range" class="video-volume-slider" min="0" max="1" value="1" step="0.05" aria-label="Volume">
+                  ${canDownload ? `
+                    <button type="button" class="video-control-btn" data-video-download data-post-id="${Number(post.id || 0)}" data-video-url="${escapeHtml(post.image_url)}" data-video-author="${escapeHtml(post.author_username || '')}" aria-label="Download video with watermark" title="Download with watermark">
+                      <i data-lucide="download"></i>
+                    </button>
+                  ` : ''}
+                  <button type="button" class="video-control-btn" data-video-control="fullscreen" aria-label="Fullscreen" title="Fullscreen">
+                    <i data-lucide="maximize"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="video-download-status" aria-live="polite"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    if (postImages.length > 1) {
+      return `
+        <div class="profile-post-viewer-visual profile-post-viewer-visual-gallery" data-viewer-media-kind="gallery">
+          <div class="profile-post-viewer-gallery-grid profile-post-viewer-gallery-grid-${Math.min(postImages.length, 4)}">
+            ${postImages.map((imageUrl, index) => `
+              <div class="profile-post-viewer-gallery-cell">
+                <img
+                  src="${escapeHtml(index === 0 ? (post.thumbnail_url || imageUrl) : imageUrl)}"
+                  data-lazy-src="${escapeHtml(imageUrl)}"
+                  class="profile-post-viewer-gallery-media"
+                  alt="Publication ${index + 1}"
+                  loading="lazy">
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    if (postImages.length === 1) {
+      const singleImage = postImages[0];
+      return `
+        <div class="profile-post-viewer-visual profile-post-viewer-visual-image" data-viewer-media-kind="image">
+          <img
+            src="${escapeHtml(post.thumbnail_url || singleImage)}"
+            data-lazy-src="${escapeHtml(singleImage)}"
+            class="profile-post-viewer-primary-media"
+            alt="Publication"
+            loading="lazy">
+        </div>
+      `;
+    }
+
+    if (post?.bg_image_url || (hasTextCustomizations && !post?.media_type && !post?.image_url)) {
+      return `
+        <div class="profile-post-viewer-visual profile-post-viewer-visual-text" data-viewer-media-kind="styled-text">
+          ${renderStyledBackgroundPostHtml(post)}
+        </div>
+      `;
+    }
+
+    const safeContent = renderHashtagRichText(post?.content || 'Publication');
+    const textAlignment = ['left', 'center', 'right', 'justify'].includes(String(post?.text_alignment || '').trim().toLowerCase())
+      ? String(post.text_alignment).trim().toLowerCase()
+      : 'center';
+    const textColor = typeof post?.text_color === 'string' && post.text_color.trim()
+      ? post.text_color.trim()
+      : '#ffffff';
+    const textFont = typeof post?.text_font === 'string' && post.text_font.trim()
+      ? post.text_font.trim()
+      : "'Outfit', sans-serif";
+    const textSize = typeof post?.text_size === 'string' && post.text_size.trim()
+      ? post.text_size.trim()
+      : 'clamp(18px, 3vw, 28px)';
+
+    return `
+      <div class="profile-post-viewer-visual profile-post-viewer-visual-text profile-post-viewer-plain-text" data-viewer-media-kind="text">
+        <div class="profile-post-viewer-plain-text-inner formatted-hashtag-text" data-raw-text="${escapeHtml(post?.content || '')}" style="text-align:${textAlignment}; color:${textColor}; font-family:${textFont}; font-size:${textSize};">
+          ${safeContent}
+        </div>
+      </div>
+    `;
+  };
+
+  const buildProfilePostCardHtml = (post, index) => {
+    const profileAuthorInfo = getProfileHeaderInfo();
+    const likesCount = Number(post?.likes_count || 0);
+    const commentsCount = Number(post?.comments_count || 0);
+    const sharesCount = Number(post?.shares_count || 0);
+    const isLiked = Number(post?.is_liked) === 1 || post?.is_liked === true;
+    const isBookmarked = Number(post?.is_bookmarked) === 1 || post?.is_bookmarked === true;
+    const hasTextCustomizations = post?.text_color || post?.text_alignment || post?.text_position || post?.text_font || post?.text_size;
+    const postImages = [post?.image_url, post?.image_url_2, post?.image_url_3, post?.image_url_4].filter(Boolean);
+    const isTextSurfacePost = Boolean(
+      post?.bg_image_url
+      || (hasTextCustomizations && !post?.media_type && !post?.image_url)
+      || (!Number(post?.is_live) && !post?.media_type && postImages.length === 0)
+    );
+    const authorAvatar = escapeHtml(post?.author_avatar || profileAuthorInfo.avatar || '/assets/avatar_placeholder.jpg');
+    const authorName = escapeHtml(
+      post?.author_name
+      || post?.name
+      || `${post?.first_name || ''} ${post?.last_name || ''}`.trim()
+      || post?.author_username
+      || post?.username
+      || profileAuthorInfo.name
+      || 'Utilisateur'
+    );
+    const authorUsername = escapeHtml(String(post?.author_username || post?.username || profileAuthorInfo.username || '').trim().replace(/^@+/, ''));
+    const authorLink = authorUsername ? `/profile/u/${encodeURIComponent(authorUsername)}` : '#';
+    const badgeHtml = renderCertificationBadgeHtml(post?.author_certification_type, 6);
+    const caption = String(post?.content || '').trim();
+    const safeCaption = caption ? renderHashtagRichText(caption) : '';
+    const createdAtText = post?.created_at
+      ? formatRelativeTime(post.created_at)
+      : '';
+    const metaBits = [
+      Number(post?.views_count || 0) > 0 ? `${formatNumber(post.views_count || 0)} vues` : '',
+      createdAtText
+    ].filter(Boolean);
+
+    return `
+      <article
+        class="post-card profile-post-viewer-card"
+        id="profile-post-viewer-card-${Number(post?.id || index)}"
+        data-post-id="${Number(post?.id || 0)}"
+        data-feed-item-type="post"
+        data-created-at="${escapeHtml(post?.created_at || '')}"
+        data-post-user-id="${Number(post?.user_id || 0)}">
+        <div class="profile-post-viewer-stage">
+          <div class="profile-post-viewer-media-shell">
+            ${buildProfilePostViewerMediaHtml(post)}
+          </div>
+          <div class="profile-post-viewer-overlay-scrim"></div>
+          <div class="profile-post-viewer-meta">
+            <a href="${authorLink}" class="profile-post-viewer-author">
+              <img src="${authorAvatar}" alt="${authorName}">
+              <div class="profile-post-viewer-author-copy">
+                <div class="profile-post-viewer-author-name">${authorName}${badgeHtml}</div>
+                <div class="profile-post-viewer-author-username">${authorUsername ? `@${authorUsername}` : ''}</div>
+              </div>
+            </a>
+            ${caption && !isTextSurfacePost ? `<p class="profile-post-viewer-caption formatted-hashtag-text" data-raw-text="${escapeHtml(caption)}">${safeCaption}</p>` : ''}
+            ${metaBits.length ? `<div class="profile-post-viewer-meta-line">${metaBits.map((bit) => `<span>${escapeHtml(bit)}</span>`).join('<span class="profile-post-viewer-meta-dot">•</span>')}</div>` : ''}
+          </div>
+          <div class="profile-post-viewer-actions">
+            <button class="post-action-btn like-btn ${isLiked ? 'liked' : ''}" type="button" data-likes="${likesCount}">
+              <span class="profile-post-viewer-action-icon">
+                <i data-lucide="heart"></i>
+              </span>
+              <span class="profile-post-viewer-action-count action-label"><span class="like-count">${formatNumber(likesCount)}</span></span>
+            </button>
+            <button class="post-action-btn comment-btn" type="button" data-comments="${commentsCount}">
+              <span class="profile-post-viewer-action-icon">
+                <i data-lucide="message-circle"></i>
+              </span>
+              <span class="profile-post-viewer-action-count action-label"><span class="comment-count">${formatNumber(commentsCount)}</span></span>
+            </button>
+            <button class="post-action-btn share-btn" type="button" data-shares="${sharesCount}">
+              <span class="profile-post-viewer-action-icon">
+                <i data-lucide="share-2"></i>
+              </span>
+              <span class="profile-post-viewer-action-count action-label"><span class="share-count">${formatNumber(sharesCount)}</span></span>
+            </button>
+            <button class="post-bookmark-btn profile-post-viewer-bookmark ${isBookmarked ? 'bookmarked' : ''}" type="button" aria-label="Bookmark post">
+              <span class="profile-post-viewer-action-icon">
+                <i data-lucide="bookmark"></i>
+              </span>
+            </button>
+          </div>
+          ${buildProfilePostCommentsSheetHtml(post)}
+        </div>
+      </article>
+    `;
+  };
+
+  const applyProfilePostViewerMediaFit = (card) => {
+    if (!(card instanceof Element)) return;
+    const mediaKind = String(card.querySelector('[data-viewer-media-kind]')?.getAttribute('data-viewer-media-kind') || '').trim();
+    const primaryMedia = card.querySelector('.profile-post-viewer-primary-media');
+    if (!primaryMedia || ['gallery', 'styled-text', 'text', 'live'].includes(mediaKind)) {
+      card.setAttribute('data-viewer-media-shape', 'centered');
+      return;
+    }
+
+    const applyFit = (width, height) => {
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+      const isLandscape = width > height;
+      const fitValue = isLandscape ? 'contain' : 'cover';
+      primaryMedia.setAttribute('data-media-fit', fitValue);
+      primaryMedia.style.objectFit = fitValue;
+      card.setAttribute('data-viewer-media-shape', isLandscape ? 'landscape' : 'portrait');
+    };
+
+    if (primaryMedia.tagName === 'VIDEO') {
+      const bindVideo = () => applyFit(primaryMedia.videoWidth, primaryMedia.videoHeight);
+      if (primaryMedia.readyState >= 1) bindVideo();
+      primaryMedia.addEventListener('loadedmetadata', bindVideo);
+      primaryMedia.addEventListener('loadeddata', bindVideo);
+      return;
+    }
+
+    const bindImage = () => applyFit(primaryMedia.naturalWidth, primaryMedia.naturalHeight);
+    if (primaryMedia.complete) bindImage();
+    primaryMedia.addEventListener('load', bindImage);
+  };
+
+  const getProfilePostCommentsSheet = (postCard) => postCard?.querySelector('.profile-post-comments-sheet');
+
+  const closeProfilePostCommentsSheet = (postCard) => {
+    const sheet = postCard instanceof Element ? getProfilePostCommentsSheet(postCard) : null;
+    if (!sheet) return;
+    sheet.classList.remove('open');
+    postCard.classList.remove('comments-open');
+    const hasOpenSheet = document.querySelector('#profilePostViewerOverlay .profile-post-comments-sheet.open');
+    if (!hasOpenSheet) {
+      document.body.classList.remove('comments-drawer-open');
+    }
+  };
+
+  const openProfilePostCommentsSheet = (postCard) => {
+    if (!postCard) return;
+    document.querySelectorAll('#profilePostViewerOverlay .profile-post-viewer-card.comments-open').forEach((card) => {
+      if (card !== postCard) closeProfilePostCommentsSheet(card);
+    });
+
+    const sheet = getProfilePostCommentsSheet(postCard);
+    if (!sheet) return;
+    sheet.classList.add('open');
+    postCard.classList.add('comments-open');
+    document.body.classList.add('comments-drawer-open');
+    loadPostComments(postCard).catch(() => {});
+  };
+
+  const showProfilePostsViewer = (initialItem, options = {}) => {
+    pauseAllFeedVideos();
+    if (typeof clearActiveReelCard === 'function') {
+      clearActiveReelCard();
+    }
+
+    if (typeof window.__closeTikTokPreviewModal === 'function') {
+      window.__closeTikTokPreviewModal({ immediate: true, restoreUrl: false, suppressFollowUp: true });
+    }
+
+    const itemsList = getProfilePreviewItems('post', initialItem);
+    if (!itemsList.length) return;
+
+    let currentIndex = itemsList.findIndex((item) => String(item.id) === String(initialItem?.id));
+    if (currentIndex === -1) currentIndex = 0;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'profilePostViewerOverlay';
+    overlay.className = 'profile-post-viewer-overlay';
+    overlay.innerHTML = `
+      <button type="button" class="profile-post-viewer-close" aria-label="Fermer l apercu des posts">
+        <i data-lucide="arrow-left"></i>
+      </button>
+      <div class="profile-post-viewer-count">${currentIndex + 1} / ${itemsList.length}</div>
+      <div class="profile-post-viewer-feed">
+        ${itemsList.map((item, index) => buildProfilePostCardHtml(item.data || item, index)).join('')}
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const viewerFeed = overlay.querySelector('.profile-post-viewer-feed');
+    const cards = Array.from(overlay.querySelectorAll('.profile-post-viewer-card'));
+    const countEl = overlay.querySelector('.profile-post-viewer-count');
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousCommentsDrawerOpen = document.body.classList.contains('comments-drawer-open');
+
+    document.body.style.overflow = 'hidden';
+    document.body.classList.add('profile-post-viewer-open');
+    document.body.classList.remove('comments-drawer-open');
+    window.removeEventListener('hashchange', handleProfileHashNavigation);
+
+    const session = {
+      modal: overlay,
+      itemsList,
+      currentIndex,
+      baseHash: typeof options.baseHash === 'string' ? options.baseHash : String(window.location.hash || ''),
+      openedViaHash: options.openedViaHash === true,
+      historyManaged: false,
+      currentHash: '',
+      suppressFollowUp: false
+    };
+    window.__profilePreviewSession = session;
+
+    const viewerState = {
+      activeCard: null,
+      visibilityRatios: new Map(),
+      observer: null,
+      scrollTimer: null
+    };
+
+    cards.forEach((card) => {
+      applyProfilePostViewerMediaFit(card);
+    });
+
+    if (typeof window.initLazyMedia === 'function') {
+      window.initLazyMedia(overlay);
+    }
+    initCustomVideoPlayers(overlay);
+    if (typeof lucide !== 'undefined') {
+      try { lucide.createIcons(); } catch (_) {}
+    }
+
+    const updateViewerCounter = () => {
+      if (countEl) countEl.textContent = `${session.currentIndex + 1} / ${itemsList.length}`;
+    };
+
+    const syncHistoryForCurrentItem = (replaceOnly = false) => {
+      const currentItemWrapper = itemsList[session.currentIndex];
+      if (!currentItemWrapper) return;
+      const nextHash = buildProfilePreviewHash(currentItemWrapper.id, 'post');
+      session.currentHash = nextHash;
+      const nextUrl = `${window.location.pathname}${window.location.search}${nextHash}`;
+      if (!replaceOnly && !session.historyManaged && !session.openedViaHash) {
+        window.history.pushState({
+          ...(window.history.state || {}),
+          profilePreviewOpen: true,
+          profilePreviewHash: nextHash
+        }, '', nextUrl);
+        session.historyManaged = true;
+        return;
+      }
+      window.history.replaceState({
+        ...(window.history.state || {}),
+        profilePreviewOpen: true,
+        profilePreviewHash: nextHash
+      }, '', nextUrl);
+    };
+
+    const stopViewerCardPlayback = (card) => {
+      if (!card) return;
+      card.classList.remove('active');
+      closeProfilePostCommentsSheet(card);
+      card.querySelectorAll('.post-video').forEach((video) => {
+        if (!video.paused) {
+          video.pause();
+        }
+      });
+    };
+
+    const activateViewerCard = (card, { syncHistory = true } = {}) => {
+      if (!card) return;
+      if (viewerState.activeCard && viewerState.activeCard !== card) {
+        stopViewerCardPlayback(viewerState.activeCard);
+      }
+
+      viewerState.activeCard = card;
+      card.classList.add('active');
+
+      const nextIndex = cards.indexOf(card);
+      if (nextIndex !== -1 && nextIndex !== session.currentIndex) {
+        session.currentIndex = nextIndex;
+        updateViewerCounter();
+        if (syncHistory) syncHistoryForCurrentItem(true);
+      } else {
+        updateViewerCounter();
+      }
+
+      refreshProfilePostViewerPlayback();
+    };
+
+    const refreshViewerActiveCard = () => {
+      let candidateCard = null;
+      let candidateRatio = 0;
+
+      viewerState.visibilityRatios.forEach((ratio, card) => {
+        if (ratio > candidateRatio) {
+          candidateRatio = ratio;
+          candidateCard = card;
+        }
+      });
+
+      if (!candidateCard || candidateRatio < 0.55) {
+        const feedRect = viewerFeed.getBoundingClientRect();
+        let closestDistance = Infinity;
+        cards.forEach((card) => {
+          const distance = Math.abs(card.getBoundingClientRect().top - feedRect.top);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            candidateCard = card;
+          }
+        });
+      }
+
+      if (!candidateCard) return;
+      if (viewerState.activeCard === candidateCard) {
+        refreshProfilePostViewerPlayback();
+        return;
+      }
+      activateViewerCard(candidateCard);
+    };
+
+    viewerState.observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        viewerState.visibilityRatios.set(entry.target, entry.isIntersecting ? entry.intersectionRatio : 0);
+      });
+      refreshViewerActiveCard();
+    }, {
+      root: viewerFeed,
+      rootMargin: '0px',
+      threshold: [0, 0.2, 0.45, 0.65, 0.85]
+    });
+
+    cards.forEach((card) => {
+      viewerState.visibilityRatios.set(card, 0);
+      viewerState.observer.observe(card);
+    });
+
+    const scrollToCardIndex = (targetIndex, { immediate = false, updateHistory = true } = {}) => {
+      if (targetIndex < 0 || targetIndex >= cards.length) return;
+      const targetCard = cards[targetIndex];
+      if (!targetCard) return;
+
+      const previousIndex = session.currentIndex;
+      session.currentIndex = targetIndex;
+      updateViewerCounter();
+      if (updateHistory) {
+        syncHistoryForCurrentItem(previousIndex !== targetIndex);
+      } else {
+        session.currentHash = buildProfilePreviewHash(itemsList[targetIndex].id, 'post');
+      }
+
+      const targetScrollTop = viewerFeed.scrollTop + (targetCard.getBoundingClientRect().top - viewerFeed.getBoundingClientRect().top);
+      viewerFeed.scrollTo({ top: targetScrollTop, behavior: immediate ? 'auto' : 'smooth' });
+
+      window.clearTimeout(viewerState.scrollTimer);
+      viewerState.scrollTimer = window.setTimeout(() => {
+        activateViewerCard(targetCard, { syncHistory: false });
+      }, immediate ? 0 : 180);
+    };
+
+    const closeViewer = ({
+      fromHistory = false,
+      restoreUrl = true,
+      immediate = false,
+      suppressFollowUp = false
+    } = {}) => {
+      if (!document.body.contains(overlay)) return;
+      session.suppressFollowUp = suppressFollowUp;
+
+      if (!fromHistory && restoreUrl && session.historyManaged && window.location.hash === session.currentHash) {
+        window.history.back();
+        return;
+      }
+
+      window.clearTimeout(viewerState.scrollTimer);
+      viewerState.scrollTimer = null;
+
+      cards.forEach((card) => {
+        try {
+          viewerState.observer?.unobserve(card);
+        } catch (_) {}
+        viewerState.visibilityRatios.delete(card);
+        stopViewerCardPlayback(card);
+      });
+      viewerState.observer?.disconnect();
+
+      document.body.classList.remove('profile-post-viewer-open');
+      document.body.classList.toggle('comments-drawer-open', previousCommentsDrawerOpen);
+      document.body.style.overflow = previousBodyOverflow;
+
+      if (restoreUrl && !fromHistory) {
+        const restoreUrlValue = `${window.location.pathname}${window.location.search}${session.baseHash || ''}`;
+        window.history.replaceState({
+          ...(window.history.state || {}),
+          profilePreviewOpen: false
+        }, '', restoreUrlValue);
+      }
+
+      if (window.__closeTikTokPreviewModal === closeViewer) {
+        window.__closeTikTokPreviewModal = null;
+      }
+      if (window.__profilePreviewSession?.modal === overlay) {
+        window.__profilePreviewSession = null;
+      }
+
+      window.removeEventListener('popstate', historySyncHandler);
+      window.removeEventListener('hashchange', historySyncHandler);
+      document.removeEventListener('keydown', keyHandler);
+      viewerFeed.removeEventListener('scroll', onViewerScroll);
+      overlay.removeEventListener('click', overlayClickHandler);
+      overlay.removeEventListener('keydown', overlayKeydownHandler);
+      window.addEventListener('hashchange', handleProfileHashNavigation);
+
+      const finalizeRemove = () => {
+        overlay.remove();
+        if (!session.suppressFollowUp && !window.location.hash && session.openedViaHash) {
+          const currentItemWrapper = itemsList[session.currentIndex];
+          if (currentItemWrapper) {
+            highlightProfileGridItem('post', currentItemWrapper.id);
+          }
+        } else if (!session.suppressFollowUp && window.location.hash) {
+          setTimeout(handleProfileHashNavigation, 0);
+        }
+      };
+
+      if (immediate) {
+        finalizeRemove();
+        return;
+      }
+
+      overlay.classList.remove('is-open');
+      setTimeout(finalizeRemove, 220);
+    };
+
+    const historySyncHandler = () => {
+      if (!window.__profilePreviewSession || window.__profilePreviewSession.modal !== overlay) return;
+      if (window.location.hash === session.currentHash) return;
+
+      const targetHash = String(window.location.hash || '').trim();
+      const targetMatch = targetHash.match(/^#post-(\d+)$/);
+      if (targetMatch) {
+        const nextIndex = itemsList.findIndex((entry) => String(entry.id) === String(targetMatch[1]));
+        if (nextIndex !== -1) {
+          scrollToCardIndex(nextIndex, { updateHistory: false });
+          return;
+        }
+      }
+
+      closeViewer({ fromHistory: true, restoreUrl: false, suppressFollowUp: false });
+    };
+
+    const keyHandler = (event) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.isContentEditable
+      )) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          const activeCommentsCard = document.querySelector('#profilePostViewerOverlay .profile-post-viewer-card.comments-open');
+          if (activeCommentsCard) {
+            closeProfilePostCommentsSheet(activeCommentsCard);
+          } else {
+            closeViewer();
+          }
+        }
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        const activeCommentsCard = document.querySelector('#profilePostViewerOverlay .profile-post-viewer-card.comments-open');
+        if (activeCommentsCard) {
+          closeProfilePostCommentsSheet(activeCommentsCard);
+        } else {
+          closeViewer();
+        }
+        return;
+      }
+      if (event.key === 'ArrowDown' || event.key === 'PageDown' || (event.key === ' ' && !event.shiftKey)) {
+        event.preventDefault();
+        scrollToCardIndex(Math.min(cards.length - 1, session.currentIndex + 1));
+      } else if (event.key === 'ArrowUp' || event.key === 'PageUp' || (event.key === ' ' && event.shiftKey)) {
+        event.preventDefault();
+        scrollToCardIndex(Math.max(0, session.currentIndex - 1));
+      }
+    };
+
+    const handleReplyToggle = (button) => {
+      const commentContainer = button.closest('.comment-item-container, .reply-item');
+      if (!commentContainer) return;
+      const replyInputRow = getDirectReplyInputRow(commentContainer);
+      if (!replyInputRow) return;
+      const replyInput = replyInputRow.querySelector('.reply-input');
+      if (replyInput) {
+        replyInput.placeholder = getCommentReplyPlaceholder(commentContainer);
+      }
+      const isHidden = replyInputRow.style.display === 'none';
+      replyInputRow.style.display = isHidden ? 'flex' : 'none';
+      if (isHidden) {
+        replyInput?.focus();
+      }
+    };
+
+    const handleSubmitReply = (button, postId) => {
+      const replyInputRow = button.closest('.reply-input-row');
+      const commentContainer = replyInputRow?.previousElementSibling?.classList?.contains('reply-item')
+        ? replyInputRow.previousElementSibling
+        : replyInputRow?.closest('.comment-item-container');
+      const replyInput = replyInputRow?.querySelector('.reply-input') || commentContainer?.querySelector('.reply-input');
+      const text = replyInput?.value.trim();
+      if (!text || !(commentContainer || replyInputRow)) return;
+      const parentId = getCommentTargetId(commentContainer);
+      socket.emit('comment-create', { postId, content: text, parentId: parseInt(parentId, 10) });
+      replyInput.value = '';
+      if (replyInputRow) replyInputRow.style.display = 'none';
+    };
+
+    const handleReadMoreReplies = (button) => {
+      const repliesContainer = button.closest('.replies-list-container');
+      if (!repliesContainer) return;
+      const replyItems = getReplyItems(repliesContainer);
+      const isExpanded = button.textContent.includes('Hide');
+
+      if (isExpanded) {
+        replyItems.forEach((item, index) => {
+          const replyRow = item.nextElementSibling?.classList?.contains('reply-input-row') ? item.nextElementSibling : null;
+          if (index >= 2) {
+            item.style.display = 'none';
+            if (replyRow) replyRow.style.display = 'none';
+          }
+        });
+        const remainingCount = replyItems.length - 2;
+        button.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Show ${remainingCount} more replies`;
+      } else {
+        replyItems.forEach((item) => {
+          item.style.display = 'flex';
+          const replyRow = item.nextElementSibling?.classList?.contains('reply-input-row') ? item.nextElementSibling : null;
+          if (replyRow) replyRow.style.display = 'none';
+        });
+        button.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Hide replies`;
+      }
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    };
+
+    const handleReadMoreComments = (button) => {
+      const commentsList = button.closest('.comments-list');
+      if (!commentsList) return;
+      const comments = getDirectChildComments(commentsList);
+      const isExpanded = button.textContent.includes('Hide');
+
+      if (isExpanded) {
+        comments.forEach((item, index) => {
+          item.style.display = index >= 2 ? 'none' : 'flex';
+        });
+        const remainingCount = comments.length - 2;
+        button.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Show ${remainingCount} more comments`;
+      } else {
+        comments.forEach((item) => {
+          item.style.display = 'flex';
+        });
+        button.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Hide comments`;
+      }
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    };
+
+    const submitViewerComment = (postCard) => {
+      if (!postCard) return;
+      const row = postCard.querySelector('.profile-post-comments-input-row');
+      const input = row?.querySelector('.comment-input');
+      const text = input?.value.trim();
+      const postId = parseInt(postCard.getAttribute('data-post-id'), 10);
+      if (!text || !postId) return;
+      socket.emit('comment-create', { postId, content: text });
+      input.value = '';
+    };
+
+    const overlayClickHandler = (event) => {
+      const closeBtn = event.target.closest('.profile-post-viewer-close');
+      if (closeBtn) {
+        closeViewer();
+        return;
+      }
+
+      const postCard = event.target.closest('.profile-post-viewer-card');
+      if (!postCard) {
+        if (event.target === overlay) {
+          closeViewer();
+        }
+        return;
+      }
+
+      const postId = parseInt(postCard.getAttribute('data-post-id'), 10);
+
+      const closeCommentsBtn = event.target.closest('.close-post-comments-sheet-btn');
+      if (closeCommentsBtn) {
+        closeProfilePostCommentsSheet(postCard);
+        return;
+      }
+
+      const likeBtn = event.target.closest('.like-btn');
+      if (likeBtn) {
+        if (likeBtn.dataset.likePending === '1') return;
+        if (!socket.connected) {
+          showToast('Connexion temps reel indisponible. Rechargez la page puis reessayez.');
+          return;
+        }
+        setPostLikePendingState(postId, true);
+        socket.emit('post-like', { postId });
+        return;
+      }
+
+      const bookmarkBtn = event.target.closest('.post-bookmark-btn');
+      if (bookmarkBtn) {
+        socket.emit('post-bookmark', { postId });
+        return;
+      }
+
+      const shareBtn = event.target.closest('.share-btn');
+      if (shareBtn) {
+        openShareSheet(postCard, postId);
+        return;
+      }
+
+      const commentBtn = event.target.closest('.comment-btn');
+      if (commentBtn) {
+        openProfilePostCommentsSheet(postCard);
+        return;
+      }
+
+      const submitBtn = event.target.closest('.submit-comment-btn');
+      if (submitBtn) {
+        submitViewerComment(postCard);
+        return;
+      }
+
+      const replyTriggerBtn = event.target.closest('.reply-trigger-btn');
+      if (replyTriggerBtn) {
+        handleReplyToggle(replyTriggerBtn);
+        return;
+      }
+
+      const submitReplyBtn = event.target.closest('.submit-reply-btn');
+      if (submitReplyBtn) {
+        handleSubmitReply(submitReplyBtn, postId);
+        return;
+      }
+
+      const readMoreRepliesBtn = event.target.closest('.read-more-replies-btn');
+      if (readMoreRepliesBtn) {
+        handleReadMoreReplies(readMoreRepliesBtn);
+        return;
+      }
+
+      const readMoreCommentsBtn = event.target.closest('.read-more-comments-btn');
+      if (readMoreCommentsBtn) {
+        handleReadMoreComments(readMoreCommentsBtn);
+      }
+    };
+
+    const overlayKeydownHandler = (event) => {
+      const commentInput = event.target.closest('.comment-input');
+      if (commentInput && event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        const postCard = event.target.closest('.profile-post-viewer-card');
+        submitViewerComment(postCard);
+        return;
+      }
+
+      const replyInput = event.target.closest('.reply-input');
+      if (replyInput && event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        const replyRow = event.target.closest('.reply-input-row');
+        const postCard = event.target.closest('.profile-post-viewer-card');
+        const submitReplyBtn = replyRow?.querySelector('.submit-reply-btn') || postCard?.querySelector('.submit-reply-btn');
+        if (submitReplyBtn) {
+          handleSubmitReply(submitReplyBtn, parseInt(postCard.getAttribute('data-post-id'), 10));
+        }
+      }
+    };
+
+    const onViewerScroll = () => {
+      window.clearTimeout(viewerState.scrollTimer);
+      viewerState.scrollTimer = window.setTimeout(() => {
+        refreshViewerActiveCard();
+      }, 90);
+    };
+
+    overlay.addEventListener('click', overlayClickHandler);
+    overlay.addEventListener('keydown', overlayKeydownHandler);
+    viewerFeed.addEventListener('scroll', onViewerScroll, { passive: true });
+    window.addEventListener('popstate', historySyncHandler);
+    window.addEventListener('hashchange', historySyncHandler);
+    document.addEventListener('keydown', keyHandler);
+    window.__closeTikTokPreviewModal = closeViewer;
+
+    scrollToCardIndex(currentIndex, { immediate: true, updateHistory: false });
+    syncHistoryForCurrentItem(false);
+    updateViewerCounter();
+    overlay.offsetHeight;
+    overlay.classList.add('is-open');
+  };
+
+  const showTikTokPreviewModal = (initialItem, type, options = {}) => {
+    if (type === 'reel') {
+      return showIsolatedProfileReelsViewer(initialItem, options);
+    }
+
+    if (type === 'post') {
+      return showProfilePostsViewer(initialItem, options);
+    }
+
+    pauseAllFeedVideos();
+    if (typeof clearActiveReelCard === 'function') {
+      clearActiveReelCard();
+    }
+
+    if (typeof window.__closeTikTokPreviewModal === 'function') {
+      window.__closeTikTokPreviewModal({ immediate: true, restoreUrl: false, suppressFollowUp: true });
+    }
+
+    const isMobilePreview = window.innerWidth <= 900;
+    const itemsList = getProfilePreviewItems(type, initialItem);
+    let currentIndex = itemsList.findIndex((item) => String(item.id) === String(initialItem.id));
     if (currentIndex === -1) {
-      itemsList = [{ id: initialItem.id, data: initialItem, type }];
       currentIndex = 0;
     }
 
@@ -8520,90 +11304,166 @@ document.addEventListener('DOMContentLoaded', () => {
     modal.id = 'tiktokPreviewModal';
     modal.style.cssText = `
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(9, 13, 22, 0.96);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
+      inset: 0;
+      background: rgba(4, 8, 18, 0.96);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
       z-index: 200000;
       display: flex;
       opacity: 0;
-      transition: opacity 0.3s ease;
+      transition: opacity 0.28s ease;
       color: white;
-      font-family: 'Inter', sans-serif;
+      font-family: 'Outfit', sans-serif;
     `;
 
     modal.innerHTML = `
-      <div id="tiktokMediaPane" style="flex: 1; display: flex; align-items: center; justify-content: center; background: #000; position: relative; height: 100%;">
-        <div id="tiktokMediaContent" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;"></div>
-        
-        <button id="tiktokCloseBtn" style="position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s; font-size: 18px; z-index: 10;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-
-        <div style="position: absolute; right: 20px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 16px; z-index: 10;">
-          <button id="tiktokPrevBtn" style="background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.15); border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up"><polyline points="18 15 12 9 6 15"/></svg>
+      <div id="tiktokPreviewShell" style="display: flex; flex-direction: ${isMobilePreview ? 'column' : 'row'}; width: 100%; height: 100%;">
+        <div id="tiktokMediaPane" style="position: relative; flex: 1; min-height: 0; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+          <div id="tiktokMediaContent" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative;"></div>
+          <button id="tiktokCloseBtn" type="button" style="position: absolute; top: 18px; left: 18px; width: 46px; height: 46px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.46); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 20;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
-          <button id="tiktokNextBtn" style="background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.15); border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-        </div>
-      </div>
-
-      <div id="tiktokDetailsPane" style="width: 420px; height: 100%; background: var(--bg-card, #0f172a); border-left: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;">
-        <div id="tiktokDetailsHeader" style="padding: 20px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; align-items: center; justify-content: space-between;"></div>
-        
-        <div id="tiktokDetailsBody" style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px;">
-          <div>
-            <p id="tiktokContentText" style="font-size: 14px; color: var(--text-primary, #fff); line-height: 1.5; margin: 0; white-space: pre-wrap;"></p>
-            <div style="display: flex; gap: 16px; margin-top: 16px; color: var(--text-secondary, #94a3b8); font-size: 13px;">
-              <span style="display: flex; align-items: center; gap: 6px;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="red" stroke="red" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                <strong id="tiktokLikesCount">0</strong> likes
-              </span>
-            </div>
-          </div>
-
-          <div style="border-top: 1px solid var(--border-color, rgba(255,255,255,0.1)); padding-top: 16px;">
-            <h5 style="font-size: 13px; font-weight: 700; color: var(--text-secondary, #94a3b8); margin: 0 0 12px 0;">Commentaires</h5>
-            <div id="tiktokCommentsList" style="display: flex; flex-direction: column; gap: 14px;">
-              <div style="color: var(--text-secondary, #94a3b8); font-size: 12px; text-align: center; padding: 10px 0;">Chargement...</div>
-            </div>
+          <div id="tiktokPreviewBadge" style="position: absolute; top: 18px; right: 18px; padding: 8px 12px; border-radius: 999px; background: rgba(0,0,0,0.46); border: 1px solid rgba(255,255,255,0.12); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; z-index: 20;">1 / 1</div>
+          <div style="position: absolute; right: 18px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 12px; z-index: 20;">
+            <button id="tiktokPrevBtn" type="button" style="width: 48px; height: 48px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.52); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+            </button>
+            <button id="tiktokNextBtn" type="button" style="width: 48px; height: 48px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.52); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
           </div>
         </div>
+        <aside id="tiktokDetailsPane" style="width: ${isMobilePreview ? '100%' : '420px'}; height: ${isMobilePreview ? '46vh' : '100%'}; min-height: 0; background: var(--bg-card, #0f172a); border-left: ${isMobilePreview ? 'none' : '1px solid var(--border-color, rgba(255,255,255,0.1))'}; border-top: ${isMobilePreview ? '1px solid var(--border-color, rgba(255,255,255,0.1))' : 'none'}; display: flex; flex-direction: column; overflow: hidden;">
+          <div id="tiktokDetailsHeader" style="padding: 18px 18px 16px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.08));"></div>
+          <div id="tiktokDetailsBody" style="flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 18px;">
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <p id="tiktokContentText" style="font-size: 14px; color: var(--text-primary, #fff); line-height: 1.6; margin: 0; white-space: pre-wrap; word-break: break-word;"></p>
+              <div style="display: flex; flex-wrap: wrap; gap: 14px; color: var(--text-secondary, #94a3b8); font-size: 12.5px;">
+                <span style="display: inline-flex; align-items: center; gap: 6px;">
+                  <i data-lucide="heart" style="width: 14px; height: 14px; color: #ef4444; fill: #ef4444;"></i>
+                  <strong id="tiktokLikesCount">0</strong>
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 6px;">
+                  <i data-lucide="eye" style="width: 14px; height: 14px;"></i>
+                  <strong id="tiktokViewsCount">0</strong>
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 6px;">
+                  <i data-lucide="message-circle" style="width: 14px; height: 14px;"></i>
+                  <strong id="tiktokCommentsCount">0</strong>
+                </span>
+              </div>
+              <p id="tiktokMetaText" style="font-size: 12px; color: var(--text-secondary, #94a3b8); margin: 0;"></p>
+            </div>
+            <div style="border-top: 1px solid var(--border-color, rgba(255,255,255,0.08)); padding-top: 16px; display: flex; flex-direction: column; gap: 12px;">
+              <h5 style="font-size: 13px; font-weight: 700; color: var(--text-secondary, #94a3b8); margin: 0;">Commentaires</h5>
+              <div id="tiktokCommentsList" style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="color: var(--text-secondary, #94a3b8); font-size: 12px; text-align: center; padding: 10px 0;">Chargement...</div>
+              </div>
+            </div>
+          </div>
+        </aside>
       </div>
     `;
 
     document.body.appendChild(modal);
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
 
-    const getProfileAuthorInfo = () => {
-      const nameEl = document.getElementById('profileDisplayName');
-      const avatarEl = document.querySelector('.profile-avatar-circle');
-      const handleEl = document.querySelector('.profile-page-wrapper p');
+    const session = {
+      modal,
+      itemsList,
+      currentIndex,
+      baseHash: typeof options.baseHash === 'string' ? options.baseHash : String(window.location.hash || ''),
+      openedViaHash: options.openedViaHash === true,
+      historyManaged: false,
+      currentHash: '',
+      suppressFollowUp: false
+    };
+    window.__profilePreviewSession = session;
 
-      return {
-        name: nameEl ? nameEl.textContent.trim() : 'Utilisateur',
-        avatar: avatarEl ? avatarEl.src : '/assets/avatar_placeholder.jpg',
-        username: handleEl ? handleEl.textContent.replace('@', '').trim() : 'user'
-      };
+    const mediaPane = modal.querySelector('#tiktokMediaPane');
+    const mediaContent = modal.querySelector('#tiktokMediaContent');
+    const badge = modal.querySelector('#tiktokPreviewBadge');
+    const likesCountEl = modal.querySelector('#tiktokLikesCount');
+    const viewsCountEl = modal.querySelector('#tiktokViewsCount');
+    const commentsCountEl = modal.querySelector('#tiktokCommentsCount');
+    const contentTextEl = modal.querySelector('#tiktokContentText');
+    const metaTextEl = modal.querySelector('#tiktokMetaText');
+    const commentsList = modal.querySelector('#tiktokCommentsList');
+
+    const getItemWrapperByHash = (hashValue) => {
+      const hash = String(hashValue || '').trim();
+      if (!hash) return null;
+      const reelMatch = hash.match(/^#reel-(\d+)$/);
+      if (reelMatch) {
+        const reelId = reelMatch[1];
+        const reelItem = (window.profileReelsList || []).find((entry) => String(entry.id) === String(reelId));
+        return reelItem ? { id: reelItem.id, data: reelItem, type: 'reel' } : null;
+      }
+      const postMatch = hash.match(/^#post-(\d+)$/);
+      if (postMatch) {
+        const postId = postMatch[1];
+        const postItem = (window.profilePostsList || []).find((entry) => String(entry.id) === String(postId));
+        return postItem ? { id: postItem.id, data: postItem, type: 'post' } : null;
+      }
+      return null;
     };
 
-    const renderCurrentItem = (index) => {
-      modal.querySelectorAll('video, audio').forEach(el => el.pause());
+    const syncHistoryForCurrentItem = (replaceOnly = false) => {
+      const currentItemWrapper = itemsList[currentIndex];
+      if (!currentItemWrapper) return;
+      const nextHash = buildProfilePreviewHash(currentItemWrapper.id, currentItemWrapper.type);
+      session.currentHash = nextHash;
+      const nextUrl = `${window.location.pathname}${window.location.search}${nextHash}`;
+      if (!replaceOnly && !session.historyManaged && !session.openedViaHash) {
+        window.history.pushState({
+          ...(window.history.state || {}),
+          profilePreviewOpen: true,
+          profilePreviewHash: nextHash
+        }, '', nextUrl);
+        session.historyManaged = true;
+        return;
+      }
+      window.history.replaceState({
+        ...(window.history.state || {}),
+        profilePreviewOpen: true,
+        profilePreviewHash: nextHash
+      }, '', nextUrl);
+    };
 
-      const itemWrapper = itemsList[index];
-      const item = itemWrapper.data;
-      const type = itemWrapper.type;
+    const pausePreviewMedia = () => {
+      modal.querySelectorAll('video, audio').forEach((el) => {
+        try {
+          el.pause();
+        } catch (_) {}
+      });
+    };
 
-      const mediaContent = modal.querySelector('#tiktokMediaContent');
-      mediaContent.innerHTML = '';
+    const createCommentMarkup = (comment) => {
+      const avatar = escapeHtml(comment?.avatar || '/assets/avatar_placeholder.jpg');
+      const name = escapeHtml(
+        comment?.author_name
+        || comment?.name
+        || `${comment?.first_name || ''} ${comment?.last_name || ''}`.trim()
+        || comment?.username
+        || 'Utilisateur'
+      );
+      const content = escapeHtml(comment?.content || '');
+      return `
+        <div style="display: flex; gap: 10px; align-items: flex-start;">
+          <img src="${avatar}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">
+          <div style="flex: 1; min-width: 0; background: var(--bg-hover, rgba(255,255,255,0.05)); padding: 9px 12px; border-radius: 14px;">
+            <div style="font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">${name}</div>
+            <p style="font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.45; white-space: pre-wrap; word-break: break-word;">${content}</p>
+          </div>
+        </div>
+      `;
+    };
 
-      const isVideo = type === 'reel' || (item.media_type === 'video' || (item.image_url && (item.image_url.endsWith('.mp4') || item.image_url.endsWith('.webm') || item.image_url.endsWith('.mov'))));
-      let resolvedMediaUrl = item.video_url || item.image_url || '';
-      if (resolvedMediaUrl && resolvedMediaUrl.includes('unsplash.com') && type === 'reel') {
+    const getResolvedPreviewMediaUrl = (itemWrapper) => {
+      const item = itemWrapper?.data || {};
+      let mediaUrl = String(item.video_url || item.image_url || item.media_url || '').trim();
+      if (mediaUrl && mediaUrl.includes('unsplash.com') && itemWrapper?.type === 'reel') {
         const videoUrls = [
           'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
           'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
@@ -8611,195 +11471,377 @@ document.addEventListener('DOMContentLoaded', () => {
           'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
           'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4'
         ];
-        const videoIdx = (item.id - 1) % videoUrls.length;
-        resolvedMediaUrl = videoUrls[videoIdx >= 0 ? videoIdx : 0];
+        const videoIdx = (Number(item.id || 1) - 1) % videoUrls.length;
+        mediaUrl = videoUrls[videoIdx >= 0 ? videoIdx : 0];
       }
+      return mediaUrl;
+    };
 
-      if (isVideo) {
+    const renderCurrentItem = (index, { replaceHistory = true } = {}) => {
+      pausePreviewMedia();
+      const itemWrapper = itemsList[index];
+      if (!itemWrapper) return;
+
+      const item = itemWrapper.data || {};
+      const isReel = itemWrapper.type === 'reel';
+      const authorInfo = getProfileHeaderInfo();
+      const authorAvatar = escapeHtml(item.author_avatar || item.avatar || authorInfo.avatar);
+      const authorName = escapeHtml(item.author_name || item.name || `${item.first_name || ''} ${item.last_name || ''}`.trim() || authorInfo.name);
+      const authorUsername = escapeHtml(item.author_username || item.username || authorInfo.username);
+      const resolvedMediaUrl = escapeHtml(getResolvedPreviewMediaUrl(itemWrapper));
+      const previewHash = buildProfilePreviewHash(itemWrapper.id, itemWrapper.type);
+      const mediaFit = escapeHtml(item.media_fit === 'contain' ? 'contain' : 'cover');
+      const captionText = item.content || item.caption || '';
+      const safeCaptionText = escapeHtml(captionText);
+      const soundName = escapeHtml(item.sound_name || (isReel ? 'Original sound' : 'Publication'));
+      const createdDateValue = item.created_at || item.createdAt || item.date || '';
+      const createdDateText = createdDateValue
+        ? new Date(createdDateValue).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+        : '';
+
+      mediaContent.innerHTML = '';
+
+      const normalizedReelMediaType = String(item.media_type || '').toLowerCase();
+      const postVideoExtensions = ['.mp4', '.webm', '.mov', '.ogg', '.m4v'];
+      const isVideoPost = String(item.media_type || '').toLowerCase() === 'video'
+        || postVideoExtensions.some((ext) => resolvedMediaUrl.toLowerCase().includes(ext));
+      const isReelVideo = isReel && (!normalizedReelMediaType || normalizedReelMediaType === 'video');
+      const isImageAudioReel = isReel && normalizedReelMediaType === 'image_audio';
+      const isVoiceLikeReel = isReel && (normalizedReelMediaType === 'voice' || normalizedReelMediaType === 'audio');
+
+      if (isReelVideo || isVideoPost) {
+        const posterUrl = escapeHtml(item.thumbnail_url || '');
+        const hasDetachedAudio = Boolean(item.audio_url && isReelVideo);
         mediaContent.innerHTML = `
-          <video src="${resolvedMediaUrl}" autoplay loop controls muted style="max-width: 100%; max-height: 100%; object-fit: contain; width: 100%; height: 100%;"></video>
+          <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000;">
+            <video class="profile-preview-video" src="${resolvedMediaUrl}" ${posterUrl ? `poster="${posterUrl}"` : ''} playsinline autoplay loop preload="metadata" style="width: 100%; height: 100%; object-fit: ${mediaFit}; background: #000;"></video>
+            ${hasDetachedAudio ? `<audio class="profile-preview-audio" src="${escapeHtml(item.audio_url)}" preload="auto"></audio>` : ''}
+            <button type="button" class="profile-preview-play-toggle" style="position: absolute; bottom: 18px; left: 18px; width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.16); background: rgba(0,0,0,0.48); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+              <i data-lucide="pause" style="width: 18px; height: 18px;"></i>
+            </button>
+          </div>
         `;
-      } else if (item.image_url) {
+
+        const previewVideo = mediaContent.querySelector('.profile-preview-video');
+        const previewAudio = mediaContent.querySelector('.profile-preview-audio');
+        const toggleBtn = mediaContent.querySelector('.profile-preview-play-toggle');
+        const setToggleIcon = (isPaused) => {
+          if (!toggleBtn) return;
+          toggleBtn.innerHTML = isPaused
+            ? '<i data-lucide="play" style="width: 18px; height: 18px; fill: white;"></i>'
+            : '<i data-lucide="pause" style="width: 18px; height: 18px;"></i>';
+          if (typeof lucide !== 'undefined') {
+            try { lucide.createIcons(); } catch (_) {}
+          }
+        };
+
+        if (previewVideo) {
+          const attemptPlayback = () => {
+            if (previewAudio) {
+              previewVideo.muted = true;
+              Promise.allSettled([previewVideo.play(), previewAudio.play()]).then((results) => {
+                const audioResult = results[1];
+                if (audioResult?.status === 'rejected') {
+                  previewVideo.muted = false;
+                  previewVideo.play().catch(() => {
+                    previewVideo.muted = true;
+                    previewVideo.play().catch(() => {});
+                  });
+                }
+              });
+
+              previewVideo.addEventListener('timeupdate', () => {
+                if (!previewAudio || previewAudio.paused) return;
+                const drift = Math.abs((previewAudio.currentTime || 0) - (previewVideo.currentTime || 0));
+                if (drift > 0.35) {
+                  try {
+                    previewAudio.currentTime = previewVideo.currentTime;
+                  } catch (_) {}
+                }
+              });
+            } else {
+              previewVideo.muted = false;
+              previewVideo.play().catch(() => {
+                previewVideo.muted = true;
+                previewVideo.play().catch(() => {});
+              });
+            }
+          };
+
+          attemptPlayback();
+          previewVideo.addEventListener('play', () => setToggleIcon(false));
+          previewVideo.addEventListener('pause', () => setToggleIcon(true));
+          toggleBtn?.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (previewVideo.paused) {
+              attemptPlayback();
+              return;
+            }
+            previewVideo.pause();
+            if (previewAudio) {
+              previewAudio.pause();
+            }
+          });
+          previewVideo.addEventListener('click', () => {
+            toggleBtn?.click();
+          });
+        }
+      } else if (isImageAudioReel) {
         mediaContent.innerHTML = `
-          <img src="${resolvedMediaUrl}" style="max-width: 100%; max-height: 100%; object-fit: contain; width: 100%; height: 100%;">
+          <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000;">
+            <img src="${resolvedMediaUrl}" alt="${safeCaptionText || 'Short image'}" style="width: 100%; height: 100%; object-fit: ${mediaFit}; background: #000;">
+            ${item.audio_url ? `<audio class="profile-preview-audio" src="${escapeHtml(item.audio_url)}" controls autoplay style="position: absolute; left: 18px; right: 18px; bottom: 18px; width: auto; max-width: calc(100% - 36px);"></audio>` : ''}
+          </div>
         `;
-      } else if (item.media_type === 'voice') {
+      } else if (item.image_url || item.media_url) {
         mediaContent.innerHTML = `
-          <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px;">
-            <div style="width: 80px; height: 80px; border-radius: 50%; background: rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 8px 32px rgba(0,0,0,0.25);">
-              <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-mic"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+          <img src="${resolvedMediaUrl}" alt="${safeCaptionText || 'Publication'}" style="width: 100%; height: 100%; object-fit: ${mediaFit}; background: #000;">
+        `;
+      } else if (isVoiceLikeReel || item.audio_url) {
+        mediaContent.innerHTML = `
+          <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; box-sizing: border-box;">
+            <div style="width: 84px; height: 84px; border-radius: 50%; background: rgba(255,255,255,0.14); display: flex; align-items: center; justify-content: center; border: 2px solid rgba(255,255,255,0.35);">
+              <i data-lucide="${normalizedReelMediaType === 'audio' ? 'music' : 'mic'}" style="width: 34px; height: 34px;"></i>
             </div>
-            <p style="font-size: 14px; font-weight: 600;">Note vocale</p>
-            <audio src="${item.audio_url || ''}" controls style="width: 240px; margin-top: 12px;"></audio>
+            <p style="font-size: 15px; font-weight: 700; margin: 0;">${normalizedReelMediaType === 'audio' ? 'Audio short' : 'Note vocale'}</p>
+            <audio src="${escapeHtml(item.audio_url || '')}" controls autoplay style="width: min(320px, 78vw);"></audio>
           </div>
         `;
       } else {
         mediaContent.innerHTML = `
-          <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #1e1b4b 0%, #311042 100%); display: flex; align-items: center; justify-content: center; text-align: center; padding: 32px; box-sizing: border-box;">
-            <p style="font-size: 18px; font-weight: 500; line-height: 1.6; max-width: 80%;">${item.content || ''}</p>
+          <div style="width: 100%; height: 100%; background: linear-gradient(145deg, rgba(15, 23, 42, 1) 0%, rgba(31, 41, 55, 1) 100%); display: flex; align-items: center; justify-content: center; padding: 32px; box-sizing: border-box; text-align: center;">
+            <p style="font-size: ${isMobilePreview ? '18px' : '22px'}; font-weight: 600; line-height: 1.6; max-width: 760px; margin: 0;">${safeCaptionText || 'Publication texte'}</p>
           </div>
         `;
       }
 
-      const authorInfo = getProfileAuthorInfo();
-      const authorAvatar = item.author_avatar || item.avatar || authorInfo.avatar;
-      const authorName = item.author_name || (item.first_name ? `${item.first_name} ${item.last_name || ''}` : authorInfo.name);
-      const authorUsername = item.author_username || item.username || authorInfo.username;
-
       modal.querySelector('#tiktokDetailsHeader').innerHTML = `
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <img src="${authorAvatar}" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--primary, #6366f1);">
-          <div>
-            <h4 style="font-size: 14px; font-weight: 700; color: var(--text-primary, #fff); margin: 0;">${authorName}</h4>
-            <p style="font-size: 12px; color: var(--text-secondary, #94a3b8); margin: 2px 0 0 0;">@${authorUsername}</p>
+        <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+          <img src="${authorAvatar}" alt="${authorName}" style="width: 46px; height: 46px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--primary, #6366f1); flex-shrink: 0;">
+          <div style="min-width: 0;">
+            <div style="font-size: 14px; font-weight: 800; color: var(--text-primary, #fff); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${authorName}</div>
+            <div style="font-size: 12px; color: var(--text-secondary, #94a3b8); margin-top: 2px;">@${authorUsername}</div>
           </div>
         </div>
       `;
 
-      modal.querySelector('#tiktokContentText').textContent = item.content || '';
-      modal.querySelector('#tiktokLikesCount').textContent = item.likes_count || 0;
+      contentTextEl.textContent = captionText || '';
+      likesCountEl.textContent = formatNumber ? formatNumber(item.likes_count || 0) : String(item.likes_count || 0);
+      const viewsCount = isReel
+        ? ((Number(item.likes_count || 0) * 15) + ((Number(item.id || 0) % 9) * 4) + 21)
+        : Number(item.views_count || 0);
+      viewsCountEl.textContent = formatNumber ? formatNumber(viewsCount) : String(viewsCount);
+      commentsCountEl.textContent = formatNumber
+        ? formatNumber(item.comments_count || 0)
+        : String(item.comments_count || 0);
+      metaTextEl.textContent = [
+        isReel ? `Short • ${soundName}` : 'Post du profil',
+        createdDateText
+      ].filter(Boolean).join(' • ');
+      badge.textContent = `${index + 1} / ${itemsList.length}`;
 
       const prevBtn = modal.querySelector('#tiktokPrevBtn');
       const nextBtn = modal.querySelector('#tiktokNextBtn');
-      if (prevBtn) prevBtn.style.opacity = index > 0 ? '1' : '0.3';
-      if (nextBtn) nextBtn.style.opacity = index < itemsList.length - 1 ? '1' : '0.3';
+      if (prevBtn) prevBtn.style.opacity = index > 0 ? '1' : '0.32';
+      if (nextBtn) nextBtn.style.opacity = index < itemsList.length - 1 ? '1' : '0.32';
 
-      const commentsList = modal.querySelector('#tiktokCommentsList');
       commentsList.innerHTML = '<div style="color: var(--text-secondary, #94a3b8); font-size: 12px; text-align: center; padding: 10px 0;">Chargement...</div>';
 
-      if (type === 'post') {
+      if (!replaceHistory) {
+        session.currentHash = previewHash;
+      } else {
+        syncHistoryForCurrentItem(index !== currentIndex);
+      }
+      session.currentIndex = index;
+
+      if (itemWrapper.type === 'post') {
         fetch(`/api/posts/${encodeURIComponent(item.id)}/comments`, { credentials: 'same-origin' })
-          .then(res => res.json())
-          .then(payload => {
+          .then((response) => response.json())
+          .then((payload) => {
+            if (session.currentHash !== previewHash) return;
             if (payload.success && Array.isArray(payload.comments)) {
-              if (payload.comments.length === 0) {
-                commentsList.innerHTML = '<div style="color: var(--text-secondary, #94a3b8); font-size: 12px; text-align: center; padding: 10px 0;">Aucun commentaire pour le moment.</div>';
-              } else {
-                commentsList.innerHTML = payload.comments.map(c => `
-                  <div style="display: flex; gap: 10px; align-items: flex-start;">
-                    <img src="${c.avatar || '/assets/avatar_placeholder.jpg'}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
-                    <div style="flex: 1; background: var(--bg-hover, rgba(255,255,255,0.05)); padding: 8px 12px; border-radius: 12px;">
-                      <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">${c.first_name} ${c.last_name || ''}</span>
-                      </div>
-                      <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 0; line-height: 1.4;">${c.content}</p>
-                    </div>
-                  </div>
-                `).join('');
-              }
+              commentsCountEl.textContent = formatNumber
+                ? formatNumber(payload.comments.length)
+                : String(payload.comments.length);
+              commentsList.innerHTML = payload.comments.length
+                ? payload.comments.map(createCommentMarkup).join('')
+                : '<div style="color: var(--text-secondary, #94a3b8); font-size: 12px; text-align: center; padding: 10px 0;">Aucun commentaire pour le moment.</div>';
             } else {
               commentsList.innerHTML = '<div style="color: var(--danger); font-size: 12px; text-align: center; padding: 10px 0;">Impossible de charger les commentaires.</div>';
             }
           })
           .catch(() => {
+            if (session.currentHash !== previewHash) return;
             commentsList.innerHTML = '<div style="color: var(--danger); font-size: 12px; text-align: center; padding: 10px 0;">Impossible de charger les commentaires.</div>';
           });
       } else {
         socket.emit('reel-comments-fetch', { reelId: item.id }, (response) => {
+          if (session.currentHash !== previewHash) return;
           if (response && Array.isArray(response.comments)) {
-            if (response.comments.length === 0) {
-              commentsList.innerHTML = '<div style="color: var(--text-secondary, #94a3b8); font-size: 12px; text-align: center; padding: 10px 0;">Aucun commentaire pour le moment.</div>';
-            } else {
-              commentsList.innerHTML = response.comments.map(c => `
-                <div style="display: flex; gap: 10px; align-items: flex-start;">
-                  <img src="${c.avatar || '/assets/avatar_placeholder.jpg'}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
-                  <div style="flex: 1; background: var(--bg-hover, rgba(255,255,255,0.05)); padding: 8px 12px; border-radius: 12px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                      <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">${c.first_name} ${c.last_name || ''}</span>
-                    </div>
-                    <p style="font-size: 12px; color: var(--text-secondary); margin: 4px 0 0 0; line-height: 1.4;">${c.content}</p>
-                  </div>
-                </div>
-              `).join('');
-            }
+            commentsCountEl.textContent = formatNumber
+              ? formatNumber(response.comments.length)
+              : String(response.comments.length);
+            commentsList.innerHTML = response.comments.length
+              ? response.comments.map(createCommentMarkup).join('')
+              : '<div style="color: var(--text-secondary, #94a3b8); font-size: 12px; text-align: center; padding: 10px 0;">Aucun commentaire pour le moment.</div>';
           } else {
             commentsList.innerHTML = '<div style="color: var(--danger); font-size: 12px; text-align: center; padding: 10px 0;">Impossible de charger les commentaires.</div>';
           }
         });
       }
+
+      if (typeof lucide !== 'undefined') {
+        try { lucide.createIcons(); } catch (_) {}
+      }
     };
-
-    renderCurrentItem(currentIndex);
-
-    modal.offsetHeight;
-    modal.style.opacity = '1';
 
     let isTransitioning = false;
     const handleScrollTransition = (direction) => {
       if (isTransitioning) return;
       if (direction === 'next' && currentIndex < itemsList.length - 1) {
         isTransitioning = true;
-        currentIndex++;
+        currentIndex += 1;
         renderCurrentItem(currentIndex);
-        setTimeout(() => { isTransitioning = false; }, 400);
+        setTimeout(() => { isTransitioning = false; }, 280);
       } else if (direction === 'prev' && currentIndex > 0) {
         isTransitioning = true;
-        currentIndex--;
+        currentIndex -= 1;
         renderCurrentItem(currentIndex);
-        setTimeout(() => { isTransitioning = false; }, 400);
+        setTimeout(() => { isTransitioning = false; }, 280);
       }
     };
 
     let touchStartY = 0;
-    const touchStartHandler = (e) => {
-      touchStartY = e.touches[0].clientY;
+    const touchStartHandler = (event) => {
+      touchStartY = event.touches[0].clientY;
     };
-    const touchEndHandler = (e) => {
-      const touchEndY = e.changedTouches[0].clientY;
-      const diffY = touchStartY - touchEndY;
-      if (Math.abs(diffY) > 50) { // minimum threshold for swipe
-        if (diffY > 0) {
-          // Swipe up -> scroll down -> show next
-          handleScrollTransition('next');
-        } else {
-          // Swipe down -> scroll up -> show prev
-          handleScrollTransition('prev');
+    const touchEndHandler = (event) => {
+      const diffY = touchStartY - event.changedTouches[0].clientY;
+      if (Math.abs(diffY) < 50) return;
+      handleScrollTransition(diffY > 0 ? 'next' : 'prev');
+    };
+
+    const wheelHandler = (event) => {
+      const detailsPane = modal.querySelector('#tiktokDetailsBody');
+      if (detailsPane && detailsPane.contains(event.target)) return;
+      event.preventDefault();
+      if (event.deltaY > 10) {
+        handleScrollTransition('next');
+      } else if (event.deltaY < -10) {
+        handleScrollTransition('prev');
+      }
+    };
+
+    const historySyncHandler = () => {
+      if (!window.__profilePreviewSession || window.__profilePreviewSession.modal !== modal) return;
+      const activeSession = window.__profilePreviewSession;
+      if (window.location.hash === activeSession.currentHash) return;
+
+      const targetFromHash = getItemWrapperByHash(window.location.hash);
+      if (targetFromHash && targetFromHash.type === itemsList[0]?.type) {
+        const nextIndex = itemsList.findIndex((entry) => String(entry.id) === String(targetFromHash.id));
+        if (nextIndex !== -1) {
+          currentIndex = nextIndex;
+          renderCurrentItem(currentIndex, { replaceHistory: false });
+          return;
         }
       }
-    };
-    modal.addEventListener('touchstart', touchStartHandler, { passive: true });
-    modal.addEventListener('touchend', touchEndHandler, { passive: true });
 
-    const wheelHandler = (e) => {
-      e.preventDefault();
-      if (e.deltaY > 10) {
-        handleScrollTransition('next');
-      } else if (e.deltaY < -10) {
-        handleScrollTransition('prev');
-      }
+      closeModal({ fromHistory: true, restoreUrl: false, suppressFollowUp: false });
     };
-    modal.addEventListener('wheel', wheelHandler, { passive: false });
 
-    const keyHandler = (e) => {
-      if (e.key === 'ArrowUp' || e.key === 'PageUp') {
-        e.preventDefault();
+    const keyHandler = (event) => {
+      if (event.key === 'ArrowUp' || event.key === 'PageUp') {
+        event.preventDefault();
         handleScrollTransition('prev');
-      } else if (e.key === 'ArrowDown' || e.key === 'PageDown') {
-        e.preventDefault();
+      } else if (event.key === 'ArrowDown' || event.key === 'PageDown') {
+        event.preventDefault();
         handleScrollTransition('next');
-      } else if (e.key === 'Escape') {
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
         closeModal();
       }
     };
-    document.addEventListener('keydown', keyHandler);
 
-    const closeModal = () => {
-      modal.querySelectorAll('video, audio').forEach(el => el.pause());
+    const closeModal = ({
+      fromHistory = false,
+      restoreUrl = true,
+      immediate = false,
+      suppressFollowUp = false
+    } = {}) => {
+      if (!document.body.contains(modal)) return;
+      session.suppressFollowUp = suppressFollowUp;
+
+      if (!fromHistory && restoreUrl && session.historyManaged && window.location.hash === session.currentHash) {
+        window.history.back();
+        return;
+      }
+
+      pausePreviewMedia();
       modal.removeEventListener('wheel', wheelHandler);
       modal.removeEventListener('touchstart', touchStartHandler);
       modal.removeEventListener('touchend', touchEndHandler);
       document.removeEventListener('keydown', keyHandler);
+      window.removeEventListener('popstate', historySyncHandler);
+      window.removeEventListener('hashchange', historySyncHandler);
+      document.body.style.overflow = previousBodyOverflow;
+
+      if (restoreUrl && !fromHistory) {
+        const restoreUrlValue = `${window.location.pathname}${window.location.search}${session.baseHash || ''}`;
+        window.history.replaceState({
+          ...(window.history.state || {}),
+          profilePreviewOpen: false
+        }, '', restoreUrlValue);
+      }
+
+      if (window.__closeTikTokPreviewModal === closeModal) {
+        window.__closeTikTokPreviewModal = null;
+      }
+      if (window.__profilePreviewSession?.modal === modal) {
+        window.__profilePreviewSession = null;
+      }
+
+      const finalizeRemove = () => {
+        modal.remove();
+        updateActiveAutoplayVideo();
+        if (!session.suppressFollowUp && !window.location.hash && session.openedViaHash) {
+          const currentItemWrapper = itemsList[currentIndex];
+          if (currentItemWrapper) {
+            highlightProfileGridItem(currentItemWrapper.type, currentItemWrapper.id);
+          }
+        }
+      };
+
+      if (immediate) {
+        finalizeRemove();
+        return;
+      }
+
       modal.style.opacity = '0';
-      setTimeout(() => modal.remove(), 300);
-      updateActiveAutoplayVideo();
+      setTimeout(finalizeRemove, 240);
     };
 
-    modal.querySelector('#tiktokCloseBtn').onclick = closeModal;
+    window.__closeTikTokPreviewModal = closeModal;
+
+    renderCurrentItem(currentIndex, { replaceHistory: false });
+    syncHistoryForCurrentItem(false);
+
+    modal.offsetHeight;
+    modal.style.opacity = '1';
+
+    modal.addEventListener('touchstart', touchStartHandler, { passive: true });
+    modal.addEventListener('touchend', touchEndHandler, { passive: true });
+    modal.addEventListener('wheel', wheelHandler, { passive: false });
+    document.addEventListener('keydown', keyHandler);
+    window.addEventListener('popstate', historySyncHandler);
+    window.addEventListener('hashchange', historySyncHandler);
+
+    modal.querySelector('#tiktokCloseBtn').onclick = () => closeModal();
     modal.querySelector('#tiktokPrevBtn').onclick = () => handleScrollTransition('prev');
     modal.querySelector('#tiktokNextBtn').onclick = () => handleScrollTransition('next');
 
-    modal.onclick = (e) => {
-      if (e.target === modal || e.target === modal.querySelector('#tiktokMediaPane')) {
+    modal.onclick = (event) => {
+      if (event.target === modal || event.target === mediaPane) {
         closeModal();
       }
     };
@@ -11746,9 +14788,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Reels / Shorts Interactions & Socket Events ---
 
   const getReelCommentsDrawer = (reelId, card) => {
-    let drawer = document.querySelector(`.reel-comments-drawer[data-reel-id="${reelId}"]`);
-    if (!drawer && card) {
-      drawer = card.querySelector('.reel-comments-drawer');
+    let drawer = null;
+    if (card) {
+      drawer = card.querySelector(`.reel-comments-drawer[data-reel-id="${reelId}"]`) || card.querySelector('.reel-comments-drawer');
+    }
+    if (!drawer) {
+      drawer = document.querySelector(`.reel-comments-drawer[data-reel-id="${reelId}"]`);
     }
     return drawer;
   };
@@ -12305,6 +15350,22 @@ document.addEventListener('DOMContentLoaded', () => {
     await ensureReelCardMediaLoaded(card);
     media = getMediaElements(card);
     if (!media) return Promise.reject("No media");
+
+    if (media.type === 'video' && media.main) {
+      const syncVisualReady = () => {
+        if (!media.main.currentSrc && !media.main.getAttribute('src')) return;
+        if (media.main.readyState >= 2) {
+          setReelVisualReady(card, true);
+          if (!card.getAttribute('data-thumb-src')) {
+            captureReelThumbnailFromVideoElement(card, media.main);
+          }
+        }
+      };
+
+      syncVisualReady();
+      media.main.addEventListener('loadeddata', syncVisualReady, { once: true });
+      media.main.addEventListener('playing', syncVisualReady, { once: true });
+    }
 
     const playOverlay = card.querySelector('.reel-play-overlay');
     const reelEndOverlayController = getReelEndOverlayController(card);
@@ -13245,6 +16306,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    if (e.target.closest('#profileReelViewerOverlay')) return;
+
     const video = e.target.closest('.reel-video');
     if (!video) return;
 
@@ -13281,6 +16344,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Double click to like logic
   document.addEventListener('dblclick', (e) => {
+    if (e.target.closest('#profileReelViewerOverlay')) return;
+
     const video = e.target.closest('.reel-video');
     if (!video) return;
 
@@ -14288,103 +17353,95 @@ document.addEventListener('DOMContentLoaded', () => {
   // Socket broadcast listeners for real-time comment synchronization
   socket.on('reel-comment-broadcast', (data) => {
     const { reelId, comment } = data;
-    const drawer = document.querySelector(`.reel-comments-drawer[data-reel-id="${reelId}"]`);
-    if (!drawer) return;
+    const drawers = Array.from(document.querySelectorAll(`.reel-comments-drawer[data-reel-id="${reelId}"]`));
+    if (!drawers.length) return;
 
-    const listContainer = drawer.querySelector('.reel-comments-list');
+    drawers.forEach((drawer) => {
+      const listContainer = drawer.querySelector('.reel-comments-list');
+      if (!listContainer) return;
 
-    // Remove empty state message if it is present
-    const emptyState = listContainer.querySelector('[style*="text-align: center"]');
-    if (emptyState && !emptyState.querySelector('.spinner')) {
-      listContainer.innerHTML = '';
-    }
+      const emptyState = listContainer.querySelector('[style*="text-align: center"]');
+      if (emptyState && !emptyState.querySelector('.spinner')) {
+        listContainer.innerHTML = '';
+      }
 
-    if (comment.parent_id) {
-      // Find the parent comment or reply element in the DOM
-      const parentEl = listContainer.querySelector(`.reel-comment-item[data-comment-id="${comment.parent_id}"]`);
-      if (parentEl) {
-        // Find the root ancestor container
-        let rootCommentEl = parentEl.closest('.reel-comment-item:not(.is-reply)');
-        if (!rootCommentEl && !parentEl.classList.contains('is-reply')) {
-          rootCommentEl = parentEl;
-        }
-
-        if (rootCommentEl) {
-          const contentWrapper = rootCommentEl.querySelector('.reel-comment-content-wrapper');
-          let repliesList = rootCommentEl.querySelector('.reel-replies-list');
-          let toggleRepliesBtn = rootCommentEl.querySelector('.reel-read-more-replies-btn');
-
-          // If replies list doesn't exist yet, create it
-          if (!repliesList) {
-            repliesList = document.createElement('div');
-            repliesList.className = 'reel-replies-list';
-            repliesList.style.display = 'flex'; // Auto-show list when a new reply arrives in real-time
-
-            // Create show/hide button
-            toggleRepliesBtn = document.createElement('button');
-            toggleRepliesBtn.className = 'reel-read-more-replies-btn';
-            toggleRepliesBtn.type = 'button';
-            toggleRepliesBtn.style.marginTop = '6px';
-            toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Masquer les réponses`;
-
-            toggleRepliesBtn.addEventListener('click', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const isHidden = repliesList.style.display === 'none';
-              if (isHidden) {
-                repliesList.style.display = 'flex';
-                toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Masquer les réponses`;
-              } else {
-                repliesList.style.display = 'none';
-                const count = repliesList.querySelectorAll('.reel-comment-item').length;
-                toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Afficher les réponses (${count})`;
-              }
-              if (typeof lucide !== 'undefined') lucide.createIcons({ node: toggleRepliesBtn });
-            });
-
-            contentWrapper.appendChild(toggleRepliesBtn);
-            contentWrapper.appendChild(repliesList);
-          } else {
-            // Make sure the replies list is visible when a reply is posted
-            repliesList.style.display = 'flex';
-            toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Masquer les réponses`;
+      if (comment.parent_id) {
+        const parentEl = listContainer.querySelector(`.reel-comment-item[data-comment-id="${comment.parent_id}"]`);
+        if (parentEl) {
+          let rootCommentEl = parentEl.closest('.reel-comment-item:not(.is-reply)');
+          if (!rootCommentEl && !parentEl.classList.contains('is-reply')) {
+            rootCommentEl = parentEl;
           }
 
-          // Resolve parent depth from DOM attribute
-          const parentDepth = parseInt(parentEl.getAttribute('data-depth') || '0', 10);
-          const depth = parentDepth + 1;
+          if (rootCommentEl) {
+            const contentWrapper = rootCommentEl.querySelector('.reel-comment-content-wrapper');
+            let repliesList = rootCommentEl.querySelector('.reel-replies-list');
+            let toggleRepliesBtn = rootCommentEl.querySelector('.reel-read-more-replies-btn');
 
-          // Resolve target name of parent directly from DOM attribute
-          const replyToName = parentEl.getAttribute('data-comment-author');
+            if (!repliesList) {
+              repliesList = document.createElement('div');
+              repliesList.className = 'reel-replies-list';
+              repliesList.style.display = 'flex';
 
-          // Render the reply and append
-          const replyItem = renderReelCommentItem(comment, true, replyToName, depth);
-          repliesList.appendChild(replyItem);
-          if (typeof lucide !== 'undefined') lucide.createIcons({ node: replyItem });
+              toggleRepliesBtn = document.createElement('button');
+              toggleRepliesBtn.className = 'reel-read-more-replies-btn';
+              toggleRepliesBtn.type = 'button';
+              toggleRepliesBtn.style.marginTop = '6px';
+              toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Masquer les réponses`;
 
-          replyItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              toggleRepliesBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const isHidden = repliesList.style.display === 'none';
+                if (isHidden) {
+                  repliesList.style.display = 'flex';
+                  toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Masquer les réponses`;
+                } else {
+                  repliesList.style.display = 'none';
+                  const count = repliesList.querySelectorAll('.reel-comment-item').length;
+                  toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Afficher les réponses (${count})`;
+                }
+                if (typeof lucide !== 'undefined') lucide.createIcons({ node: toggleRepliesBtn });
+              });
+
+              contentWrapper.appendChild(toggleRepliesBtn);
+              contentWrapper.appendChild(repliesList);
+            } else {
+              repliesList.style.display = 'flex';
+              if (toggleRepliesBtn) {
+                toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Masquer les réponses`;
+              }
+            }
+
+            const parentDepth = parseInt(parentEl.getAttribute('data-depth') || '0', 10);
+            const depth = parentDepth + 1;
+            const replyToName = parentEl.getAttribute('data-comment-author');
+            const replyItem = renderReelCommentItem(comment, true, replyToName, depth);
+            repliesList.appendChild(replyItem);
+            if (typeof lucide !== 'undefined') lucide.createIcons({ node: replyItem });
+
+            replyItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
         }
+      } else {
+        const item = renderReelCommentItem(comment, false);
+        listContainer.insertBefore(item, listContainer.firstChild);
+        if (typeof lucide !== 'undefined') lucide.createIcons({ node: item });
+
+        listContainer.scrollTo({
+          top: 0,
+          behavior: 'smooth'
+        });
       }
-    } else {
-      // It's a root comment, append it to the top of the list container
-      const item = renderReelCommentItem(comment, false);
-      listContainer.insertBefore(item, listContainer.firstChild);
-      if (typeof lucide !== 'undefined') lucide.createIcons({ node: item });
 
-      listContainer.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      });
-    }
-
-    // Update comments count text in drawer header
-    const headerCount = drawer.querySelector('.drawer-comments-count');
-    if (headerCount) {
-      let count = parseInt(headerCount.getAttribute('data-count') || headerCount.textContent, 10) || 0;
-      count += 1;
-      headerCount.setAttribute('data-count', count);
-      headerCount.textContent = formatNumber(count);
-    }
+      const headerCount = drawer.querySelector('.drawer-comments-count');
+      if (headerCount) {
+        let count = parseInt(headerCount.getAttribute('data-count') || headerCount.textContent, 10) || 0;
+        count += 1;
+        headerCount.setAttribute('data-count', count);
+        headerCount.textContent = formatNumber(count);
+      }
+    });
   });
 
   // Socket updates for other clients (likes, shares, comment counts)
@@ -14405,14 +17462,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (countSpan) countSpan.textContent = formatNumber(data.commentsCount);
     });
 
-    const drawer = document.querySelector(`.reel-comments-drawer[data-reel-id="${data.reelId}"]`);
-    if (drawer) {
+    document.querySelectorAll(`.reel-comments-drawer[data-reel-id="${data.reelId}"]`).forEach((drawer) => {
       const headerCount = drawer.querySelector('.drawer-comments-count');
       if (headerCount) {
         headerCount.setAttribute('data-count', data.commentsCount);
         headerCount.textContent = formatNumber(data.commentsCount);
       }
-    }
+    });
   });
 
   socket.on('reel-shares-updated', (data) => {
@@ -21170,41 +24226,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (hash.startsWith('#reel-')) {
       const reelId = hash.replace('#reel-', '');
-      const shortsTab = document.querySelector('.profile-tab[onclick*="shorts"]');
-      if (shortsTab && typeof switchGrid === 'function') {
-        switchGrid('shorts', shortsTab);
-      }
+      switchProfilePreviewGrid('shorts');
       setTimeout(() => {
-        const gridItem = document.querySelector(`.grid-item[data-reel-id="${reelId}"]`);
-        if (gridItem) {
-          gridItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          gridItem.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
-          gridItem.style.boxShadow = '0 0 20px 4px var(--primary)';
-          gridItem.style.borderColor = 'var(--primary)';
-          setTimeout(() => {
-            gridItem.style.boxShadow = '';
-            gridItem.style.borderColor = '';
-          }, 3000);
+        const activePreviewHash = window.__profilePreviewSession?.currentHash;
+        if (activePreviewHash === hash) return;
+        const item = (window.profileReelsList || []).find((entry) => String(entry.id) === String(reelId));
+        if (item) {
+          window.showTikTokPreviewModal(item, 'reel', {
+            openedViaHash: true,
+            baseHash: ''
+          });
+          return;
         }
+        highlightProfileGridItem('reel', reelId);
       }, 200);
     } else if (hash.startsWith('#post-')) {
       const postId = hash.replace('#post-', '');
-      const postsTab = document.querySelector('.profile-tab[onclick*="posts"]');
-      if (postsTab && typeof switchGrid === 'function') {
-        switchGrid('posts', postsTab);
-      }
+      switchProfilePreviewGrid('posts');
       setTimeout(() => {
-        const gridItem = document.querySelector(`.grid-item[data-post-id="${postId}"]`);
-        if (gridItem) {
-          gridItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          gridItem.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
-          gridItem.style.boxShadow = '0 0 20px 4px var(--primary)';
-          gridItem.style.borderColor = 'var(--primary)';
-          setTimeout(() => {
-            gridItem.style.boxShadow = '';
-            gridItem.style.borderColor = '';
-          }, 3000);
+        const activePreviewHash = window.__profilePreviewSession?.currentHash;
+        if (activePreviewHash === hash) return;
+        const item = (window.profilePostsList || []).find((entry) => String(entry.id) === String(postId));
+        if (item) {
+          window.showTikTokPreviewModal(item, 'post', {
+            openedViaHash: true,
+            baseHash: ''
+          });
+          return;
         }
+        highlightProfileGridItem('post', postId);
       }, 200);
     }
   };
