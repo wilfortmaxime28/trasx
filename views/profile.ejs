@@ -1191,18 +1191,21 @@ function getYouTubeId(url) {
         }
 
         // File Input Display
-        document.getElementById('avatarFileInput').addEventListener('change', function (e) {
-          const fileNameDisplay = document.getElementById('fileNameDisplay');
-          if (this.files && this.files[0]) {
-            fileNameDisplay.textContent = 'Selected: ' + this.files[0].name;
-            fileNameDisplay.style.display = 'block';
-            // Clear preset selection if file uploaded
-            document.getElementById('selectedAvatarInput').value = '';
-            document.querySelectorAll('.avatar-option').forEach(el => el.classList.remove('selected'));
-          } else {
-            fileNameDisplay.style.display = 'none';
-          }
-        });
+        const avatarFileInput = document.getElementById('avatarFileInput');
+        if (avatarFileInput) {
+          avatarFileInput.addEventListener('change', function (e) {
+            const fileNameDisplay = document.getElementById('fileNameDisplay');
+            if (this.files && this.files[0]) {
+              fileNameDisplay.textContent = 'Selected: ' + this.files[0].name;
+              fileNameDisplay.style.display = 'block';
+              // Clear preset selection if file uploaded
+              document.getElementById('selectedAvatarInput').value = '';
+              document.querySelectorAll('.avatar-option').forEach(el => el.classList.remove('selected'));
+            } else {
+              fileNameDisplay.style.display = 'none';
+            }
+          });
+        }
         function selectAvatar(url, element) {
           document.getElementById('selectedAvatarInput').value = url;
 

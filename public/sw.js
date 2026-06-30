@@ -167,7 +167,7 @@ self.addEventListener('fetch', (event) => {
             });
           }
           return networkResponse;
-        }).catch(() => {});
+        });
         return cached || fetchPromise;
       })
     );
