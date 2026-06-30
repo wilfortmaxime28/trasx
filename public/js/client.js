@@ -26598,13 +26598,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const winnerIsWhite = String(game.winner) === String(game.player1?.id);
     const winnerIsBlack = game.player2 && String(game.winner) === String(game.player2.id);
 
-    if (reason === 'checkmate') return winnerIsWhite ? 'Echec et Mat. Victoire des Blancs.' : winnerIsBlack ? 'Echec et Mat. Victoire des Noirs.' : 'Echec et Mat.';
-    if (reason === 'stalemate') return 'Pat. Match nul.';
-    if (reason === 'threefold-repetition') return 'Triple repetition. Match nul.';
-    if (reason === 'fifty-move-rule') return 'Regle des 50 coups. Match nul.';
-    if (reason === 'insufficient-material') return 'Materiel insuffisant. Match nul.';
-    if (reason === 'timeout') return winnerIsWhite ? 'Defaite au temps. Victoire des Blancs.' : winnerIsBlack ? 'Defaite au temps. Victoire des Noirs.' : 'Defaite au temps.';
-    if (reason === 'timeout-draw') return 'Temps ecoule. Match nul par materiel insuffisant.';
+    if (reason === 'checkmate') return winnerIsWhite ? 'Échec et mat. Victoire des Blancs.' : winnerIsBlack ? 'Échec et mat. Victoire des Noirs.' : 'Échec et mat.';
+    if (reason === 'stalemate') return 'Partie nulle - Pat.';
+    if (reason === 'threefold-repetition') return 'Partie nulle - Répétition de position.';
+    if (reason === 'fifty-move-rule') return 'Partie nulle - Règle des 50 coups.';
+    if (reason === 'insufficient-material') return 'Partie nulle - Matériel insuffisant.';
+    if (reason === 'timeout') return winnerIsWhite ? 'Défaite au temps. Victoire des Blancs.' : winnerIsBlack ? 'Défaite au temps. Victoire des Noirs.' : 'Défaite au temps.';
+    if (reason === 'timeout-draw') return 'Partie nulle - Matériel insuffisant.';
     if (reason === 'resign') return winnerIsWhite ? 'Abandon. Victoire des Blancs.' : winnerIsBlack ? 'Abandon. Victoire des Noirs.' : 'Abandon.';
     if (game.status === 'finished' && game.winner === 'draw') return 'Match nul.';
     return String(game.resultMessage || game.chessState?.statusMessage || '').trim();
@@ -26797,9 +26797,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const color = piece[0];
     const type = piece[1];
 
-    const stroke = color === 'w' ? '#38bdf8' : '#fbbf24';
-    const glowColor = color === 'w' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(251, 191, 36, 0.4)';
-    const fill = color === 'w' ? 'rgba(56, 189, 248, 0.08)' : 'rgba(251, 191, 36, 0.08)';
+    const stroke = color === 'w' ? '#ffffff' : '#fbbf24';
+    const glowColor = color === 'w' ? 'rgba(255, 255, 255, 0.4)' : 'rgba(251, 191, 36, 0.4)';
+    const fill = color === 'w' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(251, 191, 36, 0.08)';
 
     let pathMarkup = '';
 
@@ -26846,10 +26846,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const getChessPieceSvgMarkup = (piece, { compact = false } = {}) => {
     if (!piece) return '';
-    const spritePos = CHESS_PIECE_SPRITE_POSITIONS[piece];
-    if (spritePos && chessPieceSpriteReady) {
-      return `<span class="chess-piece-sprite${compact ? ' is-compact' : ''}" style="--piece-x:${spritePos.x}; --piece-y:${spritePos.y};"></span>`;
-    }
+    // Always use custom vector outline SVG pieces with true white/gold colors for FIDE compliance
     return getLegacyChessPieceSvgMarkup(piece);
   };
 

@@ -2621,7 +2621,9 @@ class GamesManager {
           const nextRow = r + dir;
           if (this.isInsideChessBoard(nextRow, c) && !board[nextRow][c]) {
             if (nextRow === promotionRow) {
-              pushMove({ from: { r, c }, to: { r: nextRow, c }, piece, promotion: 'q' });
+              for (const promo of ['q', 'r', 'b', 'n']) {
+                pushMove({ from: { r, c }, to: { r: nextRow, c }, piece, promotion: promo });
+              }
             } else {
               pushMove({ from: { r, c }, to: { r: nextRow, c }, piece });
             }
@@ -2637,7 +2639,9 @@ class GamesManager {
             const target = board[cr][cc];
             if (target && this.getChessPieceColor(target) === enemyColor) {
               if (cr === promotionRow) {
-                pushMove({ from: { r, c }, to: { r: cr, c: cc }, piece, captured: target, promotion: 'q' });
+                for (const promo of ['q', 'r', 'b', 'n']) {
+                  pushMove({ from: { r, c }, to: { r: cr, c: cc }, piece, captured: target, promotion: promo });
+                }
               } else {
                 pushMove({ from: { r, c }, to: { r: cr, c: cc }, piece, captured: target });
               }
@@ -2893,14 +2897,14 @@ class GamesManager {
   }
 
   buildChessStatusMessage({ currentPlayer, inCheck = false, isMate = false, isStalemate = false, reason = null } = {}) {
-    if (reason === 'threefold-repetition') return 'Nulle par triple repetition.';
-    if (reason === 'fifty-move-rule') return 'Nulle par regle des 50 coups.';
-    if (reason === 'insufficient-material') return 'Nulle par materiel insuffisant.';
-    if (reason === 'timeout') return 'Defaite au temps.';
-    if (reason === 'timeout-draw') return 'Nulle au temps, materiel insuffisant.';
-    if (isMate) return 'Echec et mat.';
-    if (isStalemate) return 'Pat. Match nul.';
-    if (inCheck) return 'Echec.';
+    if (reason === 'threefold-repetition') return 'Partie nulle - Répétition de position.';
+    if (reason === 'fifty-move-rule') return 'Partie nulle - Règle des 50 coups.';
+    if (reason === 'insufficient-material') return 'Partie nulle - Matériel insuffisant.';
+    if (reason === 'timeout') return 'Défaite au temps.';
+    if (reason === 'timeout-draw') return 'Partie nulle - Matériel insuffisant.';
+    if (isMate) return 'Échec et mat.';
+    if (isStalemate) return 'Partie nulle - Pat.';
+    if (inCheck) return 'Échec.';
     return currentPlayer === 1 ? 'Traits aux Blancs' : 'Traits aux Noirs';
   }
 
