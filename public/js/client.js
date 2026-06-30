@@ -8733,11 +8733,31 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
+    let touchStartY = 0;
+    const touchStartHandler = (e) => {
+      touchStartY = e.touches[0].clientY;
+    };
+    const touchEndHandler = (e) => {
+      const touchEndY = e.changedTouches[0].clientY;
+      const diffY = touchStartY - touchEndY;
+      if (Math.abs(diffY) > 50) { // minimum threshold for swipe
+        if (diffY > 0) {
+          // Swipe up -> scroll down -> show next
+          handleScrollTransition('next');
+        } else {
+          // Swipe down -> scroll up -> show prev
+          handleScrollTransition('prev');
+        }
+      }
+    };
+    modal.addEventListener('touchstart', touchStartHandler, { passive: true });
+    modal.addEventListener('touchend', touchEndHandler, { passive: true });
+
     const wheelHandler = (e) => {
       e.preventDefault();
-      if (e.deltaY < -30) {
+      if (e.deltaY > 10) {
         handleScrollTransition('next');
-      } else if (e.deltaY > 30) {
+      } else if (e.deltaY < -10) {
         handleScrollTransition('prev');
       }
     };
@@ -8746,10 +8766,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const keyHandler = (e) => {
       if (e.key === 'ArrowUp' || e.key === 'PageUp') {
         e.preventDefault();
-        handleScrollTransition('next');
+        handleScrollTransition('prev');
       } else if (e.key === 'ArrowDown' || e.key === 'PageDown') {
         e.preventDefault();
-        handleScrollTransition('prev');
+        handleScrollTransition('next');
       } else if (e.key === 'Escape') {
         closeModal();
       }
@@ -8759,6 +8779,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeModal = () => {
       modal.querySelectorAll('video, audio').forEach(el => el.pause());
       modal.removeEventListener('wheel', wheelHandler);
+      modal.removeEventListener('touchstart', touchStartHandler);
+      modal.removeEventListener('touchend', touchEndHandler);
       document.removeEventListener('keydown', keyHandler);
       modal.style.opacity = '0';
       setTimeout(() => modal.remove(), 300);
@@ -8766,8 +8788,8 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     modal.querySelector('#tiktokCloseBtn').onclick = closeModal;
-    modal.querySelector('#tiktokPrevBtn').onclick = () => handleScrollTransition('next');
-    modal.querySelector('#tiktokNextBtn').onclick = () => handleScrollTransition('prev');
+    modal.querySelector('#tiktokPrevBtn').onclick = () => handleScrollTransition('prev');
+    modal.querySelector('#tiktokNextBtn').onclick = () => handleScrollTransition('next');
 
     modal.onclick = (e) => {
       if (e.target === modal || e.target === modal.querySelector('#tiktokMediaPane')) {
