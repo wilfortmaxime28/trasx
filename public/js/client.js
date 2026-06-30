@@ -11663,6 +11663,7 @@ document.addEventListener('DOMContentLoaded', () => {
               if (window.lucide && typeof window.lucide.createIcons === 'function') {
                 window.lucide.createIcons();
               }
+              initProfileInteractions();
             } else {
               profileSec.innerHTML = '<div style="padding: 20px; text-align: center; color: red;">Erreur de chargement du profil</div>';
             }
@@ -21133,93 +21134,99 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(handleHashNavigation, 300);
   };
 
+  const handleProfileHashNavigation = () => {
+    if (!document.querySelector('.profile-page-wrapper')) return;
+    const hash = window.location.hash;
+    if (!hash) return;
+
+    if (hash.startsWith('#reel-')) {
+      const reelId = hash.replace('#reel-', '');
+      const shortsTab = document.querySelector('.profile-tab[onclick*="shorts"]');
+      if (shortsTab && typeof switchGrid === 'function') {
+        switchGrid('shorts', shortsTab);
+      }
+      setTimeout(() => {
+        const gridItem = document.querySelector(`.grid-item[data-reel-id="${reelId}"]`);
+        if (gridItem) {
+          gridItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          gridItem.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
+          gridItem.style.boxShadow = '0 0 20px 4px var(--primary)';
+          gridItem.style.borderColor = 'var(--primary)';
+          setTimeout(() => {
+            gridItem.style.boxShadow = '';
+            gridItem.style.borderColor = '';
+          }, 3000);
+        }
+      }, 200);
+    } else if (hash.startsWith('#post-')) {
+      const postId = hash.replace('#post-', '');
+      const postsTab = document.querySelector('.profile-tab[onclick*="posts"]');
+      if (postsTab && typeof switchGrid === 'function') {
+        switchGrid('posts', postsTab);
+      }
+      setTimeout(() => {
+        const gridItem = document.querySelector(`.grid-item[data-post-id="${postId}"]`);
+        if (gridItem) {
+          gridItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          gridItem.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
+          gridItem.style.boxShadow = '0 0 20px 4px var(--primary)';
+          gridItem.style.borderColor = 'var(--primary)';
+          setTimeout(() => {
+            gridItem.style.boxShadow = '';
+            gridItem.style.borderColor = '';
+          }, 3000);
+        }
+      }, 200);
+    }
+  };
+
   // Run on profile page to handle grid item clicks and landing on a specific hash
   const initProfileInteractions = () => {
+    if (!window.profileDocumentListenersAdded) {
+      // Grid clicks
+      document.addEventListener('click', (e) => {
+        if (!document.querySelector('.profile-page-wrapper')) return;
+
+        if (window.lastGridSwitchTime && (Date.now() - window.lastGridSwitchTime < 300)) {
+          return;
+        }
+        const gridItem = e.target.closest('.grid-item');
+        if (!gridItem) return;
+
+        if (e.target.closest('form') || e.target.closest('button') || e.target.closest('a')) {
+          return;
+        }
+
+        const postId = gridItem.getAttribute('data-post-id');
+        const reelId = gridItem.getAttribute('data-reel-id');
+        const itemJson = gridItem.getAttribute('data-json');
+        if (itemJson) {
+          try {
+            const item = JSON.parse(itemJson);
+            if (postId) {
+              window.showTikTokPreviewModal(item, 'post');
+            } else if (reelId) {
+              window.showTikTokPreviewModal(item, 'reel');
+            }
+            return;
+          } catch (err) {
+            console.error('Error parsing grid item JSON:', err);
+          }
+        }
+
+        if (postId) {
+          window.location.href = `/#post-${postId}`;
+        } else if (reelId) {
+          window.location.href = `/?view=shorts&shared_reel=${reelId}#reel-${reelId}`;
+        }
+      });
+
+      window.addEventListener('hashchange', handleProfileHashNavigation);
+      window.profileDocumentListenersAdded = true;
+    }
+
     if (!document.querySelector('.profile-page-wrapper')) return;
 
-    // Grid clicks
-    document.addEventListener('click', (e) => {
-      if (window.lastGridSwitchTime && (Date.now() - window.lastGridSwitchTime < 300)) {
-        return;
-      }
-      const gridItem = e.target.closest('.grid-item');
-      if (!gridItem) return;
-
-      if (e.target.closest('form') || e.target.closest('button') || e.target.closest('a')) {
-        return;
-      }
-
-      const postId = gridItem.getAttribute('data-post-id');
-      const reelId = gridItem.getAttribute('data-reel-id');
-      const itemJson = gridItem.getAttribute('data-json');
-      if (itemJson) {
-        try {
-          const item = JSON.parse(itemJson);
-          if (postId) {
-            window.showTikTokPreviewModal(item, 'post');
-          } else if (reelId) {
-            window.showTikTokPreviewModal(item, 'reel');
-          }
-          return;
-        } catch (err) {
-          console.error('Error parsing grid item JSON:', err);
-        }
-      }
-
-      if (postId) {
-        window.location.href = `/#post-${postId}`;
-      } else if (reelId) {
-        window.location.href = `/?view=shorts&shared_reel=${reelId}#reel-${reelId}`;
-      }
-    });
-
-    // Hash navigation on profile load
-    const handleProfileHashNavigation = () => {
-      const hash = window.location.hash;
-      if (!hash) return;
-
-      if (hash.startsWith('#reel-')) {
-        const reelId = hash.replace('#reel-', '');
-        const shortsTab = document.querySelector('.profile-tab[onclick*="shorts"]');
-        if (shortsTab && typeof switchGrid === 'function') {
-          switchGrid('shorts', shortsTab);
-        }
-        setTimeout(() => {
-          const gridItem = document.querySelector(`.grid-item[data-reel-id="${reelId}"]`);
-          if (gridItem) {
-            gridItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            gridItem.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
-            gridItem.style.boxShadow = '0 0 20px 4px var(--primary)';
-            gridItem.style.borderColor = 'var(--primary)';
-            setTimeout(() => {
-              gridItem.style.boxShadow = '';
-              gridItem.style.borderColor = '';
-            }, 3000);
-          }
-        }, 200);
-      } else if (hash.startsWith('#post-')) {
-        const postId = hash.replace('#post-', '');
-        const postsTab = document.querySelector('.profile-tab[onclick*="posts"]');
-        if (postsTab && typeof switchGrid === 'function') {
-          switchGrid('posts', postsTab);
-        }
-        setTimeout(() => {
-          const gridItem = document.querySelector(`.grid-item[data-post-id="${postId}"]`);
-          if (gridItem) {
-            gridItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            gridItem.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
-            gridItem.style.boxShadow = '0 0 20px 4px var(--primary)';
-            gridItem.style.borderColor = 'var(--primary)';
-            setTimeout(() => {
-              gridItem.style.boxShadow = '';
-              gridItem.style.borderColor = '';
-            }, 3000);
-          }
-        }, 200);
-      }
-    };
-
-    window.addEventListener('hashchange', handleProfileHashNavigation);
     setTimeout(handleProfileHashNavigation, 300);
 
     // Deposit flow
