@@ -885,6 +885,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  const getStatusMessagePreviewText = (message) => {
+    const statusId = Number(message?.status_id || 0);
+    if (!statusId) return null;
+
+    const content = String(message?.content || '').replace(/\s+/g, ' ').trim();
+    const statusCaption = String(message?.status_caption || '').replace(/\s+/g, ' ').trim();
+    const hasLettersOrNumbers = /[A-Za-z0-9À-ÖØ-öø-ÿ]/.test(content);
+
+    if (content) {
+      const excerpt = content.length > 80 ? `${content.slice(0, 77)}...` : content;
+      return hasLettersOrNumbers ? `Reponse au statut : ${excerpt}` : `Reaction au statut : ${excerpt}`;
+    }
+
+    if (statusCaption) {
+      return `Statut : ${statusCaption.length > 72 ? `${statusCaption.slice(0, 69)}...` : statusCaption}`;
+    }
+
+    return 'Reponse a un statut';
+  };
+
   const getChatMessagePreviewText = (message) => {
     if (!message) return 'Start a conversation...';
 
@@ -932,6 +952,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (authorName) return `Short partage de ${authorName}`;
       return 'Short partage';
     }
+    const statusPreview = getStatusMessagePreviewText(message);
+    if (statusPreview) return statusPreview;
     if (content) return content;
 
     const attachmentType = String(message.attachment_type || '').toLowerCase();
@@ -1397,9 +1419,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const quoteIconColor = isOutgoing ? '#ffffff' : '#10b981';
 
       let mediaPreview = '';
-      if (mediaType === 'image' && mediaUrl) {
+      if (mediaType.startsWith('image/') && mediaUrl) {
         mediaPreview = `<img src="${mediaUrl}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px; margin-left: auto; flex-shrink: 0;" />`;
-      } else if (mediaType === 'video' && mediaUrl) {
+      } else if (mediaType.startsWith('video/') && mediaUrl) {
         mediaPreview = `
           <div style="position: relative; width: 32px; height: 32px; border-radius: 4px; background: #000; overflow: hidden; margin-left: auto; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
             <video src="${mediaUrl}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;"></video>
@@ -1418,7 +1440,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="chat-message-status-preview" data-status-id="${escapeHtml(message.status_id)}" style="display: flex; gap: 8px; padding: 6px 10px; border-radius: 6px; margin-bottom: 6px; font-size: 11px; cursor: pointer; width: 100%; min-width: 180px; max-width: 100%; box-sizing: border-box; background: ${quoteBg}; border-left: ${quoteBorder}; transition: background-color 0.2s ease; align-items: center;">
           <div style="flex: 1; min-width: 0;">
             <strong style="display: flex; align-items: center; gap: 4px; font-size: 10px; margin-bottom: 2px; color: ${quoteTitleColor};">
-              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${quoteIconColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-reply" style="display: inline-block; vertical-align: middle;"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg> Statut de @${sUsername}
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${quoteIconColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-reply" style="display: inline-block; vertical-align: middle;"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg> Reponse au statut de @${sUsername}
             </strong>
             <span style="color: ${quoteTextColor}; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; display: block;">
               ${mediaType !== 'text' ? caption || '[Statut média]' : caption}
@@ -13514,9 +13536,9 @@ document.addEventListener('DOMContentLoaded', () => {
           const previewStr = sMediaType !== 'text' ? (sCaption || '[Statut média]') : sCaption;
           
           let mediaThumbnail = '';
-          if (sMediaType === 'image' && sMediaUrl) {
+          if (sMediaType.startsWith('image/') && sMediaUrl) {
             mediaThumbnail = `<img src="${sMediaUrl}" style="width: 24px; height: 24px; object-fit: cover; border-radius: 3px; flex-shrink: 0;" />`;
-          } else if (sMediaType === 'video' && sMediaUrl) {
+          } else if (sMediaType.startsWith('video/') && sMediaUrl) {
             mediaThumbnail = `
               <div style="position: relative; width: 24px; height: 24px; border-radius: 3px; background: #000; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
                 <video src="${sMediaUrl}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;"></video>
@@ -13534,7 +13556,7 @@ document.addEventListener('DOMContentLoaded', () => {
           return `
             <div class="notification-status-quote" style="margin-top: 6px; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid #10b981; border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; box-sizing: border-box;">
               <div style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                <strong>Statut :</strong> <span>${previewStr}</span>
+                <strong>Statut concerne :</strong> <span>${previewStr}</span>
               </div>
               ${mediaThumbnail}
             </div>
@@ -13594,9 +13616,9 @@ document.addEventListener('DOMContentLoaded', () => {
           const previewStr = sMediaType !== 'text' ? (sCaption || '[Statut média]') : sCaption;
           
           let mediaThumbnail = '';
-          if (sMediaType === 'image' && sMediaUrl) {
+          if (sMediaType.startsWith('image/') && sMediaUrl) {
             mediaThumbnail = `<img src="${sMediaUrl}" style="width: 24px; height: 24px; object-fit: cover; border-radius: 3px; flex-shrink: 0;" />`;
-          } else if (sMediaType === 'video' && sMediaUrl) {
+          } else if (sMediaType.startsWith('video/') && sMediaUrl) {
             mediaThumbnail = `
               <div style="position: relative; width: 24px; height: 24px; border-radius: 3px; background: #000; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
                 <video src="${sMediaUrl}" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;"></video>
@@ -13614,7 +13636,7 @@ document.addEventListener('DOMContentLoaded', () => {
           return `
             <div class="notification-status-quote" style="margin-top: 6px; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid #10b981; border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; box-sizing: border-box;">
               <div style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                <strong>Statut :</strong> <span>${previewStr}</span>
+                <strong>Statut concerne :</strong> <span>${previewStr}</span>
               </div>
               ${mediaThumbnail}
             </div>
@@ -17701,24 +17723,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const receiverId = parseInt(activeStatusCardElement.dataset.userId, 10);
     if (!receiverId || isNaN(receiverId)) return;
 
-    const statusId = statusViewerModal.dataset.statusId;
-    const socketMsg = `Réaction à votre statut : ${reaction}`;
+    const statusId = parseInt(statusViewerModal.dataset.statusId || '', 10);
+    if (!statusId || isNaN(statusId)) {
+      showToast(getPageLocale() === 'fr' ? 'Statut introuvable.' : 'Status not found.');
+      return;
+    }
 
-    // Emit chat message
     socket.emit('chat-message', {
       receiverId: receiverId,
-      content: socketMsg,
-      parentId: null
+      content: reaction,
+      parentId: null,
+      statusId
     });
 
-    // Record as status comment and trigger notification
-    if (statusId) {
-      fetch(`/statuses/comment/${statusId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: reaction })
-      }).catch(err => console.error("Error recording status comment reaction:", err));
-    }
+    fetch(`/statuses/comment/${statusId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: reaction })
+    }).catch(err => console.error("Error recording status comment reaction:", err));
 
     showToast(tText("Réaction envoyée !"));
   };
@@ -17912,45 +17934,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  const statusViewerShareBtn = document.getElementById('statusViewerShareBtn');
-  if (statusViewerShareBtn) {
-    statusViewerShareBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      pauseStory();
-      
-      const currentStatus = currentGroupStatuses[currentStatusIndex];
-      const userName = activeStatusCardElement.dataset.userName || activeStatusCardElement.dataset.username || 'Status';
-      const avatar = activeStatusCardElement.dataset.avatar || '/assets/avatar_placeholder.jpg';
-
-      activeShareStatusData = {
-        id: currentStatus.id,
-        user_id: activeStatusCardElement.dataset.userId,
-        user_name: userName,
-        avatar: avatar,
-        media_url: currentStatus.media_url,
-        media_type: currentStatus.media_type,
-        caption: currentStatus.caption || ''
-      };
-
-      activeSharePostId = null;
-      activeSharePostCard = null;
-
-      // Open the share modal
-      const modal = getShareSheetModal();
-      if (modal) {
-        const modalAuthor = modal.querySelector('#shareSheetPostAuthor');
-        const modalAvatar = modal.querySelector('#shareSheetPostAvatar');
-        const modalExcerpt = modal.querySelector('#shareSheetPostExcerpt');
-        if (modalAuthor) modalAuthor.textContent = userName;
-        if (modalAvatar) modalAvatar.src = avatar;
-        if (modalExcerpt) modalExcerpt.textContent = currentStatus.caption || (getPageLocale() === 'fr' ? 'Statut de ' + userName : userName + '\'s status');
-
-        modal.style.display = 'flex';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-      }
-    });
-  }
-
   const sendStatusViewerReply = () => {
     if (!statusViewerReplyInput || !activeStatusCardElement) return;
     const content = statusViewerReplyInput.value.trim();
@@ -17959,24 +17942,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const receiverId = parseInt(activeStatusCardElement.dataset.userId, 10);
     if (!receiverId || isNaN(receiverId)) return;
 
-    const statusId = statusViewerModal.dataset.statusId;
+    const statusId = parseInt(statusViewerModal.dataset.statusId || '', 10);
+    if (!statusId || isNaN(statusId)) {
+      showToast(getPageLocale() === 'fr' ? 'Statut introuvable.' : 'Status not found.');
+      return;
+    }
 
-    // Emit chat message
     socket.emit('chat-message', {
       receiverId: receiverId,
       content: content,
       parentId: null,
-      statusId: statusId ? parseInt(statusId, 10) : null
+      statusId
     });
 
-    // Record as status comment and trigger notification
-    if (statusId) {
-      fetch(`/statuses/comment/${statusId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
-      }).catch(err => console.error("Error recording status comment:", err));
-    }
+    fetch(`/statuses/comment/${statusId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    }).catch(err => console.error("Error recording status comment:", err));
 
     statusViewerReplyInput.value = '';
     statusViewerReplyInput.blur();

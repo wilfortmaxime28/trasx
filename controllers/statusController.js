@@ -151,19 +151,21 @@ class StatusController {
         return res.status(404).json({ error: 'Status not found.' });
       }
 
-      await Status.addComment(statusId, currentUserId, content);
+      const commentId = await Status.addComment(statusId, currentUserId, content);
 
       // Notify the status creator if it's not their own status
       if (Number(status.user_id) !== Number(currentUserId)) {
         const currentUser = await User.getById(currentUserId);
         const senderName = currentUser ? `${currentUser.first_name} ${currentUser.last_name}` : 'Quelqu\'un';
-        
-        const notificationMessage = `${senderName} a commenté votre statut : "${content.slice(0, 50)}${content.length > 50 ? '...' : ''}"`;
+
+        const excerpt = content.slice(0, 50);
+        const notificationMessage = `${senderName} a repondu a votre statut : "${excerpt}${content.length > 50 ? '...' : ''}"`;
         const notificationId = await Notification.create({
           recipientId: status.user_id,
           actorId: currentUserId,
           type: 'comment',
           message: notificationMessage,
+          commentId,
           statusId: statusId
         });
 
@@ -176,6 +178,7 @@ class StatusController {
             actor_id: currentUserId,
             actor_name: senderName,
             actor_avatar: currentUser?.avatar || '/assets/avatar_placeholder.jpg',
+            actor_username: currentUser?.username || '',
             type: 'comment',
             message: notificationMessage,
             created_at: new Date(),
@@ -191,7 +194,7 @@ class StatusController {
         }
       }
 
-      return res.json({ success: true });
+      return res.json({ success: true, commentId });
     } catch (err) {
       console.error('createComment error:', err);
       return res.status(500).json({ error: 'Failed to post comment.' });

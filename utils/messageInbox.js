@@ -75,6 +75,26 @@ const getSharedReelPreviewText = (content) => {
   return 'Short partage';
 };
 
+const getStatusMessagePreviewText = (message) => {
+  const statusId = Number(message?.status_id || 0);
+  if (!statusId) return null;
+
+  const content = String(message?.content || '').replace(/\s+/g, ' ').trim();
+  const statusCaption = String(message?.status_caption || '').replace(/\s+/g, ' ').trim();
+  const hasLettersOrNumbers = /[A-Za-z0-9À-ÖØ-öø-ÿ]/.test(content);
+
+  if (content) {
+    const excerpt = content.length > 80 ? `${content.slice(0, 77)}...` : content;
+    return hasLettersOrNumbers ? `Reponse au statut : ${excerpt}` : `Reaction au statut : ${excerpt}`;
+  }
+
+  if (statusCaption) {
+    return `Statut : ${statusCaption.length > 72 ? `${statusCaption.slice(0, 69)}...` : statusCaption}`;
+  }
+
+  return 'Reponse a un statut';
+};
+
 const getMessagePreviewText = (message) => {
   if (!message) return 'Start a conversation...';
 
@@ -86,8 +106,13 @@ const getMessagePreviewText = (message) => {
     if (sharedPostPreview) return sharedPostPreview;
     const sharedReelPreview = getSharedReelPreviewText(content);
     if (sharedReelPreview) return sharedReelPreview;
+    const statusPreview = getStatusMessagePreviewText(message);
+    if (statusPreview) return statusPreview;
     return content;
   }
+
+  const statusPreview = getStatusMessagePreviewText(message);
+  if (statusPreview) return statusPreview;
 
   const attachmentType = String(message.attachment_type || '').toLowerCase();
   const attachmentName = String(message.attachment_name || '').trim();

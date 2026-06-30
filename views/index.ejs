@@ -4497,31 +4497,21 @@ function getYouTubeId(url) {
                 <!-- Reply & Share bar / Owner stats bar -->
                 <div id="statusViewerFooterBar" style="width: 100%; pointer-events: auto; padding-bottom: 4px;">
                   <!-- WhatsApp-style Reply Bar for Non-Owners -->
-                  <div id="statusViewerReplyBar" style="display: flex; align-items: center; gap: 8px; width: 100%;">
-                    <!-- Reply input with embedded send button -->
-                    <div style="position: relative; flex: 1; display: flex; align-items: center;">
-                      <input type="text" id="statusViewerReplyInput" placeholder="<%= tText("Répondre") %>"
-                        style="width: 100%; background: rgba(255,255,255,0.15); border: none; border-radius: 24px; padding: 10px 42px 10px 18px; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; font-size: 14px; outline: none; font-family: 'Outfit', sans-serif; transition: background 0.2s; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 2px 10px rgba(0,0,0,0.25);">
-                      <button type="button" id="statusViewerSendBtn" style="position: absolute; right: 8px; background: none; border: none; color: #ffffff; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center; opacity: 0.75; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.75'">
+                  <div id="statusViewerReplyBar" class="status-viewer-reply-bar">
+                    <div class="status-viewer-input-shell">
+                      <div class="status-viewer-input-emojis" aria-hidden="false">
+                        <button type="button" class="status-reaction-emoji-btn status-viewer-emoji-btn" data-emoji="😍" title="😍">😍</button>
+                        <button type="button" class="status-reaction-emoji-btn status-viewer-emoji-btn" data-emoji="😂" title="😂">😂</button>
+                        <button type="button" class="status-reaction-emoji-btn status-viewer-emoji-btn" data-emoji="😮" title="😮">😮</button>
+                      </div>
+                      <input type="text" id="statusViewerReplyInput" class="status-viewer-reply-input" placeholder="<%= tText("Répondre") %>">
+                      <button type="button" id="statusViewerSendBtn" class="status-viewer-send-btn" title="<%= tText("Envoyer") %>">
                         <i data-lucide="send" style="width: 16px; height: 16px;"></i>
                       </button>
                     </div>
-                    
-                    <!-- Quick Reaction Emojis -->
-                    <div class="status-quick-reactions" style="display: flex; align-items: center; gap: 4px;">
-                      <button type="button" class="status-reaction-emoji-btn" data-emoji="😍" style="background: rgba(255, 255, 255, 0.12); border: none; font-size: 18px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s ease, background 0.2s ease;" onmouseover="this.style.transform='scale(1.15)'; this.style.background='rgba(255,255,255,0.25)';" onmouseout="this.style.transform='scale(1)'; this.style.background='rgba(255,255,255,0.12)';">😍</button>
-                      <button type="button" class="status-reaction-emoji-btn" data-emoji="😂" style="background: rgba(255, 255, 255, 0.12); border: none; font-size: 18px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s ease, background 0.2s ease;" onmouseover="this.style.transform='scale(1.15)'; this.style.background='rgba(255,255,255,0.25)';" onmouseout="this.style.transform='scale(1)'; this.style.background='rgba(255,255,255,0.12)';">😂</button>
-                      <button type="button" class="status-reaction-emoji-btn" data-emoji="😮" style="background: rgba(255, 255, 255, 0.12); border: none; font-size: 18px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s ease, background 0.2s ease;" onmouseover="this.style.transform='scale(1.15)'; this.style.background='rgba(255,255,255,0.25)';" onmouseout="this.style.transform='scale(1)'; this.style.background='rgba(255,255,255,0.12)';">😮</button>
-                    </div>
 
-                    <!-- Heart/Like Button -->
-                    <button type="button" id="statusViewerLikeBtn" style="background: rgba(255,255,255,0.12); border: none; color: white; border-radius: 50%; width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,0.25);" title="<%= tText("Like") %>">
+                    <button type="button" id="statusViewerLikeBtn" class="status-viewer-action-btn" title="<%= tText("Like") %>">
                       <i data-lucide="heart" id="statusViewerLikeIcon" style="width: 16px; height: 16px; transition: fill 0.2s, color 0.2s;"></i>
-                    </button>
-                    
-                    <!-- Share to chat button -->
-                    <button type="button" id="statusViewerShareBtn" style="background: rgba(255,255,255,0.12); border: none; color: white; border-radius: 50%; width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,0.25);" title="<%= tText("Partager") %>">
-                      <i data-lucide="share-2" style="width: 16px; height: 16px;"></i>
                     </button>
                   </div>
 
