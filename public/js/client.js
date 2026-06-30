@@ -25730,7 +25730,7 @@ document.addEventListener('DOMContentLoaded', () => {
     { r: 8, c: 4 }, { r: 8, c: 3 }, { r: 8, c: 2 }, { r: 8, c: 1 }, { r: 8, c: 0 },
     { r: 7, c: 0 }, { r: 6, c: 0 }
   ];
-  const LUDO_FINAL_STEP = 57;
+  const LUDO_FINAL_STEP = 56;
   const LUDO_START_INDICES = { 1: 0, 2: 13, 3: 26, 4: 39 };
   const LUDO_SAFE_INDICES = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
   const LUDO_HOME_LANES = {
@@ -26202,7 +26202,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const startIndex = LUDO_START_INDICES[playerSlot] || 0;
       return LUDO_LOOP_COORDS[(startIndex + step) % 52] || null;
     }
-    if (step >= 51 && step <= 57) {
+    if (step >= 51 && step <= 56) {
       return LUDO_HOME_LANES[playerSlot]?.[step - 51] || null;
     }
     return null;

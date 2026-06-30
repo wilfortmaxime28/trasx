@@ -4,7 +4,7 @@ const User = require('../models/User');
 const { attachBotGameStats, attachUserGameStats } = require('./gameLevel');
 
 const LUDO_LOOP_LENGTH = 52;
-const LUDO_FINAL_STEP = 57;
+const LUDO_FINAL_STEP = 56;
 const LUDO_SAFE_GLOBAL_INDICES = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
 const LUDO_PLAY_ORDER = [1, 2, 3, 4];
 const LUDO_COLOR_BY_SLOT = Object.freeze({
