@@ -475,7 +475,7 @@ function getYouTubeId(url) {
                 <div id="postsGrid" class="profile-grid profile-grid-container active">
                   <% if (userPosts && userPosts.length> 0) { %>
                     <% userPosts.forEach(post=> { %>
-                      <div class="grid-item" data-post-id="<%= post.id %>" onclick="window.location.href='/#post-<%= post.id %>'" style="cursor: pointer;">
+                      <div class="grid-item" data-post-id="<%= post.id %>" data-json="<%= JSON.stringify(post).replace(/"/g, '&quot;') %>" style="cursor: pointer;">
                         <% if (post.is_live === 1) { 
                              const ytId = getYouTubeId(post.live_url);
                         %>
@@ -543,7 +543,7 @@ function getYouTubeId(url) {
                         }
                         const reelMediaFit = reel.media_fit === 'contain' ? 'contain' : 'cover';
                         %>
-                        <div class="grid-item" data-reel-id="<%= reel.id %>">
+                        <div class="grid-item" data-reel-id="<%= reel.id %>" data-json="<%= JSON.stringify(reel).replace(/"/g, '&quot;') %>" style="cursor: pointer;">
                           <% if (!reel.media_type || reel.media_type==='video' ) { %>
                             <video src="<%= resolvedVideoUrl %>" muted loop
                               style="object-fit: <%= reelMediaFit %>;"></video>
