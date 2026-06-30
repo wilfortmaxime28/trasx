@@ -627,6 +627,7 @@ function getYouTubeId(url) {
   };
 
         function switchGrid(gridName, tabElement) {
+          window.lastGridSwitchTime = Date.now();
           document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
           tabElement.classList.add('active');
 

@@ -21139,6 +21139,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Grid clicks
     document.addEventListener('click', (e) => {
+      if (window.lastGridSwitchTime && (Date.now() - window.lastGridSwitchTime < 300)) {
+        return;
+      }
       const gridItem = e.target.closest('.grid-item');
       if (!gridItem) return;
 
