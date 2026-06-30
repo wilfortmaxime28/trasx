@@ -18206,12 +18206,31 @@ svg.chess-piece-svg {
   height: 26px;
 }
 
+.chess-piece-sprite.is-white-piece {
+  filter:
+    grayscale(100%)
+    brightness(1.9)
+    contrast(1.4)
+    drop-shadow(0 1px 1px rgba(255, 255, 255, 0.14))
+    drop-shadow(0 4px 8px rgba(0, 0, 0, 0.34)) !important;
+}
+
 .chess-square:hover .chess-piece-sprite,
 .chess-square:hover svg.chess-piece-svg {
   transform: translateY(-1px) scale(1.08);
   filter:
     drop-shadow(0 1px 1px rgba(255, 255, 255, 0.18))
     drop-shadow(0 6px 10px rgba(0, 0, 0, 0.32));
+}
+
+.chess-square:hover .chess-piece-sprite.is-white-piece {
+  transform: translateY(-1px) scale(1.08);
+  filter:
+    grayscale(100%)
+    brightness(1.9)
+    contrast(1.4)
+    drop-shadow(0 1px 1px rgba(255, 255, 255, 0.18))
+    drop-shadow(0 6px 10px rgba(0, 0, 0, 0.32)) !important;
 }
 
 @keyframes chessMoveArrive {

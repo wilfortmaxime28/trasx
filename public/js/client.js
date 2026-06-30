@@ -26846,7 +26846,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const getChessPieceSvgMarkup = (piece, { compact = false } = {}) => {
     if (!piece) return '';
-    // Always use custom vector outline SVG pieces with true white/gold colors for FIDE compliance
+    const spritePos = CHESS_PIECE_SPRITE_POSITIONS[piece];
+    if (spritePos && chessPieceSpriteReady) {
+      const isWhite = piece[0] === 'w';
+      return `<span class="chess-piece-sprite${compact ? ' is-compact' : ''}${isWhite ? ' is-white-piece' : ''}" style="--piece-x:${spritePos.x}; --piece-y:${spritePos.y};"></span>`;
+    }
     return getLegacyChessPieceSvgMarkup(piece);
   };
 
