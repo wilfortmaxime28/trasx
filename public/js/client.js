@@ -8487,21 +8487,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const existing = document.getElementById('tiktokPreviewModal');
     if (existing) existing.remove();
 
-    const activeGrid = document.querySelector('.profile-grid-container.active');
-    const gridItems = activeGrid ? Array.from(activeGrid.querySelectorAll('.grid-item')) : [];
-    let itemsList = gridItems.map(el => {
-      try {
-        const dataJson = el.getAttribute('data-json');
-        if (!dataJson) return null;
-        return {
-          id: el.getAttribute('data-post-id') || el.getAttribute('data-reel-id'),
-          data: JSON.parse(dataJson),
-          type: el.hasAttribute('data-post-id') ? 'post' : 'reel'
-        };
-      } catch (e) {
-        return null;
-      }
-    }).filter(Boolean);
+    let itemsList = [];
+    if (type === 'post' && window.profilePostsList && window.profilePostsList.length > 0) {
+      itemsList = window.profilePostsList.map(item => ({ id: item.id, data: item, type: 'post' }));
+    } else if (type === 'reel' && window.profileReelsList && window.profileReelsList.length > 0) {
+      itemsList = window.profileReelsList.map(item => ({ id: item.id, data: item, type: 'reel' }));
+    } else {
+      const activeGrid = document.querySelector('.profile-grid-container.active');
+      const gridItems = activeGrid ? Array.from(activeGrid.querySelectorAll('.grid-item')) : [];
+      itemsList = gridItems.map(el => {
+        try {
+          const dataJson = el.getAttribute('data-json');
+          if (!dataJson) return null;
+          return {
+            id: el.getAttribute('data-post-id') || el.getAttribute('data-reel-id'),
+            data: JSON.parse(dataJson),
+            type: el.hasAttribute('data-post-id') ? 'post' : 'reel'
+          };
+        } catch (e) {
+          return null;
+        }
+      }).filter(Boolean);
+    }
 
     let currentIndex = itemsList.findIndex(x => String(x.id) === String(initialItem.id));
     if (currentIndex === -1) {
@@ -21221,6 +21228,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const postId = gridItem.getAttribute('data-post-id');
         const reelId = gridItem.getAttribute('data-reel-id');
+
+        if (postId) {
+          const item = (window.profilePostsList || []).find(x => String(x.id) === String(postId));
+          if (item) {
+            window.showTikTokPreviewModal(item, 'post');
+            return;
+          }
+        } else if (reelId) {
+          const item = (window.profileReelsList || []).find(x => String(x.id) === String(reelId));
+          if (item) {
+            window.showTikTokPreviewModal(item, 'reel');
+            return;
+          }
+        }
+
         const itemJson = gridItem.getAttribute('data-json');
         if (itemJson) {
           try {
@@ -21234,12 +21256,6 @@ document.addEventListener('DOMContentLoaded', () => {
           } catch (err) {
             console.error('Error parsing grid item JSON:', err);
           }
-        }
-
-        if (postId) {
-          window.location.href = `/#post-${postId}`;
-        } else if (reelId) {
-          window.location.href = `/?view=shorts&shared_reel=${reelId}#reel-${reelId}`;
         }
       });
 

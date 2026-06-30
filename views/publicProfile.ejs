@@ -624,7 +624,9 @@ function getYouTubeId(url) {
         window.profileSocialLists = {
           followers: <%- JSON.stringify(followersList || []).replace(/</g, '\\u003c') %>,
           following: <%- JSON.stringify(followingList || []).replace(/</g, '\\u003c') %>
-  };
+        };
+        window.profilePostsList = <%- JSON.stringify(userPosts || []).replace(/</g, '\\u003c') %>;
+        window.profileReelsList = <%- JSON.stringify(userReels || []).replace(/</g, '\\u003c') %>;
 
         function switchGrid(gridName, tabElement) {
           window.lastGridSwitchTime = Date.now();
