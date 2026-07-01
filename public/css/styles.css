@@ -14782,8 +14782,8 @@ body.profile-short-viewer-open .mobile-nav {
 }
 
 .profile-post-viewer-actions .post-action-btn.like-btn.liked .profile-short-viewer-action-icon {
-  background: rgba(239, 68, 68, 0.28);
-  border-color: rgba(248, 113, 113, 0.42);
+  background: transparent;
+  border: none;
 }
 
 .profile-post-viewer-actions .post-action-btn.liked i,
