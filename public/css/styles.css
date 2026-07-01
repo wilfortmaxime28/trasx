@@ -13899,9 +13899,12 @@ body.profile-reel-viewer-open .reel-comments-drawer {
   height: 48px;
   border-radius: 999px;
   border: none;
-  background: transparent;
+  background: rgba(6, 10, 18, 0.42);
   display: grid;
   place-items: center;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .profile-short-viewer-action-icon i,
@@ -13920,7 +13923,7 @@ body.profile-reel-viewer-open .reel-comments-drawer {
 }
 
 .profile-short-viewer-action.reel-like-btn.liked .profile-short-viewer-action-icon {
-  background: transparent;
+  background: rgba(239, 68, 68, 0.28);
   border: none;
 }
 
