@@ -8037,6 +8037,273 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
   };
 
+  const pendingLocalPosts = new Map();
+
+  const createClientPostToken = () => `post-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+  const getCurrentAuthorDisplayName = () => {
+    const explicitName = String(window.currentUserDisplayName || '').trim();
+    if (explicitName) return explicitName;
+
+    const creatorAvatar = document.querySelector('.post-creator-avatar img');
+    const avatarAlt = String(creatorAvatar?.getAttribute('alt') || '').trim();
+    if (avatarAlt) return avatarAlt;
+
+    const currentUsername = String(window.currentUsername || '').trim().replace(/^@+/, '');
+    return currentUsername || 'You';
+  };
+
+  const hasRenderablePostContent = (post) => {
+    if (!post || typeof post !== 'object') return false;
+    if (Number(post.is_live) === 1 || post.challenge_type) return true;
+    if (String(post.bg_image_url || '').trim()) return true;
+    if (String(post.content || '').trim()) return true;
+    if (String(post.thumbnail_url || '').trim()) return true;
+
+    return [post.image_url, post.image_url_2, post.image_url_3, post.image_url_4]
+      .some((value) => String(value || '').trim());
+  };
+
+  const postUsesBlobPreviewAssets = (post) => {
+    if (!post || typeof post !== 'object') return false;
+    return [post.image_url, post.image_url_2, post.image_url_3, post.image_url_4, post.thumbnail_url, post.bg_image_url]
+      .some((value) => typeof value === 'string' && value.startsWith('blob:'));
+  };
+
+  const pickPreferredValue = (primaryValue, fallbackValue) => {
+    if (typeof primaryValue === 'string') {
+      return primaryValue.trim() ? primaryValue : fallbackValue;
+    }
+    if (primaryValue !== undefined && primaryValue !== null) {
+      return primaryValue;
+    }
+    return fallbackValue;
+  };
+
+  const mergePostDataWithPendingPreview = (serverPost, pendingPost) => {
+    if (!pendingPost) return serverPost;
+    if (!serverPost) return pendingPost;
+
+    return {
+      ...pendingPost,
+      ...serverPost,
+      content: pickPreferredValue(serverPost.content, pendingPost.content || ''),
+      bg_image_url: pickPreferredValue(serverPost.bg_image_url, pendingPost.bg_image_url || null),
+      text_color: pickPreferredValue(serverPost.text_color, pendingPost.text_color || null),
+      text_alignment: pickPreferredValue(serverPost.text_alignment, pendingPost.text_alignment || null),
+      text_position: pickPreferredValue(serverPost.text_position, pendingPost.text_position || null),
+      text_font: pickPreferredValue(serverPost.text_font, pendingPost.text_font || null),
+      text_size: pickPreferredValue(serverPost.text_size, pendingPost.text_size || null),
+      media_type: pickPreferredValue(serverPost.media_type, pendingPost.media_type || null),
+      image_url: pickPreferredValue(serverPost.image_url, pendingPost.image_url || null),
+      image_url_2: pickPreferredValue(serverPost.image_url_2, pendingPost.image_url_2 || null),
+      image_url_3: pickPreferredValue(serverPost.image_url_3, pendingPost.image_url_3 || null),
+      image_url_4: pickPreferredValue(serverPost.image_url_4, pendingPost.image_url_4 || null),
+      thumbnail_url: pickPreferredValue(serverPost.thumbnail_url, pendingPost.thumbnail_url || null),
+      author_name: pickPreferredValue(serverPost.author_name, pendingPost.author_name || getCurrentAuthorDisplayName()),
+      author_username: pickPreferredValue(serverPost.author_username, pendingPost.author_username || String(window.currentUsername || '').trim().replace(/^@+/, '')),
+      author_avatar: pickPreferredValue(serverPost.author_avatar, pendingPost.author_avatar || window.currentUserAvatar || '/assets/avatar_placeholder.jpg')
+    };
+  };
+
+  const releasePendingPostPreviewUrls = (entry) => {
+    if (!entry || !Array.isArray(entry.previewUrls)) return;
+    entry.previewUrls.forEach((url) => {
+      if (typeof url === 'string' && url.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (_) {}
+      }
+    });
+  };
+
+  const clearPendingLocalPost = (clientPostToken, options = {}) => {
+    const normalizedToken = String(clientPostToken || '').trim();
+    if (!normalizedToken) return null;
+
+    const entry = pendingLocalPosts.get(normalizedToken);
+    if (!entry) return null;
+
+    if (options.removeCard) {
+      document.querySelector(`.post-card[data-client-post-token="${normalizedToken}"]`)?.remove();
+    }
+
+    releasePendingPostPreviewUrls(entry);
+    pendingLocalPosts.delete(normalizedToken);
+    return entry;
+  };
+
+  const buildOptimisticLocalPost = ({
+    clientPostToken,
+    text,
+    mediaFiles,
+    mediaType,
+    bgImageUrl,
+    textColor,
+    textAlignment,
+    textPosition,
+    textFont,
+    textSize,
+    isTrade,
+    isLive,
+    liveUrl,
+    livePrice,
+    thumbnailBlob
+  }) => {
+    const previewUrls = [];
+    const toPreviewUrl = (fileOrBlob) => {
+      if (!(fileOrBlob instanceof Blob)) return null;
+      const objectUrl = URL.createObjectURL(fileOrBlob);
+      previewUrls.push(objectUrl);
+      return objectUrl;
+    };
+
+    const mediaPreviewUrls = Array.isArray(mediaFiles)
+      ? mediaFiles.map((file) => toPreviewUrl(file)).filter(Boolean)
+      : [];
+    const thumbnailPreviewUrl = toPreviewUrl(thumbnailBlob) || (mediaType === 'image' ? mediaPreviewUrls[0] || null : null);
+
+    const optimisticPost = {
+      id: `pending-${clientPostToken}`,
+      client_post_token: clientPostToken,
+      user_id: Number(window.currentUserId || 0),
+      author_name: getCurrentAuthorDisplayName(),
+      author_username: String(window.currentUsername || '').trim().replace(/^@+/, '') || 'user',
+      author_avatar: window.currentUserAvatar || '/assets/avatar_placeholder.jpg',
+      author_certification_type: window.currentUserCertificationType || 'None',
+      created_at: new Date().toISOString(),
+      content: text || '',
+      bg_image_url: bgImageUrl || null,
+      text_color: textColor || null,
+      text_alignment: textAlignment || null,
+      text_position: textPosition || null,
+      text_font: textFont || null,
+      text_size: textSize || null,
+      is_trade: isTrade ? 1 : 0,
+      trade_price: null,
+      last_possession_user_id: Number(window.currentUserId || 0),
+      media_type: mediaType || null,
+      image_url: mediaPreviewUrls[0] || null,
+      image_url_2: mediaPreviewUrls[1] || null,
+      image_url_3: mediaPreviewUrls[2] || null,
+      image_url_4: mediaPreviewUrls[3] || null,
+      thumbnail_url: thumbnailPreviewUrl || null,
+      allow_download: 1,
+      is_live: isLive ? 1 : 0,
+      live_url: liveUrl || null,
+      live_price: Number(livePrice || 0),
+      likes_count: 0,
+      comments_count: 0,
+      shares_count: 0,
+      is_liked: 0,
+      is_bookmarked: 0,
+      is_author_following: 0
+    };
+
+    pendingLocalPosts.set(clientPostToken, {
+      post: optimisticPost,
+      previewUrls
+    });
+
+    return optimisticPost;
+  };
+
+  const insertPendingLocalPostCard = (post) => {
+    if (!postsContainer || !post?.client_post_token) return;
+
+    const existingPendingCard = document.querySelector(`.post-card[data-client-post-token="${post.client_post_token}"]`);
+    const pendingCard = createPostCardElement(post);
+    pendingCard.classList.add('post-card-pending');
+    pendingCard.setAttribute('data-client-post-token', post.client_post_token);
+    pendingCard.setAttribute('data-pending-local-post', '1');
+
+    const postTime = pendingCard.querySelector('.post-time');
+    if (postTime) {
+      postTime.textContent = 'Posting...';
+    }
+
+    pendingCard.querySelectorAll('.post-action-btn, .post-bookmark-btn, .post-options-btn, .follow-toggle-btn').forEach((button) => {
+      button.setAttribute('disabled', 'disabled');
+      button.style.pointerEvents = 'none';
+      button.style.opacity = '0.72';
+    });
+
+    if (existingPendingCard) {
+      existingPendingCard.replaceWith(pendingCard);
+    } else {
+      postsContainer.insertBefore(pendingCard, postsContainer.firstChild);
+    }
+
+    if (typeof window.initLazyMedia === 'function') {
+      window.initLazyMedia(pendingCard);
+    }
+
+    if (typeof lucide !== 'undefined') {
+      try { lucide.createIcons(); } catch (_) {}
+    }
+  };
+
+  const fetchCompletePostRecord = async (postId) => {
+    const numericPostId = Number(postId || 0);
+    if (!numericPostId) return null;
+
+    try {
+      const response = await fetch(`/api/posts/${numericPostId}`, { credentials: 'same-origin' });
+      if (!response.ok) return null;
+      const payload = await response.json();
+      if (!payload?.success || !payload.post) return null;
+      if (Array.isArray(payload.participants) && !Array.isArray(payload.post.challenge_participants)) {
+        payload.post.challenge_participants = payload.participants;
+      }
+      return payload.post;
+    } catch (error) {
+      console.warn('Unable to hydrate post immediately after creation:', error);
+      return null;
+    }
+  };
+
+  const replacePendingLocalPostWithServerPost = async (clientPostToken, postId, fallbackPost = null) => {
+    const normalizedToken = String(clientPostToken || '').trim();
+    const pendingEntry = normalizedToken ? pendingLocalPosts.get(normalizedToken) : null;
+    const hydratedPost = await fetchCompletePostRecord(postId);
+    if (!hydratedPost && !fallbackPost) {
+      return null;
+    }
+    const finalPost = mergePostDataWithPendingPreview(hydratedPost || fallbackPost, pendingEntry?.post || null);
+    if (!finalPost || !postsContainer) return null;
+
+    finalPost.id = Number(postId || finalPost.id || 0);
+    finalPost.client_post_token = normalizedToken || null;
+
+    const nextCard = createPostCardElement(finalPost);
+    const pendingCard = normalizedToken
+      ? document.querySelector(`.post-card[data-client-post-token="${normalizedToken}"]`)
+      : null;
+    const existingPostCard = document.getElementById(`post-${finalPost.id}`);
+
+    if (pendingCard) {
+      pendingCard.replaceWith(nextCard);
+    } else if (existingPostCard) {
+      existingPostCard.replaceWith(nextCard);
+    } else {
+      postsContainer.insertBefore(nextCard, postsContainer.firstChild);
+    }
+
+    if (!postUsesBlobPreviewAssets(finalPost)) {
+      clearPendingLocalPost(normalizedToken, { removeCard: false });
+    }
+
+    if (typeof window.initLazyMedia === 'function') {
+      window.initLazyMedia(nextCard);
+    }
+
+    if (typeof lucide !== 'undefined') {
+      try { lucide.createIcons(); } catch (_) {}
+    }
+
+    return nextCard;
+  };
+
   // Helper to dynamically build post card element (used by socket and real-time search)
   const createPostCardElement = (post) => {
     const newPost = document.createElement('article');
@@ -8373,32 +8640,70 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // 4. Render new post in real time
-  socket.on('post-created', (post) => {
-    if (postsContainer) {
-      const newPost = createPostCardElement(post);
-      // Prepend to feed container
+  socket.on('post-created', async (post) => {
+    if (!postsContainer || !post) return;
+
+    const clientPostToken = String(post.client_post_token || '').trim();
+    const pendingEntry = clientPostToken ? pendingLocalPosts.get(clientPostToken) : null;
+    const pendingCard = clientPostToken
+      ? document.querySelector(`.post-card[data-client-post-token="${clientPostToken}"]`)
+      : null;
+
+    let renderablePost = pendingEntry?.post
+      ? mergePostDataWithPendingPreview(post, pendingEntry.post)
+      : post;
+
+    const needsHydration = !hasRenderablePostContent(renderablePost)
+      || (renderablePost?.challenge_type && !Array.isArray(renderablePost.challenge_participants));
+
+    if (needsHydration && Number(renderablePost?.id || 0) > 0) {
+      const hydratedPost = await fetchCompletePostRecord(renderablePost.id);
+      if (hydratedPost) {
+        renderablePost = mergePostDataWithPendingPreview(hydratedPost, pendingEntry?.post || null);
+      }
+    }
+
+    const newPost = createPostCardElement(renderablePost);
+    const existingPost = renderablePost?.id ? document.getElementById(`post-${renderablePost.id}`) : null;
+
+    if (pendingCard) {
+      pendingCard.replaceWith(newPost);
+      if (!postUsesBlobPreviewAssets(renderablePost)) {
+        clearPendingLocalPost(clientPostToken, { removeCard: false });
+      }
+    } else if (existingPost) {
+      existingPost.replaceWith(newPost);
+    } else {
       postsContainer.insertBefore(newPost, postsContainer.firstChild);
-      syncWatchedFeedPosts();
+    }
 
-      // Re-create icons
-      if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-      }
+    syncWatchedFeedPosts();
 
-      if (window.currentView === 'bookmarks') {
-        newPost.style.display = 'none';
-        showToast("New post added! (See the feed)");
+    if (typeof window.initLazyMedia === 'function') {
+      window.initLazyMedia(newPost);
+    }
+
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+
+    if (pendingCard) {
+      return;
+    }
+
+    if (window.currentView === 'bookmarks') {
+      newPost.style.display = 'none';
+      showToast("New post added! (See the feed)");
+    } else {
+      if (window.scrollY < 100) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
-        if (window.scrollY < 100) {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        } else {
-          const alertBtn = document.getElementById('newPostScrollAlert');
-          if (alertBtn) {
-            alertBtn.classList.add('show');
-          }
+        const alertBtn = document.getElementById('newPostScrollAlert');
+        if (alertBtn) {
+          alertBtn.classList.add('show');
         }
-        showToast("New post added!");
       }
+      showToast("New post added!");
     }
   });
 
@@ -12230,6 +12535,20 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Create Post Actions ---
   const sharePostBtn = document.getElementById('sharePostBtn');
   const postInput = document.getElementById('postInput');
+  const resetPostShareButtons = ({ text = 'Share Post', disabled = false } = {}) => {
+    const sharePostBtnEl = document.getElementById('sharePostBtn');
+    const confirmShareBtnEl = document.getElementById('confirmShareBtn');
+
+    if (sharePostBtnEl) {
+      sharePostBtnEl.disabled = disabled;
+      sharePostBtnEl.textContent = text;
+    }
+
+    if (confirmShareBtnEl) {
+      confirmShareBtnEl.disabled = disabled;
+      confirmShareBtnEl.textContent = text;
+    }
+  };
 
   if (sharePostBtn && postInput) {
     let selectedMediaFiles = [];
@@ -12631,10 +12950,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const photoVideoModal = document.getElementById('photoVideoModal');
         if (photoVideoModal) photoVideoModal.style.display = 'none';
 
-        const confirmShareBtn = document.getElementById('confirmShareBtn');
-        if (confirmShareBtn) {
-          confirmShareBtn.click();
-        } else {
+        // Route media posts back through the regular confirmation modal so trade settings remain available.
+        if (sharePostBtn) {
           sharePostBtn.click();
         }
       }
@@ -12709,6 +13026,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
+      const clientPostToken = createClientPostToken();
+      const optimisticPost = buildOptimisticLocalPost({
+        clientPostToken,
+        text,
+        mediaFiles: [...selectedMediaFiles],
+        mediaType: selectedMediaType,
+        bgImageUrl: selectedBackground ? selectedBackground.image_url : null,
+        textColor: hasCustomTextStyle() ? selectedTextColor : null,
+        textAlignment: hasCustomTextStyle() ? selectedTextAlignment : null,
+        textPosition: hasCustomTextStyle() ? selectedTextPosition : null,
+        textFont: hasCustomTextStyle() ? selectedTextFont : null,
+        textSize: hasCustomTextStyle() ? selectedTextSize : null,
+        isTrade,
+        isLive: selectedLiveConfig?.isLive ? 1 : 0,
+        liveUrl: selectedLiveConfig?.liveUrl || null,
+        livePrice: selectedLiveConfig?.livePrice || 0,
+        thumbnailBlob: selectedVideoThumbnailBlob || null
+      });
+      insertPendingLocalPostCard(optimisticPost);
+
       // If media files are selected, upload them first
       if (selectedMediaFiles.length > 0) {
         if (selectedMediaType === 'video') {
@@ -12768,6 +13105,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const { mediaUrls, mediaType, thumbnailUrl } = data;
 
             socket.emit('post-create', {
+              clientPostToken,
               content: capturedText,
               paidHashtags: capturedPaidHashtags,
               bgImageUrl: capturedBgImageUrl,
@@ -12788,10 +13126,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }, (res) => {
               hideGlobalVideoProgress();
               if (res && res.success && res.postId) {
+                replacePendingLocalPostWithServerPost(clientPostToken, res.postId).catch(() => {});
                 finalizePostCreation();
-                window.location.href = `/#post-${res.postId}`;
               } else {
                 showToast(res ? res.error : "Failed to create post");
+                clearPendingLocalPost(clientPostToken, { removeCard: true });
+                resetPostShareButtons();
               }
             });
           })
@@ -12799,6 +13139,8 @@ document.addEventListener('DOMContentLoaded', () => {
             hideGlobalVideoProgress();
             console.error(err);
             showToast("Posting error: " + err.message);
+            clearPendingLocalPost(clientPostToken, { removeCard: true });
+            resetPostShareButtons();
           });
 
           return;
@@ -12846,6 +13188,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const allowDownload = document.getElementById('allowVideoDownloadToggle')?.checked !== false;
 
             socket.emit('post-create', {
+              clientPostToken,
               content: text,
               paidHashtags: acceptedPaidHashtags,
               bgImageUrl: selectedBackground ? selectedBackground.image_url : null,
@@ -12865,12 +13208,12 @@ document.addEventListener('DOMContentLoaded', () => {
               livePrice: selectedLiveConfig?.livePrice || 0
             }, (res) => {
               if (res && res.success && res.postId) {
+                replacePendingLocalPostWithServerPost(clientPostToken, res.postId).catch(() => {});
                 finalizePostCreation();
-                window.location.href = `/#post-${res.postId}`;
               } else {
                 showToast(res ? res.error : 'Failed to create post');
-                if (sharePostBtn) { sharePostBtn.disabled = false; sharePostBtn.textContent = 'Share Post'; }
-                if (confirmShareBtn) { confirmShareBtn.disabled = false; confirmShareBtn.textContent = 'Share Post'; }
+                clearPendingLocalPost(clientPostToken, { removeCard: true });
+                resetPostShareButtons();
               }
             });
 
@@ -12878,20 +13221,13 @@ document.addEventListener('DOMContentLoaded', () => {
           .catch(err => {
             console.error(err);
             showToast("Posting error: " + err.message);
-
-            // Re-enable buttons
-            if (sharePostBtn) {
-              sharePostBtn.disabled = false;
-              sharePostBtn.textContent = "Share Post";
-            }
-            if (confirmShareBtn) {
-              confirmShareBtn.disabled = false;
-              confirmShareBtn.textContent = "Share Post";
-            }
+            clearPendingLocalPost(clientPostToken, { removeCard: true });
+            resetPostShareButtons();
           });
       } else {
         // Direct socket post creation without media upload
         socket.emit('post-create', {
+          clientPostToken,
           content: text,
           paidHashtags: acceptedPaidHashtags,
           bgImageUrl: selectedBackground ? selectedBackground.image_url : null,
@@ -12911,12 +13247,12 @@ document.addEventListener('DOMContentLoaded', () => {
           livePrice: selectedLiveConfig?.livePrice || 0
         }, (res) => {
           if (res && res.success && res.postId) {
+            replacePendingLocalPostWithServerPost(clientPostToken, res.postId).catch(() => {});
             finalizePostCreation();
-            window.location.href = `/#post-${res.postId}`;
           } else {
             showToast(res ? res.error : 'Failed to create post');
-            if (sharePostBtn) { sharePostBtn.disabled = false; sharePostBtn.textContent = 'Share Post'; }
-            if (confirmShareBtn) { confirmShareBtn.disabled = false; confirmShareBtn.textContent = 'Share Post'; }
+            clearPendingLocalPost(clientPostToken, { removeCard: true });
+            resetPostShareButtons();
           }
         });
       }
@@ -12984,15 +13320,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (attachmentPreview) attachmentPreview.innerHTML = '';
 
       // Reset buttons
-      if (sharePostBtn) {
-        sharePostBtn.disabled = false;
-        sharePostBtn.textContent = "Share Post";
-      }
-      const confirmShareBtn = document.getElementById('confirmShareBtn');
-      if (confirmShareBtn) {
-        confirmShareBtn.disabled = false;
-        confirmShareBtn.textContent = "Share Post";
-      }
+      resetPostShareButtons();
 
       // Hide the confirm share modal
       const confirmShareModal = document.getElementById('confirmShareModal');
@@ -13063,6 +13391,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelShareBtn = document.getElementById('cancelShareBtn');
     if (cancelShareBtn) {
       cancelShareBtn.addEventListener('click', () => {
+        resetPostShareButtons();
         const confirmShareModal = document.getElementById('confirmShareModal');
         if (confirmShareModal) {
           confirmShareModal.style.display = 'none';
@@ -13429,6 +13758,7 @@ document.addEventListener('DOMContentLoaded', () => {
           sharedPostCard.style.outlineOffset = '0';
         }, 2500);
       }
+      removeTransientNavigationState({ preserveHash: false });
     }, 250);
   }
   if (sharedReelId) {
@@ -13437,6 +13767,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showShortsView();
       }
       focusSharedReelTarget(sharedReelId);
+      removeTransientNavigationState({ preserveHash: false });
     }, 250);
   }
 
@@ -14084,6 +14415,48 @@ document.addEventListener('DOMContentLoaded', () => {
   let shortsSearchDebounceTimer = null;
   let shortsSearchRequestSerial = 0;
 
+  const transientNavigationParams = [
+    'post_id',
+    'comment_id',
+    'shared_post',
+    'shared_reel',
+    'from',
+    'name',
+    'by',
+    'post',
+    'channel',
+    'platform'
+  ];
+
+  const removeTransientNavigationState = ({ preserveHash = false, preserveParams = [] } = {}) => {
+    try {
+      const url = new URL(window.location.href);
+      const allowedParams = new Set(
+        Array.isArray(preserveParams)
+          ? preserveParams.map((value) => String(value || '').trim()).filter(Boolean)
+          : []
+      );
+
+      transientNavigationParams.forEach((paramName) => {
+        if (!allowedParams.has(paramName)) {
+          url.searchParams.delete(paramName);
+        }
+      });
+
+      if (!preserveHash && ((/^#post-\d+$/).test(url.hash || '') || (/^#reel-\d+$/).test(url.hash || ''))) {
+        url.hash = '';
+      }
+
+      const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+      const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (nextUrl !== currentUrl && window.history?.replaceState) {
+        window.history.replaceState(window.history.state || {}, '', nextUrl);
+      }
+    } catch (error) {
+      console.warn('Unable to sanitize transient navigation state:', error);
+    }
+  };
+
   const updateUrlView = (view) => {
     try {
       const url = new URL(window.location.href);
@@ -14092,6 +14465,18 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         url.searchParams.delete('view');
       }
+
+      transientNavigationParams.forEach((paramName) => {
+        url.searchParams.delete(paramName);
+      });
+
+      const currentHash = String(url.hash || '').trim();
+      const shouldPreserveFeedHash = view === 'feed' && /^#post-\d+$/.test(currentHash);
+      const shouldPreserveShortHash = view === 'shorts' && /^#reel-\d+$/.test(currentHash);
+      if (!shouldPreserveFeedHash && !shouldPreserveShortHash) {
+        url.hash = '';
+      }
+
       window.history.replaceState({}, '', url.pathname + url.search + url.hash);
     } catch (e) {
       console.error(e);
@@ -21301,6 +21686,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Bind custom post-create-error socket response
   socket.on('post-create-error', (data) => {
     hideGlobalVideoProgress();
+    resetPostShareButtons();
+    if (data?.clientPostToken) {
+      clearPendingLocalPost(data.clientPostToken, { removeCard: true });
+    }
     showToast("Error: " + data.error);
   });
 
@@ -35136,6 +35525,7 @@ document.addEventListener('DOMContentLoaded', () => {
           })
           .catch(err => console.error('Failed to load post from query param:', err));
       }
+      removeTransientNavigationState({ preserveHash: false });
     }, 600); // Small delay to let cards render completely
   } // end scrollPostId block
 

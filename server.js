@@ -4008,11 +4008,40 @@ io.on('connection', (socket) => {
         if (typeof callback === 'function') callback({ success: false, error: 'Session expirée. Veuillez vous reconnecter.' });
         return;
       }
-      const { content, paidHashtags, bgImageUrl, textColor, textAlignment, textPosition, textFont, textSize, isTrade, mediaUrl, mediaUrls, mediaType, thumbnailUrl, allowDownload, challengeConfig, isLive, liveUrl, livePrice } = data;
+      const {
+        content,
+        paidHashtags,
+        bgImageUrl,
+        textColor,
+        textAlignment,
+        textPosition,
+        textFont,
+        textSize,
+        isTrade,
+        mediaUrl,
+        mediaUrls,
+        mediaType,
+        thumbnailUrl,
+        allowDownload,
+        challengeConfig,
+        isLive,
+        liveUrl,
+        livePrice,
+        clientPostToken
+      } = data;
+      const normalizedClientPostToken = typeof clientPostToken === 'string' && clientPostToken.trim()
+        ? clientPostToken.trim()
+        : null;
+      const failPostCreate = (errorMessage) => {
+        socket.emit('post-create-error', {
+          error: errorMessage,
+          clientPostToken: normalizedClientPostToken
+        });
+      };
       const finalContent = content || '';
       const hasContent = finalContent.trim().length > 0;
       if (!hasContent && !mediaUrl && (!mediaUrls || mediaUrls.length === 0) && !challengeConfig) {
-        if (typeof callback === 'function') callback({ success: false, error: 'Empty post content' });
+        failPostCreate('Empty post content');
         return;
       }
 
@@ -4046,7 +4075,7 @@ io.on('connection', (socket) => {
       const db = require('./config/db');
       const currentUser = await User.getById(currentUserId);
       if (!currentUser) {
-        if (typeof callback === 'function') callback({ success: false, error: 'Utilisateur introuvable.' });
+        failPostCreate('Utilisateur introuvable.');
         return;
       }
       let paidBackgroundPriceUsed = 0;
@@ -4064,7 +4093,7 @@ io.on('connection', (socket) => {
           // Check if user has enough deposit balance
           const [userRows] = await db.query('SELECT deposit_account_balance FROM users WHERE id = ?', [currentUserId]);
           if (userRows.length === 0 || parseFloat(userRows[0].deposit_account_balance) < price) {
-            socket.emit('post-create-error', { error: 'Insufficient balance to use this background.' });
+            failPostCreate('Insufficient balance to use this background.');
             return;
           }
           
@@ -4085,7 +4114,7 @@ io.on('connection', (socket) => {
           } else {
             const admin = await Admin.getPrimaryAdmin();
             if (!admin) {
-              socket.emit('post-create-error', { error: 'No admin account is available to receive this background payment.' });
+              failPostCreate('No admin account is available to receive this background payment.');
               return;
             }
             await db.execute('UPDATE admins SET balance = COALESCE(balance, 0) + ? WHERE id = ?', [price, admin.id]);
@@ -4119,7 +4148,7 @@ io.on('connection', (socket) => {
           );
           const payerBalance = Number(payerRows[0]?.deposit_account_balance || 0);
           if (payerBalance < price) {
-            socket.emit('post-create-error', { error: `Solde insuffisant pour utiliser le hashtag premium #${tag.name}.` });
+            failPostCreate(`Solde insuffisant pour utiliser le hashtag premium #${tag.name}.`);
             return;
           }
 
@@ -4142,7 +4171,7 @@ io.on('connection', (socket) => {
       if (isTrade === true || isTrade === 'true' || isTrade === 1 || isTrade === '1') {
         const [userRows] = await db.query('SELECT token_balance FROM users WHERE id = ?', [currentUserId]);
         if (userRows.length === 0 || parseFloat(userRows[0].token_balance) < 5) {
-          socket.emit('post-create-error', { error: 'Insufficient token balance to create a trade post. You need 5 tokens.' });
+          failPostCreate('Insufficient token balance to create a trade post. You need 5 tokens.');
           return;
         }
         await db.execute('UPDATE users SET token_balance = token_balance - 5 WHERE id = ?', [currentUserId]);
@@ -4189,7 +4218,7 @@ io.on('connection', (socket) => {
         if (rawEndDateStr) {
           const parsedEnd = new Date(rawEndDateStr);
           if (isNaN(parsedEnd.getTime()) || parsedEnd <= new Date()) {
-            socket.emit('post-create-error', { error: 'La date de fin doit être dans le futur.' });
+            failPostCreate('La date de fin doit être dans le futur.');
             return;
           }
           finalEndDate = parsedEnd;
@@ -4226,7 +4255,7 @@ io.on('connection', (socket) => {
       }
 
       if (normalizedChallengeConfig && normalizedChallengeConfig.type === 'vote' && normalizedChallengeConfig.participants.length < 2) {
-        socket.emit('post-create-error', { error: 'Un challenge de vote exige au moins deux participants.' });
+        failPostCreate('Un challenge de vote exige au moins deux participants.');
         return;
       }
 
@@ -4234,13 +4263,13 @@ io.on('connection', (socket) => {
         const currentUser = await User.getById(currentUserId);
         const certificationType = String(currentUser?.certification_type || 'None').trim();
         if (!certificationType || certificationType === 'None') {
-          socket.emit('post-create-error', { error: 'Seuls les comptes certifies peuvent creer un challenge miss.' });
+          failPostCreate('Seuls les comptes certifies peuvent creer un challenge miss.');
           return;
         }
       }
 
       if (normalizedChallengeConfig && normalizedChallengeConfig.type === 'miss' && normalizedChallengeConfig.participantEntries.length < 2) {
-        socket.emit('post-create-error', { error: 'Un challenge miss exige au moins deux participantes.' });
+        failPostCreate('Un challenge miss exige au moins deux participantes.');
         return;
       }
 
@@ -4398,13 +4427,16 @@ io.on('connection', (socket) => {
       if (post?.challenge_type) {
         post.challenge_participants = await Challenge.getParticipants(postId);
       }
+      if (post) {
+        post.client_post_token = normalizedClientPostToken;
+      }
 
       await ActivityLog.log(currentUserId, 'user', 'create_post', 'post', postId, { challenge_type: post?.challenge_type || null });
 
       // Diffuser le nouveau post à tous les clients
       io.emit('post-created', post);
       if (typeof callback === 'function') {
-        callback({ success: true, postId });
+        callback({ success: true, postId, clientPostToken: normalizedClientPostToken });
       }
     } catch (err) {
       console.error('Erreur post-create:', err);
