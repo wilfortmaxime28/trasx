@@ -825,7 +825,7 @@ function getYouTubeId(url) {
                                       </span>
                                     </div>
                                   <% } else { %>
-                                    <img src="<%= post.image_url %>" alt="Post">
+                                    <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'></svg>" data-lazy-src="<%= post.image_url %>" alt="Post">
                                   <% } %>
                                   <% } else { %>
                                     <!-- Text only post -->
