@@ -546,7 +546,7 @@ function getYouTubeId(url) {
                         <div class="grid-item" data-reel-id="<%= reel.id %>" data-json="<%= JSON.stringify(reel).replace(/"/g, '&quot;') %>" style="cursor: pointer;">
                             <% if (!reel.media_type || reel.media_type==='video' ) { %>
                             <video data-lazy-src="<%= resolvedVideoUrl %>" muted playsinline loop
-                              style="width: 100%; height: 100%; object-fit: <%= reelMediaFit %>;" preload="none" data-load-on-play="1"></video>
+                              style="width: 100%; height: 100%; object-fit: <%= reelMediaFit %>;" preload="metadata" data-no-autoplay="1"></video>
                             <% } else if (reel.media_type==='image_audio' ) { %>
                               <img src="<%= resolvedVideoUrl %>"
                                 style="width: 100%; height: 100%; object-fit: <%= reelMediaFit %>;">
