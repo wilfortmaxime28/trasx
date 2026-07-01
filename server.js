@@ -34,6 +34,13 @@ const gamesManager = require('./utils/gamesManager');
 const { getFeedPage } = require('./services/feedService');
 const { getReelFeedPage } = require('./services/reelFeedService');
 const cache = require('./utils/cache');
+const MySQLSessionStore = require('./utils/MySQLSessionStore');
+const {
+  SESSION_COOKIE_NAME,
+  SESSION_SECRET,
+  SESSION_MAX_AGE_MS,
+  SESSION_CLEANUP_INTERVAL_MS
+} = require('./config/sessionConfig');
 const QRCode = require('qrcode');
 const bscMonitor = require('./utils/bscMonitor');
 const mailer = require('./utils/mailer');
@@ -571,11 +578,31 @@ app.use(async (req, res, next) => {
 
 // Session
 const session = require('express-session');
+const sessionCookieSecure = String(process.env.SESSION_COOKIE_SECURE || '').toLowerCase() === 'true';
+const sessionStore = new MySQLSessionStore({
+  tableName: 'user_sessions',
+  defaultTtlMs: SESSION_MAX_AGE_MS,
+  cleanupIntervalMs: SESSION_CLEANUP_INTERVAL_MS
+});
+
+if (sessionCookieSecure) {
+  app.set('trust proxy', 1);
+}
+
 const sessionMiddleware = session({
-  secret: 'weshare_super_secret_key_123',
+  name: SESSION_COOKIE_NAME,
+  secret: SESSION_SECRET,
+  store: sessionStore,
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 24 } // 1 day
+  rolling: true,
+  proxy: sessionCookieSecure,
+  cookie: {
+    maxAge: SESSION_MAX_AGE_MS,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: sessionCookieSecure
+  }
 });
 app.use(sessionMiddleware);
 io.engine.use(sessionMiddleware);

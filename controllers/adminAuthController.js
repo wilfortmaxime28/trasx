@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../config/db');
 const Admin = require('../models/Admin');
 const mailer = require('../utils/mailer');
+const { SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } = require('../config/sessionConfig');
 
 async function isSmtpConfigured() {
   try {
@@ -93,6 +94,8 @@ exports.postLogin = async (req, res) => {
 
         req.session.adminId = admin.id;
         req.session.isAdminAuthenticated = true;
+        req.session.cookie.maxAge = SESSION_MAX_AGE_MS;
+        req.session.cookie.expires = new Date(Date.now() + SESSION_MAX_AGE_MS);
 
         req.session.save((saveError) => {
           if (saveError) {
@@ -252,6 +255,8 @@ exports.postVerifyToken = async (req, res) => {
 
       req.session.adminId = admin.id;
       req.session.isAdminAuthenticated = true;
+      req.session.cookie.maxAge = SESSION_MAX_AGE_MS;
+      req.session.cookie.expires = new Date(Date.now() + SESSION_MAX_AGE_MS);
 
       req.session.save((saveError) => {
         if (saveError) {
@@ -269,7 +274,17 @@ exports.postVerifyToken = async (req, res) => {
 };
 
 exports.logout = (req, res) => {
+  if (!req.session) {
+    return res.redirect('/backoffice-sec-9x2k');
+  }
+
   req.session.destroy(() => {
+    res.clearCookie(SESSION_COOKIE_NAME, {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: String(process.env.SESSION_COOKIE_SECURE || '').toLowerCase() === 'true'
+    });
     res.redirect('/backoffice-sec-9x2k');
   });
 };

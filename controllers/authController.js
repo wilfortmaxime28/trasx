@@ -5,6 +5,7 @@ const db = require('../config/db');
 const ActivityLog = require('../models/ActivityLog');
 const mailer = require('../utils/mailer');
 const { getNumberSetting } = require('../utils/appSettings');
+const { SESSION_COOKIE_NAME, SESSION_MAX_AGE_MS } = require('../config/sessionConfig');
 
 function renderForgotPassword(res, overrides = {}) {
   res.render('forgotPassword', {
@@ -225,7 +226,7 @@ exports.getLogin = (req, res) => {
 
 exports.postLogin = async (req, res) => {
   try {
-    const { email, password, remember_me } = req.body;
+    const { email, password } = req.body;
     const user = await User.getByIdentifier(email);
 
     if (!user) {
@@ -276,13 +277,18 @@ exports.postLogin = async (req, res) => {
     req.session.userId = user.id;
     await ActivityLog.log(user.id, 'user', 'login', 'user', user.id, { username: user.username }, req);
 
-    req.session.rememberMe = remember_me === 'on';
-    if (remember_me === 'on') {
-      req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30;
-    } else {
-      req.session.cookie.maxAge = 1000 * 60 * 60 * 24;
-    }
-    res.redirect('/');
+    req.session.rememberMe = true;
+    req.session.cookie.maxAge = SESSION_MAX_AGE_MS;
+    req.session.cookie.expires = new Date(Date.now() + SESSION_MAX_AGE_MS);
+
+    return req.session.save((saveError) => {
+      if (saveError) {
+        console.error('Login Session Save Error:', saveError);
+        return res.render('login', { error: 'Server error', verified: null });
+      }
+
+      return res.redirect('/');
+    });
   } catch (error) {
     console.error('Login Error:', error);
     res.render('login', { error: 'Server error', verified: null });
@@ -290,11 +296,31 @@ exports.postLogin = async (req, res) => {
 };
 
 exports.logout = async (req, res) => {
-  if (req.session && req.session.userId) {
-    await ActivityLog.log(req.session.userId, 'user', 'logout', 'user', req.session.userId, null, req);
+  const userId = req.session?.userId || null;
+
+  if (userId) {
+    await ActivityLog.log(userId, 'user', 'logout', 'user', userId, null, req);
   }
-  req.session.destroy();
-  res.redirect('/auth/login');
+
+  if (!req.session) {
+    return res.redirect('/auth/login');
+  }
+
+  req.session.destroy((error) => {
+    if (error) {
+      console.error('Logout Session Destroy Error:', error);
+      return res.redirect('/auth/login');
+    }
+
+    res.clearCookie(SESSION_COOKIE_NAME, {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: String(process.env.SESSION_COOKIE_SECURE || '').toLowerCase() === 'true'
+    });
+
+    return res.redirect('/auth/login');
+  });
 };
 
 exports.getForgotPassword = (req, res) => {
