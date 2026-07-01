@@ -11917,15 +11917,15 @@ document.addEventListener('DOMContentLoaded', () => {
       <div id="tiktokPreviewShell" style="display: flex; flex-direction: ${isMobilePreview ? 'column' : 'row'}; width: 100%; height: 100%;">
         <div id="tiktokMediaPane" style="position: relative; flex: 1; min-height: 0; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden;">
           <div id="tiktokMediaContent" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative;"></div>
-          <button id="tiktokCloseBtn" type="button" style="position: absolute; top: 18px; left: 18px; width: 46px; height: 46px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.46); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 20;">
+          <button id="tiktokCloseBtn" type="button" style="position: absolute; top: 18px; left: 18px; width: 46px; height: 46px; border-radius: 999px; border: none; background: transparent; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 20;">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
           </button>
           <div id="tiktokPreviewBadge" style="position: absolute; top: 18px; right: 18px; padding: 8px 12px; border-radius: 999px; background: rgba(0,0,0,0.46); border: 1px solid rgba(255,255,255,0.12); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; z-index: 20;">1 / 1</div>
           <div style="position: absolute; right: 18px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 12px; z-index: 20;">
-            <button id="tiktokPrevBtn" type="button" style="width: 48px; height: 48px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.52); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+            <button id="tiktokPrevBtn" type="button" style="width: 48px; height: 48px; border-radius: 999px; border: none; background: transparent; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer;">
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
             </button>
-            <button id="tiktokNextBtn" type="button" style="width: 48px; height: 48px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.52); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+            <button id="tiktokNextBtn" type="button" style="width: 48px; height: 48px; border-radius: 999px; border: none; background: transparent; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer;">
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </button>
           </div>
@@ -12113,7 +12113,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000;">
             <video class="profile-preview-video" src="${resolvedMediaUrl}" ${posterUrl ? `poster="${posterUrl}"` : ''} playsinline autoplay loop preload="metadata" style="width: 100%; height: 100%; object-fit: ${mediaFit}; background: #000;"></video>
             ${hasDetachedAudio ? `<audio class="profile-preview-audio" src="${escapeHtml(item.audio_url)}" preload="auto"></audio>` : ''}
-            <button type="button" class="profile-preview-play-toggle" style="position: absolute; bottom: 18px; left: 18px; width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.16); background: rgba(0,0,0,0.48); color: white; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+            <button type="button" class="profile-preview-play-toggle" style="position: absolute; bottom: 18px; left: 18px; width: 44px; height: 44px; border-radius: 999px; border: none; background: transparent; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer;">
               <i data-lucide="pause" style="width: 18px; height: 18px;"></i>
             </button>
           </div>
