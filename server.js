@@ -585,9 +585,8 @@ const sessionStore = new MySQLSessionStore({
   cleanupIntervalMs: SESSION_CLEANUP_INTERVAL_MS
 });
 
-if (sessionCookieSecure) {
-  app.set('trust proxy', 1);
-}
+// Trust all proxies (Cloudflare, Nginx, Apache, etc.) to ensure cookie delivery and session persistence over HTTPS
+app.set('trust proxy', true);
 
 const sessionMiddleware = session({
   name: SESSION_COOKIE_NAME,
