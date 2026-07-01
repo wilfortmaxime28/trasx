@@ -3509,16 +3509,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!overlay) return false;
 
     const activeCard = overlay.querySelector('.profile-post-viewer-card.active') || overlay.querySelector('.profile-post-viewer-card');
-    document.querySelectorAll('.post-video').forEach((video) => {
+    document.querySelectorAll('.post-video, .profile-post-viewer-video').forEach((video) => {
       if (!overlay.contains(video) && !video.paused) {
         video.pause();
       }
     });
 
-    const activeVideo = activeCard?.querySelector('.post-video');
+    const activeVideo = activeCard?.querySelector('.profile-post-viewer-video, .post-video');
     overlay.querySelectorAll('.profile-post-viewer-card').forEach((card) => {
       if (card === activeCard) return;
-      card.querySelectorAll('.post-video').forEach((video) => {
+      card.querySelectorAll('.profile-post-viewer-video, .post-video').forEach((video) => {
         if (!video.paused) {
           video.pause();
         }
@@ -3531,6 +3531,14 @@ document.addEventListener('DOMContentLoaded', () => {
     activeVideo.muted = targetMuted;
 
     const playActiveVideo = () => {
+      const dataSource = activeVideo.getAttribute('data-src');
+      if (!activeVideo.currentSrc && !activeVideo.getAttribute('src') && dataSource) {
+        activeVideo.setAttribute('src', dataSource);
+        activeVideo.preload = 'metadata';
+        try {
+          activeVideo.load();
+        } catch (_) {}
+      }
       if (activeVideo.ended) {
         activeVideo.currentTime = 0;
       }
@@ -3547,7 +3555,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    if (typeof window.ensureLazyVideoLoaded === 'function') {
+    if (activeVideo.classList.contains('profile-post-viewer-video')) {
+      if (activeVideo.readyState >= 1 || activeVideo.currentSrc || activeVideo.getAttribute('src')) {
+        playActiveVideo();
+      } else {
+        activeVideo.addEventListener('loadedmetadata', playActiveVideo, { once: true });
+        activeVideo.addEventListener('loadeddata', playActiveVideo, { once: true });
+        playActiveVideo();
+      }
+    } else if (typeof window.ensureLazyVideoLoaded === 'function') {
       window.ensureLazyVideoLoaded(activeVideo).then(playActiveVideo).catch(() => {});
     } else {
       playActiveVideo();
@@ -10765,25 +10781,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const isLive = Number(post?.is_live) === 1;
     const hasTextCustomizations = post?.text_color || post?.text_alignment || post?.text_position || post?.text_font || post?.text_size;
     const postImages = [post?.image_url, post?.image_url_2, post?.image_url_3, post?.image_url_4].filter(Boolean);
-    const canDownload = Number(post?.allow_download) !== 0;
 
     if (isLive) {
       const ytId = getYouTubeId(post?.live_url);
       const thumbnail = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : (post?.thumbnail_url || post?.image_url || '');
       return `
-        <div class="profile-post-viewer-visual profile-post-viewer-visual-live" data-viewer-media-kind="live">
-          <div class="profile-post-viewer-live-shell">
-            <img src="${escapeHtml(thumbnail || '/assets/avatar_placeholder.jpg')}" class="profile-post-viewer-primary-media" alt="Apercu live">
-            <div class="profile-post-viewer-live-overlay">
-              <span class="profile-post-viewer-live-badge">
-                <span class="profile-post-viewer-live-dot"></span>
-                LIVE
-              </span>
-              ${post?.live_url ? `
-                <a href="${escapeHtml(post.live_url)}" target="_blank" rel="noopener" class="profile-post-viewer-live-link">
-                  Ouvrir le live
-                </a>
-              ` : ''}
+        <div class="profile-post-viewer-media-shell profile-short-viewer-media-shell" data-viewer-media-kind="live">
+          <div class="profile-post-viewer-visual profile-post-viewer-visual-live">
+            <div class="profile-post-viewer-live-shell">
+              <img src="${escapeHtml(thumbnail || '/assets/avatar_placeholder.jpg')}" class="profile-post-viewer-primary-media" alt="Apercu live">
+              <div class="profile-post-viewer-live-overlay">
+                <span class="profile-post-viewer-live-badge">
+                  <span class="profile-post-viewer-live-dot"></span>
+                  LIVE
+                </span>
+                ${post?.live_url ? `
+                  <a href="${escapeHtml(post.live_url)}" target="_blank" rel="noopener" class="profile-post-viewer-live-link">
+                    Ouvrir le live
+                  </a>
+                ` : ''}
+              </div>
             </div>
           </div>
         </div>
@@ -10791,73 +10808,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (post?.media_type === 'video' && post?.image_url) {
+      const posterUrl = escapeHtml(post.thumbnail_url || '');
+      const videoUrl = escapeHtml(post.image_url);
       return `
-        <div class="profile-post-viewer-visual profile-post-viewer-visual-video" data-viewer-media-kind="video">
-          <div class="post-single-video profile-post-viewer-video-host">
-            <div class="post-video-shell">
-              <video
-                data-lazy-src="${escapeHtml(post.image_url)}"
-                class="post-video profile-post-viewer-primary-media"
-                preload="none"
-                data-load-on-play="1"
-                playsinline
-                poster="${escapeHtml(post.thumbnail_url || '')}"
-                oncontextmenu="return false;"></video>
-              <div class="post-video-loading-overlay" aria-hidden="true">
-                <div class="post-video-loading-icon">
-                  <i data-lucide="play"></i>
-                </div>
-              </div>
-              <div class="video-pulse-overlay" aria-hidden="true">
-                <i data-lucide="play"></i>
-              </div>
-              <div class="custom-video-controls">
-                <div class="video-controls-left">
-                  <button type="button" class="video-control-btn" data-video-control="play" aria-label="Play video" title="Play">
-                    <i data-lucide="play"></i>
-                  </button>
-                </div>
-                <div class="video-controls-center">
-                  <span class="video-time video-current-time">0:00</span>
-                  <input type="range" class="video-progress-slider" min="0" max="100" value="0" step="0.1" aria-label="Video progress">
-                  <span class="video-time video-duration">0:00</span>
-                </div>
-                <div class="video-controls-right">
-                  <button type="button" class="video-control-btn" data-video-control="mute" aria-label="Mute" title="Sound">
-                    <i data-lucide="volume-2"></i>
-                  </button>
-                  <input type="range" class="video-volume-slider" min="0" max="1" value="1" step="0.05" aria-label="Volume">
-                  ${canDownload ? `
-                    <button type="button" class="video-control-btn" data-video-download data-post-id="${Number(post.id || 0)}" data-video-url="${escapeHtml(post.image_url)}" data-video-author="${escapeHtml(post.author_username || '')}" aria-label="Download video with watermark" title="Download with watermark">
-                      <i data-lucide="download"></i>
-                    </button>
-                  ` : ''}
-                  <button type="button" class="video-control-btn" data-video-control="fullscreen" aria-label="Fullscreen" title="Fullscreen">
-                    <i data-lucide="maximize"></i>
-                  </button>
-                </div>
-              </div>
-              <div class="video-download-status" aria-live="polite"></div>
-            </div>
+        <div class="profile-post-viewer-media-shell profile-short-viewer-media-shell" data-viewer-media-kind="video">
+          <video
+            class="profile-post-viewer-primary-media profile-post-viewer-video profile-short-viewer-video"
+            data-src="${videoUrl}"
+            ${posterUrl ? `poster="${posterUrl}"` : ''}
+            playsinline
+            preload="none"></video>
+          <div class="profile-post-viewer-loader profile-short-viewer-loader" aria-hidden="true">
+            <span></span><span></span><span></span>
           </div>
+          <button type="button" class="profile-post-viewer-play-indicator profile-short-viewer-play-indicator" aria-label="Play or pause post video">
+            <i data-lucide="play"></i>
+          </button>
         </div>
       `;
     }
 
     if (postImages.length > 1) {
       return `
-        <div class="profile-post-viewer-visual profile-post-viewer-visual-gallery" data-viewer-media-kind="gallery">
-          <div class="profile-post-viewer-gallery-grid profile-post-viewer-gallery-grid-${Math.min(postImages.length, 4)}">
-            ${postImages.map((imageUrl, index) => `
-              <div class="profile-post-viewer-gallery-cell">
-                <img
-                  src="${escapeHtml(index === 0 ? (post.thumbnail_url || imageUrl) : imageUrl)}"
-                  data-lazy-src="${escapeHtml(imageUrl)}"
-                  class="profile-post-viewer-gallery-media"
-                  alt="Publication ${index + 1}"
-                  loading="lazy">
-              </div>
-            `).join('')}
+        <div class="profile-post-viewer-media-shell profile-short-viewer-media-shell" data-viewer-media-kind="gallery">
+          <div class="profile-post-viewer-visual profile-post-viewer-visual-gallery">
+            <div class="profile-post-viewer-gallery-grid profile-post-viewer-gallery-grid-${Math.min(postImages.length, 4)}">
+              ${postImages.map((imageUrl, index) => `
+                <div class="profile-post-viewer-gallery-cell">
+                  <img
+                    src="${escapeHtml(index === 0 ? (post.thumbnail_url || imageUrl) : imageUrl)}"
+                    data-lazy-src="${escapeHtml(imageUrl)}"
+                    class="profile-post-viewer-gallery-media"
+                    alt="Publication ${index + 1}"
+                    loading="lazy">
+                </div>
+              `).join('')}
+            </div>
           </div>
         </div>
       `;
@@ -10866,11 +10852,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (postImages.length === 1) {
       const singleImage = postImages[0];
       return `
-        <div class="profile-post-viewer-visual profile-post-viewer-visual-image" data-viewer-media-kind="image">
+        <div class="profile-post-viewer-media-shell profile-post-viewer-media-shell-image profile-short-viewer-media-shell profile-short-viewer-media-shell-image" data-viewer-media-kind="image">
           <img
             src="${escapeHtml(post.thumbnail_url || singleImage)}"
             data-lazy-src="${escapeHtml(singleImage)}"
-            class="profile-post-viewer-primary-media"
+            class="profile-post-viewer-primary-media profile-post-viewer-image profile-short-viewer-image"
             alt="Publication"
             loading="lazy">
         </div>
@@ -10879,8 +10865,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (post?.bg_image_url || (hasTextCustomizations && !post?.media_type && !post?.image_url)) {
       return `
-        <div class="profile-post-viewer-visual profile-post-viewer-visual-text" data-viewer-media-kind="styled-text">
-          ${renderStyledBackgroundPostHtml(post)}
+        <div class="profile-post-viewer-media-shell profile-post-viewer-media-shell-text profile-short-viewer-media-shell" data-viewer-media-kind="styled-text">
+          <div class="profile-post-viewer-visual profile-post-viewer-visual-text">
+            ${renderStyledBackgroundPostHtml(post)}
+          </div>
         </div>
       `;
     }
@@ -10900,9 +10888,11 @@ document.addEventListener('DOMContentLoaded', () => {
       : 'clamp(18px, 3vw, 28px)';
 
     return `
-      <div class="profile-post-viewer-visual profile-post-viewer-visual-text profile-post-viewer-plain-text" data-viewer-media-kind="text">
-        <div class="profile-post-viewer-plain-text-inner formatted-hashtag-text" data-raw-text="${escapeHtml(post?.content || '')}" style="text-align:${textAlignment}; color:${textColor}; font-family:${textFont}; font-size:${textSize};">
-          ${safeContent}
+      <div class="profile-post-viewer-media-shell profile-post-viewer-media-shell-text profile-short-viewer-media-shell" data-viewer-media-kind="text">
+        <div class="profile-post-viewer-visual profile-post-viewer-visual-text profile-post-viewer-plain-text">
+          <div class="profile-post-viewer-plain-text-inner formatted-hashtag-text" data-raw-text="${escapeHtml(post?.content || '')}" style="text-align:${textAlignment}; color:${textColor}; font-family:${textFont}; font-size:${textSize};">
+            ${safeContent}
+          </div>
         </div>
       </div>
     `;
@@ -10913,6 +10903,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const likesCount = Number(post?.likes_count || 0);
     const commentsCount = Number(post?.comments_count || 0);
     const sharesCount = Number(post?.shares_count || 0);
+    const viewsCount = Number(post?.views_count || 0);
     const isLiked = Number(post?.is_liked) === 1 || post?.is_liked === true;
     const isBookmarked = Number(post?.is_bookmarked) === 1 || post?.is_bookmarked === true;
     const hasTextCustomizations = post?.text_color || post?.text_alignment || post?.text_position || post?.text_font || post?.text_size;
@@ -10922,6 +10913,7 @@ document.addEventListener('DOMContentLoaded', () => {
       || (hasTextCustomizations && !post?.media_type && !post?.image_url)
       || (!Number(post?.is_live) && !post?.media_type && postImages.length === 0)
     );
+    const hasVideoSurface = String(post?.media_type || '').toLowerCase() === 'video' && !!post?.image_url;
     const authorAvatar = escapeHtml(post?.author_avatar || profileAuthorInfo.avatar || '/assets/avatar_placeholder.jpg');
     const authorName = escapeHtml(
       post?.author_name
@@ -10935,61 +10927,115 @@ document.addEventListener('DOMContentLoaded', () => {
     const authorUsername = escapeHtml(String(post?.author_username || post?.username || profileAuthorInfo.username || '').trim().replace(/^@+/, ''));
     const authorLink = authorUsername ? `/profile/u/${encodeURIComponent(authorUsername)}` : '#';
     const badgeHtml = renderCertificationBadgeHtml(post?.author_certification_type, 6);
+    const canFollowAuthor = Number(window.currentUserId || 0) !== Number(post?.user_id || 0) && Number(post?.user_id || 0) > 0;
+    const isAuthorFollowed = typeof resolveFollowState === 'function'
+      ? resolveFollowState(Number(post?.user_id || 0), !!post?.is_author_following)
+      : !!post?.is_author_following;
     const caption = String(post?.content || '').trim();
     const safeCaption = caption ? renderHashtagRichText(caption) : '';
     const createdAtText = post?.created_at
       ? formatRelativeTime(post.created_at)
       : '';
-    const metaBits = [
-      Number(post?.views_count || 0) > 0 ? `${formatNumber(post.views_count || 0)} vues` : '',
-      createdAtText
+    const sublineBits = [
+      authorUsername ? `@${authorUsername}` : '',
+      createdAtText ? createdAtText : ''
     ].filter(Boolean);
+    const surfaceLabel = Number(post?.is_live) === 1
+      ? 'Live post'
+      : hasVideoSurface
+        ? 'Video post'
+        : postImages.length > 1
+          ? 'Gallery post'
+          : postImages.length === 1
+            ? 'Photo post'
+            : 'Text post';
+    const metaBadgeIcon = Number(post?.is_live) === 1
+      ? 'radio'
+      : hasVideoSurface
+        ? 'video'
+        : postImages.length > 1
+          ? 'images'
+          : postImages.length === 1
+            ? 'image'
+            : 'file-text';
+    const metaBadgeText = viewsCount > 0
+      ? `${formatNumber(viewsCount)} vues`
+      : surfaceLabel;
 
     return `
       <article
-        class="post-card profile-post-viewer-card"
+        class="post-card profile-post-viewer-card profile-short-viewer-card"
         id="profile-post-viewer-card-${Number(post?.id || index)}"
         data-post-id="${Number(post?.id || 0)}"
         data-feed-item-type="post"
         data-created-at="${escapeHtml(post?.created_at || '')}"
         data-post-user-id="${Number(post?.user_id || 0)}">
-        <div class="profile-post-viewer-stage">
-          <div class="profile-post-viewer-media-shell">
-            ${buildProfilePostViewerMediaHtml(post)}
-          </div>
-          <div class="profile-post-viewer-overlay-scrim"></div>
-          <div class="profile-post-viewer-meta">
-            <a href="${authorLink}" class="profile-post-viewer-author">
-              <img src="${authorAvatar}" alt="${authorName}">
-              <div class="profile-post-viewer-author-copy">
-                <div class="profile-post-viewer-author-name">${authorName}${badgeHtml}</div>
-                <div class="profile-post-viewer-author-username">${authorUsername ? `@${authorUsername}` : ''}</div>
+        <div class="profile-post-viewer-stage profile-short-viewer-stage">
+          ${buildProfilePostViewerMediaHtml(post)}
+          <div class="profile-post-viewer-overlay-scrim profile-short-viewer-scrim"></div>
+          ${hasVideoSurface ? `
+            <div class="profile-post-viewer-topbar profile-short-viewer-topbar">
+              <div class="profile-post-viewer-progress profile-short-viewer-progress">
+                <span class="profile-post-viewer-time profile-short-viewer-time current">0:00</span>
+                <input type="range" class="profile-post-viewer-slider profile-short-viewer-slider" min="0" max="100" value="0" step="0.1" aria-label="Progression de la video">
+                <span class="profile-post-viewer-time profile-short-viewer-time duration">0:00</span>
               </div>
-            </a>
-            ${caption && !isTextSurfacePost ? `<p class="profile-post-viewer-caption formatted-hashtag-text" data-raw-text="${escapeHtml(caption)}">${safeCaption}</p>` : ''}
-            ${metaBits.length ? `<div class="profile-post-viewer-meta-line">${metaBits.map((bit) => `<span>${escapeHtml(bit)}</span>`).join('<span class="profile-post-viewer-meta-dot">•</span>')}</div>` : ''}
+            </div>
+          ` : ''}
+          <div class="profile-post-viewer-meta profile-short-viewer-meta">
+            <div class="profile-post-viewer-author profile-short-viewer-author">
+              <a href="${authorLink}" class="profile-post-viewer-author-link" aria-label="Voir le profil de ${authorName}">
+                <img src="${authorAvatar}" alt="${authorName}">
+              </a>
+              <div class="profile-post-viewer-author-copy profile-short-viewer-author-copy">
+                <div class="profile-short-viewer-author-line">
+                  <strong><a href="${authorLink}" class="profile-post-viewer-author-link-inline">${authorName}</a></strong>
+                  ${badgeHtml}
+                  ${canFollowAuthor ? `
+                    <button type="button"
+                      class="follow-toggle-btn profile-short-viewer-follow"
+                      data-follow-target-id="${Number(post?.user_id || 0)}"
+                      data-following="${isAuthorFollowed ? '1' : '0'}"
+                      title="${isAuthorFollowed ? 'Unfollow' : 'Follow'}"
+                      aria-label="${isAuthorFollowed ? 'Unfollow' : 'Follow'}">
+                      ${isAuthorFollowed ? 'Following' : 'Follow'}
+                    </button>
+                  ` : ''}
+                </div>
+                ${sublineBits.length ? `
+                  <div class="profile-short-viewer-author-subline">
+                    ${sublineBits.map((bit, bitIndex) => `<span>${bitIndex === 0 ? escapeHtml(bit) : `• ${escapeHtml(bit)}`}</span>`).join('')}
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+            ${caption && !isTextSurfacePost ? `<p class="profile-post-viewer-caption profile-short-viewer-caption formatted-hashtag-text" data-raw-text="${escapeHtml(caption)}">${safeCaption}</p>` : ''}
+            <div class="profile-post-viewer-meta-line profile-short-viewer-sound">
+              <i data-lucide="${metaBadgeIcon}"></i>
+              <span>${escapeHtml(metaBadgeText)}</span>
+            </div>
           </div>
-          <div class="profile-post-viewer-actions">
-            <button class="post-action-btn like-btn ${isLiked ? 'liked' : ''}" type="button" data-likes="${likesCount}">
-              <span class="profile-post-viewer-action-icon">
+          <div class="profile-post-viewer-actions profile-short-viewer-actions">
+            <button class="post-action-btn like-btn profile-short-viewer-action ${isLiked ? 'liked' : ''}" type="button" data-likes="${likesCount}">
+              <span class="profile-short-viewer-action-icon">
                 <i data-lucide="heart"></i>
               </span>
-              <span class="profile-post-viewer-action-count action-label"><span class="like-count">${formatNumber(likesCount)}</span></span>
+              <span class="profile-short-viewer-action-count profile-post-viewer-action-count action-label"><span class="like-count">${formatNumber(likesCount)}</span></span>
             </button>
-            <button class="post-action-btn comment-btn" type="button" data-comments="${commentsCount}">
-              <span class="profile-post-viewer-action-icon">
+            <button class="post-action-btn comment-btn profile-short-viewer-action" type="button" data-comments="${commentsCount}">
+              <span class="profile-short-viewer-action-icon">
                 <i data-lucide="message-circle"></i>
               </span>
-              <span class="profile-post-viewer-action-count action-label"><span class="comment-count">${formatNumber(commentsCount)}</span></span>
+              <span class="profile-short-viewer-action-count profile-post-viewer-action-count action-label"><span class="comment-count">${formatNumber(commentsCount)}</span></span>
             </button>
-            <button class="post-action-btn share-btn" type="button" data-shares="${sharesCount}">
-              <span class="profile-post-viewer-action-icon">
+            <button class="post-action-btn share-btn profile-short-viewer-action" type="button" data-shares="${sharesCount}">
+              <span class="profile-short-viewer-action-icon">
                 <i data-lucide="share-2"></i>
               </span>
-              <span class="profile-post-viewer-action-count action-label"><span class="share-count">${formatNumber(sharesCount)}</span></span>
+              <span class="profile-short-viewer-action-count profile-post-viewer-action-count action-label"><span class="share-count">${formatNumber(sharesCount)}</span></span>
             </button>
-            <button class="post-bookmark-btn profile-post-viewer-bookmark ${isBookmarked ? 'bookmarked' : ''}" type="button" aria-label="Bookmark post">
-              <span class="profile-post-viewer-action-icon">
+            <button class="post-bookmark-btn profile-post-viewer-bookmark profile-short-viewer-action ${isBookmarked ? 'bookmarked' : ''}" type="button" aria-label="Bookmark post">
+              <span class="profile-short-viewer-action-icon">
                 <i data-lucide="bookmark"></i>
               </span>
             </button>
@@ -11076,13 +11122,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const overlay = document.createElement('div');
     overlay.id = 'profilePostViewerOverlay';
-    overlay.className = 'profile-post-viewer-overlay';
+    overlay.className = 'profile-post-viewer-overlay profile-short-viewer-overlay';
     overlay.innerHTML = `
-      <button type="button" class="profile-post-viewer-close" aria-label="Fermer l apercu des posts">
+      <button type="button" class="profile-post-viewer-close profile-short-viewer-close" aria-label="Fermer l apercu des posts">
         <i data-lucide="arrow-left"></i>
       </button>
-      <div class="profile-post-viewer-count">${currentIndex + 1} / ${itemsList.length}</div>
-      <div class="profile-post-viewer-feed">
+      <div class="profile-post-viewer-count profile-short-viewer-count">${currentIndex + 1} / ${itemsList.length}</div>
+      <div class="profile-post-viewer-feed profile-short-viewer-feed">
         ${itemsList.map((item, index) => buildProfilePostCardHtml(item.data || item, index)).join('')}
       </div>
     `;
@@ -11125,9 +11171,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof window.initLazyMedia === 'function') {
       window.initLazyMedia(overlay);
     }
-    initCustomVideoPlayers(overlay);
     if (typeof lucide !== 'undefined') {
-      try { lucide.createIcons(); } catch (_) {}
+      try { lucide.createIcons({ node: overlay }); } catch (_) {}
     }
 
     const updateViewerCounter = () => {
@@ -11156,15 +11201,150 @@ document.addEventListener('DOMContentLoaded', () => {
       }, '', nextUrl);
     };
 
+    const formatViewerTime = (seconds) => {
+      const safeSeconds = Number.isFinite(seconds) && seconds >= 0 ? Math.floor(seconds) : 0;
+      const mins = Math.floor(safeSeconds / 60);
+      const secs = safeSeconds % 60;
+      return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    };
+
+    const getCardMediaState = (card) => {
+      if (!(card instanceof Element)) return null;
+      return {
+        kind: String(card.querySelector('[data-viewer-media-kind]')?.getAttribute('data-viewer-media-kind') || '').trim(),
+        stage: card.querySelector('.profile-post-viewer-stage'),
+        video: card.querySelector('.profile-post-viewer-video'),
+        loader: card.querySelector('.profile-post-viewer-loader'),
+        playIndicator: card.querySelector('.profile-post-viewer-play-indicator'),
+        progressSlider: card.querySelector('.profile-post-viewer-slider'),
+        currentTimeEl: card.querySelector('.profile-post-viewer-time.current'),
+        durationEl: card.querySelector('.profile-post-viewer-time.duration')
+      };
+    };
+
+    const setCardLoaderVisible = (card, visible) => {
+      const loader = card?.querySelector('.profile-post-viewer-loader');
+      if (!loader) return;
+      loader.classList.toggle('is-visible', !!visible);
+    };
+
+    const setCardPausedState = (card, paused) => {
+      if (!(card instanceof Element)) return;
+      card.classList.toggle('is-paused', !!paused);
+      card.classList.toggle('is-playing', !paused);
+      const indicator = card.querySelector('.profile-post-viewer-play-indicator');
+      if (!indicator) return;
+      indicator.innerHTML = `<i data-lucide="${paused ? 'play' : 'pause'}"></i>`;
+      if (typeof lucide !== 'undefined') {
+        try { lucide.createIcons({ node: indicator }); } catch (_) {}
+      }
+    };
+
+    const ensureCardVideoLoaded = (card) => {
+      const video = card?.querySelector('.profile-post-viewer-video');
+      if (!(video instanceof HTMLVideoElement)) return Promise.resolve(video);
+      if (video.currentSrc || video.getAttribute('src')) return Promise.resolve(video);
+
+      const source = String(video.getAttribute('data-src') || '').trim();
+      if (!source) return Promise.resolve(video);
+
+      return new Promise((resolve) => {
+        let completed = false;
+        const finish = () => {
+          if (completed) return;
+          completed = true;
+          video.removeEventListener('loadedmetadata', finish);
+          video.removeEventListener('loadeddata', finish);
+          video.removeEventListener('canplay', finish);
+          applyProfilePostViewerMediaFit(card);
+          resolve(video);
+        };
+
+        video.addEventListener('loadedmetadata', finish, { once: true });
+        video.addEventListener('loadeddata', finish, { once: true });
+        video.addEventListener('canplay', finish, { once: true });
+        video.setAttribute('src', source);
+        video.preload = 'metadata';
+        try {
+          video.load();
+        } catch (_) {}
+        window.setTimeout(finish, 1800);
+      });
+    };
+
+    const updateCardProgress = (card) => {
+      const state = getCardMediaState(card);
+      if (!state?.video || !state.progressSlider || !state.currentTimeEl || !state.durationEl) return;
+      const duration = Number.isFinite(state.video.duration) && state.video.duration > 0 ? state.video.duration : 0;
+      const currentTime = Number.isFinite(state.video.currentTime) ? state.video.currentTime : 0;
+      state.currentTimeEl.textContent = formatViewerTime(currentTime);
+      state.durationEl.textContent = formatViewerTime(duration);
+      state.progressSlider.value = duration > 0
+        ? String(Math.max(0, Math.min(100, (currentTime / duration) * 100)))
+        : '0';
+    };
+
+    const playCard = async (card) => {
+      const state = getCardMediaState(card);
+      if (!state?.video) return;
+      setCardLoaderVisible(card, true);
+      const video = await ensureCardVideoLoaded(card);
+      if (!(video instanceof HTMLVideoElement)) return;
+
+      video.muted = typeof window.feedVideosMuted !== 'undefined' ? window.feedVideosMuted : false;
+      if (video.ended) {
+        try {
+          video.currentTime = 0;
+        } catch (_) {}
+      }
+
+      try {
+        await video.play();
+      } catch (error) {
+        if (!video.muted && error?.name === 'NotAllowedError') {
+          video.muted = true;
+          window.feedVideosMuted = true;
+          await video.play().catch(() => {});
+        }
+      }
+
+      setCardLoaderVisible(card, false);
+      setCardPausedState(card, false);
+      updateCardProgress(card);
+    };
+
+    const pauseCard = (card, { reset = false } = {}) => {
+      const state = getCardMediaState(card);
+      if (state?.video) {
+        if (!state.video.paused) {
+          state.video.pause();
+        }
+        if (reset) {
+          try {
+            state.video.currentTime = 0;
+          } catch (_) {}
+        }
+        updateCardProgress(card);
+      }
+      setCardLoaderVisible(card, false);
+      setCardPausedState(card, true);
+    };
+
+    const maintainViewerMediaWindow = (centerCard) => {
+      const centerIndex = cards.indexOf(centerCard);
+      if (centerIndex === -1) return;
+      cards.forEach((card, index) => {
+        if (Math.abs(index - centerIndex) <= 1) {
+          ensureCardVideoLoaded(card).catch(() => {});
+        }
+      });
+    };
+
     const stopViewerCardPlayback = (card) => {
       if (!card) return;
       card.classList.remove('active');
       closeProfilePostCommentsSheet(card);
-      card.querySelectorAll('.post-video').forEach((video) => {
-        if (!video.paused) {
-          video.pause();
-        }
-      });
+      pauseCard(card);
     };
 
     const activateViewerCard = (card, { syncHistory = true } = {}) => {
@@ -11175,6 +11355,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       viewerState.activeCard = card;
       card.classList.add('active');
+      maintainViewerMediaWindow(card);
 
       const nextIndex = cards.indexOf(card);
       if (nextIndex !== -1 && nextIndex !== session.currentIndex) {
@@ -11185,7 +11366,9 @@ document.addEventListener('DOMContentLoaded', () => {
         updateViewerCounter();
       }
 
-      refreshProfilePostViewerPlayback();
+      playCard(card).catch(() => {
+        setCardPausedState(card, true);
+      });
     };
 
     const refreshViewerActiveCard = () => {
@@ -11212,10 +11395,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (!candidateCard) return;
-      if (viewerState.activeCard === candidateCard) {
-        refreshProfilePostViewerPlayback();
-        return;
-      }
+      if (viewerState.activeCard === candidateCard) return;
       activateViewerCard(candidateCard);
     };
 
@@ -11248,6 +11428,8 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         session.currentHash = buildProfilePreviewHash(itemsList[targetIndex].id, 'post');
       }
+
+      maintainViewerMediaWindow(targetCard);
 
       const targetScrollTop = viewerFeed.scrollTop + (targetCard.getBoundingClientRect().top - viewerFeed.getBoundingClientRect().top);
       viewerFeed.scrollTo({ top: targetScrollTop, behavior: immediate ? 'auto' : 'smooth' });
@@ -11476,6 +11658,27 @@ document.addEventListener('DOMContentLoaded', () => {
       input.value = '';
     };
 
+    const toggleCardPlayback = (postCard, event) => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+
+      const state = getCardMediaState(postCard);
+      if (!state?.video) return;
+
+      if (viewerState.activeCard !== postCard) {
+        activateViewerCard(postCard);
+        return;
+      }
+
+      if (state.video.paused) {
+        playCard(postCard).catch(() => {});
+      } else {
+        pauseCard(postCard);
+      }
+    };
+
     const overlayClickHandler = (event) => {
       const closeBtn = event.target.closest('.profile-post-viewer-close');
       if (closeBtn) {
@@ -11579,6 +11782,73 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     };
+
+    const bindCard = (card) => {
+      const state = getCardMediaState(card);
+      const stage = state?.stage;
+
+      if (stage) {
+        stage.addEventListener('click', (event) => {
+          if (
+            event.target.closest('.profile-post-viewer-actions') ||
+            event.target.closest('.profile-post-comments-sheet') ||
+            event.target.closest('.profile-post-viewer-close') ||
+            event.target.closest('input') ||
+            event.target.closest('button') ||
+            event.target.closest('a')
+          ) {
+            return;
+          }
+          toggleCardPlayback(card, event);
+        });
+      }
+
+      state?.playIndicator?.addEventListener('click', (event) => {
+        toggleCardPlayback(card, event);
+      });
+
+      if (state?.progressSlider && state?.video) {
+        state.progressSlider.addEventListener('input', (event) => {
+          if (!Number.isFinite(state.video.duration) || state.video.duration <= 0) return;
+          state.video.currentTime = (Number(event.target.value || 0) / 100) * state.video.duration;
+          updateCardProgress(card);
+        });
+      }
+
+      if (state?.video) {
+        state.video.addEventListener('loadedmetadata', () => {
+          applyProfilePostViewerMediaFit(card);
+          setCardLoaderVisible(card, false);
+          updateCardProgress(card);
+        });
+        state.video.addEventListener('loadeddata', () => {
+          setCardLoaderVisible(card, false);
+          updateCardProgress(card);
+        });
+        state.video.addEventListener('canplay', () => setCardLoaderVisible(card, false));
+        state.video.addEventListener('waiting', () => setCardLoaderVisible(card, true));
+        state.video.addEventListener('playing', () => {
+          setCardLoaderVisible(card, false);
+          setCardPausedState(card, false);
+        });
+        state.video.addEventListener('pause', () => {
+          setCardLoaderVisible(card, false);
+          setCardPausedState(card, true);
+        });
+        state.video.addEventListener('timeupdate', () => updateCardProgress(card));
+        state.video.addEventListener('ended', () => {
+          try {
+            state.video.currentTime = 0;
+          } catch (_) {}
+          playCard(card).catch(() => {});
+        });
+      }
+
+      setCardPausedState(card, true);
+      updateCardProgress(card);
+    };
+
+    cards.forEach(bindCard);
 
     const onViewerScroll = () => {
       window.clearTimeout(viewerState.scrollTimer);
