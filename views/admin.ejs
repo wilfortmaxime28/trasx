@@ -2816,6 +2816,33 @@
           </button>
         </form>
       </div>
+
+      <!-- Manual Withdrawal Creation Card -->
+      <div class="section-card" id="admin-withdrawal-creation" style="margin-top: 24px;">
+        <div class="section-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 20px;">
+          <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--text-main);">Exécution manuelle de retrait USDT (BEP-20)</h3>
+          <p style="color: var(--text-muted); margin-top: 4px; font-size: 13px;">Saisissez l'adresse email de l'utilisateur et le montant en USDT pour exécuter un transfert en direct depuis le portefeuille de la plateforme vers son adresse de portefeuille enregistrée.</p>
+        </div>
+        
+        <form id="adminCreateWithdrawalForm" onsubmit="handleAdminCreateWithdrawal(event)" style="max-width: 600px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-muted);">Email de l'utilisateur</label>
+              <input type="email" id="adminWithdrawUserEmail" required placeholder="Ex. jean@gmail.com" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-main);">
+            </div>
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-muted);">Montant en USDT</label>
+              <input type="number" step="any" id="adminWithdrawAmount" required placeholder="Ex. 50.00" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-main);">
+            </div>
+          </div>
+          
+          <div id="adminWithdrawStatusMsg" style="display: none; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;"></div>
+          
+          <button type="submit" class="btn" id="adminWithdrawSubmitBtn" style="background: var(--primary); color: white; padding: 10px 20px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+            Vérifier et envoyer le retrait
+          </button>
+        </form>
+      </div>
       <% } %>
 
 
@@ -5652,6 +5679,82 @@
         showRecoverMsg('error', 'Erreur réseau ou serveur.');
         btn.disabled = false;
         btn.textContent = 'Vérifier et créditer le dépôt';
+      }
+    }
+
+    async function handleAdminCreateWithdrawal(event) {
+      event.preventDefault();
+      const emailEl = document.getElementById('adminWithdrawUserEmail');
+      const amountEl = document.getElementById('adminWithdrawAmount');
+      const msgEl = document.getElementById('adminWithdrawStatusMsg');
+      const btn = document.getElementById('adminWithdrawSubmitBtn');
+      if (!emailEl || !amountEl || !msgEl || !btn) return;
+
+      const email = emailEl.value.trim();
+      const amount = amountEl.value.trim();
+
+      if (!email || !email.includes('@')) {
+        showWithdrawMsg('error', "Veuillez saisir une adresse email valide.");
+        return;
+      }
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+        showWithdrawMsg('error', "Veuillez saisir un montant valide (supérieur à 0).");
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Envoi en cours...';
+      showWithdrawMsg('info', 'Signature et envoi de la transaction sur la blockchain BSC en cours...');
+
+      try {
+        const response = await fetch('/admin/withdrawals/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({ email, amount: parseFloat(amount) })
+        });
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          showWithdrawMsg('success', result.message || 'Retrait envoyé et débité avec succès !');
+          emailEl.value = '';
+          amountEl.value = '';
+          btn.textContent = 'Retrait envoyé !';
+          setTimeout(() => {
+            window.location.reload();
+          }, 2000);
+        } else {
+          showWithdrawMsg('error', result.error || 'Une erreur est survenue.');
+          btn.disabled = false;
+          btn.textContent = 'Vérifier et envoyer le retrait';
+        }
+      } catch (err) {
+        console.error(err);
+        showWithdrawMsg('error', 'Erreur réseau ou serveur.');
+        btn.disabled = false;
+        btn.textContent = 'Vérifier et envoyer le retrait';
+      }
+    }
+
+    function showWithdrawMsg(type, text) {
+      const el = document.getElementById('adminWithdrawStatusMsg');
+      if (!el) return;
+      el.style.display = 'block';
+      el.textContent = text;
+      if (type === 'success') {
+        el.style.background = 'rgba(16, 185, 129, 0.15)';
+        el.style.border = '1px solid var(--success)';
+        el.style.color = 'var(--success)';
+      } else if (type === 'error') {
+        el.style.background = 'rgba(239, 68, 68, 0.15)';
+        el.style.border = '1px solid var(--danger)';
+        el.style.color = 'var(--danger)';
+      } else {
+        el.style.background = 'rgba(59, 130, 246, 0.15)';
+        el.style.border = '1px solid var(--primary)';
+        el.style.color = 'var(--primary)';
       }
     }
 

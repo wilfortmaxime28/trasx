@@ -297,11 +297,185 @@ router.post('/deposits/recover-txid', requireAdminAction('manage_balances', { js
     } catch (dbErr) {
       await conn.rollback();
       throw dbErr;
+  } catch (err) {
+    console.error('[AdminDepositRecover] Error:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Une erreur interne est survenue.' });
+  }
+});
+
+router.post('/withdrawals/create', requireAdminAction('manage_balances', { json: true }), async (req, res) => {
+  try {
+    const db = require('../config/db');
+    const User = require('../models/User');
+    const { ethers } = require('ethers');
+    const bscMonitor = require('../utils/bscMonitor');
+
+    const { email, amount } = req.body;
+
+    if (!email || !email.trim().includes('@')) {
+      return res.status(400).json({ success: false, error: 'Adresse email de l\'utilisateur invalide.' });
+    }
+    const amountVal = parseFloat(amount);
+    if (isNaN(amountVal) || amountVal <= 0) {
+      return res.status(400).json({ success: false, error: 'Montant de retrait invalide.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Trouver l'utilisateur par son email
+    const [userRows] = await db.query(
+      'SELECT id, username, wallet_address, withdrawal_account_balance FROM users WHERE LOWER(email) = ?',
+      [cleanEmail]
+    );
+    if (!userRows || userRows.length === 0) {
+      return res.status(404).json({ success: false, error: `Aucun utilisateur trouvé avec l'adresse email "${email}".` });
+    }
+    const targetUser = userRows[0];
+    const uid = targetUser.id;
+
+    if (!targetUser.wallet_address || !/^0x[a-fA-F0-9]{40}$/.test(targetUser.wallet_address.trim())) {
+      return res.status(400).json({ success: false, error: `Cet utilisateur (${targetUser.username}) n'a pas configuré d'adresse de portefeuille BEP-20 valide.` });
+    }
+
+    const userBal = parseFloat(targetUser.withdrawal_account_balance || 0);
+    if (amountVal > userBal) {
+      return res.status(400).json({ success: false, error: `Le solde de retrait de l'utilisateur (${userBal.toFixed(2)} USDT) est insuffisant pour ce montant (${amountVal.toFixed(2)} USDT).` });
+    }
+
+    const recipientAddress = targetUser.wallet_address.trim();
+
+    // 1. Débiter le solde et créer le log en statut 'pending'
+    const conn = await db.getConnection();
+    let withdrawalLogId;
+    try {
+      await conn.beginTransaction();
+
+      await conn.execute(
+        'UPDATE users SET withdrawal_account_balance = withdrawal_account_balance - ? WHERE id = ?',
+        [amountVal, uid]
+      );
+
+      const [insertRes] = await conn.execute(
+        `INSERT INTO bsc_withdrawals (user_id, recipient_address, amount_usdt, fee_usdt, net_amount_usdt, status)
+         VALUES (?, ?, ?, 0.000000, ?, 'pending')`,
+        [uid, recipientAddress, amountVal, amountVal]
+      );
+      withdrawalLogId = insertRes.insertId;
+
+      await conn.commit();
+    } catch (dbErr) {
+      await conn.rollback();
+      throw dbErr;
     } finally {
       conn.release();
     }
+
+    // 2. Envoyer notifications temps réel pour le débit de solde
+    const io = req.app.get('io');
+    if (io) {
+      const [updUser] = await db.query(
+        'SELECT deposit_account_balance, withdrawal_account_balance, bonus_account_balance, token_balance FROM users WHERE id = ?',
+        [uid]
+      );
+      if (updUser && updUser[0]) {
+        io.to(`user:${uid}`).emit('balance-updated', {
+          userId: uid,
+          depositBalance: Number(updUser[0].deposit_account_balance || 0),
+          withdrawalBalance: Number(updUser[0].withdrawal_account_balance || 0),
+          bonusBalance: Number(updUser[0].bonus_account_balance || 0),
+          tokenBalance: Number(updUser[0].token_balance || 0),
+          message: `Retrait de ${amountVal.toFixed(2)} USDT initié par l'administrateur.`
+        });
+      }
+    }
+
+    // 3. Exécuter le transfert blockchain en direct
+    const privateKey = process.env.PLATFORM_PRIVATE_KEY || process.env.BSC_PRIVATE_KEY;
+    if (!privateKey) {
+      throw new Error("Clé privée de la plateforme (BSC_PRIVATE_KEY) non configurée dans le fichier .env.");
+    }
+
+    const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
+    const provider = bscMonitor.getRpcProvider();
+    const signer = new ethers.Wallet(privateKey, provider);
+    const contract = new ethers.Contract(
+      USDT_CONTRACT,
+      ['function transfer(address to, uint256 amount) returns (bool)'],
+      signer
+    );
+    const amountWei = ethers.utils.parseUnits(amountVal.toFixed(18), 18);
+
+    let tx;
+    try {
+      tx = await contract.transfer(recipientAddress, amountWei);
+    } catch (blockchainErr) {
+      console.error(`[AdminWithdrawal] On-chain transfer failed:`, blockchainErr);
+      
+      // Rembourser l'utilisateur et marquer en échec
+      const refundConn = await db.getConnection();
+      try {
+        await refundConn.beginTransaction();
+        await refundConn.execute(
+          'UPDATE users SET withdrawal_account_balance = withdrawal_account_balance + ? WHERE id = ?',
+          [amountVal, uid]
+        );
+        await refundConn.execute(
+          "UPDATE bsc_withdrawals SET status = 'failed', error_message = ?, updated_at = NOW() WHERE id = ?",
+          [blockchainErr.message || 'On-chain transfer failed', withdrawalLogId]
+        );
+        await refundConn.commit();
+      } catch (refundErr) {
+        await refundConn.rollback();
+        console.error(`[AdminWithdrawal] Critical error rollback failed:`, refundErr);
+      } finally {
+        refundConn.release();
+      }
+
+      // Notifier l'échec
+      if (io) {
+        const [updUser] = await db.query(
+          'SELECT deposit_account_balance, withdrawal_account_balance, bonus_account_balance, token_balance FROM users WHERE id = ?',
+          [uid]
+        );
+        if (updUser && updUser[0]) {
+          io.to(`user:${uid}`).emit('balance-updated', {
+            userId: uid,
+            depositBalance: Number(updUser[0].deposit_account_balance || 0),
+            withdrawalBalance: Number(updUser[0].withdrawal_account_balance || 0),
+            bonusBalance: Number(updUser[0].bonus_account_balance || 0),
+            tokenBalance: Number(updUser[0].token_balance || 0),
+            message: `❌ Retrait de ${amountVal.toFixed(2)} USDT échoué. Solde remboursé.`
+          });
+        }
+      }
+
+      return res.status(400).json({
+        success: false,
+        error: `Le transfert sur la blockchain a échoué. Raison : ${blockchainErr.message || blockchainErr}`
+      });
+    }
+
+    // 4. Mettre à jour avec le hash de transaction
+    await db.query(
+      `UPDATE bsc_withdrawals
+       SET tx_hash = ?,
+           submitted_at = NOW(),
+           confirmations = 0,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [tx.hash, withdrawalLogId]
+    );
+
+    console.log(`[AdminWithdrawal] Admin #${req.session.adminId} executed withdrawal of ${amountVal} USDT for user ${targetUser.username} (#${uid}) to address ${recipientAddress}. Tx Hash: ${tx.hash}`);
+
+    return res.json({
+      success: true,
+      message: `Retrait de ${amountVal.toFixed(2)} USDT envoyé avec succès. Tx Hash: ${tx.hash}`,
+      txHash: tx.hash
+    });
+
   } catch (err) {
-    console.error('[AdminDepositRecover] Error:', err);
+    console.error('[AdminWithdrawal] Error:', err);
     return res.status(500).json({ success: false, error: err.message || 'Une erreur interne est survenue.' });
   }
 });
