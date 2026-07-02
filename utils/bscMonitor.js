@@ -37,7 +37,7 @@ const BLOCK_BATCH_SIZE = Math.max(10, Math.min(50, Number.parseInt(process.env.B
 const INTER_BATCH_DELAY_MS = Math.max(300, Number.parseInt(process.env.BSC_DEPOSIT_INTER_BATCH_DELAY_MS || '500', 10) || 500);
 const REORG_BUFFER = Math.max(2, Number.parseInt(process.env.BSC_DEPOSIT_REORG_BUFFER || '6', 10) || 6);
 // 500 blocks on startup (~2.5 min of BSC history), then only new blocks each cycle (~10-20 blocks)
-const INITIAL_BACKFILL_BLOCKS = Math.max(0, Number.parseInt(process.env.BSC_DEPOSIT_INITIAL_BACKFILL_BLOCKS || '500', 10));
+const INITIAL_BACKFILL_BLOCKS = Math.max(0, Number.parseInt(process.env.BSC_DEPOSIT_INITIAL_BACKFILL_BLOCKS || '30', 10));
 const CURSOR_SETTING_KEY = 'bsc_deposit_last_scanned_block';
 const USDT_DECIMALS = 18;
 
