@@ -325,16 +325,17 @@ async function insertOrUpdateDepositRecord(deposit) {
 }
 
 async function syncDepositLogs(userMap, currentBlock) {
-  const fromBlock = await getStartBlock(currentBlock);
-  if (fromBlock > currentBlock) {
+  const scanEndBlock = Math.max(0, currentBlock - REORG_BUFFER);
+  const fromBlock = await getStartBlock(scanEndBlock);
+  if (fromBlock > scanEndBlock) {
     return;
   }
 
   let provider = getRpcProvider();
   let batchesProcessed = 0;
 
-  for (let batchStart = fromBlock; batchStart <= currentBlock; batchStart += BLOCK_BATCH_SIZE) {
-    const batchEnd = Math.min(currentBlock, batchStart + BLOCK_BATCH_SIZE - 1);
+  for (let batchStart = fromBlock; batchStart <= scanEndBlock; batchStart += BLOCK_BATCH_SIZE) {
+    const batchEnd = Math.min(scanEndBlock, batchStart + BLOCK_BATCH_SIZE - 1);
 
     if (batchesProcessed > 0 && INTER_BATCH_DELAY_MS > 0) {
       await new Promise(resolve => setTimeout(resolve, INTER_BATCH_DELAY_MS));
@@ -352,11 +353,17 @@ async function syncDepositLogs(userMap, currentBlock) {
       provider = rotateRpcProvider();
       await new Promise(resolve => setTimeout(resolve, 1500));
       try {
-        logs = await provider.getLogs({
-          ...DEPOSIT_LOG_FILTER,
-          fromBlock: batchStart,
-          toBlock: batchEnd
-        });
+        const newCurrentBlock = await provider.getBlockNumber();
+        const adjustedEnd = Math.min(batchEnd, newCurrentBlock);
+        if (batchStart <= adjustedEnd) {
+          logs = await provider.getLogs({
+            ...DEPOSIT_LOG_FILTER,
+            fromBlock: batchStart,
+            toBlock: adjustedEnd
+          });
+        } else {
+          logs = [];
+        }
       } catch (retryErr) {
         console.error(`[BSCMonitor] Retry also failed for blocks ${batchStart}-${batchEnd} on ${provider.connection.url}. Skipping batch:`, retryErr.message || retryErr);
         batchesProcessed++;
@@ -396,7 +403,7 @@ async function syncDepositLogs(userMap, currentBlock) {
     batchesProcessed++;
   }
 
-  await setSetting(CURSOR_SETTING_KEY, currentBlock);
+  await setSetting(CURSOR_SETTING_KEY, scanEndBlock);
 }
 
 
