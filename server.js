@@ -60,8 +60,8 @@ app.set('io', io);
 const TRADE_PRICE_MIN = 2;
 const TRADE_PRICE_MAX = 20;
 const GAME_ROUND_TRANSITION_DELAY_MS = 3500;
-const PLATFORM_WALLET_ADDRESS = (process.env.PLATFORM_WALLET_ADDRESS || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').trim();
-const BSC_PROVIDER_URL = process.env.BSC_PROVIDER_URL || 'https://bsc-dataseed.binance.org/';
+const PLATFORM_WALLET_ADDRESS = (process.env.PLATFORM_WALLET_ADDRESS || process.env.BSC_CENTRAL_WALLET || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').trim();
+const BSC_PROVIDER_URL = process.env.BSC_PROVIDER_URL || process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org/';
 const BSC_USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').trim();
 const WITHDRAWAL_CONFIRMATIONS_REQUIRED = Math.max(1, Number.parseInt(process.env.BSC_WITHDRAW_CONFIRMATIONS || '1', 10) || 1);
 const WITHDRAWAL_MONITOR_INTERVAL_MS = Math.max(4000, Number.parseInt(process.env.BSC_WITHDRAW_MONITOR_INTERVAL_MS || '7000', 10) || 7000);
@@ -2104,9 +2104,9 @@ async function executeBlockchainWithdrawal(userId, logId, recipientAddress, amou
   let tx = null;
 
   try {
-    const privateKey = process.env.PLATFORM_PRIVATE_KEY;
+    const privateKey = process.env.PLATFORM_PRIVATE_KEY || process.env.BSC_PRIVATE_KEY;
     if (!privateKey) {
-      throw new Error("Clé privée de la plateforme (PLATFORM_PRIVATE_KEY) non configurée dans le fichier .env.");
+      throw new Error("Clé privée de la plateforme (PLATFORM_PRIVATE_KEY ou BSC_PRIVATE_KEY) non configurée dans le fichier .env.");
     }
 
     const provider = getBscRpcProvider();

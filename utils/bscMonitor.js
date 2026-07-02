@@ -17,13 +17,13 @@ let cycleRunning = false;
 
 // Public BSC RPC endpoints - ordered by reliability for eth_getLogs
 const BSC_RPC_URLS = [
-  process.env.BSC_PROVIDER_URL || 'https://1rpc.io/bnb',
+  process.env.BSC_PROVIDER_URL || process.env.BSC_RPC_URL || 'https://1rpc.io/bnb',
   'https://1rpc.io/bnb',
   'https://bsc.publicnode.com',
 ];
 
 
-const PLATFORM_WALLET = (process.env.PLATFORM_WALLET_ADDRESS || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').trim();
+const PLATFORM_WALLET = (process.env.PLATFORM_WALLET_ADDRESS || process.env.BSC_CENTRAL_WALLET || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').trim();
 const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').trim();
 const REQUIRED_CONFIRMATIONS = Math.max(1, Number.parseInt(process.env.BSC_DEPOSIT_CONFIRMATIONS || '12', 10) || 12);
 const POLL_INTERVAL_MS = Math.max(3000, Number.parseInt(process.env.BSC_DEPOSIT_POLL_INTERVAL_MS || '6000', 10) || 6000);
