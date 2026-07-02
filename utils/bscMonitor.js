@@ -331,6 +331,62 @@ async function syncDepositLogs(userMap, currentBlock) {
     return;
   }
 
+  // Dual-path support: Etherscan API V2 (if API key is present) with automatic fallback to RPC
+  const etherscanKey = (process.env.ETHERSCAN_API_KEY || process.env.BSCSCAN_API_KEY || '').trim();
+  if (etherscanKey) {
+    try {
+      const url = `https://api.etherscan.io/v2/api` +
+        `?chainid=56` +
+        `&module=account` +
+        `&action=tokentx` +
+        `&contractaddress=${USDT_CONTRACT}` +
+        `&address=${PLATFORM_WALLET}` +
+        `&startblock=${fromBlock}` +
+        `&endblock=${scanEndBlock}` +
+        `&sort=asc` +
+        `&apikey=${etherscanKey}`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.status === '1' && Array.isArray(data.result)) {
+        console.log(`[BSCMonitor] Polled ${data.result.length} transactions via Etherscan API V2`);
+        for (const tx of data.result) {
+          if (tx.to.toLowerCase() !== PLATFORM_WALLET.toLowerCase()) continue;
+
+          const fromAddress = String(tx.from || '').toLowerCase();
+          const userId = userMap.get(fromAddress);
+          if (!userId) continue;
+
+          const amountUsdt = Number(ethers.utils.formatUnits(tx.value, USDT_DECIMALS));
+          if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) continue;
+
+          const blockNumber = Number(tx.blockNumber || 0);
+          const confirmations = Number(tx.confirmations || 0);
+          const logIndex = Number(tx.logIndex || 0);
+
+          await insertOrUpdateDepositRecord({
+            userId,
+            txHash: tx.hash,
+            logIndex,
+            fromAddress: tx.from,
+            toAddress: tx.to,
+            amountWei: tx.value.toString(),
+            amountUsdt,
+            blockNumber,
+            confirmations
+          });
+        }
+        await setSetting(CURSOR_SETTING_KEY, scanEndBlock);
+        return; // Success, bypass RPC fallback
+      } else {
+        console.warn(`[BSCMonitor] Etherscan API V2 returned status ${data.status} (${data.result || data.message}). Falling back to RPC...`);
+      }
+    } catch (etherscanErr) {
+      console.warn('[BSCMonitor] Etherscan API V2 call failed. Falling back to RPC...', etherscanErr.message || etherscanErr);
+    }
+  }
+
   let provider = getRpcProvider();
   let batchesProcessed = 0;
 
@@ -542,5 +598,7 @@ async function triggerCheck() {
 module.exports = {
   start,
   stop,
-  triggerCheck
+  triggerCheck,
+  getRpcProvider,
+  rotateRpcProvider
 };
