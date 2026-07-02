@@ -1594,7 +1594,7 @@ function getYouTubeId(url) {
         window.profileReelsList = <%- JSON.stringify(userReels || []).replace(/</g, '\\u003c') %>;
       </script>
       <script src="/vendor/face-api/face-api.min.js"></script>
-      <script src="/js/client.js?v=219"></script>
+      <script src="/js/client.js?v=<%= Date.now() %>"></script>
       </body>
 
       </html>

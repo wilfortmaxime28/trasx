@@ -644,7 +644,7 @@
   window.tokenPriceUsd = <%= Number(safeTokenPriceUsd || 0) %>;
   window.tokenSwapModalTone = <%- JSON.stringify(safeTokenSwapModal ? safeTokenSwapModal.tone : '') %>;
 </script>
-<script src="/js/client.js?v=219"></script>
+<script src="/js/client.js?v=<%= Date.now() %>"></script>
 <script>
   (() => {
     const amountInput = document.getElementById('depositSwapAmount');

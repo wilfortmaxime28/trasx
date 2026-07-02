@@ -1,4 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // Modals global helper fallback
+  window.openModal = window.openModal || function(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('active');
+  };
+  window.closeModal = window.closeModal || function(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active');
+  };
+
   // Initialisation du client Socket.io
   const socket = io();
 
@@ -244,7 +254,7 @@ document.addEventListener('DOMContentLoaded', () => {
       createAdModal.dataset.mountedToBody = '1';
     };
 
-    const openModal = (event) => {
+    const openAdModal = (event) => {
       event?.preventDefault();
       if (!createAdModal) return;
       mountAdModalToBody();
@@ -252,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
       createAdModal.setAttribute('aria-hidden', 'false');
       createAdModal.style.display = 'flex';
     };
-    const closeModal = () => {
+    const closeAdModal = () => {
       if (!createAdModal) return;
       createAdModal.style.display = 'none';
       createAdModal.setAttribute('aria-hidden', 'true');
@@ -273,18 +283,18 @@ document.addEventListener('DOMContentLoaded', () => {
       adFormStatus.style.color = isSuccess ? '#10b981' : '#ef4444';
     };
 
-    bindOnce(openAdModalBtn, 'adOpenBound', 'click', openModal);
-    bindOnce(adPlaceholderBtn, 'adOpenBound', 'click', openModal);
+    bindOnce(openAdModalBtn, 'adOpenBound', 'click', openAdModal);
+    bindOnce(adPlaceholderBtn, 'adOpenBound', 'click', openAdModal);
     document.querySelectorAll('.sidebar-ad-placeholder-btn').forEach((btn) => {
-      bindOnce(btn, 'adOpenBound', 'click', openModal);
+      bindOnce(btn, 'adOpenBound', 'click', openAdModal);
     });
-    bindOnce(closeAdModalBtn, 'adCloseBound', 'click', closeModal);
+    bindOnce(closeAdModalBtn, 'adCloseBound', 'click', closeAdModal);
     bindOnce(createAdModal, 'adBackdropBound', 'click', (event) => {
-      if (event.target === createAdModal) closeModal();
+      if (event.target === createAdModal) closeAdModal();
     });
     bindOnce(document, 'adEscapeBound', 'keydown', (event) => {
       if (event.key === 'Escape' && createAdModal?.style.display === 'flex') {
-        closeModal();
+        closeAdModal();
       }
     });
 
@@ -387,7 +397,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (response.ok && data.success) {
           showAdToast(data.message || tText('Publicité publiée avec succès !'));
-          closeModal();
+          closeAdModal();
           createAdForm.reset();
           if (adImagePreviewWrapper) adImagePreviewWrapper.style.display = 'none';
           if (adImagePreview) adImagePreview.src = '';
@@ -15393,6 +15403,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
               // 3. Append the main wrapper
               profileSec.appendChild(wrapper);
+
+              // 3.5. Extract and append all modal overlays from the fetched profile page
+              const fetchedModals = doc.querySelectorAll('.modal-overlay');
+              fetchedModals.forEach(modal => {
+                const existing = document.getElementById(modal.id);
+                if (existing) {
+                  existing.remove();
+                }
+                profileSec.appendChild(modal);
+              });
+
               profileSec.setAttribute('data-loaded', 'true');
               
               // 4. Executer the scripts

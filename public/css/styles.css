@@ -1659,8 +1659,7 @@ html {
   gap: 14px;
 }
 
-.auth-input-wrap,
-.auth-phone-wrap {
+.auth-input-wrap {
   position: relative;
   display: flex;
   align-items: center;
@@ -1669,6 +1668,18 @@ html {
   border: 1px solid #e3e8f2;
   background: #fff;
   overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.auth-phone-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 54px;
+  border-radius: 14px;
+  border: 1px solid #e3e8f2;
+  background: #fff;
+  overflow: visible;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
@@ -1730,6 +1741,12 @@ html {
 .auth-phone-wrap .iti input[type="tel"] {
   min-height: 52px;
   padding-left: 84px !important;
+}
+
+.iti__country-list {
+  z-index: 10000 !important;
+  background-color: #ffffff !important;
+  color: #1e293b !important;
 }
 
 .auth-inline-meta {

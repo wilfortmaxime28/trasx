@@ -9,18 +9,29 @@ const { ethers } = require('ethers');
 let ioInstance = null;
 let pollTimer = null;
 let rpcProvider = null;
+let rpcProviderIndex = 0;
 let wsProvider = null;
 let wsSubscriptionBound = false;
 let serviceStarted = false;
 let cycleRunning = false;
 
+// Public BSC RPC endpoints for rotation on rate-limit errors
+// TESTED: only bsc.publicnode.com supports eth_getLogs without restrictions
+const BSC_RPC_URLS = [
+  process.env.BSC_PROVIDER_URL || 'https://bsc.publicnode.com',
+  'https://bsc.publicnode.com',
+];
+
 const PLATFORM_WALLET = (process.env.PLATFORM_WALLET_ADDRESS || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').trim();
 const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').trim();
 const REQUIRED_CONFIRMATIONS = Math.max(1, Number.parseInt(process.env.BSC_DEPOSIT_CONFIRMATIONS || '12', 10) || 12);
 const POLL_INTERVAL_MS = Math.max(3000, Number.parseInt(process.env.BSC_DEPOSIT_POLL_INTERVAL_MS || '6000', 10) || 6000);
-const BLOCK_BATCH_SIZE = Math.max(100, Number.parseInt(process.env.BSC_DEPOSIT_BLOCK_BATCH_SIZE || '800', 10) || 800);
+// Keep batch size small (100 blocks) to stay within free public RPC limits
+const BLOCK_BATCH_SIZE = Math.max(50, Math.min(150, Number.parseInt(process.env.BSC_DEPOSIT_BLOCK_BATCH_SIZE || '100', 10) || 100));
+const INTER_BATCH_DELAY_MS = Math.max(0, Number.parseInt(process.env.BSC_DEPOSIT_INTER_BATCH_DELAY_MS || '300', 10) || 300);
 const REORG_BUFFER = Math.max(2, Number.parseInt(process.env.BSC_DEPOSIT_REORG_BUFFER || '6', 10) || 6);
-const INITIAL_BACKFILL_BLOCKS = Math.max(500, Number.parseInt(process.env.BSC_DEPOSIT_INITIAL_BACKFILL_BLOCKS || '20000', 10) || 20000);
+// Set to 0 in .env to disable historical backfill and start monitoring from current block only
+const INITIAL_BACKFILL_BLOCKS = Math.max(0, Number.parseInt(process.env.BSC_DEPOSIT_INITIAL_BACKFILL_BLOCKS || '500', 10) || 0);
 const CURSOR_SETTING_KEY = 'bsc_deposit_last_scanned_block';
 const USDT_DECIMALS = 18;
 
@@ -36,10 +47,27 @@ const DEPOSIT_LOG_FILTER = {
 
 function getRpcProvider() {
   if (!rpcProvider) {
-    const providerUrl = process.env.BSC_PROVIDER_URL || 'https://bsc-dataseed.binance.org/';
+    const providerUrl = BSC_RPC_URLS[rpcProviderIndex % BSC_RPC_URLS.length];
     rpcProvider = new ethers.providers.JsonRpcProvider(providerUrl);
   }
   return rpcProvider;
+}
+
+// Rotate to next RPC endpoint on rate-limit errors
+function rotateRpcProvider() {
+  rpcProvider = null;
+  rpcProviderIndex = (rpcProviderIndex + 1) % BSC_RPC_URLS.length;
+  const newUrl = BSC_RPC_URLS[rpcProviderIndex];
+  console.warn(`[BSCMonitor] Rotating RPC to: ${newUrl}`);
+  return getRpcProvider();
+}
+
+function isRateLimitError(err) {
+  return (
+    (err && err.code === -32005) ||
+    (err && err.error && err.error.code === -32005) ||
+    (err && typeof err.message === 'string' && err.message.includes('limit exceeded'))
+  );
 }
 
 function getWsProvider() {
@@ -282,19 +310,48 @@ async function insertOrUpdateDepositRecord(deposit) {
 }
 
 async function syncDepositLogs(userMap, currentBlock) {
-  const provider = getRpcProvider();
+  let provider = getRpcProvider();
   const fromBlock = await getStartBlock(currentBlock);
   if (fromBlock > currentBlock) {
     return;
   }
 
+  let batchesProcessed = 0;
   for (let batchStart = fromBlock; batchStart <= currentBlock; batchStart += BLOCK_BATCH_SIZE) {
     const batchEnd = Math.min(currentBlock, batchStart + BLOCK_BATCH_SIZE - 1);
-    const logs = await provider.getLogs({
-      ...DEPOSIT_LOG_FILTER,
-      fromBlock: batchStart,
-      toBlock: batchEnd
-    });
+
+    // Add inter-batch delay to avoid RPC rate limits
+    if (batchesProcessed > 0 && INTER_BATCH_DELAY_MS > 0) {
+      await new Promise(resolve => setTimeout(resolve, INTER_BATCH_DELAY_MS));
+    }
+
+    let logs;
+    try {
+      logs = await provider.getLogs({
+        ...DEPOSIT_LOG_FILTER,
+        fromBlock: batchStart,
+        toBlock: batchEnd
+      });
+    } catch (batchErr) {
+      if (isRateLimitError(batchErr)) {
+        console.warn(`[BSCMonitor] Rate limit on blocks ${batchStart}-${batchEnd}, rotating RPC and retrying...`);
+        provider = rotateRpcProvider();
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        try {
+          logs = await provider.getLogs({
+            ...DEPOSIT_LOG_FILTER,
+            fromBlock: batchStart,
+            toBlock: batchEnd
+          });
+        } catch (retryErr) {
+          console.error(`[BSCMonitor] Retry also failed for blocks ${batchStart}-${batchEnd}, skipping batch:`, retryErr.message || retryErr);
+          batchesProcessed++;
+          continue;
+        }
+      } else {
+        throw batchErr;
+      }
+    }
 
     logs.sort((a, b) => {
       if (a.blockNumber !== b.blockNumber) return a.blockNumber - b.blockNumber;
@@ -325,6 +382,7 @@ async function syncDepositLogs(userMap, currentBlock) {
         confirmations
       });
     }
+    batchesProcessed++;
   }
 
   await setSetting(CURSOR_SETTING_KEY, currentBlock);

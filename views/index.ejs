@@ -5342,7 +5342,7 @@ function getYouTubeId(url) {
           <span><%= typeof tText === 'function' ? tText("Nouveaux posts") : "Nouveaux posts" %></span>
         </div>
 
-        <script src="/js/client.js?v=231"></script>
+        <script src="/js/client.js?v=<%= Date.now() %>"></script>
         <!-- Anti-Refresh & Performance optimization script -->
         <style>
           /* Prevent pull-to-refresh gesture on mobile browsers */

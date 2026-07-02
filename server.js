@@ -1,4 +1,8 @@
 // Server entry point - version 155
+const dns = require('dns');
+if (typeof dns.setDefaultResultOrder === 'function') {
+  dns.setDefaultResultOrder('ipv4first');
+}
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
