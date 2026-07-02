@@ -16,14 +16,16 @@ let serviceStarted = false;
 let cycleRunning = false;
 let etherscanDisabled = false;
 
-// Public BSC RPC endpoints - ordered by reliability for eth_getLogs
-const BSC_RPC_URLS = [
-  process.env.BSC_PROVIDER_URL || process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org/',
+// Public BSC RPC endpoints - ordered by reliability for eth_getLogs (publicnode is best for free logs query)
+const rawUrls = [
+  (process.env.BSC_PROVIDER_URL || process.env.BSC_RPC_URL || '').trim(),
+  'https://bsc.publicnode.com',
+  'https://bsc-rpc.publicnode.com',
   'https://bsc-dataseed.binance.org/',
   'https://bsc-dataseed1.binance.org/',
   'https://bsc-dataseed2.binance.org/',
-  'https://bsc.publicnode.com',
 ];
+const BSC_RPC_URLS = [...new Set(rawUrls)].filter(Boolean);
 
 
 const PLATFORM_WALLET = (process.env.PLATFORM_WALLET_ADDRESS || process.env.BSC_CENTRAL_WALLET || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').trim();
