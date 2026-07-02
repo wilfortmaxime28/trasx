@@ -14,6 +14,7 @@ let wsProvider = null;
 let wsSubscriptionBound = false;
 let serviceStarted = false;
 let cycleRunning = false;
+let etherscanDisabled = false;
 
 // Public BSC RPC endpoints - ordered by reliability for eth_getLogs
 const BSC_RPC_URLS = [
@@ -354,7 +355,7 @@ async function syncDepositLogs(userMap, currentBlock) {
 
   // Dual-path support: Etherscan API V2 (if API key is present) with automatic fallback to RPC
   const etherscanKey = (process.env.ETHERSCAN_API_KEY || process.env.BSCSCAN_API_KEY || '').trim();
-  if (etherscanKey) {
+  if (etherscanKey && !etherscanDisabled) {
     try {
       const url = `https://api.etherscan.io/v2/api` +
         `?chainid=56` +
@@ -401,7 +402,13 @@ async function syncDepositLogs(userMap, currentBlock) {
         await setSetting(CURSOR_SETTING_KEY, scanEndBlock);
         return; // Success, bypass RPC fallback
       } else {
-        console.warn(`[BSCMonitor] Etherscan API V2 returned status ${data.status} (${data.result || data.message}). Falling back to RPC...`);
+        const errMsg = String(data.result || data.message || '');
+        console.warn(`[BSCMonitor] Etherscan API V2 returned status ${data.status} (${errMsg}). Falling back to RPC...`);
+        // If we hit free-tier restriction or deprecated endpoint, disable to avoid warning spam
+        if (errMsg.includes('Free API access is not supported') || errMsg.includes('deprecated') || data.status === '0') {
+          console.warn('[BSCMonitor] Disabling Etherscan V2 API queries for this session (switching permanently to RPC path).');
+          etherscanDisabled = true;
+        }
       }
     } catch (etherscanErr) {
       console.warn('[BSCMonitor] Etherscan API V2 call failed. Falling back to RPC...', etherscanErr.message || etherscanErr);
