@@ -17,8 +17,10 @@ let cycleRunning = false;
 
 // Public BSC RPC endpoints - ordered by reliability for eth_getLogs
 const BSC_RPC_URLS = [
-  process.env.BSC_PROVIDER_URL || process.env.BSC_RPC_URL || 'https://1rpc.io/bnb',
-  'https://1rpc.io/bnb',
+  process.env.BSC_PROVIDER_URL || process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org/',
+  'https://bsc-dataseed.binance.org/',
+  'https://bsc-dataseed1.binance.org/',
+  'https://bsc-dataseed2.binance.org/',
   'https://bsc.publicnode.com',
 ];
 
@@ -61,6 +63,25 @@ function rotateRpcProvider() {
   const newUrl = BSC_RPC_URLS[rpcProviderIndex];
   console.warn(`[BSCMonitor] Rotating RPC to: ${newUrl}`);
   return getRpcProvider();
+}
+
+async function getCurrentBlock() {
+  let attempts = 0;
+  while (attempts < BSC_RPC_URLS.length) {
+    try {
+      const provider = getRpcProvider();
+      const block = await provider.getBlockNumber();
+      return { block, provider };
+    } catch (err) {
+      attempts++;
+      console.warn(`[BSCMonitor] getBlockNumber failed on ${getRpcProvider().connection.url}, rotating RPC... Error: ${err.message || err}`);
+      rotateRpcProvider();
+      if (attempts < BSC_RPC_URLS.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+  }
+  throw new Error("Failed to get block number after checking all RPC endpoints.");
 }
 
 function isRateLimitError(err) {
@@ -511,8 +532,7 @@ async function runMonitorCycle(reason = 'manual') {
   cycleRunning = true;
 
   try {
-    const provider = getRpcProvider();
-    const currentBlock = await provider.getBlockNumber();
+    const { block: currentBlock } = await getCurrentBlock();
     const [users] = await db.query(
       'SELECT id, wallet_address FROM users WHERE wallet_address IS NOT NULL AND wallet_address != ""'
     );
@@ -600,5 +620,6 @@ module.exports = {
   stop,
   triggerCheck,
   getRpcProvider,
-  rotateRpcProvider
+  rotateRpcProvider,
+  getCurrentBlock
 };

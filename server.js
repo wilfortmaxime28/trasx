@@ -1998,16 +1998,7 @@ async function monitorPendingWithdrawals() {
   withdrawalMonitorRunning = true;
 
   try {
-    let provider = getBscRpcProvider();
-    let currentBlock;
-    try {
-      currentBlock = await provider.getBlockNumber();
-    } catch (err) {
-      console.warn('[BSCWithdrawalMonitor] Failed to get block number, rotating RPC and retrying... Error:', err.message || err);
-      provider = bscMonitor.rotateRpcProvider();
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      currentBlock = await provider.getBlockNumber();
-    }
+    let { block: currentBlock, provider } = await bscMonitor.getCurrentBlock();
 
     let lastProcessedId = 0;
 
