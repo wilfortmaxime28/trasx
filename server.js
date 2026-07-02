@@ -1744,10 +1744,7 @@ function getCleanErrorMessage(err) {
 }
 
 function getBscRpcProvider() {
-  if (!bscRpcProvider) {
-    bscRpcProvider = new ethers.providers.JsonRpcProvider(BSC_PROVIDER_URL);
-  }
-  return bscRpcProvider;
+  return bscMonitor.getRpcProvider();
 }
 
 function scheduleWithdrawalMonitor(delayMs = WITHDRAWAL_MONITOR_INTERVAL_MS) {
@@ -2001,8 +1998,17 @@ async function monitorPendingWithdrawals() {
   withdrawalMonitorRunning = true;
 
   try {
-    const provider = getBscRpcProvider();
-    const currentBlock = await provider.getBlockNumber();
+    let provider = getBscRpcProvider();
+    let currentBlock;
+    try {
+      currentBlock = await provider.getBlockNumber();
+    } catch (err) {
+      console.warn('[BSCWithdrawalMonitor] Failed to get block number, rotating RPC and retrying... Error:', err.message || err);
+      provider = bscMonitor.rotateRpcProvider();
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      currentBlock = await provider.getBlockNumber();
+    }
+
     let lastProcessedId = 0;
 
     while (true) {
@@ -2035,8 +2041,15 @@ async function monitorPendingWithdrawals() {
         try {
           receipt = await provider.getTransactionReceipt(withdrawalRow.tx_hash);
         } catch (receiptErr) {
-          console.error(`[BSCWithdrawalMonitor] Failed to fetch receipt for withdrawal #${withdrawalRow.id}:`, receiptErr);
-          continue;
+          console.warn(`[BSCWithdrawalMonitor] Failed to fetch receipt on current RPC, rotating and retrying... Error: ${receiptErr.message || receiptErr}`);
+          provider = bscMonitor.rotateRpcProvider();
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          try {
+            receipt = await provider.getTransactionReceipt(withdrawalRow.tx_hash);
+          } catch (retryErr) {
+            console.error(`[BSCWithdrawalMonitor] Retry also failed for withdrawal #${withdrawalRow.id} on ${provider.connection.url}:`, retryErr.message || retryErr);
+            continue;
+          }
         }
 
         if (!receipt) {
