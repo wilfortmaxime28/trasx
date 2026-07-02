@@ -103,4 +103,203 @@ router.post('/change-password', adminController.changeOwnPassword);
 router.post('/background-add', requireAdminAction('manage_backgrounds'), upload.single('bgFile'), adminController.addBackground);
 router.post('/background-delete', requireAdminAction('manage_backgrounds'), adminController.deleteBackground);
 
+router.post('/deposits/recover-txid', requireAdminAction('manage_balances', { json: true }), async (req, res) => {
+  try {
+    const db = require('../config/db');
+    const User = require('../models/User');
+    const { ethers } = require('ethers');
+    const bscMonitor = require('../utils/bscMonitor');
+
+    const { txHash, email } = req.body;
+
+    if (!txHash || !/^0x[a-fA-F0-9]{64}$/.test(txHash.trim())) {
+      return res.status(400).json({ success: false, error: 'TxID (hash de transaction) invalide. Format attendu: 0x... (64 caractères hexadécimaux)' });
+    }
+    if (!email || !email.trim().includes('@')) {
+      return res.status(400).json({ success: false, error: 'Adresse email de l\'utilisateur invalide.' });
+    }
+
+    const cleanHash = txHash.trim().toLowerCase();
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Trouver l'utilisateur par son email
+    const [userRows] = await db.query(
+      'SELECT id, username, wallet_address FROM users WHERE LOWER(email) = ?',
+      [cleanEmail]
+    );
+    if (!userRows || userRows.length === 0) {
+      return res.status(404).json({ success: false, error: `Aucun utilisateur trouvé avec l'adresse email "${email}".` });
+    }
+    const targetUser = userRows[0];
+    const uid = targetUser.id;
+
+    // Vérifier si déjà traité
+    const [existing] = await db.query(
+      "SELECT id, status, user_id FROM bsc_deposits WHERE tx_hash = ?",
+      [cleanHash]
+    );
+    if (existing.length > 0 && existing[0].status === 'confirmed') {
+      return res.status(409).json({
+        success: false,
+        error: `Ce dépôt a déjà été traité et crédité à l'utilisateur #${existing[0].user_id}.`
+      });
+    }
+
+    // Récupérer la transaction via le provider RPC rotatif
+    const provider = bscMonitor.getRpcProvider();
+    let txReceipt;
+    try {
+      txReceipt = await provider.getTransactionReceipt(cleanHash);
+    } catch (rpcErr) {
+      console.warn(`[AdminDepositRecover] Failed to get receipt on current RPC, rotating...`);
+      const rotatedProvider = bscMonitor.rotateRpcProvider();
+      txReceipt = await rotatedProvider.getTransactionReceipt(cleanHash);
+    }
+
+    if (!txReceipt) {
+      return res.status(404).json({
+        success: false,
+        error: `Transaction introuvable sur la blockchain BSC. Vérifiez le TxID.`
+      });
+    }
+
+    if (txReceipt.status !== 1) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cette transaction a échoué on-chain.'
+      });
+    }
+
+    // Parser les logs pour trouver le Transfer d'USDT vers PLATFORM_WALLET
+    const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
+    const PLATFORM_WALLET = (process.env.PLATFORM_WALLET_ADDRESS || process.env.BSC_CENTRAL_WALLET || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').toLowerCase();
+
+    let targetLog = null;
+    let parsedLog = null;
+
+    const transferInterface = new ethers.utils.Interface([
+      'event Transfer(address indexed from, address indexed to, uint256 value)'
+    ]);
+
+    for (const log of txReceipt.logs || []) {
+      if (String(log.address || '').toLowerCase() !== USDT_CONTRACT) continue;
+      try {
+        const parsed = transferInterface.parseLog(log);
+        if (
+          parsed.name === 'Transfer' &&
+          String(parsed.args.to || '').toLowerCase() === PLATFORM_WALLET
+        ) {
+          targetLog = log;
+          parsedLog = parsed;
+          break;
+        }
+      } catch (e) {
+        // Skip logs that don't match the Transfer event signature
+      }
+    }
+
+    if (!targetLog || !parsedLog) {
+      return res.status(400).json({
+        success: false,
+        error: `Cette transaction ne contient aucun transfert d'USDT BEP-20 vers votre portefeuille central (${PLATFORM_WALLET}).`
+      });
+    }
+
+    const amountUsdt = Number(ethers.utils.formatUnits(parsedLog.args.value, 18));
+    const blockNumber = txReceipt.blockNumber;
+    const logIndex = targetLog.logIndex;
+
+    // Récupérer le bloc actuel pour calculer les confirmations
+    let currentBlock;
+    try {
+      currentBlock = await provider.getBlockNumber();
+    } catch (e) {
+      const rotatedProvider = bscMonitor.getRpcProvider();
+      currentBlock = await rotatedProvider.getBlockNumber();
+    }
+    const confirmations = Math.max(0, currentBlock - blockNumber + 1);
+
+    // Mettre à jour le wallet de l'utilisateur cible si nécessaire
+    if (!targetUser.wallet_address) {
+      await db.query('UPDATE users SET wallet_address = ? WHERE id = ?', [parsedLog.args.from, uid]);
+    }
+
+    // Démarrer la transaction DB pour créditer
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // Supprimer l'ancienne entrée pending éventuelle (ou unrecognized)
+      await conn.execute(
+        'DELETE FROM bsc_deposits WHERE tx_hash = ?',
+        [cleanHash]
+      );
+
+      // Mettre à jour le solde utilisateur
+      await conn.execute(
+        'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
+        [amountUsdt, uid]
+      );
+
+      // Insérer le record de dépôt confirmé
+      await conn.execute(
+        `INSERT INTO bsc_deposits 
+         (user_id, tx_hash, log_index, from_address, to_address, amount_wei, amount_usdt, block_number, confirmations, status, credited_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', NOW())`,
+        [
+          uid,
+          cleanHash,
+          logIndex,
+          parsedLog.args.from,
+          PLATFORM_WALLET,
+          parsedLog.args.value.toString(),
+          amountUsdt,
+          blockNumber,
+          confirmations
+        ]
+      );
+
+      await conn.commit();
+
+      // Envoyer notifications temps réel
+      const io = req.app.get('io');
+      if (io) {
+        // Mettre à jour le solde
+        const [updUser] = await db.query(
+          'SELECT deposit_account_balance, withdrawal_account_balance FROM users WHERE id = ?',
+          [uid]
+        );
+        if (updUser && updUser[0]) {
+          io.to(`user:${uid}`).emit('balance-update', {
+            depositBalance: Number(updUser[0].deposit_account_balance || 0),
+            withdrawalBalance: Number(updUser[0].withdrawal_account_balance || 0)
+          });
+        }
+        io.to(`user:${uid}`).emit('deposit-status', {
+          type: 'confirmed',
+          txHash: cleanHash,
+          amount: amountUsdt,
+          message: `✅ Dépôt de ${amountUsdt.toFixed(2)} USDT crédité manuellement par l'administrateur.`
+        });
+      }
+
+      console.log(`[AdminDepositRecover] Admin #${req.session.adminId} recovered deposit ${cleanHash} — ${amountUsdt} USDT for user ${targetUser.username} (#${uid})`);
+
+      return res.json({
+        success: true,
+        message: `Dépôt de ${amountUsdt.toFixed(2)} USDT crédité avec succès à ${targetUser.username} (${cleanEmail}).`,
+        amount: amountUsdt
+      });
+    } catch (dbErr) {
+      await conn.rollback();
+      throw dbErr;
+    } finally {
+      conn.release();
+    }
+  } catch (err) {
+    console.error('[AdminDepositRecover] Error:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Une erreur interne est survenue.' });
+  }
+});
+
 module.exports = router;
