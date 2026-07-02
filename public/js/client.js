@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialisation du client Socket.io
   const socket = io();
+  let depositStatusRefreshTimer = null;
 
   // Écouter l'événement de déconnexion/session expirée du socket
   socket.on('session-expired', (data) => {
@@ -7849,6 +7850,97 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   });
+
+  function resetDepositTrackerUi() {
+    const badge = document.getElementById('depositStatusBadge');
+    const msg = document.getElementById('depositStatusMessage');
+    if (badge && msg) {
+      badge.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3b82f6; animation: pulse 1.5s infinite;"></span> En attente...`;
+      msg.textContent = "En attente d'un dépôt USDT ou BNB sur le réseau BSC...";
+      msg.style.color = 'var(--text-muted)';
+    }
+  }
+
+  function renderDepositTrackerFromHistoryRecord(record, requiredConfirmations = 12) {
+    const badge = document.getElementById('depositStatusBadge');
+    const msg = document.getElementById('depositStatusMessage');
+    if (!badge || !msg) return;
+
+    if (!record) {
+      resetDepositTrackerUi();
+      return;
+    }
+
+    const currency = String(record.token_symbol || 'USDT').toUpperCase();
+    const confirmations = Math.max(0, Number(record.confirmations || 0));
+    const required = Math.max(1, Number(requiredConfirmations || 12));
+    const amountUsdt = Number(record.amount_usdt || 0);
+
+    if (record.status === 'confirmed') {
+      badge.innerHTML = `<span style="color: #10b981; font-weight: 600;">✓</span> ${currency === 'BNB' ? 'BNB confirmé' : 'Confirmé'}`;
+      msg.textContent = currency === 'BNB'
+        ? `Dépôt BNB confirmé et crédité (≈ ${amountUsdt.toFixed(2)} USDT).`
+        : `Dépôt USDT confirmé et crédité (${amountUsdt.toFixed(2)} USDT).`;
+      msg.style.color = '#10b981';
+      return;
+    }
+
+    badge.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #eab308; animation: pulse 1.5s infinite;"></span> ${currency} en attente (${confirmations}/${required})`;
+    msg.textContent = currency === 'BNB'
+      ? `Dépôt BNB détecté (${confirmations}/${required} confirmations) ≈ ${amountUsdt.toFixed(2)} USDT`
+      : `Dépôt USDT détecté (${confirmations}/${required} confirmations) : ${amountUsdt.toFixed(2)} USDT`;
+    msg.style.color = '#eab308';
+  }
+
+  function pickRelevantDepositRecord(deposits = []) {
+    if (!Array.isArray(deposits) || deposits.length === 0) return null;
+
+    const pending = deposits.find((item) => String(item?.status || '').toLowerCase() === 'pending');
+    if (pending) return pending;
+
+    const now = Date.now();
+    const recentConfirmed = deposits.find((item) => {
+      if (String(item?.status || '').toLowerCase() !== 'confirmed') return false;
+      const timestamp = item?.credited_at || item?.created_at;
+      const parsed = timestamp ? new Date(timestamp).getTime() : NaN;
+      return Number.isFinite(parsed) && (now - parsed) <= 24 * 60 * 60 * 1000;
+    });
+
+    return recentConfirmed || null;
+  }
+
+  async function refreshDepositTrackerFromHistory(options = {}) {
+    const { forceScan = false } = options;
+    const modal = document.getElementById('depositModal');
+    if (!modal || !modal.classList.contains('active')) return;
+
+    try {
+      const endpoint = forceScan ? '/api/deposits/history?refresh=1' : '/api/deposits/history';
+      const res = await fetch(endpoint);
+      const data = await res.json();
+      if (!data?.success) return;
+
+      const relevantRecord = pickRelevantDepositRecord(data.deposits || []);
+      renderDepositTrackerFromHistoryRecord(relevantRecord, data.requiredConfirmations || 12);
+    } catch (err) {
+      console.error('Deposit tracker refresh failed:', err);
+    }
+  }
+
+  function stopDepositStatusRefresh() {
+    if (depositStatusRefreshTimer) {
+      clearInterval(depositStatusRefreshTimer);
+      depositStatusRefreshTimer = null;
+    }
+  }
+
+  function startDepositStatusRefresh() {
+    stopDepositStatusRefresh();
+    refreshDepositTrackerFromHistory({ forceScan: true });
+    depositStatusRefreshTimer = setInterval(() => {
+      refreshDepositTrackerFromHistory({ forceScan: false });
+    }, 8000);
+  }
 
   socket.on('withdrawal-status', (data) => {
     if (!data) return;
@@ -25042,13 +25134,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (userWalletCode) userWalletCode.textContent = data.userWallet;
       
       // Reset tracker state
-      const badge = document.getElementById('depositStatusBadge');
-      const msg = document.getElementById('depositStatusMessage');
-      if (badge && msg) {
-        badge.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3b82f6; animation: pulse 1.5s infinite;"></span> En attente...`;
-        msg.textContent = "En attente d'un dépôt USDT ou BNB sur le réseau BSC...";
-        msg.style.color = 'var(--text-muted)';
-      }
+      resetDepositTrackerUi();
+      startDepositStatusRefresh();
     }
     
     if (walletForm) {
@@ -25112,6 +25199,16 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         }
       });
+    }
+
+    if (depositModal && !window.__depositModalTrackerObserverBound) {
+      const observer = new MutationObserver(() => {
+        if (!depositModal.classList.contains('active')) {
+          stopDepositStatusRefresh();
+        }
+      });
+      observer.observe(depositModal, { attributes: true, attributeFilter: ['class'] });
+      window.__depositModalTrackerObserverBound = true;
     }
 
     // Withdrawal flow

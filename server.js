@@ -2733,11 +2733,25 @@ app.get('/api/deposits/history', requireAuth, async (req, res) => {
 
   try {
     const userId = req.session.userId;
+    const shouldRefresh = String(req.query.refresh || '').trim() === '1';
+
+    if (shouldRefresh) {
+      try {
+        await bscMonitor.triggerCheck();
+      } catch (scanErr) {
+        console.warn('[DepositHistory] Manual refresh scan failed:', scanErr.message || scanErr);
+      }
+    }
+
     const [rows] = await db.query(
       'SELECT * FROM bsc_deposits WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
       [userId]
     );
-    res.json({ success: true, deposits: rows });
+    res.json({
+      success: true,
+      deposits: rows,
+      requiredConfirmations: Math.max(1, Number.parseInt(process.env.BSC_DEPOSIT_CONFIRMATIONS || '12', 10) || 12)
+    });
   } catch (err) {
     console.error('Error getting deposit history:', err);
     res.status(500).json({ success: false, error: 'Erreur lors de la récupération de l\'historique.' });
