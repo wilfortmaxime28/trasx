@@ -297,6 +297,9 @@ router.post('/deposits/recover-txid', requireAdminAction('manage_balances', { js
     } catch (dbErr) {
       await conn.rollback();
       throw dbErr;
+    } finally {
+      conn.release();
+    }
   } catch (err) {
     console.error('[AdminDepositRecover] Error:', err);
     return res.status(500).json({ success: false, error: err.message || 'Une erreur interne est survenue.' });
