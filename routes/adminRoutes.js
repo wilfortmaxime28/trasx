@@ -266,13 +266,17 @@ router.post('/deposits/recover-txid', requireAdminAction('manage_balances', { js
       if (io) {
         // Mettre à jour le solde
         const [updUser] = await db.query(
-          'SELECT deposit_account_balance, withdrawal_account_balance FROM users WHERE id = ?',
+          'SELECT deposit_account_balance, withdrawal_account_balance, bonus_account_balance, token_balance FROM users WHERE id = ?',
           [uid]
         );
         if (updUser && updUser[0]) {
-          io.to(`user:${uid}`).emit('balance-update', {
+          io.to(`user:${uid}`).emit('balance-updated', {
+            userId: uid,
             depositBalance: Number(updUser[0].deposit_account_balance || 0),
-            withdrawalBalance: Number(updUser[0].withdrawal_account_balance || 0)
+            withdrawalBalance: Number(updUser[0].withdrawal_account_balance || 0),
+            bonusBalance: Number(updUser[0].bonus_account_balance || 0),
+            tokenBalance: Number(updUser[0].token_balance || 0),
+            message: `Dépôt de ${amountUsdt.toFixed(2)} USDT récupéré par l'administrateur.`
           });
         }
         io.to(`user:${uid}`).emit('deposit-status', {
