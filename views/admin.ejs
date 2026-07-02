@@ -2789,7 +2789,35 @@
           </div>
         </div>
       </div>
+
+      <!-- Manual Deposit Recovery Card -->
+      <div class="section-card" id="admin-deposit-recovery" style="margin-top: 24px;">
+        <div class="section-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 20px;">
+          <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--text-main);">Récupération manuelle de dépôt via TxID</h3>
+          <p style="color: var(--text-muted); margin-top: 4px; font-size: 13px;">Saisissez le TxID d'une transaction BSC et l'ID de l'utilisateur pour forcer la détection on-chain et créditer son compte.</p>
+        </div>
+        
+        <form id="adminRecoverDepositForm" onsubmit="handleAdminRecoverDeposit(event)" style="max-width: 600px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-muted);">ID Utilisateur</label>
+              <input type="number" id="adminRecoverUserId" required placeholder="Ex. 512" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-main);">
+            </div>
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-muted);">TxID (Hash Transaction BSC)</label>
+              <input type="text" id="adminRecoverTxHash" required placeholder="0x..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-main); font-family: monospace;">
+            </div>
+          </div>
+          
+          <div id="adminRecoverStatusMsg" style="display: none; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;"></div>
+          
+          <button type="submit" class="btn" id="adminRecoverSubmitBtn" style="background: var(--primary); color: white; padding: 10px 20px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+            Vérifier et créditer le dépôt
+          </button>
+        </form>
+      </div>
       <% } %>
+
 
       <!-- Users Table -->
       <% if (isPage('users')) { %>
@@ -5568,6 +5596,82 @@
       } catch (err) {
         console.error(err);
         alert('Erreur réseau ou serveur.');
+      }
+    }
+
+    async function handleAdminRecoverDeposit(event) {
+      event.preventDefault();
+      const userIdEl = document.getElementById('adminRecoverUserId');
+      const txHashEl = document.getElementById('adminRecoverTxHash');
+      const msgEl = document.getElementById('adminRecoverStatusMsg');
+      const btn = document.getElementById('adminRecoverSubmitBtn');
+      if (!userIdEl || !txHashEl || !msgEl || !btn) return;
+
+      const userId = userIdEl.value.trim();
+      const txHash = txHashEl.value.trim();
+
+      if (!userId || isNaN(Number(userId))) {
+        showRecoverMsg('error', "Veuillez saisir un ID utilisateur valide.");
+        return;
+      }
+      if (!txHash || !/^0x[a-fA-F0-9]{64}$/i.test(txHash)) {
+        showRecoverMsg('error', "Veuillez saisir un TxID valide (0x + 64 caractères hexadécimaux).");
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Vérification...';
+      showRecoverMsg('info', 'Contact de la blockchain en cours...');
+
+      try {
+        const response = await fetch('/admin/deposits/recover-txid', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({ userId: Number(userId), txHash })
+        });
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          showRecoverMsg('success', result.message || 'Dépôt récupéré et crédité avec succès !');
+          userIdEl.value = '';
+          txHashEl.value = '';
+          btn.textContent = 'Dépôt crédité !';
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
+        } else {
+          showRecoverMsg('error', result.error || 'Une erreur est survenue.');
+          btn.disabled = false;
+          btn.textContent = 'Vérifier et créditer le dépôt';
+        }
+      } catch (err) {
+        console.error(err);
+        showRecoverMsg('error', 'Erreur réseau ou serveur.');
+        btn.disabled = false;
+        btn.textContent = 'Vérifier et créditer le dépôt';
+      }
+    }
+
+    function showRecoverMsg(type, text) {
+      const el = document.getElementById('adminRecoverStatusMsg');
+      if (!el) return;
+      el.style.display = 'block';
+      el.textContent = text;
+      if (type === 'success') {
+        el.style.background = 'rgba(16, 185, 129, 0.15)';
+        el.style.border = '1px solid var(--success)';
+        el.style.color = 'var(--success)';
+      } else if (type === 'error') {
+        el.style.background = 'rgba(239, 68, 68, 0.15)';
+        el.style.border = '1px solid var(--danger)';
+        el.style.color = 'var(--danger)';
+      } else {
+        el.style.background = 'rgba(59, 130, 246, 0.15)';
+        el.style.border = '1px solid var(--primary)';
+        el.style.color = 'var(--primary)';
       }
     }
 
