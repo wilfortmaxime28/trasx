@@ -7835,14 +7835,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!data) return;
     const badge = document.getElementById('depositStatusBadge');
     const msg = document.getElementById('depositStatusMessage');
+    const assetLabel = data.currency === 'BNB' ? 'BNB' : 'USDT';
     
     if (badge && msg) {
       if (data.type === 'pending') {
-        badge.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #eab308; animation: pulse 1.5s infinite;"></span> En attente (${data.confirmations}/${data.required})`;
+        badge.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #eab308; animation: pulse 1.5s infinite;"></span> ${assetLabel} en attente (${data.confirmations}/${data.required})`;
         msg.textContent = data.message;
         msg.style.color = '#eab308';
       } else if (data.type === 'confirmed') {
-        badge.innerHTML = `<span style="color: #10b981; font-weight: 600;">✓</span> Confirmé`;
+        badge.innerHTML = `<span style="color: #10b981; font-weight: 600;">✓</span> ${data.currency === 'BNB' ? 'BNB confirmé' : 'Confirmé'}`;
         msg.textContent = data.message || 'Dépôt crédité avec succès !';
         msg.style.color = '#10b981';
       }
@@ -25045,7 +25046,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const msg = document.getElementById('depositStatusMessage');
       if (badge && msg) {
         badge.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3b82f6; animation: pulse 1.5s infinite;"></span> En attente...`;
-        msg.textContent = "En attente d'un transfert sur le réseau BSC...";
+        msg.textContent = "En attente d'un dépôt USDT ou BNB sur le réseau BSC...";
         msg.style.color = 'var(--text-muted)';
       }
     }
@@ -36956,4 +36957,3 @@ function showClaimMsg(type, text) {
   };
   el.style.cssText = (el.style.cssText || '') + '; display: block; margin-top: 8px; font-size: 12px; padding: 8px 12px; border-radius: 6px; ' + (styles[type] || styles.info);
 }
-

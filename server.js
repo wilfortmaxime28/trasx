@@ -2766,116 +2766,167 @@ app.post('/api/deposits/claim-txid', requireAuth, async (req, res) => {
     }
 
     const cleanHash = txHash.trim().toLowerCase();
+    const bscMonitor = require('./utils/bscMonitor');
+    const deposit = await bscMonitor.inspectDepositTransaction(cleanHash);
 
-    // Layer 2: check DB before hitting the blockchain
-    const [existing] = await db.query(
-      "SELECT id, status, user_id FROM bsc_deposits WHERE tx_hash = ?",
-      [cleanHash]
-    );
-    if (existing.length > 0 && existing[0].status === 'confirmed') {
-      return res.status(409).json({ success: false, error: 'Ce dépôt a déjà été traité et crédité.' });
-    }
-
-    // Fetch transaction on-chain
-    const { ethers } = require('ethers');
-    const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_PROVIDER_URL || 'https://bsc.publicnode.com');
-    const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
-    const iface = new ethers.utils.Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
-
-    const receipt = await provider.getTransactionReceipt(cleanHash);
-    if (!receipt) {
+    if (!deposit.found) {
       return res.status(404).json({ success: false, error: 'Transaction introuvable sur la blockchain. Attendez quelques minutes et réessayez.' });
     }
-    if (receipt.status !== 1) {
+    if (deposit.failedOnChain) {
       return res.status(400).json({ success: false, error: 'Cette transaction a échoué sur la blockchain.' });
     }
-
-    const platformWallet = PLATFORM_WALLET_ADDRESS.toLowerCase();
-    const usdtLog = receipt.logs.find(l =>
-      l.address.toLowerCase() === USDT_CONTRACT &&
-      l.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-    );
-
-    if (!usdtLog) {
-      return res.status(400).json({ success: false, error: 'Aucun transfert USDT (BEP-20) trouvé dans cette transaction.' });
+    if (deposit.belowMinimum) {
+      return res.status(400).json({
+        success: false,
+        error: `Le dépôt BNB détecté (${Number(deposit.detectedBnbAmount || 0).toFixed(4)} BNB) est inférieur au minimum accepté (${Number(deposit.minimumBnbAmount || 0).toFixed(4)} BNB).`
+      });
     }
-
-    const parsed = iface.parseLog(usdtLog);
-    if ((parsed.args.to || '').toLowerCase() !== platformWallet) {
-      return res.status(400).json({ success: false, error: `Ce transfert n'est pas destiné au wallet de la plateforme (${PLATFORM_WALLET_ADDRESS}).` });
+    if (!deposit.isDeposit) {
+      return res.status(400).json({ success: false, error: `Aucun dépôt USDT ou BNB valide vers le wallet de la plateforme (${PLATFORM_WALLET_ADDRESS}) n'a été trouvé dans cette transaction.` });
     }
-
-    const fromAddress = parsed.args.from;
-    const amountWei = parsed.args.value.toString();
-    const amountUsdt = parseFloat(ethers.utils.formatUnits(amountWei, 18));
-    const blockNumber = Number(receipt.blockNumber);
-    const logIndex = Number(usdtLog.logIndex);
-    const currentBlock = await provider.getBlockNumber();
-    const confirmations = Math.max(0, currentBlock - blockNumber + 1);
-    const REQUIRED_CONF = Number(process.env.BSC_DEPOSIT_CONFIRMATIONS || 12);
-
-    if (confirmations < REQUIRED_CONF) {
+    if (deposit.confirmations < deposit.requiredConfirmations) {
       return res.status(202).json({
         success: false,
         pending: true,
-        error: `Transaction en attente de confirmation (${confirmations}/${REQUIRED_CONF}). Réessayez dans quelques secondes.`,
-        confirmations,
-        required: REQUIRED_CONF
+        error: `Transaction en attente de confirmation (${deposit.confirmations}/${deposit.requiredConfirmations}). Réessayez dans quelques secondes.`,
+        confirmations: deposit.confirmations,
+        required: deposit.requiredConfirmations,
+        currency: deposit.tokenSymbol
       });
     }
 
-    // Update user wallet if needed
     const user = await User.getById(userId);
-    if (!user.wallet_address || user.wallet_address.toLowerCase() !== fromAddress.toLowerCase()) {
-      await db.query('UPDATE users SET wallet_address = ? WHERE id = ?', [fromAddress, userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
     }
 
-    // Layer 3: INSERT IGNORE — DB unique constraint on (tx_hash, log_index) prevents any duplicate row.
-    // affectedRows === 0 means the row already existed → do NOT credit again.
-    let insertResult;
-    if (existing.length > 0) {
-      // Row exists but not confirmed yet — update it
-      [insertResult] = await db.query(
-        "UPDATE bsc_deposits SET user_id = ?, status = 'confirmed', confirmations = ?, credited_at = NOW() WHERE tx_hash = ? AND status != 'confirmed'",
-        [userId, confirmations, cleanHash]
+    const conn = await db.getConnection();
+    let amountUsdt = Number(deposit.amountUsdt || 0);
+
+    try {
+      await conn.beginTransaction();
+
+      let existingRows;
+      if (deposit.tokenSymbol === 'BNB') {
+        [existingRows] = await conn.query(
+          "SELECT id, status, user_id FROM bsc_deposits WHERE tx_hash = ? AND token_symbol = 'BNB' LIMIT 1 FOR UPDATE",
+          [cleanHash]
+        );
+      } else {
+        [existingRows] = await conn.query(
+          "SELECT id, status, user_id FROM bsc_deposits WHERE tx_hash = ? AND log_index = ? LIMIT 1 FOR UPDATE",
+          [cleanHash, deposit.logIndex]
+        );
+      }
+
+      if (existingRows.length > 0) {
+        const existingDeposit = existingRows[0];
+        if (existingDeposit.status === 'confirmed') {
+          await conn.rollback();
+          return res.status(409).json({ success: false, error: 'Ce dépôt a déjà été traité et crédité.' });
+        }
+        if (existingDeposit.user_id && Number(existingDeposit.user_id) !== Number(userId)) {
+          await conn.rollback();
+          return res.status(409).json({ success: false, error: 'Ce dépôt est déjà associé à un autre utilisateur.' });
+        }
+      }
+
+      if (!user.wallet_address || String(user.wallet_address).toLowerCase() !== deposit.fromAddress) {
+        await conn.query(
+          'UPDATE users SET wallet_address = ?, wallet_address_updated_at = NOW() WHERE id = ?',
+          [deposit.fromAddress, userId]
+        );
+      }
+
+      let writeResult;
+      if (existingRows.length > 0) {
+        [writeResult] = await conn.query(
+          `UPDATE bsc_deposits
+           SET user_id = ?, from_address = ?, to_address = ?, amount_wei = ?, amount_usdt = ?, token_symbol = ?, block_number = ?, confirmations = ?, status = 'confirmed', credited_at = NOW()
+           WHERE id = ? AND status != 'confirmed'`,
+          [
+            userId,
+            deposit.fromAddress,
+            deposit.toAddress,
+            deposit.amountWei,
+            amountUsdt,
+            deposit.tokenSymbol,
+            deposit.blockNumber,
+            deposit.confirmations,
+            existingRows[0].id
+          ]
+        );
+      } else {
+        [writeResult] = await conn.query(
+          `INSERT IGNORE INTO bsc_deposits
+           (user_id, tx_hash, log_index, from_address, to_address, amount_wei, amount_usdt, token_symbol, block_number, confirmations, status, credited_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', NOW())`,
+          [
+            userId,
+            cleanHash,
+            deposit.logIndex,
+            deposit.fromAddress,
+            deposit.toAddress,
+            deposit.amountWei,
+            amountUsdt,
+            deposit.tokenSymbol,
+            deposit.blockNumber,
+            deposit.confirmations
+          ]
+        );
+      }
+
+      if (!writeResult || writeResult.affectedRows === 0) {
+        await conn.rollback();
+        return res.status(409).json({ success: false, error: 'Ce dépôt a déjà été traité et crédité (détecté par la base de données).' });
+      }
+
+      await conn.query(
+        'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
+        [amountUsdt, userId]
       );
-    } else {
-      // New row — INSERT IGNORE: silently fails if another request already inserted it
-      [insertResult] = await db.query(
-        "INSERT IGNORE INTO bsc_deposits (user_id, tx_hash, log_index, from_address, to_address, amount_wei, amount_usdt, token_symbol, block_number, confirmations, status, credited_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'USDT', ?, ?, 'confirmed', NOW())",
-        [userId, cleanHash, logIndex, fromAddress, parsed.args.to, amountWei, amountUsdt, blockNumber, confirmations]
+
+      await conn.commit();
+    } catch (dbErr) {
+      await conn.rollback();
+      throw dbErr;
+    } finally {
+      conn.release();
+    }
+
+    const creditMessage = deposit.tokenSymbol === 'BNB'
+      ? `Dépôt de ${Number(deposit.amountBnb || 0).toFixed(4)} BNB (≈ ${amountUsdt.toFixed(2)} USDT) récupéré et crédité !`
+      : `Dépôt de ${amountUsdt.toFixed(2)} USDT récupéré et crédité !`;
+
+    try {
+      await emitMarketNotification(
+        userId,
+        null,
+        deposit.tokenSymbol === 'BNB'
+          ? `Votre dépôt de ${Number(deposit.amountBnb || 0).toFixed(4)} BNB (≈ ${amountUsdt.toFixed(2)} USDT) a été récupéré et crédité.`
+          : `Votre dépôt de ${amountUsdt.toFixed(2)} USDT a été récupéré et crédité.`
       );
-    }
-
-    // Only credit if this request was the one that actually wrote the row
-    if (insertResult.affectedRows === 0) {
-      return res.status(409).json({ success: false, error: 'Ce dépôt a déjà été traité et crédité (détecté par la base de données).' });
-    }
-
-    // Credit user balance
-    await db.query(
-      'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
-      [amountUsdt, userId]
-    );
-
-    // Real-time notification
-    const updatedUser = await User.getById(userId);
-    if (ioInstance) {
-      ioInstance.to(`user:${userId}`).emit('balance-updated', {
-        userId: Number(userId),
-        depositBalance: Number(updatedUser.deposit_account_balance || 0),
-        withdrawalBalance: Number(updatedUser.withdrawal_account_balance || 0),
-        bonusBalance: Number(updatedUser.bonus_account_balance || 0),
-        tokenBalance: Number(updatedUser.token_balance || 0),
-        message: `Dépôt de ${amountUsdt.toFixed(2)} USDT récupéré et crédité !`
+      await emitRealtimeBalanceUpdate(userId, creditMessage);
+      io.to(`user:${userId}`).emit('deposit-status', {
+        type: 'confirmed',
+        txHash: cleanHash,
+        amount: amountUsdt,
+        currency: deposit.tokenSymbol,
+        bnbAmount: deposit.tokenSymbol === 'BNB' ? Number(deposit.amountBnb || 0) : null,
+        message: creditMessage
       });
+    } catch (notifyErr) {
+      console.error('[DepositClaim] Non-blocking notification error:', notifyErr);
     }
 
-    console.log(`[DepositClaim] User ${userId} claimed deposit ${cleanHash} — ${amountUsdt} USDT credited.`);
+    console.log(`[DepositClaim] User ${userId} claimed ${deposit.tokenSymbol} deposit ${cleanHash} — ${amountUsdt} USDT credited.`);
     return res.json({
       success: true,
-      message: `Dépôt de ${amountUsdt.toFixed(2)} USDT crédité avec succès sur votre compte.`,
+      message: deposit.tokenSymbol === 'BNB'
+        ? `Dépôt de ${Number(deposit.amountBnb || 0).toFixed(4)} BNB (≈ ${amountUsdt.toFixed(2)} USDT) crédité avec succès sur votre compte.`
+        : `Dépôt de ${amountUsdt.toFixed(2)} USDT crédité avec succès sur votre compte.`,
       amount: amountUsdt,
+      currency: deposit.tokenSymbol,
       txHash: cleanHash
     });
 

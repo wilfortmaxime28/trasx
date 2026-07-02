@@ -5676,6 +5676,10 @@
           setTimeout(() => {
             window.location.reload();
           }, 1500);
+        } else if (result.pending) {
+          showRecoverMsg('warning', result.error || 'Transaction en attente de confirmations.');
+          btn.disabled = false;
+          btn.textContent = 'Réessayer';
         } else {
           showRecoverMsg('error', result.error || 'Une erreur est survenue.');
           btn.disabled = false;
@@ -5760,6 +5764,10 @@
         el.style.background = 'rgba(239, 68, 68, 0.15)';
         el.style.border = '1px solid var(--danger)';
         el.style.color = 'var(--danger)';
+      } else if (type === 'warning') {
+        el.style.background = 'rgba(234, 179, 8, 0.15)';
+        el.style.border = '1px solid #eab308';
+        el.style.color = '#eab308';
       } else {
         el.style.background = 'rgba(59, 130, 246, 0.15)';
         el.style.border = '1px solid var(--primary)';
@@ -5780,6 +5788,10 @@
         el.style.background = 'rgba(239, 68, 68, 0.15)';
         el.style.border = '1px solid var(--danger)';
         el.style.color = 'var(--danger)';
+      } else if (type === 'warning') {
+        el.style.background = 'rgba(234, 179, 8, 0.15)';
+        el.style.border = '1px solid #eab308';
+        el.style.color = '#eab308';
       } else {
         el.style.background = 'rgba(59, 130, 246, 0.15)';
         el.style.border = '1px solid var(--primary)';

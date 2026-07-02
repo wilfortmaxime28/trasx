@@ -40,6 +40,9 @@ const REORG_BUFFER = Math.max(2, Number.parseInt(process.env.BSC_DEPOSIT_REORG_B
 const INITIAL_BACKFILL_BLOCKS = Math.max(0, Number.parseInt(process.env.BSC_DEPOSIT_INITIAL_BACKFILL_BLOCKS || '30', 10));
 const CURSOR_SETTING_KEY = 'bsc_deposit_last_scanned_block';
 const USDT_DECIMALS = 18;
+// Native BNB deposits do not have an EVM log index. We keep 0 for backward compatibility
+// with existing stored rows and the current unique index strategy.
+const NATIVE_BNB_LOG_INDEX = 0;
 
 const transferInterface = new ethers.utils.Interface([
   'event Transfer(address indexed from, address indexed to, uint256 value)'
@@ -114,7 +117,7 @@ function getWsProvider() {
   return wsProvider;
 }
 
-async function emitRealtimeBalanceUpdate(userId, message = null) {
+async function emitRealtimeBalanceUpdate(userId, message = null, statusPayload = null) {
   try {
     const user = await User.getById(userId);
     if (!user) return null;
@@ -136,7 +139,8 @@ async function emitRealtimeBalanceUpdate(userId, message = null) {
       ioInstance.to(`user:${userId}`).emit('balance-updated', payload);
       ioInstance.to(`user:${userId}`).emit('deposit-status', {
         type: 'confirmed',
-        message
+        message,
+        ...(statusPayload || {})
       });
     }
     return payload;
@@ -239,6 +243,7 @@ async function emitPendingDeposit(userId, txHash, confirmations, amountUsdt) {
   ioInstance.to(`user:${userId}`).emit('deposit-status', {
     type: 'pending',
     txHash,
+    currency: 'USDT',
     confirmations,
     required: REQUIRED_CONFIRMATIONS,
     amount: amountUsdt,
@@ -271,7 +276,12 @@ async function confirmDeposit(existingDeposit, confirmations, blockNumber) {
   );
   await emitRealtimeBalanceUpdate(
     existingDeposit.user_id,
-    `Dépôt de ${amount.toFixed(2)} USDT confirmé !`
+    `Dépôt de ${amount.toFixed(2)} USDT confirmé !`,
+    {
+      currency: 'USDT',
+      amount,
+      txHash: existingDeposit.tx_hash
+    }
   );
   await sendDepositReceipt(existingDeposit.user_id, existingDeposit.tx_hash);
   return true;
@@ -320,7 +330,12 @@ async function insertOrUpdateDepositRecord(deposit) {
       );
       await emitRealtimeBalanceUpdate(
         deposit.userId,
-        `Dépôt de ${deposit.amountUsdt.toFixed(2)} USDT confirmé !`
+        `Dépôt de ${deposit.amountUsdt.toFixed(2)} USDT confirmé !`,
+        {
+          currency: 'USDT',
+          amount: deposit.amountUsdt,
+          txHash: deposit.txHash
+        }
       );
       await sendDepositReceipt(deposit.userId, deposit.txHash);
     } else {
@@ -608,7 +623,7 @@ async function pollBnbDeposits(userMap, currentBlock) {
         const blockNumber = Number(block.number || 0);
         const confirmations = Math.max(0, currentBlock - blockNumber + 1);
         const txHash = String(tx.hash || '').toLowerCase();
-        const logIndex = 0; // Native BNB tx has no log index
+        const logIndex = NATIVE_BNB_LOG_INDEX; // Native BNB tx has no log index
 
         // Check for existing record
         const [existingRows] = await db.query(
@@ -622,9 +637,9 @@ async function pollBnbDeposits(userMap, currentBlock) {
           await db.query(
             `INSERT INTO bsc_deposits
              (user_id, tx_hash, log_index, from_address, to_address, amount_wei, amount_usdt, token_symbol, block_number, confirmations, status, credited_at)
-             VALUES (?, ?, 0, ?, ?, ?, ?, 'BNB', ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'BNB', ?, ?, ?, ?)`,
             [
-              userId, txHash, tx.from, tx.to,
+              userId, txHash, logIndex, tx.from, tx.to,
               tx.value.toString(), usdtEquivalent,
               blockNumber, confirmations,
               isConfirmed ? 'confirmed' : 'pending',
@@ -639,7 +654,12 @@ async function pollBnbDeposits(userMap, currentBlock) {
             );
             const msg = `Dépôt de ${bnbAmount.toFixed(4)} BNB ≈ ${usdtEquivalent.toFixed(2)} USDT confirmé !`;
             await emitMarketNotification(userId, null, `Votre dépôt de ${bnbAmount.toFixed(4)} BNB (≈ ${usdtEquivalent.toFixed(2)} USDT au cours de ${bnbPrice.toFixed(2)} $/BNB) a été confirmé.`);
-            await emitRealtimeBalanceUpdate(userId, msg);
+            await emitRealtimeBalanceUpdate(userId, msg, {
+              currency: 'BNB',
+              amount: usdtEquivalent,
+              bnbAmount,
+              txHash
+            });
             console.log(`[BSCMonitor/BNB] Confirmed BNB deposit: ${bnbAmount} BNB = ${usdtEquivalent} USDT for user #${userId}, tx: ${txHash}`);
           } else {
             if (ioInstance) {
@@ -672,7 +692,12 @@ async function pollBnbDeposits(userMap, currentBlock) {
               );
               const msg = `Dépôt de ${bnbAmount.toFixed(4)} BNB ≈ ${Number(existing.amount_usdt).toFixed(2)} USDT confirmé !`;
               await emitMarketNotification(existing.user_id, null, msg);
-              await emitRealtimeBalanceUpdate(existing.user_id, msg);
+              await emitRealtimeBalanceUpdate(existing.user_id, msg, {
+                currency: 'BNB',
+                amount: Number(existing.amount_usdt || 0),
+                bnbAmount,
+                txHash
+              });
             }
           } else if (Number(existing.confirmations || 0) !== confirmations) {
             await db.query('UPDATE bsc_deposits SET confirmations = ?, block_number = ? WHERE id = ?', [confirmations, blockNumber, existing.id]);
@@ -777,6 +802,148 @@ async function handleIncomingWsLog() {
   await runMonitorCycle('ws');
 }
 
+async function handleIncomingWsBlock() {
+  await runMonitorCycle('ws:block');
+}
+
+async function inspectDepositTransaction(txHash, providerOverride = null) {
+  const cleanHash = String(txHash || '').trim().toLowerCase();
+  const maxAttempts = providerOverride ? 1 : Math.max(1, BSC_RPC_URLS.length);
+  let attempts = 0;
+  let lastErr = null;
+
+  while (attempts < maxAttempts) {
+    const provider = providerOverride || getRpcProvider();
+
+    try {
+      const receipt = await provider.getTransactionReceipt(cleanHash);
+      if (!receipt) {
+        return {
+          found: false,
+          pendingOnChain: true,
+          txHash: cleanHash,
+          requiredConfirmations: REQUIRED_CONFIRMATIONS
+        };
+      }
+
+      if (receipt.status !== 1) {
+        return {
+          found: true,
+          isDeposit: false,
+          failedOnChain: true,
+          txHash: cleanHash,
+          requiredConfirmations: REQUIRED_CONFIRMATIONS
+        };
+      }
+
+      const currentBlock = await provider.getBlockNumber();
+      const blockNumber = Number(receipt.blockNumber || 0);
+      const confirmations = Math.max(0, currentBlock - blockNumber + 1);
+
+      let matchingUsdtLog = null;
+      let parsedUsdtLog = null;
+
+      for (const log of receipt.logs || []) {
+        if (String(log.address || '').toLowerCase() !== USDT_CONTRACT.toLowerCase()) continue;
+        if (String(log.topics?.[0] || '') !== TRANSFER_TOPIC) continue;
+
+        try {
+          const parsed = transferInterface.parseLog(log);
+          if (String(parsed.args.to || '').toLowerCase() !== PLATFORM_WALLET.toLowerCase()) {
+            continue;
+          }
+          matchingUsdtLog = log;
+          parsedUsdtLog = parsed;
+          break;
+        } catch (parseErr) {
+          continue;
+        }
+      }
+
+      if (matchingUsdtLog && parsedUsdtLog) {
+        const amountUsdt = Number(ethers.utils.formatUnits(parsedUsdtLog.args.value, USDT_DECIMALS));
+        return {
+          found: true,
+          isDeposit: true,
+          txHash: cleanHash,
+          tokenSymbol: 'USDT',
+          currency: 'USDT',
+          logIndex: Number(matchingUsdtLog.logIndex || 0),
+          fromAddress: String(parsedUsdtLog.args.from || '').toLowerCase(),
+          toAddress: String(parsedUsdtLog.args.to || '').toLowerCase(),
+          amountWei: parsedUsdtLog.args.value.toString(),
+          amountUsdt,
+          blockNumber,
+          confirmations,
+          requiredConfirmations: REQUIRED_CONFIRMATIONS
+        };
+      }
+
+      const tx = await provider.getTransaction(cleanHash);
+      if (
+        tx &&
+        tx.to &&
+        String(tx.to || '').toLowerCase() === PLATFORM_WALLET.toLowerCase() &&
+        tx.value &&
+        !tx.value.isZero()
+      ) {
+        const bnbAmount = Number(ethers.utils.formatEther(tx.value));
+        if (!Number.isFinite(bnbAmount) || bnbAmount < BNB_MIN_DEPOSIT) {
+          return {
+            found: true,
+            isDeposit: false,
+            belowMinimum: true,
+            txHash: cleanHash,
+            detectedBnbAmount: Number.isFinite(bnbAmount) ? bnbAmount : 0,
+            minimumBnbAmount: BNB_MIN_DEPOSIT,
+            requiredConfirmations: REQUIRED_CONFIRMATIONS
+          };
+        }
+
+        const bnbPrice = await getBnbUsdtPrice();
+        const usdtEquivalent = Number((bnbAmount * bnbPrice).toFixed(6));
+
+        return {
+          found: true,
+          isDeposit: true,
+          txHash: cleanHash,
+          tokenSymbol: 'BNB',
+          currency: 'BNB',
+          logIndex: NATIVE_BNB_LOG_INDEX,
+          fromAddress: String(tx.from || '').toLowerCase(),
+          toAddress: String(tx.to || '').toLowerCase(),
+          amountWei: tx.value.toString(),
+          amountUsdt: usdtEquivalent,
+          amountBnb: bnbAmount,
+          bnbPrice,
+          blockNumber,
+          confirmations,
+          requiredConfirmations: REQUIRED_CONFIRMATIONS
+        };
+      }
+
+      return {
+        found: true,
+        isDeposit: false,
+        unsupportedDeposit: true,
+        txHash: cleanHash,
+        requiredConfirmations: REQUIRED_CONFIRMATIONS
+      };
+    } catch (err) {
+      lastErr = err;
+      attempts += 1;
+      if (providerOverride || attempts >= maxAttempts) {
+        throw err;
+      }
+      console.warn(`[BSCMonitor] inspectDepositTransaction failed on current RPC. Rotating provider... ${err.message || err}`);
+      rotateRpcProvider();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+
+  throw lastErr || new Error('Unable to inspect deposit transaction.');
+}
+
 function bindWsSubscription() {
   if (wsSubscriptionBound) return;
 
@@ -785,8 +952,9 @@ function bindWsSubscription() {
     if (!provider) return;
 
     provider.on(DEPOSIT_LOG_FILTER, handleIncomingWsLog);
+    provider.on('block', handleIncomingWsBlock);
     wsSubscriptionBound = true;
-    console.log('[BSCMonitor] WebSocket subscription enabled for live deposit detection.');
+    console.log('[BSCMonitor] WebSocket subscription enabled for live deposit detection and BNB block sync.');
   } catch (err) {
     wsProvider = null;
     wsSubscriptionBound = false;
@@ -820,6 +988,7 @@ function stop() {
   if (wsProvider && wsSubscriptionBound) {
     try {
       wsProvider.off(DEPOSIT_LOG_FILTER, handleIncomingWsLog);
+      wsProvider.off('block', handleIncomingWsBlock);
     } catch (err) {
       console.warn('[BSCMonitor] Failed to detach WebSocket listener:', err.message || err);
     }
@@ -840,6 +1009,6 @@ module.exports = {
   getRpcProvider,
   rotateRpcProvider,
   getCurrentBlock,
-  getBnbUsdtPrice
+  getBnbUsdtPrice,
+  inspectDepositTransaction
 };
-
