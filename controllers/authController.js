@@ -212,6 +212,9 @@ exports.postVerify = async (req, res) => {
 };
 
 exports.getLogin = (req, res) => {
+  if (req.session && req.session.userId) {
+    return res.redirect('/');
+  }
   const verified = req.query.verified;
   const reset = req.query.reset;
   let error = req.query.error || null;
