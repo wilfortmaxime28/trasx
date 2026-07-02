@@ -1,3 +1,6 @@
 node_modules
 config/vapid.json
 /public/assets/trasx.apk
+.env
+.env.*
+!.env.example
