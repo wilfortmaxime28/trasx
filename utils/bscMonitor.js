@@ -348,23 +348,19 @@ async function syncDepositLogs(userMap, currentBlock) {
         toBlock: batchEnd
       });
     } catch (batchErr) {
-      if (isRateLimitError(batchErr)) {
-        console.warn(`[BSCMonitor] Rate limit on blocks ${batchStart}-${batchEnd}, rotating RPC and retrying...`);
-        provider = rotateRpcProvider();
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        try {
-          logs = await provider.getLogs({
-            ...DEPOSIT_LOG_FILTER,
-            fromBlock: batchStart,
-            toBlock: batchEnd
-          });
-        } catch (retryErr) {
-          console.error(`[BSCMonitor] Retry failed for blocks ${batchStart}-${batchEnd}, skipping:`, retryErr.message || retryErr);
-          batchesProcessed++;
-          continue;
-        }
-      } else {
-        throw batchErr;
+      console.warn(`[BSCMonitor] Query failed for blocks ${batchStart}-${batchEnd} on ${provider.connection.url}. Rotating RPC and retrying... Error: ${batchErr.message || batchErr}`);
+      provider = rotateRpcProvider();
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      try {
+        logs = await provider.getLogs({
+          ...DEPOSIT_LOG_FILTER,
+          fromBlock: batchStart,
+          toBlock: batchEnd
+        });
+      } catch (retryErr) {
+        console.error(`[BSCMonitor] Retry also failed for blocks ${batchStart}-${batchEnd} on ${provider.connection.url}. Skipping batch:`, retryErr.message || retryErr);
+        batchesProcessed++;
+        continue;
       }
     }
 
@@ -414,31 +410,35 @@ async function refreshPendingDeposits(currentBlock) {
   );
 
   for (const pendingDeposit of pendingRows) {
-    const receipt = await provider.getTransactionReceipt(pendingDeposit.tx_hash);
-    if (!receipt || !receipt.blockNumber) continue;
+    try {
+      const receipt = await provider.getTransactionReceipt(pendingDeposit.tx_hash);
+      if (!receipt || !receipt.blockNumber) continue;
 
-    const receiptLog = Array.isArray(receipt.logs)
-      ? receipt.logs.find((log) =>
-          String(log.transactionHash || '').toLowerCase() === String(pendingDeposit.tx_hash || '').toLowerCase() &&
-          String(log.address || '').toLowerCase() === String(USDT_CONTRACT || '').toLowerCase() &&
-          Number(log.logIndex || -1) === Number(pendingDeposit.log_index || 0)
-        )
-      : null;
+      const receiptLog = Array.isArray(receipt.logs)
+        ? receipt.logs.find((log) =>
+            String(log.transactionHash || '').toLowerCase() === String(pendingDeposit.tx_hash || '').toLowerCase() &&
+            String(log.address || '').toLowerCase() === String(USDT_CONTRACT || '').toLowerCase() &&
+            Number(log.logIndex || -1) === Number(pendingDeposit.log_index || 0)
+          )
+        : null;
 
-    const blockNumber = Number(receiptLog?.blockNumber || receipt.blockNumber || 0);
-    const confirmations = Math.max(0, currentBlock - blockNumber + 1);
+      const blockNumber = Number(receiptLog?.blockNumber || receipt.blockNumber || 0);
+      const confirmations = Math.max(0, currentBlock - blockNumber + 1);
 
-    if (confirmations >= REQUIRED_CONFIRMATIONS) {
-      await confirmDeposit(pendingDeposit, confirmations, blockNumber);
-      continue;
-    }
+      if (confirmations >= REQUIRED_CONFIRMATIONS) {
+        await confirmDeposit(pendingDeposit, confirmations, blockNumber);
+        continue;
+      }
 
-    if (Number(pendingDeposit.confirmations || 0) !== confirmations) {
-      await db.query(
-        'UPDATE bsc_deposits SET confirmations = ?, block_number = ? WHERE id = ?',
-        [confirmations, blockNumber, pendingDeposit.id]
-      );
-      await emitPendingDeposit(pendingDeposit.user_id, pendingDeposit.tx_hash, confirmations, pendingDeposit.amount_usdt);
+      if (Number(pendingDeposit.confirmations || 0) !== confirmations) {
+        await db.query(
+          'UPDATE bsc_deposits SET confirmations = ?, block_number = ? WHERE id = ?',
+          [confirmations, blockNumber, pendingDeposit.id]
+        );
+        await emitPendingDeposit(pendingDeposit.user_id, pendingDeposit.tx_hash, confirmations, pendingDeposit.amount_usdt);
+      }
+    } catch (pendingErr) {
+      console.warn(`[BSCMonitor] Failed to check pending deposit status for tx ${pendingDeposit.tx_hash}:`, pendingErr.message || pendingErr);
     }
   }
 }
