@@ -2728,10 +2728,21 @@ app.get('/api/deposits/history', requireAuth, async (req, res) => {
   }
 });
 
+// In-memory lock: prevents concurrent claim requests from the same user
+const claimInProgress = new Set();
+
 // ─── USER: Réclamer un dépôt manquant via TxID ───────────────────────────────
 app.post('/api/deposits/claim-txid', requireAuth, async (req, res) => {
+  const userId = req.session.userId;
+
+  // Layer 1: in-memory lock — reject if this user already has a claim in flight
+  const lockKey = `claim:${userId}`;
+  if (claimInProgress.has(lockKey)) {
+    return res.status(429).json({ success: false, error: 'Une récupération est déjà en cours. Attendez quelques secondes.' });
+  }
+  claimInProgress.add(lockKey);
+
   try {
-    const userId = req.session.userId;
     const { txHash } = req.body;
 
     if (!txHash || typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash.trim())) {
@@ -2740,16 +2751,16 @@ app.post('/api/deposits/claim-txid', requireAuth, async (req, res) => {
 
     const cleanHash = txHash.trim().toLowerCase();
 
-    // Vérifier que ce TxID n'est pas déjà traité
+    // Layer 2: check DB before hitting the blockchain
     const [existing] = await db.query(
-      "SELECT id, status FROM bsc_deposits WHERE tx_hash = ?",
+      "SELECT id, status, user_id FROM bsc_deposits WHERE tx_hash = ?",
       [cleanHash]
     );
     if (existing.length > 0 && existing[0].status === 'confirmed') {
       return res.status(409).json({ success: false, error: 'Ce dépôt a déjà été traité et crédité.' });
     }
 
-    // Récupérer les infos de la transaction on-chain
+    // Fetch transaction on-chain
     const { ethers } = require('ethers');
     const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_PROVIDER_URL || 'https://bsc.publicnode.com');
     const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
@@ -2763,7 +2774,6 @@ app.post('/api/deposits/claim-txid', requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Cette transaction a échoué sur la blockchain.' });
     }
 
-    // Trouver le log de transfert USDT vers le wallet plateforme
     const platformWallet = PLATFORM_WALLET_ADDRESS.toLowerCase();
     const usdtLog = receipt.logs.find(l =>
       l.address.toLowerCase() === USDT_CONTRACT &&
@@ -2775,9 +2785,7 @@ app.post('/api/deposits/claim-txid', requireAuth, async (req, res) => {
     }
 
     const parsed = iface.parseLog(usdtLog);
-    const toAddress = (parsed.args.to || '').toLowerCase();
-
-    if (toAddress !== platformWallet) {
+    if ((parsed.args.to || '').toLowerCase() !== platformWallet) {
       return res.status(400).json({ success: false, error: `Ce transfert n'est pas destiné au wallet de la plateforme (${PLATFORM_WALLET_ADDRESS}).` });
     }
 
@@ -2800,39 +2808,41 @@ app.post('/api/deposits/claim-txid', requireAuth, async (req, res) => {
       });
     }
 
-    // Mettre à jour le wallet utilisateur si différent (optionnel selon la politique)
+    // Update user wallet if needed
     const user = await User.getById(userId);
-    const userWallet = (user.wallet_address || '').toLowerCase();
-    const senderWallet = fromAddress.toLowerCase();
-
-    // Politique de sécurité : vérifier si l'expéditeur correspond au wallet enregistré OU mettre à jour
-    if (userWallet && userWallet !== senderWallet) {
-      // Le wallet est différent — on met quand même à jour et on crédite
-      await db.query('UPDATE users SET wallet_address = ? WHERE id = ?', [fromAddress, userId]);
-    } else if (!userWallet) {
+    if (!user.wallet_address || user.wallet_address.toLowerCase() !== fromAddress.toLowerCase()) {
       await db.query('UPDATE users SET wallet_address = ? WHERE id = ?', [fromAddress, userId]);
     }
 
-    // Insérer ou mettre à jour le dépôt
+    // Layer 3: INSERT IGNORE — DB unique constraint on (tx_hash, log_index) prevents any duplicate row.
+    // affectedRows === 0 means the row already existed → do NOT credit again.
+    let insertResult;
     if (existing.length > 0) {
-      await db.query(
-        "UPDATE bsc_deposits SET status = 'confirmed', confirmations = ?, credited_at = NOW() WHERE tx_hash = ?",
-        [confirmations, cleanHash]
+      // Row exists but not confirmed yet — update it
+      [insertResult] = await db.query(
+        "UPDATE bsc_deposits SET user_id = ?, status = 'confirmed', confirmations = ?, credited_at = NOW() WHERE tx_hash = ? AND status != 'confirmed'",
+        [userId, confirmations, cleanHash]
       );
     } else {
-      await db.query(
-        "INSERT INTO bsc_deposits (user_id, tx_hash, log_index, from_address, to_address, amount_wei, amount_usdt, token_symbol, block_number, confirmations, status, credited_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'USDT', ?, ?, 'confirmed', NOW())",
+      // New row — INSERT IGNORE: silently fails if another request already inserted it
+      [insertResult] = await db.query(
+        "INSERT IGNORE INTO bsc_deposits (user_id, tx_hash, log_index, from_address, to_address, amount_wei, amount_usdt, token_symbol, block_number, confirmations, status, credited_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'USDT', ?, ?, 'confirmed', NOW())",
         [userId, cleanHash, logIndex, fromAddress, parsed.args.to, amountWei, amountUsdt, blockNumber, confirmations]
       );
     }
 
-    // Créditer le solde
+    // Only credit if this request was the one that actually wrote the row
+    if (insertResult.affectedRows === 0) {
+      return res.status(409).json({ success: false, error: 'Ce dépôt a déjà été traité et crédité (détecté par la base de données).' });
+    }
+
+    // Credit user balance
     await db.query(
       'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
       [amountUsdt, userId]
     );
 
-    // Notification temps réel
+    // Real-time notification
     const updatedUser = await User.getById(userId);
     if (ioInstance) {
       ioInstance.to(`user:${userId}`).emit('balance-updated', {
@@ -2859,6 +2869,9 @@ app.post('/api/deposits/claim-txid', requireAuth, async (req, res) => {
       return res.status(503).json({ success: false, error: 'Impossible de contacter la blockchain. Réessayez dans quelques instants.' });
     }
     res.status(500).json({ success: false, error: 'Erreur serveur lors de la récupération du dépôt.' });
+  } finally {
+    // Always release the lock
+    claimInProgress.delete(lockKey);
   }
 });
 
