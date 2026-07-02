@@ -28,7 +28,7 @@ const rawUrls = [
 const BSC_RPC_URLS = [...new Set(rawUrls)].filter(Boolean);
 
 
-const PLATFORM_WALLET = (process.env.PLATFORM_WALLET_ADDRESS || process.env.BSC_CENTRAL_WALLET || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').trim();
+const PLATFORM_WALLET = (process.env.PLATFORM_WALLET_ADDRESS || process.env.BSC_CENTRAL_WALLET || '0xE02584C23dD67AFFbeFf4a75C676Dffd9973eDf7').trim();
 const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').trim();
 const REQUIRED_CONFIRMATIONS = Math.max(1, Number.parseInt(process.env.BSC_DEPOSIT_CONFIRMATIONS || '12', 10) || 12);
 const POLL_INTERVAL_MS = Math.max(3000, Number.parseInt(process.env.BSC_DEPOSIT_POLL_INTERVAL_MS || '6000', 10) || 6000);

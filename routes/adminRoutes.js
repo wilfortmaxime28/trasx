@@ -172,7 +172,7 @@ router.post('/deposits/recover-txid', requireAdminAction('manage_balances', { js
 
     // Parser les logs pour trouver le Transfer d'USDT vers PLATFORM_WALLET
     const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
-    const PLATFORM_WALLET = (process.env.PLATFORM_WALLET_ADDRESS || process.env.BSC_CENTRAL_WALLET || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').toLowerCase();
+    const PLATFORM_WALLET = (process.env.PLATFORM_WALLET_ADDRESS || process.env.BSC_CENTRAL_WALLET || '0xE02584C23dD67AFFbeFf4a75C676Dffd9973eDf7').toLowerCase();
 
     let targetLog = null;
     let parsedLog = null;
