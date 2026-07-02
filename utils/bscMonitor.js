@@ -493,6 +493,209 @@ async function syncDepositLogs(userMap, currentBlock) {
 }
 
 
+const BNB_CURSOR_SETTING_KEY = 'bsc_bnb_deposit_last_scanned_block';
+// Minimum BNB deposit (default 0.005 BNB). Can be overridden via env.
+const BNB_MIN_DEPOSIT = parseFloat(process.env.BSC_BNB_MIN_DEPOSIT || '0.001');
+
+// Cache price for 60 seconds to avoid hammering the API
+let bnbPriceCache = { price: null, fetchedAt: 0 };
+
+async function getBnbUsdtPrice() {
+  const now = Date.now();
+  if (bnbPriceCache.price && now - bnbPriceCache.fetchedAt < 60000) {
+    return bnbPriceCache.price;
+  }
+
+  // 1. Try Binance public API (no key required)
+  try {
+    const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT');
+    if (res.ok) {
+      const data = await res.json();
+      const price = parseFloat(data.price);
+      if (Number.isFinite(price) && price > 0) {
+        bnbPriceCache = { price, fetchedAt: now };
+        return price;
+      }
+    }
+  } catch (e) {
+    console.warn('[BSCMonitor] Binance API failed for BNB price, trying CoinGecko...', e.message);
+  }
+
+  // 2. Fallback: CoinGecko (no key required for basic endpoint)
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd');
+    if (res.ok) {
+      const data = await res.json();
+      const price = parseFloat(data?.binancecoin?.usd);
+      if (Number.isFinite(price) && price > 0) {
+        bnbPriceCache = { price, fetchedAt: now };
+        return price;
+      }
+    }
+  } catch (e) {
+    console.warn('[BSCMonitor] CoinGecko API also failed for BNB price.', e.message);
+  }
+
+  // 3. Return last cached price if available (even if stale)
+  if (bnbPriceCache.price) {
+    console.warn('[BSCMonitor] Using stale BNB price cache.');
+    return bnbPriceCache.price;
+  }
+
+  throw new Error('Unable to fetch BNB/USDT price from any source.');
+}
+
+async function pollBnbDeposits(userMap, currentBlock) {
+  const scanEndBlock = Math.max(0, currentBlock - REORG_BUFFER);
+
+  // Use separate cursor for BNB deposits
+  const storedCursor = await getNumberSetting(BNB_CURSOR_SETTING_KEY, -1);
+  let fromBlock;
+  if (storedCursor >= 0) {
+    const blocksBehind = currentBlock - storedCursor;
+    if (blocksBehind > 1000) {
+      console.warn(`[BSCMonitor/BNB] Stale cursor detected (${blocksBehind} blocks behind). Resetting.`);
+      fromBlock = Math.max(0, currentBlock - INITIAL_BACKFILL_BLOCKS);
+    } else {
+      fromBlock = Math.max(0, Math.min(currentBlock, storedCursor) - REORG_BUFFER + 1);
+    }
+  } else {
+    fromBlock = Math.max(0, currentBlock - INITIAL_BACKFILL_BLOCKS);
+  }
+
+  if (fromBlock > scanEndBlock) return;
+
+  const provider = getRpcProvider();
+  let bnbPrice = null;
+
+  for (let blockNum = fromBlock; blockNum <= scanEndBlock; blockNum += BLOCK_BATCH_SIZE) {
+    const batchEnd = Math.min(scanEndBlock, blockNum + BLOCK_BATCH_SIZE - 1);
+
+    for (let b = blockNum; b <= batchEnd; b++) {
+      let block;
+      try {
+        block = await provider.getBlockWithTransactions(b);
+      } catch (err) {
+        console.warn(`[BSCMonitor/BNB] Failed to get block ${b}:`, err.message);
+        continue;
+      }
+      if (!block || !Array.isArray(block.transactions)) continue;
+
+      for (const tx of block.transactions) {
+        // Only transactions sending native BNB to the platform wallet
+        if (!tx.to || tx.to.toLowerCase() !== PLATFORM_WALLET.toLowerCase()) continue;
+        if (!tx.value || tx.value.isZero()) continue;
+
+        const fromAddress = String(tx.from || '').toLowerCase();
+        const userId = userMap.get(fromAddress);
+        if (!userId) continue;
+
+        const bnbAmount = parseFloat(ethers.utils.formatEther(tx.value));
+        if (!Number.isFinite(bnbAmount) || bnbAmount < BNB_MIN_DEPOSIT) continue;
+
+        // Fetch BNB price once per poll cycle
+        if (!bnbPrice) {
+          try {
+            bnbPrice = await getBnbUsdtPrice();
+          } catch (priceErr) {
+            console.error('[BSCMonitor/BNB] Cannot get BNB price, skipping BNB deposit processing:', priceErr.message);
+            await setSetting(BNB_CURSOR_SETTING_KEY, scanEndBlock);
+            return;
+          }
+        }
+
+        const usdtEquivalent = parseFloat((bnbAmount * bnbPrice).toFixed(6));
+        const blockNumber = Number(block.number || 0);
+        const confirmations = Math.max(0, currentBlock - blockNumber + 1);
+        const txHash = String(tx.hash || '').toLowerCase();
+        const logIndex = 0; // Native BNB tx has no log index
+
+        // Check for existing record
+        const [existingRows] = await db.query(
+          'SELECT id, user_id, status, amount_usdt FROM bsc_deposits WHERE tx_hash = ? AND token_symbol = ? LIMIT 1',
+          [txHash, 'BNB']
+        );
+
+        const isConfirmed = confirmations >= REQUIRED_CONFIRMATIONS;
+
+        if (existingRows.length === 0) {
+          await db.query(
+            `INSERT INTO bsc_deposits
+             (user_id, tx_hash, log_index, from_address, to_address, amount_wei, amount_usdt, token_symbol, block_number, confirmations, status, credited_at)
+             VALUES (?, ?, 0, ?, ?, ?, ?, 'BNB', ?, ?, ?, ?)`,
+            [
+              userId, txHash, tx.from, tx.to,
+              tx.value.toString(), usdtEquivalent,
+              blockNumber, confirmations,
+              isConfirmed ? 'confirmed' : 'pending',
+              isConfirmed ? new Date() : null
+            ]
+          );
+
+          if (isConfirmed) {
+            await db.query(
+              'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
+              [usdtEquivalent, userId]
+            );
+            const msg = `Dépôt de ${bnbAmount.toFixed(4)} BNB ≈ ${usdtEquivalent.toFixed(2)} USDT confirmé !`;
+            await emitMarketNotification(userId, null, `Votre dépôt de ${bnbAmount.toFixed(4)} BNB (≈ ${usdtEquivalent.toFixed(2)} USDT au cours de ${bnbPrice.toFixed(2)} $/BNB) a été confirmé.`);
+            await emitRealtimeBalanceUpdate(userId, msg);
+            console.log(`[BSCMonitor/BNB] Confirmed BNB deposit: ${bnbAmount} BNB = ${usdtEquivalent} USDT for user #${userId}, tx: ${txHash}`);
+          } else {
+            if (ioInstance) {
+              ioInstance.to(`user:${userId}`).emit('deposit-status', {
+                type: 'pending',
+                txHash,
+                confirmations,
+                required: REQUIRED_CONFIRMATIONS,
+                amount: usdtEquivalent,
+                currency: 'BNB',
+                bnbAmount,
+                bnbPrice,
+                message: `Dépôt de ${bnbAmount.toFixed(4)} BNB détecté (${confirmations}/${REQUIRED_CONFIRMATIONS} confirmations) ≈ ${usdtEquivalent.toFixed(2)} USDT`
+              });
+            }
+          }
+        } else {
+          const existing = existingRows[0];
+          if (existing.status !== 'pending') continue;
+
+          if (isConfirmed) {
+            const [upd] = await db.query(
+              `UPDATE bsc_deposits SET status = 'confirmed', confirmations = ?, block_number = ?, credited_at = NOW() WHERE id = ? AND status = 'pending'`,
+              [confirmations, blockNumber, existing.id]
+            );
+            if (upd && upd.affectedRows > 0) {
+              await db.query(
+                'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
+                [existing.amount_usdt, existing.user_id]
+              );
+              const msg = `Dépôt de ${bnbAmount.toFixed(4)} BNB ≈ ${Number(existing.amount_usdt).toFixed(2)} USDT confirmé !`;
+              await emitMarketNotification(existing.user_id, null, msg);
+              await emitRealtimeBalanceUpdate(existing.user_id, msg);
+            }
+          } else if (Number(existing.confirmations || 0) !== confirmations) {
+            await db.query('UPDATE bsc_deposits SET confirmations = ?, block_number = ? WHERE id = ?', [confirmations, blockNumber, existing.id]);
+            if (ioInstance) {
+              ioInstance.to(`user:${existing.user_id}`).emit('deposit-status', {
+                type: 'pending', txHash, confirmations, required: REQUIRED_CONFIRMATIONS,
+                amount: existing.amount_usdt, currency: 'BNB',
+                message: `Dépôt BNB (${confirmations}/${REQUIRED_CONFIRMATIONS} confirmations) ≈ ${Number(existing.amount_usdt).toFixed(2)} USDT`
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (INTER_BATCH_DELAY_MS > 0) {
+      await new Promise(resolve => setTimeout(resolve, INTER_BATCH_DELAY_MS));
+    }
+  }
+
+  await setSetting(BNB_CURSOR_SETTING_KEY, scanEndBlock);
+}
+
 async function refreshPendingDeposits(currentBlock) {
   const provider = getRpcProvider();
   const [pendingRows] = await db.query(
@@ -549,6 +752,12 @@ async function runMonitorCycle(reason = 'manual') {
 
     if (userMap.size > 0) {
       await syncDepositLogs(userMap, currentBlock);
+      // Also poll native BNB deposits
+      try {
+        await pollBnbDeposits(userMap, currentBlock);
+      } catch (bnbErr) {
+        console.error('[BSCMonitor] BNB deposit poll error:', bnbErr.message || bnbErr);
+      }
     }
 
     await refreshPendingDeposits(currentBlock);
@@ -630,5 +839,7 @@ module.exports = {
   triggerCheck,
   getRpcProvider,
   rotateRpcProvider,
-  getCurrentBlock
+  getCurrentBlock,
+  getBnbUsdtPrice
 };
+

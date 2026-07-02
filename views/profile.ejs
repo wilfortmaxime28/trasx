@@ -1282,7 +1282,40 @@ function getYouTubeId(url) {
 
           <!-- Step 2: Deposit Details -->
           <div id="deposit-step-details" style="display: none;">
-            <h2 class="modal-title"><i data-lucide="arrow-down-circle" style="color: var(--success);"></i> <%= tText("Déposer des USDT (BEP-20)") %></h2>
+            <h2 class="modal-title"><i data-lucide="arrow-down-circle" style="color: var(--success);"></i> <%= tText("Déposer des cryptos (BEP-20)") %></h2>
+
+            <!-- Crypto selector tabs -->
+            <div style="display: flex; gap: 8px; margin-bottom: 14px; background: var(--bg-dark); padding: 4px; border-radius: 10px; border: 1px solid var(--border-color);">
+              <button id="depositTabUsdt" type="button" onclick="switchDepositTab('USDT')"
+                style="flex: 1; padding: 8px; border-radius: 7px; border: none; cursor: pointer; font-weight: 600; font-size: 13px; background: var(--primary); color: #fff; transition: all 0.2s;">
+                💵 USDT (BEP-20)
+              </button>
+              <button id="depositTabBnb" type="button" onclick="switchDepositTab('BNB')"
+                style="flex: 1; padding: 8px; border-radius: 7px; border: none; cursor: pointer; font-weight: 600; font-size: 13px; background: transparent; color: var(--text-muted); transition: all 0.2s;">
+                🟡 BNB (BSC)
+              </button>
+            </div>
+
+            <!-- BNB price / calculator (hidden by default) -->
+            <div id="bnbCalculatorBox" style="display: none; background: rgba(243,186,47,0.08); border: 1px solid rgba(243,186,47,0.25); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
+                <span style="font-size: 12px; color: var(--text-muted);">Prix BNB/USDT (temps réel)</span>
+                <span id="bnbLivePrice" style="font-weight: 700; font-size: 14px; color: #f3ba2f;">Chargement…</span>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="number" id="bnbAmountInput" min="0.001" step="0.001" placeholder="Montant BNB"
+                  style="flex:1; padding: 9px 12px; border-radius: 7px; border: 1px solid rgba(243,186,47,0.3); background: var(--bg-card); color: var(--text-main); font-size: 13px;"
+                  oninput="updateBnbCalculator()">
+                <span style="font-size: 18px;">≈</span>
+                <div style="flex:1; padding: 9px 12px; border-radius: 7px; background: var(--bg-dark); border: 1px solid var(--border-color); font-size: 13px; font-weight: 700; color: var(--success);">
+                  <span id="bnbUsdtResult">0.00</span> USDT
+                </div>
+              </div>
+              <p style="font-size: 10.5px; color: var(--text-muted); margin-top: 6px; margin-bottom: 0;">
+                ⚠️ Le crédit est converti au prix du marché au moment de la confirmation de la transaction.
+              </p>
+            </div>
+
             
             <!-- Address input / QR section -->
             <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; background: color-mix(in srgb, var(--primary) 5%, var(--bg-dark)); padding: 16px; border-radius: 12px; border: 1px dashed var(--border-color); margin-bottom: 16px;">
@@ -1608,6 +1641,72 @@ function getYouTubeId(url) {
         };
         window.profilePostsList = <%- JSON.stringify(userPosts || []).replace(/</g, '\\u003c') %>;
         window.profileReelsList = <%- JSON.stringify(userReels || []).replace(/</g, '\\u003c') %>;
+
+        // ── BNB Deposit Tab Switcher ──────────────────────────────────────────
+        let _currentDepositTab = 'USDT';
+        let _bnbLivePrice = null;
+
+        function switchDepositTab(currency) {
+          _currentDepositTab = currency;
+          const isUsdt = currency === 'USDT';
+
+          const tabUsdt = document.getElementById('depositTabUsdt');
+          const tabBnb  = document.getElementById('depositTabBnb');
+          const bnbBox  = document.getElementById('bnbCalculatorBox');
+
+          if (tabUsdt) {
+            tabUsdt.style.background = isUsdt ? 'var(--primary)' : 'transparent';
+            tabUsdt.style.color      = isUsdt ? '#fff' : 'var(--text-muted)';
+          }
+          if (tabBnb) {
+            tabBnb.style.background = !isUsdt ? '#f3ba2f' : 'transparent';
+            tabBnb.style.color      = !isUsdt ? '#1a1a1a' : 'var(--text-muted)';
+          }
+          if (bnbBox) bnbBox.style.display = isUsdt ? 'none' : 'block';
+
+          if (!isUsdt && !_bnbLivePrice) {
+            loadBnbPrice();
+          }
+        }
+
+        async function loadBnbPrice() {
+          try {
+            const res = await fetch('/api/bnb-price');
+            if (res.ok) {
+              const data = await res.json();
+              if (data.success && data.price) {
+                _bnbLivePrice = parseFloat(data.price);
+                const el = document.getElementById('bnbLivePrice');
+                if (el) el.textContent = '$' + _bnbLivePrice.toFixed(2);
+                updateBnbCalculator();
+              }
+            }
+          } catch (e) {
+            const el = document.getElementById('bnbLivePrice');
+            if (el) el.textContent = 'Indisponible';
+          }
+        }
+
+        function updateBnbCalculator() {
+          const input = document.getElementById('bnbAmountInput');
+          const result = document.getElementById('bnbUsdtResult');
+          if (!input || !result) return;
+          const bnbAmt = parseFloat(input.value) || 0;
+          if (_bnbLivePrice && bnbAmt > 0) {
+            result.textContent = (bnbAmt * _bnbLivePrice).toFixed(2);
+          } else {
+            result.textContent = '0.00';
+          }
+        }
+
+        // Refresh BNB price every 60s if BNB tab is active
+        setInterval(() => {
+          if (_currentDepositTab === 'BNB') {
+            _bnbLivePrice = null; // force refresh
+            loadBnbPrice();
+          }
+        }, 60000);
+
       </script>
       <script src="/vendor/face-api/face-api.min.js"></script>
       <script src="/js/client.js?v=<%= Date.now() %>"></script>

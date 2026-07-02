@@ -2718,7 +2718,19 @@ app.get('/api/withdrawals/history', requireAuth, async (req, res) => {
   }
 });
 
+// BNB/USDT live price endpoint (cached 60s server-side)
+app.get('/api/bnb-price', async (req, res) => {
+  try {
+    const bscMonitor = require('./utils/bscMonitor');
+    const price = await bscMonitor.getBnbUsdtPrice();
+    res.json({ success: true, price, symbol: 'BNBUSDT', updatedAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(503).json({ success: false, error: 'Prix BNB indisponible.' });
+  }
+});
+
 app.get('/api/deposits/history', requireAuth, async (req, res) => {
+
   try {
     const userId = req.session.userId;
     const [rows] = await db.query(
