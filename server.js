@@ -2728,7 +2728,269 @@ app.get('/api/deposits/history', requireAuth, async (req, res) => {
   }
 });
 
-// Routes API Backgrounds
+// ─── USER: Réclamer un dépôt manquant via TxID ───────────────────────────────
+app.post('/api/deposits/claim-txid', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    const { txHash } = req.body;
+
+    if (!txHash || typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash.trim())) {
+      return res.status(400).json({ success: false, error: 'TxID invalide. Format attendu : 0x suivi de 64 caractères hexadécimaux.' });
+    }
+
+    const cleanHash = txHash.trim().toLowerCase();
+
+    // Vérifier que ce TxID n'est pas déjà traité
+    const [existing] = await db.query(
+      "SELECT id, status FROM bsc_deposits WHERE tx_hash = ?",
+      [cleanHash]
+    );
+    if (existing.length > 0 && existing[0].status === 'confirmed') {
+      return res.status(409).json({ success: false, error: 'Ce dépôt a déjà été traité et crédité.' });
+    }
+
+    // Récupérer les infos de la transaction on-chain
+    const { ethers } = require('ethers');
+    const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_PROVIDER_URL || 'https://bsc.publicnode.com');
+    const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
+    const iface = new ethers.utils.Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
+
+    const receipt = await provider.getTransactionReceipt(cleanHash);
+    if (!receipt) {
+      return res.status(404).json({ success: false, error: 'Transaction introuvable sur la blockchain. Attendez quelques minutes et réessayez.' });
+    }
+    if (receipt.status !== 1) {
+      return res.status(400).json({ success: false, error: 'Cette transaction a échoué sur la blockchain.' });
+    }
+
+    // Trouver le log de transfert USDT vers le wallet plateforme
+    const platformWallet = PLATFORM_WALLET_ADDRESS.toLowerCase();
+    const usdtLog = receipt.logs.find(l =>
+      l.address.toLowerCase() === USDT_CONTRACT &&
+      l.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+    );
+
+    if (!usdtLog) {
+      return res.status(400).json({ success: false, error: 'Aucun transfert USDT (BEP-20) trouvé dans cette transaction.' });
+    }
+
+    const parsed = iface.parseLog(usdtLog);
+    const toAddress = (parsed.args.to || '').toLowerCase();
+
+    if (toAddress !== platformWallet) {
+      return res.status(400).json({ success: false, error: `Ce transfert n'est pas destiné au wallet de la plateforme (${PLATFORM_WALLET_ADDRESS}).` });
+    }
+
+    const fromAddress = parsed.args.from;
+    const amountWei = parsed.args.value.toString();
+    const amountUsdt = parseFloat(ethers.utils.formatUnits(amountWei, 18));
+    const blockNumber = Number(receipt.blockNumber);
+    const logIndex = Number(usdtLog.logIndex);
+    const currentBlock = await provider.getBlockNumber();
+    const confirmations = Math.max(0, currentBlock - blockNumber + 1);
+    const REQUIRED_CONF = Number(process.env.BSC_DEPOSIT_CONFIRMATIONS || 12);
+
+    if (confirmations < REQUIRED_CONF) {
+      return res.status(202).json({
+        success: false,
+        pending: true,
+        error: `Transaction en attente de confirmation (${confirmations}/${REQUIRED_CONF}). Réessayez dans quelques secondes.`,
+        confirmations,
+        required: REQUIRED_CONF
+      });
+    }
+
+    // Mettre à jour le wallet utilisateur si différent (optionnel selon la politique)
+    const user = await User.getById(userId);
+    const userWallet = (user.wallet_address || '').toLowerCase();
+    const senderWallet = fromAddress.toLowerCase();
+
+    // Politique de sécurité : vérifier si l'expéditeur correspond au wallet enregistré OU mettre à jour
+    if (userWallet && userWallet !== senderWallet) {
+      // Le wallet est différent — on met quand même à jour et on crédite
+      await db.query('UPDATE users SET wallet_address = ? WHERE id = ?', [fromAddress, userId]);
+    } else if (!userWallet) {
+      await db.query('UPDATE users SET wallet_address = ? WHERE id = ?', [fromAddress, userId]);
+    }
+
+    // Insérer ou mettre à jour le dépôt
+    if (existing.length > 0) {
+      await db.query(
+        "UPDATE bsc_deposits SET status = 'confirmed', confirmations = ?, credited_at = NOW() WHERE tx_hash = ?",
+        [confirmations, cleanHash]
+      );
+    } else {
+      await db.query(
+        "INSERT INTO bsc_deposits (user_id, tx_hash, log_index, from_address, to_address, amount_wei, amount_usdt, token_symbol, block_number, confirmations, status, credited_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'USDT', ?, ?, 'confirmed', NOW())",
+        [userId, cleanHash, logIndex, fromAddress, parsed.args.to, amountWei, amountUsdt, blockNumber, confirmations]
+      );
+    }
+
+    // Créditer le solde
+    await db.query(
+      'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
+      [amountUsdt, userId]
+    );
+
+    // Notification temps réel
+    const updatedUser = await User.getById(userId);
+    if (ioInstance) {
+      ioInstance.to(`user:${userId}`).emit('balance-updated', {
+        userId: Number(userId),
+        depositBalance: Number(updatedUser.deposit_account_balance || 0),
+        withdrawalBalance: Number(updatedUser.withdrawal_account_balance || 0),
+        bonusBalance: Number(updatedUser.bonus_account_balance || 0),
+        tokenBalance: Number(updatedUser.token_balance || 0),
+        message: `Dépôt de ${amountUsdt.toFixed(2)} USDT récupéré et crédité !`
+      });
+    }
+
+    console.log(`[DepositClaim] User ${userId} claimed deposit ${cleanHash} — ${amountUsdt} USDT credited.`);
+    return res.json({
+      success: true,
+      message: `Dépôt de ${amountUsdt.toFixed(2)} USDT crédité avec succès sur votre compte.`,
+      amount: amountUsdt,
+      txHash: cleanHash
+    });
+
+  } catch (err) {
+    console.error('[DepositClaim] Error:', err);
+    if (err.code === 'NETWORK_ERROR' || err.message?.includes('network')) {
+      return res.status(503).json({ success: false, error: 'Impossible de contacter la blockchain. Réessayez dans quelques instants.' });
+    }
+    res.status(500).json({ success: false, error: 'Erreur serveur lors de la récupération du dépôt.' });
+  }
+});
+
+// ─── ADMIN: Récupérer un dépôt pour n'importe quel utilisateur via TxID ──────
+app.post('/admin/deposits/recover-txid', async (req, res) => {
+  try {
+    // Vérification session admin
+    if (!req.session || !req.session.adminId) {
+      return res.status(403).json({ success: false, error: 'Accès refusé.' });
+    }
+
+    const { txHash, userId: targetUserId } = req.body;
+
+    if (!txHash || !/^0x[a-fA-F0-9]{64}$/.test(txHash.trim())) {
+      return res.status(400).json({ success: false, error: 'TxID invalide.' });
+    }
+    if (!targetUserId || isNaN(Number(targetUserId))) {
+      return res.status(400).json({ success: false, error: 'ID utilisateur invalide.' });
+    }
+
+    const cleanHash = txHash.trim().toLowerCase();
+    const uid = Number(targetUserId);
+
+    // Vérifier que l'utilisateur existe
+    const targetUser = await User.getById(uid);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, error: `Utilisateur #${uid} introuvable.` });
+    }
+
+    // Vérifier si déjà traité
+    const [existing] = await db.query(
+      "SELECT id, status, user_id FROM bsc_deposits WHERE tx_hash = ?",
+      [cleanHash]
+    );
+    if (existing.length > 0 && existing[0].status === 'confirmed') {
+      return res.status(409).json({
+        success: false,
+        error: `Ce dépôt a déjà été confirmé pour l'utilisateur #${existing[0].user_id}.`
+      });
+    }
+
+    // Récupérer la transaction on-chain
+    const { ethers } = require('ethers');
+    const provider = new ethers.providers.JsonRpcProvider(process.env.BSC_PROVIDER_URL || 'https://bsc.publicnode.com');
+    const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').toLowerCase();
+    const iface = new ethers.utils.Interface(['event Transfer(address indexed from, address indexed to, uint256 value)']);
+
+    const receipt = await provider.getTransactionReceipt(cleanHash);
+    if (!receipt) {
+      return res.status(404).json({ success: false, error: 'Transaction introuvable sur la blockchain.' });
+    }
+    if (receipt.status !== 1) {
+      return res.status(400).json({ success: false, error: 'Cette transaction a échoué on-chain.' });
+    }
+
+    const platformWallet = PLATFORM_WALLET_ADDRESS.toLowerCase();
+    const usdtLog = receipt.logs.find(l =>
+      l.address.toLowerCase() === USDT_CONTRACT &&
+      l.topics[0] === '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+    );
+
+    if (!usdtLog) {
+      return res.status(400).json({ success: false, error: 'Aucun transfert USDT trouvé dans cette transaction.' });
+    }
+
+    const parsed = iface.parseLog(usdtLog);
+    if ((parsed.args.to || '').toLowerCase() !== platformWallet) {
+      return res.status(400).json({ success: false, error: `Ce transfert n'est pas destiné au wallet plateforme.` });
+    }
+
+    const fromAddress = parsed.args.from;
+    const amountWei = parsed.args.value.toString();
+    const amountUsdt = parseFloat(ethers.utils.formatUnits(amountWei, 18));
+    const blockNumber = Number(receipt.blockNumber);
+    const logIndex = Number(usdtLog.logIndex);
+    const currentBlock = await provider.getBlockNumber();
+    const confirmations = Math.max(0, currentBlock - blockNumber + 1);
+
+    // Mettre à jour le wallet de l'utilisateur cible si nécessaire
+    if (!targetUser.wallet_address) {
+      await db.query('UPDATE users SET wallet_address = ? WHERE id = ?', [fromAddress, uid]);
+    }
+
+    // Insérer ou mettre à jour le dépôt
+    if (existing.length > 0) {
+      await db.query(
+        "UPDATE bsc_deposits SET user_id = ?, status = 'confirmed', confirmations = ?, credited_at = NOW() WHERE tx_hash = ?",
+        [uid, confirmations, cleanHash]
+      );
+    } else {
+      await db.query(
+        "INSERT INTO bsc_deposits (user_id, tx_hash, log_index, from_address, to_address, amount_wei, amount_usdt, token_symbol, block_number, confirmations, status, credited_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'USDT', ?, ?, 'confirmed', NOW())",
+        [uid, cleanHash, logIndex, fromAddress, parsed.args.to, amountWei, amountUsdt, blockNumber, confirmations]
+      );
+    }
+
+    // Créditer le solde de l'utilisateur cible
+    await db.query(
+      'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
+      [amountUsdt, uid]
+    );
+
+    // Notification temps réel à l'utilisateur
+    const updatedUser = await User.getById(uid);
+    if (ioInstance) {
+      ioInstance.to(`user:${uid}`).emit('balance-updated', {
+        userId: uid,
+        depositBalance: Number(updatedUser.deposit_account_balance || 0),
+        withdrawalBalance: Number(updatedUser.withdrawal_account_balance || 0),
+        bonusBalance: Number(updatedUser.bonus_account_balance || 0),
+        tokenBalance: Number(updatedUser.token_balance || 0),
+        message: `Dépôt de ${amountUsdt.toFixed(2)} USDT récupéré par l'administrateur.`
+      });
+    }
+
+    console.log(`[AdminDepositRecover] Admin #${req.session.adminId} recovered deposit ${cleanHash} — ${amountUsdt} USDT for user #${uid}`);
+    return res.json({
+      success: true,
+      message: `✅ Dépôt de ${amountUsdt.toFixed(2)} USDT crédité pour ${targetUser.username} (#${uid}).`,
+      amount: amountUsdt,
+      from: fromAddress,
+      txHash: cleanHash,
+      confirmations
+    });
+
+  } catch (err) {
+    console.error('[AdminDepositRecover] Error:', err);
+    res.status(500).json({ success: false, error: 'Erreur serveur : ' + (err.message || err) });
+  }
+});
+
+
 app.get('/api/backgrounds', requireAuth, async (req, res) => {
   try {
     const db = require('./config/db');

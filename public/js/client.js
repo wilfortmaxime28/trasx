@@ -36889,3 +36889,71 @@ document.addEventListener('DOMContentLoaded', () => {
   // Apply navigation query state at the end of DOMContentLoaded to prevent TDZ errors
   applyNavigationQueryState();
 });
+
+// ─── Deposit Claim via TxID ───────────────────────────────────────────────────
+function toggleClaimDepositForm() {
+  const form = document.getElementById('claimDepositForm');
+  if (!form) return;
+  const isHidden = form.style.display === 'none' || !form.style.display;
+  form.style.display = isHidden ? 'block' : 'none';
+  if (isHidden && window.lucide) lucide.createIcons();
+}
+
+async function submitDepositClaim() {
+  const input = document.getElementById('claimTxHashInput');
+  const msgEl = document.getElementById('claimDepositMsg');
+  const btn = document.getElementById('claimDepositBtn');
+  if (!input || !msgEl || !btn) return;
+
+  const txHash = (input.value || '').trim();
+  if (!txHash || !/^0x[a-fA-F0-9]{64}$/i.test(txHash)) {
+    showClaimMsg('error', 'TxID invalide. Il doit commencer par 0x et contenir 64 caractères hexadécimaux.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Vérification en cours…';
+  showClaimMsg('info', 'Vérification de la transaction sur la blockchain BSC…');
+
+  try {
+    const res = await fetch('/api/deposits/claim-txid', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ txHash })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showClaimMsg('success', `✅ ${data.message}`);
+      input.value = '';
+      btn.textContent = 'Dépôt crédité !';
+    } else if (data.pending) {
+      showClaimMsg('warning', `⏳ ${data.error} (${data.confirmations}/${data.required} confirmations)`);
+      btn.disabled = false;
+      btn.textContent = 'Réessayer';
+    } else {
+      showClaimMsg('error', `❌ ${data.error || 'Une erreur est survenue.'}`);
+      btn.disabled = false;
+      btn.textContent = 'Réessayer';
+    }
+  } catch (err) {
+    showClaimMsg('error', 'Erreur réseau. Vérifiez votre connexion et réessayez.');
+    btn.disabled = false;
+    btn.textContent = 'Réessayer';
+  }
+}
+
+function showClaimMsg(type, text) {
+  const el = document.getElementById('claimDepositMsg');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = text;
+  const styles = {
+    success: 'background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3);',
+    error:   'background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3);',
+    warning: 'background: rgba(234,179,8,0.15); color: #eab308; border: 1px solid rgba(234,179,8,0.3);',
+    info:    'background: rgba(59,130,246,0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.3);'
+  };
+  el.style.cssText = (el.style.cssText || '') + '; display: block; margin-top: 8px; font-size: 12px; padding: 8px 12px; border-radius: 6px; ' + (styles[type] || styles.info);
+}
+
