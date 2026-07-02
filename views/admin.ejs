@@ -2825,7 +2825,7 @@
         </div>
         
         <form id="adminCreateWithdrawalForm" onsubmit="handleAdminCreateWithdrawal(event)" style="max-width: 600px;">
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
             <div class="form-group">
               <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-muted);">Email de l'utilisateur</label>
               <input type="email" id="adminWithdrawUserEmail" required placeholder="Ex. jean@gmail.com" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-main);">
@@ -2833,6 +2833,13 @@
             <div class="form-group">
               <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-muted);">Montant en USDT</label>
               <input type="number" step="any" id="adminWithdrawAmount" required placeholder="Ex. 50.00" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-main);">
+            </div>
+            <div class="form-group">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-muted);">Compte à débiter</label>
+              <select id="adminWithdrawSourceAccount" required style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-main); height: 38px;">
+                <option value="withdrawal" selected>Compte de retrait</option>
+                <option value="deposit">Compte de dépôt</option>
+              </select>
             </div>
           </div>
           
@@ -5686,12 +5693,14 @@
       event.preventDefault();
       const emailEl = document.getElementById('adminWithdrawUserEmail');
       const amountEl = document.getElementById('adminWithdrawAmount');
+      const sourceAccountEl = document.getElementById('adminWithdrawSourceAccount');
       const msgEl = document.getElementById('adminWithdrawStatusMsg');
       const btn = document.getElementById('adminWithdrawSubmitBtn');
-      if (!emailEl || !amountEl || !msgEl || !btn) return;
+      if (!emailEl || !amountEl || !sourceAccountEl || !msgEl || !btn) return;
 
       const email = emailEl.value.trim();
       const amount = amountEl.value.trim();
+      const sourceAccount = sourceAccountEl.value;
 
       if (!email || !email.includes('@')) {
         showWithdrawMsg('error', "Veuillez saisir une adresse email valide.");
@@ -5713,7 +5722,7 @@
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
-          body: JSON.stringify({ email, amount: parseFloat(amount) })
+          body: JSON.stringify({ email, amount: parseFloat(amount), sourceAccount })
         });
         const result = await response.json();
 

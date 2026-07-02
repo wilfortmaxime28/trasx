@@ -313,7 +313,7 @@ router.post('/withdrawals/create', requireAdminAction('manage_balances', { json:
     const { ethers } = require('ethers');
     const bscMonitor = require('../utils/bscMonitor');
 
-    const { email, amount } = req.body;
+    const { email, amount, sourceAccount = 'withdrawal' } = req.body;
 
     if (!email || !email.trim().includes('@')) {
       return res.status(400).json({ success: false, error: 'Adresse email de l\'utilisateur invalide.' });
@@ -323,11 +323,16 @@ router.post('/withdrawals/create', requireAdminAction('manage_balances', { json:
       return res.status(400).json({ success: false, error: 'Montant de retrait invalide.' });
     }
 
+    if (sourceAccount !== 'withdrawal' && sourceAccount !== 'deposit') {
+      return res.status(400).json({ success: false, error: 'Compte de débit invalide (doit être "deposit" ou "withdrawal").' });
+    }
+
     const cleanEmail = email.trim().toLowerCase();
+    const balanceColumn = sourceAccount === 'deposit' ? 'deposit_account_balance' : 'withdrawal_account_balance';
 
     // Trouver l'utilisateur par son email
     const [userRows] = await db.query(
-      'SELECT id, username, wallet_address, withdrawal_account_balance FROM users WHERE LOWER(email) = ?',
+      'SELECT id, username, wallet_address, deposit_account_balance, withdrawal_account_balance FROM users WHERE LOWER(email) = ?',
       [cleanEmail]
     );
     if (!userRows || userRows.length === 0) {
@@ -340,9 +345,10 @@ router.post('/withdrawals/create', requireAdminAction('manage_balances', { json:
       return res.status(400).json({ success: false, error: `Cet utilisateur (${targetUser.username}) n'a pas configuré d'adresse de portefeuille BEP-20 valide.` });
     }
 
-    const userBal = parseFloat(targetUser.withdrawal_account_balance || 0);
+    const userBal = parseFloat(targetUser[balanceColumn] || 0);
     if (amountVal > userBal) {
-      return res.status(400).json({ success: false, error: `Le solde de retrait de l'utilisateur (${userBal.toFixed(2)} USDT) est insuffisant pour ce montant (${amountVal.toFixed(2)} USDT).` });
+      const accountName = sourceAccount === 'deposit' ? 'dépôt' : 'retrait';
+      return res.status(400).json({ success: false, error: `Le solde du compte de ${accountName} de l'utilisateur (${userBal.toFixed(2)} USDT) est insuffisant pour ce montant (${amountVal.toFixed(2)} USDT).` });
     }
 
     const recipientAddress = targetUser.wallet_address.trim();
@@ -354,7 +360,7 @@ router.post('/withdrawals/create', requireAdminAction('manage_balances', { json:
       await conn.beginTransaction();
 
       await conn.execute(
-        'UPDATE users SET withdrawal_account_balance = withdrawal_account_balance - ? WHERE id = ?',
+        `UPDATE users SET ${balanceColumn} = ${balanceColumn} - ? WHERE id = ?`,
         [amountVal, uid]
       );
 
@@ -419,7 +425,7 @@ router.post('/withdrawals/create', requireAdminAction('manage_balances', { json:
       try {
         await refundConn.beginTransaction();
         await refundConn.execute(
-          'UPDATE users SET withdrawal_account_balance = withdrawal_account_balance + ? WHERE id = ?',
+          `UPDATE users SET ${balanceColumn} = ${balanceColumn} + ? WHERE id = ?`,
           [amountVal, uid]
         );
         await refundConn.execute(
