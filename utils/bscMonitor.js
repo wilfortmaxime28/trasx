@@ -17,10 +17,8 @@ let cycleRunning = false;
 
 // Public BSC RPC endpoints - ordered by reliability for eth_getLogs
 const BSC_RPC_URLS = [
-  process.env.BSC_PROVIDER_URL || 'https://bsc-dataseed.binance.org/',
-  'https://bsc-dataseed1.defibit.io/',
-  'https://bsc-dataseed1.ninicoin.io/',
-  'https://bsc-dataseed2.defibit.io/',
+  process.env.BSC_PROVIDER_URL || 'https://1rpc.io/bnb',
+  'https://1rpc.io/bnb',
   'https://bsc.publicnode.com',
 ];
 
