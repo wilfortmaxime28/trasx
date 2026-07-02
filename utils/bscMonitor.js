@@ -15,12 +15,15 @@ let wsSubscriptionBound = false;
 let serviceStarted = false;
 let cycleRunning = false;
 
-// Public BSC RPC endpoints for rotation on rate-limit errors
-// TESTED: only bsc.publicnode.com supports eth_getLogs without restrictions
+// Public BSC RPC endpoints - ordered by reliability for eth_getLogs
 const BSC_RPC_URLS = [
-  process.env.BSC_PROVIDER_URL || 'https://bsc.publicnode.com',
+  process.env.BSC_PROVIDER_URL || 'https://bsc-dataseed.binance.org/',
+  'https://bsc-dataseed1.defibit.io/',
+  'https://bsc-dataseed1.ninicoin.io/',
+  'https://bsc-dataseed2.defibit.io/',
   'https://bsc.publicnode.com',
 ];
+
 
 const PLATFORM_WALLET = (process.env.PLATFORM_WALLET_ADDRESS || '0x4e6C4a06F01C3B46704969bBEc0da61FE03BC9A6').trim();
 const USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').trim();
@@ -63,10 +66,17 @@ function rotateRpcProvider() {
 }
 
 function isRateLimitError(err) {
+  const msg = (err && typeof err.message === 'string') ? err.message : '';
+  const body = (err && typeof err.body === 'string') ? err.body : '';
   return (
     (err && err.code === -32005) ||
     (err && err.error && err.error.code === -32005) ||
-    (err && typeof err.message === 'string' && err.message.includes('limit exceeded'))
+    msg.includes('limit exceeded') ||
+    msg.includes('rate limit') ||
+    // publicnode.com 403 "Archive requests require a personal token"
+    (err && err.status === 403) ||
+    body.includes('Archive requests') ||
+    msg.includes('bad response') && (err && err.status === 403)
   );
 }
 
@@ -190,6 +200,13 @@ function buildUserWalletMap(users) {
 async function getStartBlock(currentBlock) {
   const storedCursor = await getNumberSetting(CURSOR_SETTING_KEY, -1);
   if (storedCursor >= 0) {
+    // If the cursor is stale (> 1000 blocks behind tip), reset it to avoid archive requests
+    const blocksBehind = currentBlock - storedCursor;
+    if (blocksBehind > 1000) {
+      console.warn(`[BSCMonitor] Stale cursor detected (${blocksBehind} blocks behind). Resetting to current-${INITIAL_BACKFILL_BLOCKS}.`);
+      await setSetting(CURSOR_SETTING_KEY, currentBlock - INITIAL_BACKFILL_BLOCKS);
+      return Math.max(0, currentBlock - INITIAL_BACKFILL_BLOCKS);
+    }
     return Math.max(0, Math.min(currentBlock, storedCursor) - REORG_BUFFER + 1);
   }
   return Math.max(0, currentBlock - INITIAL_BACKFILL_BLOCKS);
