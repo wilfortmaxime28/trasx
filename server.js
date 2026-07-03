@@ -7224,7 +7224,8 @@ io.on('connection', (socket) => {
         callerId,
         callerName: `${caller.first_name} ${caller.last_name}`.trim(),
         callerAvatar: caller.avatar || '/assets/avatar_placeholder.jpg',
-        isVideo: !!isVideo
+        isVideo: !!isVideo,
+        callerSocketId: socket.id
       });
     } catch (err) {
       console.error('[call-invite] error:', err);
@@ -7239,7 +7240,11 @@ io.on('connection', (socket) => {
       const { callerId, status } = data || {};
       const numericCallerId = parseInt(callerId, 10);
       if (!numericCallerId) return;
-      io.to(`user:${numericCallerId}`).emit('call-response-received', { status, responderId });
+      io.to(`user:${numericCallerId}`).emit('call-response-received', {
+        status,
+        responderId,
+        responderSocketId: socket.id
+      });
     } catch (err) {
       console.error('[call-response] error:', err);
     }
