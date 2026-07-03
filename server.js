@@ -7207,6 +7207,59 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── Signalisation d'appel entrant ──────────────────────────────────────────
+  // Émis par l'appelant pour notifier le destinataire
+  socket.on('call-invite', async (data) => {
+    try {
+      const callerId = session.userId;
+      if (!callerId) return;
+      const { receiverId, isVideo } = data || {};
+      const numericReceiverId = parseInt(receiverId, 10);
+      if (!numericReceiverId || numericReceiverId === Number(callerId)) return;
+
+      const caller = await User.getById(callerId);
+      if (!caller) return;
+
+      io.to(`user:${numericReceiverId}`).emit('call-incoming', {
+        callerId,
+        callerName: `${caller.first_name} ${caller.last_name}`.trim(),
+        callerAvatar: caller.avatar || '/assets/avatar_placeholder.jpg',
+        isVideo: !!isVideo
+      });
+    } catch (err) {
+      console.error('[call-invite] error:', err);
+    }
+  });
+
+  // Réponse du destinataire à l'appelant (accepted | declined | missed)
+  socket.on('call-response', (data) => {
+    try {
+      const responderId = session.userId;
+      if (!responderId) return;
+      const { callerId, status } = data || {};
+      const numericCallerId = parseInt(callerId, 10);
+      if (!numericCallerId) return;
+      io.to(`user:${numericCallerId}`).emit('call-response-received', { status, responderId });
+    } catch (err) {
+      console.error('[call-response] error:', err);
+    }
+  });
+
+  // Raccrochage en cours d'appel
+  socket.on('call-end', (data) => {
+    try {
+      const enderId = session.userId;
+      if (!enderId) return;
+      const { receiverId } = data || {};
+      const numericReceiverId = parseInt(receiverId, 10);
+      if (!numericReceiverId) return;
+      io.to(`user:${numericReceiverId}`).emit('call-ended', { enderId });
+    } catch (err) {
+      console.error('[call-end] error:', err);
+    }
+  });
+  // ───────────────────────────────────────────────────────────────────────────
+
   socket.on('chat-typing', (data) => {
     try {
       const currentUserId = session.userId;

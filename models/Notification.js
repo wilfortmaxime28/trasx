@@ -33,6 +33,12 @@ async function ensureNotificationSchema() {
       if (!adImageRows || adImageRows.length === 0) {
         await db.query('ALTER TABLE notifications ADD COLUMN ad_image_url VARCHAR(255) DEFAULT NULL AFTER ad_url');
       }
+
+      // Check the 'status_id' column to support status comments / status notifications
+      const [statusIdRows] = await db.query('SHOW COLUMNS FROM notifications LIKE ?', ['status_id']);
+      if (!statusIdRows || statusIdRows.length === 0) {
+        await db.query('ALTER TABLE notifications ADD COLUMN status_id INT DEFAULT NULL AFTER comment_id');
+      }
     })().catch((error) => {
       notificationSchemaPromise = null;
       throw error;
