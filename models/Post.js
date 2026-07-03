@@ -291,18 +291,18 @@ class Post {
         u.country AS author_country,
         u.certification_type AS author_certification_type,
         u.created_at AS author_created_at,
-        COALESCE(lc.likes_count, 0) AS likes_count,
-        COALESCE(cc.comments_count, 0) AS comments_count,
-        COALESCE(fc.followers_count, 0) AS author_followers_count,
-        COALESCE(sc.shares_count, 0) AS shares_count,
-        COALESCE(vc.views_count, 0) AS views_count,
+        (SELECT COUNT(*) FROM likes WHERE likes.post_id = p.id) AS likes_count,
+        (SELECT COUNT(*) FROM comments WHERE comments.post_id = p.id) AS comments_count,
+        (SELECT COUNT(*) FROM follows WHERE follows.following_id = p.user_id) AS author_followers_count,
+        (SELECT COUNT(*) FROM post_shares WHERE post_shares.post_id = p.id AND post_shares.clicked_at IS NOT NULL) AS shares_count,
+        (SELECT COUNT(*) FROM post_daily_unique_views WHERE post_daily_unique_views.post_id = p.id) AS views_count,
         (ul.user_id IS NOT NULL) AS is_liked,
         (ub.user_id IS NOT NULL) AS is_bookmarked,
         (lu.user_id IS NOT NULL) AS is_live_unlocked,
         (fw.follower_id IS NOT NULL) AS is_author_following,
         ROUND((
           CASE WHEN fw.follower_id IS NOT NULL THEN 1450 ELSE 0 END
-          + LEAST((p.promo_paid_hashtag_count * 230) + (p.promo_paid_background_price * 60), 1550)
+          + LEAST((p.promo_daily_target * 230) + (p.promo_paid_background_price * 60), 1550)
           + CASE WHEN LOWER(COALESCE(u.country, '')) = ? THEN 120 ELSE 0 END
           + CASE
               WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 6 THEN 850
@@ -311,18 +311,13 @@ class Post {
               WHEN TIMESTAMPDIFF(HOUR, p.created_at, UTC_TIMESTAMP()) <= 168 THEN 220
               ELSE 90
             END
-          + LEAST(COALESCE(fc.followers_count, 0), 6000) / 25
+          + LEAST((SELECT COUNT(*) FROM follows WHERE follows.following_id = p.user_id), 6000) / 25
           + CASE WHEN fw.follower_id IS NULL THEN ((CRC32(CONCAT('discover-', ?, '-', p.id)) % 520) + 130) ELSE 0 END
           + (CRC32(CONCAT('mix-', ?, '-', p.id)) % 90)
           - (${softSeenCase})
         ), 4) AS ranking_score
       FROM posts p
       JOIN users u ON p.user_id = u.id
-      LEFT JOIN (SELECT post_id, COUNT(*) AS likes_count FROM likes GROUP BY post_id) lc ON lc.post_id = p.id
-      LEFT JOIN (SELECT post_id, COUNT(*) AS comments_count FROM comments GROUP BY post_id) cc ON cc.post_id = p.id
-      LEFT JOIN (SELECT following_id, COUNT(*) AS followers_count FROM follows GROUP BY following_id) fc ON fc.following_id = p.user_id
-      LEFT JOIN (SELECT post_id, COUNT(*) AS shares_count FROM post_shares WHERE clicked_at IS NOT NULL GROUP BY post_id) sc ON sc.post_id = p.id
-      LEFT JOIN (SELECT post_id, COUNT(*) AS views_count FROM post_daily_unique_views GROUP BY post_id) vc ON vc.post_id = p.id
       LEFT JOIN likes ul ON ul.post_id = p.id AND ul.user_id = ?
       LEFT JOIN bookmarks ub ON ub.post_id = p.id AND ub.user_id = ?
       LEFT JOIN live_unlocks lu ON lu.post_id = p.id AND lu.user_id = ?

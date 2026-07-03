@@ -41,39 +41,55 @@ class ProfileController {
         '/assets/avatar_placeholder.jpg' // Default avatar
       ];
 
-      // Load contacts for the right sidebar
-      const contacts = await User.getContactsWithFollowState(currentUserId);
+      // Load profile components in parallel to drastically improve page speed
+      const [
+        contacts,
+        messages,
+        followersCount,
+        followingCount,
+        followersList,
+        followingList,
+        postLikes,
+        reelLikes,
+        dashboard,
+        userPosts,
+        userReels,
+        moderationNotices,
+        minWithdrawalAmount,
+        withdrawalFeePercent,
+        showDepositBnb,
+        activeAds
+      ] = await Promise.all([
+        User.getContactsWithFollowState(currentUserId),
+        Message.getRecentForUser(currentUserId),
+        User.getFollowersCount(currentUserId),
+        User.getFollowingCount(currentUserId),
+        User.getFollowersForProfile(currentUserId, currentUserId),
+        User.getFollowingForProfile(currentUserId, currentUserId),
+        Post.getTotalLikesForUser(currentUserId),
+        Reel.getTotalLikesForUser(currentUserId),
+        Event.getDashboard(currentUserId),
+        Post.getByUserId(currentUserId, currentUserId),
+        Reel.getByUserId(currentUserId),
+        AdminModerationNotice.getActiveForUser(currentUserId),
+        getNumberSetting('min_withdrawal_amount', 50),
+        getNumberSetting('withdrawal_fee_percent', 30),
+        getNumberSetting('show_deposit_bnb', 1),
+        Ad.getActiveAds()
+      ]);
 
-      // Load recent messages for the right sidebar
-      const messages = await Message.getRecentForUser(currentUserId);
       const messageInbox = buildMessageInboxSections(currentUserId, contacts, messages);
-
-      // Load social stats
-      const followersCount = await User.getFollowersCount(currentUserId);
-      const followingCount = await User.getFollowingCount(currentUserId);
-      const followersList = await User.getFollowersForProfile(currentUserId, currentUserId);
-      const followingList = await User.getFollowingForProfile(currentUserId, currentUserId);
-      
-      const postLikes = await Post.getTotalLikesForUser(currentUserId);
-      const reelLikes = await Reel.getTotalLikesForUser(currentUserId);
       const totalLikesCount = Number(postLikes) + Number(reelLikes);
       const currentUserPresenceText = presence.getPresenceText(true, currentUser.last_seen_at || null);
-      const dashboard = await Event.getDashboard(currentUserId);
 
-      // Load posts and reels
-      const userPosts = await Post.getByUserId(currentUserId, currentUserId);
-      for (const post of userPosts) {
-        if (post.challenge_type) {
-          const Challenge = require('../models/Challenge');
+      // Parallelize fetching of challenge participants
+      const challengePosts = userPosts.filter(p => p.challenge_type);
+      if (challengePosts.length) {
+        const Challenge = require('../models/Challenge');
+        await Promise.all(challengePosts.map(async (post) => {
           post.challenge_participants = await Challenge.getParticipants(post.id);
-        }
+        }));
       }
-      const userReels = await Reel.getByUserId(currentUserId);
-      const moderationNotices = await AdminModerationNotice.getActiveForUser(currentUserId);
-      const minWithdrawalAmount = await getNumberSetting('min_withdrawal_amount', 50);
-      const withdrawalFeePercent = await getNumberSetting('withdrawal_fee_percent', 30);
-      const showDepositBnb = await getNumberSetting('show_deposit_bnb', 1);
-      const activeAds = await Ad.getActiveAds();
 
       res.render('profile', {
         currentUser,
@@ -122,29 +138,49 @@ class ProfileController {
         return res.status(404).send('Profile not found.');
       }
 
-      const contacts = await User.getContactsWithFollowState(viewerId);
-      const messages = await Message.getRecentForUser(viewerId);
+      const [
+        contacts,
+        messages,
+        followersCount,
+        followingCount,
+        followersList,
+        followingList,
+        viewerFollowingIds,
+        postLikes,
+        reelLikes,
+        userPosts,
+        userReels,
+        dashboard,
+        activeAds
+      ] = await Promise.all([
+        User.getContactsWithFollowState(viewerId),
+        Message.getRecentForUser(viewerId),
+        User.getFollowersCount(profileUser.id),
+        User.getFollowingCount(profileUser.id),
+        User.getFollowersForProfile(profileUser.id, viewerId),
+        User.getFollowingForProfile(profileUser.id, viewerId),
+        User.getFollowingIds(viewerId),
+        Post.getTotalLikesForUser(profileUser.id),
+        Reel.getTotalLikesForUser(profileUser.id),
+        Post.getByUserId(profileUser.id, viewerId),
+        Reel.getByUserId(profileUser.id),
+        Event.getDashboard(viewerId),
+        Ad.getActiveAds()
+      ]);
+
       const messageInbox = buildMessageInboxSections(viewerId, contacts, messages);
-      const followersCount = await User.getFollowersCount(profileUser.id);
-      const followingCount = await User.getFollowingCount(profileUser.id);
-      const followersList = await User.getFollowersForProfile(profileUser.id, viewerId);
-      const followingList = await User.getFollowingForProfile(profileUser.id, viewerId);
-      const viewerFollowingIds = await User.getFollowingIds(viewerId);
-      const postLikes = await Post.getTotalLikesForUser(profileUser.id);
-      const reelLikes = await Reel.getTotalLikesForUser(profileUser.id);
       const totalLikesCount = Number(postLikes) + Number(reelLikes);
-      const userPosts = await Post.getByUserId(profileUser.id, viewerId);
-      for (const post of userPosts) {
-        if (post.challenge_type) {
-          const Challenge = require('../models/Challenge');
+
+      const challengePosts = userPosts.filter(p => p.challenge_type);
+      if (challengePosts.length) {
+        const Challenge = require('../models/Challenge');
+        await Promise.all(challengePosts.map(async (post) => {
           post.challenge_participants = await Challenge.getParticipants(post.id);
-        }
+        }));
       }
-      const userReels = await Reel.getByUserId(profileUser.id);
+
       const profileIsOnline = presence.isUserOnline(profileUser.id);
       const profilePresenceText = presence.getPresenceText(profileIsOnline, profileUser.last_seen_at || null);
-      const dashboard = await Event.getDashboard(viewerId);
-      const activeAds = await Ad.getActiveAds();
 
       res.render('publicProfile', {
         currentUser: viewerUser,
