@@ -4916,7 +4916,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Messagerie active en Temps Réel (Facebook-style) ---
   const chatBoxesContainer = document.getElementById('chatBoxesContainer');
 
-  const initiateMockCall = (contactName, avatarUrl, isVideo) => {
+  const initiateMockCall = (contactName, avatarUrl, isVideo, isOnline, onCallEnd) => {
     if (document.getElementById('mock-call-overlay')) return;
 
     const overlay = document.createElement('div');
@@ -4927,8 +4927,8 @@ document.addEventListener('DOMContentLoaded', () => {
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: radial-gradient(circle, rgba(16, 23, 41, 0.95) 0%, rgba(3, 7, 18, 0.98) 100%);
-      backdrop-filter: blur(15px);
+      background: radial-gradient(circle, rgba(16, 23, 41, 0.96) 0%, rgba(3, 7, 18, 0.99) 100%);
+      backdrop-filter: blur(20px);
       z-index: 10000;
       display: flex;
       flex-direction: column;
@@ -4940,43 +4940,44 @@ document.addEventListener('DOMContentLoaded', () => {
       box-sizing: border-box;
     `;
 
-    const statusText = isVideo ? 'Appel vidéo en cours...' : 'Appel en cours...';
-
     overlay.innerHTML = `
       <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; margin-top: 40px; text-align: center;">
         <div class="call-avatar-wrapper" style="position: relative; width: 120px; height: 120px;">
-          <div class="call-avatar-ring" style="position: absolute; top: -10px; left: -10px; right: -10px; bottom: -10px; border-radius: 50%; border: 3px solid var(--primary); animation: call-ring-pulse 2s infinite ease-in-out;"></div>
-          <img src="${avatarUrl}" alt="${contactName}" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid rgba(255,255,255,0.1); box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+          <div class="call-avatar-ring" id="call-avatar-ring" style="position: absolute; top: -10px; left: -10px; right: -10px; bottom: -10px; border-radius: 50%; border: 3px solid var(--primary); animation: call-ring-pulse 2s infinite ease-in-out;"></div>
+          <img src="${avatarUrl}" alt="${contactName}" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid rgba(255,255,255,0.15); box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
         </div>
-        <h2 style="font-size: 24px; font-weight: 700; margin: 12px 0 4px 0; letter-spacing: -0.5px;">${contactName}</h2>
-        <p style="font-size: 14px; color: rgba(255,255,255,0.6); margin: 0; font-weight: 500; display: flex; align-items: center; gap: 8px; justify-content: center;">
-          <i data-lucide="${isVideo ? 'video' : 'phone'}" style="width: 16px; height: 16px; color: var(--primary);"></i>
-          ${statusText}
-        </p>
+        <h2 style="font-size: 26px; font-weight: 700; color: #ffffff !important; margin: 12px 0 4px 0; text-shadow: 0 2px 4px rgba(0,0,0,0.4); letter-spacing: -0.5px;">${contactName}</h2>
+        <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <span id="call-status-icon-container" style="display: flex; align-items: center; justify-content: center;">
+            <i data-lucide="${isVideo ? 'video' : 'phone'}" style="width: 16px; height: 16px; color: var(--primary);"></i>
+          </span>
+          <p id="call-status-text" style="font-size: 15px; color: rgba(255,255,255,0.7); margin: 0; font-weight: 500; letter-spacing: 0.2px;">Connexion...</p>
+        </div>
+        <div id="call-duration-timer" style="font-size: 14px; color: #10b981; font-weight: 600; margin-top: 6px; display: none;">00:00</div>
       </div>
 
-      ${isVideo ? `
-        <div style="width: 90%; max-width: 320px; aspect-ratio: 9/16; background: #1f2937; border-radius: 20px; overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 15px 35px rgba(0,0,0,0.4); margin: 20px 0;">
-          <video id="mock-local-video" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
-          <div style="position: absolute; bottom: 12px; left: 12px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; backdrop-filter: blur(4px);">Moi</div>
-        </div>
-      ` : `
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 40px 0;">
-          <div class="call-wave-container" style="display: flex; gap: 4px; align-items: center; height: 30px;">
-            <span class="call-wave-bar" style="width: 3px; height: 8px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out;"></span>
-            <span class="call-wave-bar" style="width: 3px; height: 16px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.2s;"></span>
-            <span class="call-wave-bar" style="width: 3px; height: 24px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.4s;"></span>
-            <span class="call-wave-bar" style="width: 3px; height: 16px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.6s;"></span>
-            <span class="call-wave-bar" style="width: 3px; height: 8px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.8s;"></span>
+      <div id="call-middle-area" style="width: 100%; display: flex; justify-content: center;">
+        ${isVideo ? `
+          <div style="width: 90%; max-width: 320px; aspect-ratio: 9/16; background: #111827; border-radius: 20px; overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 15px 35px rgba(0,0,0,0.5); margin: 20px 0;">
+            <video id="mock-local-video" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
+            <div style="position: absolute; bottom: 12px; left: 12px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; backdrop-filter: blur(4px);">Moi</div>
           </div>
-        </div>
-      `}
+        ` : `
+          <div class="call-wave-container" style="display: flex; gap: 5px; align-items: center; height: 40px; margin: 40px 0;">
+            <span class="call-wave-bar" style="width: 4px; height: 10px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out;"></span>
+            <span class="call-wave-bar" style="width: 4px; height: 20px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.15s;"></span>
+            <span class="call-wave-bar" style="width: 4px; height: 32px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.3s;"></span>
+            <span class="call-wave-bar" style="width: 4px; height: 20px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.45s;"></span>
+            <span class="call-wave-bar" style="width: 4px; height: 10px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.6s;"></span>
+          </div>
+        `}
+      </div>
 
-      <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
         <button id="hang-up-btn" style="width: 64px; height: 64px; border-radius: 50%; background: #ef4444; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s, background-color 0.2s; box-shadow: 0 10px 25px rgba(239, 68, 68, 0.4);" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
           <i data-lucide="phone-off" style="width: 28px; height: 28px; color: white;"></i>
         </button>
-        <span style="font-size: 12px; color: rgba(255,255,255,0.4); font-weight: 500; text-transform: uppercase; letter-spacing: 1px;">Raccrocher</span>
+        <span style="font-size: 11px; color: rgba(255,255,255,0.4); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;">Raccrocher</span>
       </div>
     `;
 
@@ -4984,48 +4985,51 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [overlay] });
 
     let ringInterval = null;
+    let callTimerInterval = null;
+    let stateTimeout = null;
     let audioCtx = null;
-    
-    try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) {
-        audioCtx = new AudioCtx();
-        const playRingSequence = () => {
-          if (!audioCtx || audioCtx.state === 'closed') return;
-          
-          const osc1 = audioCtx.createOscillator();
-          const osc2 = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          
-          osc1.type = 'sine';
-          osc2.type = 'sine';
-          
-          osc1.frequency.setValueAtTime(400, audioCtx.currentTime);
-          osc2.frequency.setValueAtTime(450, audioCtx.currentTime);
-          
-          gain.gain.setValueAtTime(0, audioCtx.currentTime);
-          gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.05);
-          gain.gain.setValueAtTime(0.1, audioCtx.currentTime + 1.5);
-          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.8);
-          
-          osc1.connect(gain);
-          osc2.connect(gain);
-          gain.connect(audioCtx.destination);
-          
-          osc1.start();
-          osc2.start();
-          osc1.stop(audioCtx.currentTime + 1.8);
-          osc2.stop(audioCtx.currentTime + 1.8);
-        };
-        
-        playRingSequence();
-        ringInterval = setInterval(playRingSequence, 3000);
-      }
-    } catch (err) {
-      console.error('Failed to init calling audio:', err);
-    }
-
     let mediaStream = null;
+    let callDurationSeconds = 0;
+    let currentCallState = 'connecting';
+
+    const updateStatusText = (text, iconName = null, iconColor = 'var(--primary)') => {
+      const statusTextEl = document.getElementById('call-status-text');
+      if (statusTextEl) statusTextEl.textContent = text;
+
+      if (iconName) {
+        const iconContainer = document.getElementById('call-status-icon-container');
+        if (iconContainer) {
+          iconContainer.innerHTML = `<i data-lucide="${iconName}" style="width: 16px; height: 16px; color: ${iconColor};"></i>`;
+          if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [iconContainer] });
+        }
+      }
+    };
+
+    const playTone = (freq, duration, type = 'sine') => {
+      try {
+        if (!audioCtx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) audioCtx = new AudioCtx();
+        }
+        if (audioCtx && audioCtx.state !== 'closed') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0, audioCtx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 0.02);
+          gain.gain.setValueAtTime(0.08, audioCtx.currentTime + duration - 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + duration);
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    };
+
     if (isVideo && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       navigator.mediaDevices.getUserMedia({ video: true, audio: false })
         .then((stream) => {
@@ -5034,22 +5038,125 @@ document.addEventListener('DOMContentLoaded', () => {
           if (videoEl) videoEl.srcObject = stream;
         })
         .catch((err) => {
-          console.warn('Camera access denied or unavailable:', err);
+          console.warn('Camera access denied:', err);
         });
     }
 
-    const hangUp = () => {
+    const cleanUpAudioAndVideo = () => {
       if (ringInterval) clearInterval(ringInterval);
+      if (callTimerInterval) clearInterval(callTimerInterval);
+      if (stateTimeout) clearTimeout(stateTimeout);
       if (audioCtx) {
         audioCtx.close().catch(() => {});
       }
       if (mediaStream) {
         mediaStream.getTracks().forEach((track) => track.stop());
       }
+    };
+
+    const hangUp = () => {
+      cleanUpAudioAndVideo();
       overlay.remove();
+
+      if (currentCallState === 'connected') {
+        if (typeof onCallEnd === 'function') onCallEnd('connected', callDurationSeconds);
+      } else {
+        if (typeof onCallEnd === 'function') onCallEnd('missed', 0);
+      }
     };
 
     document.getElementById('hang-up-btn').addEventListener('click', hangUp);
+
+    if (!isOnline) {
+      currentCallState = 'offline';
+      updateStatusText('Utilisateur hors ligne', 'phone-off', '#ef4444');
+      const avatarRing = document.getElementById('call-avatar-ring');
+      if (avatarRing) {
+        avatarRing.style.borderColor = '#ef4444';
+        avatarRing.style.animation = 'none';
+      }
+      
+      playTone(480, 0.4, 'sine');
+      setTimeout(() => playTone(480, 0.4, 'sine'), 800);
+      setTimeout(() => playTone(480, 0.4, 'sine'), 1600);
+
+      stateTimeout = setTimeout(() => {
+        hangUp();
+      }, 3000);
+
+    } else {
+      currentCallState = 'connecting';
+      updateStatusText('Connexion...', isVideo ? 'video' : 'phone');
+
+      const playRingSequence = () => {
+        try {
+          if (!audioCtx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) audioCtx = new AudioCtx();
+          }
+          if (audioCtx && audioCtx.state !== 'closed') {
+            const osc1 = audioCtx.createOscillator();
+            const osc2 = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc1.type = 'sine';
+            osc2.type = 'sine';
+            osc1.frequency.setValueAtTime(400, audioCtx.currentTime);
+            osc2.frequency.setValueAtTime(450, audioCtx.currentTime);
+            
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 0.05);
+            gain.gain.setValueAtTime(0.08, audioCtx.currentTime + 1.5);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.8);
+            
+            osc1.connect(gain);
+            osc2.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc1.start();
+            osc2.start();
+            osc1.stop(audioCtx.currentTime + 1.8);
+            osc2.stop(audioCtx.currentTime + 1.8);
+          }
+        } catch (e) {
+          console.warn(e);
+        }
+      };
+
+      playRingSequence();
+      ringInterval = setInterval(playRingSequence, 3000);
+
+      stateTimeout = setTimeout(() => {
+        currentCallState = 'ringing';
+        updateStatusText('Le téléphone sonne...', 'bell-ring', '#eab308');
+        
+        stateTimeout = setTimeout(() => {
+          if (ringInterval) {
+            clearInterval(ringInterval);
+            ringInterval = null;
+          }
+          currentCallState = 'connected';
+          updateStatusText('Appel connecté', 'shield-check', '#10b981');
+          
+          playTone(523.25, 0.15, 'sine');
+          setTimeout(() => playTone(659.25, 0.25, 'sine'), 150);
+
+          const timerEl = document.getElementById('call-duration-timer');
+          if (timerEl) timerEl.style.display = 'block';
+
+          callTimerInterval = setInterval(() => {
+            callDurationSeconds++;
+            const min = Math.floor(callDurationSeconds / 60);
+            const sec = callDurationSeconds % 60;
+            const timerText = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+            if (timerEl) timerEl.textContent = timerText;
+            updateStatusText(`Appel en cours... (${timerText})`, 'shield-check', '#10b981');
+          }, 1000);
+
+        }, 5500);
+
+      }, 2500);
+    }
   };
 
   function openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText = '', isPendingRequest = false, contactUsername = '') {
@@ -5529,14 +5636,40 @@ document.addEventListener('DOMContentLoaded', () => {
     const phoneChatBtn = chatBox.querySelector('.phone-chat');
     if (phoneChatBtn) {
       phoneChatBtn.addEventListener('click', () => {
-        initiateMockCall(contactName, avatarUrl, false);
+        initiateMockCall(contactName, avatarUrl, false, isOnlineBool, (statusType, duration) => {
+          let text = '';
+          if (statusType === 'missed') {
+            text = '📞 Appel vocal manqué';
+          } else if (statusType === 'connected') {
+            const min = Math.floor(duration / 60);
+            const sec = duration % 60;
+            const durStr = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+            text = `📞 Appel vocal terminé (${durStr})`;
+          }
+          if (text) {
+            sendChatMessage({ content: text });
+          }
+        });
       });
     }
 
     const videoChatBtn = chatBox.querySelector('.video-chat');
     if (videoChatBtn) {
       videoChatBtn.addEventListener('click', () => {
-        initiateMockCall(contactName, avatarUrl, true);
+        initiateMockCall(contactName, avatarUrl, true, isOnlineBool, (statusType, duration) => {
+          let text = '';
+          if (statusType === 'missed') {
+            text = '📹 Appel vidéo manqué';
+          } else if (statusType === 'connected') {
+            const min = Math.floor(duration / 60);
+            const sec = duration % 60;
+            const durStr = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+            text = `📹 Appel vidéo terminé (${durStr})`;
+          }
+          if (text) {
+            sendChatMessage({ content: text });
+          }
+        });
       });
     }
   }
