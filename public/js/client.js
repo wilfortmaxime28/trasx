@@ -5709,13 +5709,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const showPermissionDeniedBanner = (mediaType) => {
       const existing = document.getElementById('call-perm-denied-banner');
       if (existing) return;
+
       const banner = document.createElement('div');
       banner.id = 'call-perm-denied-banner';
-      banner.style.cssText = 'position:absolute;top:0;left:0;right:0;background:rgba(239,68,68,0.9);color:#fff;text-align:center;padding:10px 16px;font-size:13px;z-index:3;border-radius:0;backdrop-filter:blur(6px);';
-      const label = mediaType === 'video' ? 'caméra' : 'microphone';
-      banner.innerHTML = `⚠️ Accès au ${label} refusé. <a href="javascript:void(0)" style="color:#fde68a;text-decoration:underline;" onclick="document.getElementById('mock-call-overlay')?.remove()">Fermer</a> et autorisez dans les paramètres du navigateur.`;
+      banner.style.cssText = [
+        'position:absolute;top:0;left:0;right:0;z-index:10;',
+        'background:linear-gradient(135deg,rgba(30,20,50,0.97),rgba(20,15,40,0.97));',
+        'backdrop-filter:blur(16px);padding:20px 24px;',
+        'display:flex;flex-direction:column;align-items:center;gap:12px;',
+        'border-bottom:1px solid rgba(239,68,68,0.3);'
+      ].join('');
+
+      const deviceLabel = mediaType === 'video' ? 'caméra &amp; microphone' : 'microphone';
+      const deviceIcon  = mediaType === 'video' ? '🎥' : '🎙️';
+
+      banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:40px;height:40px;border-radius:50%;background:rgba(239,68,68,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;">${deviceIcon}</div>
+          <div>
+            <div style="font-weight:700;font-size:14px;color:#fff;">Accès au ${deviceLabel} refusé</div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.55);margin-top:2px;">Autorisez l'accès pour que l'appel fonctionne.</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;width:100%;">
+          <a href="/settings#media-permissions"
+             style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:20px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:13px;font-weight:600;text-decoration:none;transition:opacity .15s;"
+             onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+            ⚙️ Ouvrir les paramètres
+          </a>
+          <button onclick="document.getElementById('mock-call-overlay')?.remove()"
+                  style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:20px;background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,0.15);cursor:pointer;">
+            ✕ Fermer l'appel
+          </button>
+        </div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.35);text-align:center;">
+          Si déjà refusé : cliquez sur 🔒 dans la barre d'adresse → Réinitialiser les permissions → Recharger
+        </div>
+      `;
       overlay.appendChild(banner);
     };
+
 
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       const constraints = isVideo

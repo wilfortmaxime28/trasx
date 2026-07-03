@@ -154,6 +154,10 @@
               <i data-lucide="wallet"></i>
               <span><%= t('settings.billing', 'Billing') %></span>
             </a>
+            <a href="#media-permissions" class="settings-nav-link">
+              <i data-lucide="mic"></i>
+              <span>Permissions médias</span>
+            </a>
           </nav>
         </aside>
 
@@ -290,6 +294,65 @@
             </div>
           </section>
 
+          <!-- ── Media Permissions ─────────────────────────────────────────── -->
+          <section class="settings-panel-card" id="media-permissions">
+            <div class="settings-panel-header">
+              <div>
+                <h2 class="settings-panel-title">Permissions micro &amp; caméra</h2>
+                <div class="settings-panel-subtitle">Autorisez l'accès au microphone et à la caméra pour passer et recevoir des appels audio et vidéo.</div>
+              </div>
+            </div>
+
+            <!-- Microphone -->
+            <div class="settings-info-row" style="align-items:flex-start; gap:16px; flex-wrap:wrap;">
+              <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:200px;">
+                <div id="perm-mic-icon" style="width:44px;height:44px;border-radius:50%;background:rgba(var(--primary-rgb,99,102,241),0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .3s;">
+                  <i data-lucide="mic" style="width:22px;height:22px;color:var(--primary);"></i>
+                </div>
+                <div>
+                  <div style="font-weight:600;font-size:14px;">Microphone</div>
+                  <div id="perm-mic-status" style="font-size:12px;color:var(--text-muted);margin-top:2px;">Statut inconnu</div>
+                </div>
+              </div>
+              <button id="perm-mic-btn" type="button" class="settings-primary-btn" style="flex-shrink:0;">
+                <i data-lucide="mic"></i>
+                Autoriser le micro
+              </button>
+            </div>
+
+            <div style="height:1px;background:var(--border-color,rgba(0,0,0,.08));margin:4px 0;"></div>
+
+            <!-- Camera -->
+            <div class="settings-info-row" style="align-items:flex-start; gap:16px; flex-wrap:wrap;">
+              <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:200px;">
+                <div id="perm-cam-icon" style="width:44px;height:44px;border-radius:50%;background:rgba(var(--primary-rgb,99,102,241),0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .3s;">
+                  <i data-lucide="video" style="width:22px;height:22px;color:var(--primary);"></i>
+                </div>
+                <div>
+                  <div style="font-weight:600;font-size:14px;">Caméra</div>
+                  <div id="perm-cam-status" style="font-size:12px;color:var(--text-muted);margin-top:2px;">Statut inconnu</div>
+                </div>
+              </div>
+              <button id="perm-cam-btn" type="button" class="settings-primary-btn" style="flex-shrink:0;">
+                <i data-lucide="video"></i>
+                Autoriser la caméra
+              </button>
+            </div>
+
+            <!-- Preview video -->
+            <div id="perm-video-preview-wrap" style="display:none; margin-top:12px; border-radius:14px; overflow:hidden; background:#000; position:relative; max-width:320px;">
+              <video id="perm-video-preview" autoplay muted playsinline style="width:100%;display:block;border-radius:14px;"></video>
+              <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:3px 10px;border-radius:20px;backdrop-filter:blur(6px);white-space:nowrap;">Aperçu caméra en direct</div>
+            </div>
+
+            <!-- Info box -->
+            <div style="margin-top:16px;padding:12px 16px;background:rgba(var(--primary-rgb,99,102,241),0.07);border-radius:12px;border:1px solid rgba(var(--primary-rgb,99,102,241),0.15);font-size:13px;color:var(--text-muted);line-height:1.6;">
+              <strong style="display:block;margin-bottom:4px;color:var(--text-primary);">💡 Comment ça marche ?</strong>
+              Cliquez sur « Autoriser » — votre navigateur affichera une fenêtre de confirmation. Une fois accordé, vos appels audio et vidéo fonctionneront immédiatement. Si vous avez déjà refusé, cliquez sur l'icône 🔒 dans la barre d'adresse pour réinitialiser les permissions, puis réessayez.
+            </div>
+          </section>
+          <!-- ──────────────────────────────────────────────────────────────── -->
+
           <section class="settings-panel-card" id="language">
             <div class="settings-panel-header">
               <div>
@@ -297,6 +360,7 @@
                 <div class="settings-panel-subtitle"><%= t('settings.languageSubtitle', "Choose the interface language for the app.") %></div>
               </div>
             </div>
+
 
             <form class="settings-form" action="/settings/language" method="POST">
               <div class="settings-form-grid">
@@ -704,6 +768,132 @@
       }
     });
   })();
+
+  // ── Media Permissions Section ──────────────────────────────────────────────
+  (() => {
+    const micStatusEl  = document.getElementById('perm-mic-status');
+    const camStatusEl  = document.getElementById('perm-cam-status');
+    const micIconEl    = document.getElementById('perm-mic-icon');
+    const camIconEl    = document.getElementById('perm-cam-icon');
+    const micBtn       = document.getElementById('perm-mic-btn');
+    const camBtn       = document.getElementById('perm-cam-btn');
+    const previewWrap  = document.getElementById('perm-video-preview-wrap');
+    const previewVideo = document.getElementById('perm-video-preview');
+
+    let camPreviewStream = null;
+
+    const COLORS = {
+      granted: { bg: 'rgba(16,185,129,0.15)', icon: '#10b981', label: '✅ Autorisé' },
+      denied:  { bg: 'rgba(239,68,68,0.15)',  icon: '#ef4444', label: '🚫 Refusé — réinitialisez dans les paramètres du navigateur (🔒)' },
+      prompt:  { bg: 'rgba(99,102,241,0.12)', icon: 'var(--primary)', label: 'En attente d\'autorisation…' },
+      unknown: { bg: 'rgba(99,102,241,0.12)', icon: 'var(--primary)', label: 'Statut inconnu' },
+    };
+
+    const setStatus = (type, iconEl, statusEl, state) => {
+      const c = COLORS[state] || COLORS.unknown;
+      if (iconEl) iconEl.style.background = c.bg;
+      const iconSvg = iconEl?.querySelector('[data-lucide]');
+      if (iconSvg) iconSvg.style.color = c.icon;
+      if (statusEl) statusEl.textContent = c.label;
+
+      // Update button label
+      const btn = type === 'mic' ? micBtn : camBtn;
+      if (!btn) return;
+      if (state === 'granted') {
+        btn.style.background = 'rgba(16,185,129,0.15)';
+        btn.style.color = '#10b981';
+        btn.style.border = '1px solid rgba(16,185,129,0.3)';
+        btn.innerHTML = `<i data-lucide="${type === 'mic' ? 'mic' : 'video'}"></i> ${type === 'mic' ? 'Micro autorisé' : 'Caméra autorisée'}`;
+      } else if (state === 'denied') {
+        btn.style.background = 'rgba(239,68,68,0.1)';
+        btn.style.color = '#ef4444';
+        btn.style.border = '1px solid rgba(239,68,68,0.3)';
+        btn.innerHTML = `<i data-lucide="${type === 'mic' ? 'mic-off' : 'video-off'}"></i> Accès refusé — Réinitialiser`;
+      } else {
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.border = '';
+        btn.innerHTML = `<i data-lucide="${type === 'mic' ? 'mic' : 'video'}"></i> ${type === 'mic' ? 'Autoriser le micro' : 'Autoriser la caméra'}`;
+      }
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    };
+
+    // Check current permission state via Permissions API (where supported)
+    const checkPermission = async (name, type, iconEl, statusEl) => {
+      if (navigator.permissions) {
+        try {
+          const result = await navigator.permissions.query({ name });
+          setStatus(type, iconEl, statusEl, result.state);
+          result.addEventListener('change', () => setStatus(type, iconEl, statusEl, result.state));
+          return result.state;
+        } catch (e) { /* not supported for camera in some browsers */ }
+      }
+      setStatus(type, iconEl, statusEl, 'unknown');
+      return 'unknown';
+    };
+
+    checkPermission('microphone', 'mic', micIconEl, micStatusEl);
+    checkPermission('camera',     'cam', camIconEl, camStatusEl);
+
+    // Mic button
+    if (micBtn) {
+      micBtn.addEventListener('click', async () => {
+        micBtn.disabled = true;
+        micBtn.innerHTML = '<i data-lucide="loader"></i> Demande en cours…';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          stream.getTracks().forEach(t => t.stop());
+          setStatus('mic', micIconEl, micStatusEl, 'granted');
+        } catch (err) {
+          const state = err.name === 'NotAllowedError' ? 'denied' : 'unknown';
+          setStatus('mic', micIconEl, micStatusEl, state);
+        } finally {
+          micBtn.disabled = false;
+        }
+      });
+    }
+
+    // Cam button
+    if (camBtn) {
+      camBtn.addEventListener('click', async () => {
+        camBtn.disabled = true;
+        camBtn.innerHTML = '<i data-lucide="loader"></i> Demande en cours…';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Stop any existing preview
+        if (camPreviewStream) {
+          camPreviewStream.getTracks().forEach(t => t.stop());
+          camPreviewStream = null;
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          camPreviewStream = stream;
+          setStatus('cam', camIconEl, camStatusEl, 'granted');
+
+          // Show live preview
+          if (previewVideo && previewWrap) {
+            previewVideo.srcObject = stream;
+            previewWrap.style.display = 'block';
+            previewVideo.play().catch(() => {});
+          }
+        } catch (err) {
+          const state = err.name === 'NotAllowedError' ? 'denied' : 'unknown';
+          setStatus('cam', camIconEl, camStatusEl, state);
+          if (previewWrap) previewWrap.style.display = 'none';
+        } finally {
+          camBtn.disabled = false;
+        }
+      });
+    }
+
+    // Stop preview when navigating away
+    window.addEventListener('beforeunload', () => {
+      if (camPreviewStream) camPreviewStream.getTracks().forEach(t => t.stop());
+    });
+  })();
+  // ──────────────────────────────────────────────────────────────────────────
 </script>
 </body>
 </html>
