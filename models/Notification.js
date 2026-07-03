@@ -164,7 +164,7 @@ class Notification {
           n.created_at,
           COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name), 'TrasX') AS actor_name,
           COALESCE(u.username, 'trasx') AS actor_username,
-          COALESCE(u.avatar, '/assets/avatar_placeholder.jpg') AS actor_avatar,
+          CASE WHEN n.actor_id IS NULL THEN '/assets/trasx-logo-mark.png' ELSE COALESCE(u.avatar, '/assets/avatar_placeholder.jpg') END AS actor_avatar,
           CASE 
             WHEN p.content IS NOT NULL AND TRIM(p.content) != '' THEN p.content
             WHEN p.media_type IS NOT NULL AND p.media_type != '' THEN CONCAT('[', p.media_type, ']')
