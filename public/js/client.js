@@ -5341,19 +5341,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Toggle Handlers
     const toggleMicBtn = document.getElementById('call-toggle-mic-btn');
-    const micIcon = document.getElementById('call-mic-icon');
-    if (toggleMicBtn && micIcon) {
+    if (toggleMicBtn) {
       toggleMicBtn.addEventListener('click', () => {
         isMicMuted = !isMicMuted;
         if (isMicMuted) {
           toggleMicBtn.style.background = '#ffffff';
-          micIcon.style.color = '#000000';
-          micIcon.setAttribute('data-lucide', 'mic-off');
+          toggleMicBtn.innerHTML = `<i id="call-mic-icon" data-lucide="mic-off" style="width: 20px; height: 20px; color: #000000;"></i>`;
           showToast('Micro coupé');
         } else {
           toggleMicBtn.style.background = 'rgba(255,255,255,0.12)';
-          micIcon.style.color = '#ffffff';
-          micIcon.setAttribute('data-lucide', 'mic');
+          toggleMicBtn.innerHTML = `<i id="call-mic-icon" data-lucide="mic" style="width: 20px; height: 20px; color: #ffffff;"></i>`;
           showToast('Micro activé');
         }
         if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [toggleMicBtn] });
@@ -5361,16 +5358,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const toggleVideoBtn = document.getElementById('call-toggle-video-btn');
-    const videoIcon = document.getElementById('call-video-icon');
     const localVideo = document.getElementById('mock-local-video');
     const localVideoPlaceholder = document.getElementById('local-video-placeholder');
-    if (toggleVideoBtn && videoIcon) {
+    if (toggleVideoBtn) {
       toggleVideoBtn.addEventListener('click', () => {
         isVideoOff = !isVideoOff;
         if (isVideoOff) {
           toggleVideoBtn.style.background = '#ffffff';
-          videoIcon.style.color = '#000000';
-          videoIcon.setAttribute('data-lucide', 'video-off');
+          toggleVideoBtn.innerHTML = `<i id="call-video-icon" data-lucide="video-off" style="width: 20px; height: 20px; color: #000000;"></i>`;
           if (localVideo) localVideo.style.display = 'none';
           if (localVideoPlaceholder) localVideoPlaceholder.style.display = 'flex';
           if (mediaStream) {
@@ -5379,8 +5374,7 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast('Caméra désactivée');
         } else {
           toggleVideoBtn.style.background = 'rgba(255,255,255,0.12)';
-          videoIcon.style.color = '#ffffff';
-          videoIcon.setAttribute('data-lucide', 'video');
+          toggleVideoBtn.innerHTML = `<i id="call-video-icon" data-lucide="video" style="width: 20px; height: 20px; color: #ffffff;"></i>`;
           if (localVideo) localVideo.style.display = 'block';
           if (localVideoPlaceholder) localVideoPlaceholder.style.display = 'none';
           if (mediaStream) {
@@ -5393,19 +5387,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const toggleSpeakerBtn = document.getElementById('call-toggle-speaker-btn');
-    const speakerIcon = document.getElementById('call-speaker-icon');
-    if (toggleSpeakerBtn && speakerIcon) {
+    if (toggleSpeakerBtn) {
       toggleSpeakerBtn.addEventListener('click', () => {
         isSpeakerMuted = !isSpeakerMuted;
         if (isSpeakerMuted) {
           toggleSpeakerBtn.style.background = '#ffffff';
-          speakerIcon.style.color = '#000000';
-          speakerIcon.setAttribute('data-lucide', 'volume-x');
+          toggleSpeakerBtn.innerHTML = `<i id="call-speaker-icon" data-lucide="volume-x" style="width: 20px; height: 20px; color: #000000;"></i>`;
           showToast('Haut-parleur coupé');
         } else {
           toggleSpeakerBtn.style.background = 'rgba(255,255,255,0.12)';
-          speakerIcon.style.color = '#ffffff';
-          speakerIcon.setAttribute('data-lucide', 'volume-2');
+          toggleSpeakerBtn.innerHTML = `<i id="call-speaker-icon" data-lucide="volume-2" style="width: 20px; height: 20px; color: #ffffff;"></i>`;
           showToast('Haut-parleur activé');
         }
         if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [toggleSpeakerBtn] });
