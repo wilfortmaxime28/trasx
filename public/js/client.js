@@ -5017,8 +5017,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let ringInterval = null;
     let callTimerInterval = null;
-    let stateTimeout = null;
     let audioCtx = null;
+    const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtxClass) {
+      try {
+        audioCtx = new AudioCtxClass();
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+      } catch (e) {
+        console.warn('Failed to initialize AudioContext:', e);
+      }
+    }
     let mediaStream = null;
     let callDurationSeconds = 0;
     let currentCallState = 'connecting';
@@ -5035,9 +5045,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let callPC = null;
     const rtcConfig = {
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19002' },
-        { urls: 'stun:stun1.l.google.com:19002' },
-        { urls: 'stun:stun2.l.google.com:19002' }
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
       ]
     };
 
@@ -5047,6 +5059,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       callPC = new RTCPeerConnection(rtcConfig);
 
+      // Add local tracks if mediaStream is already available
       if (mediaStream) {
         mediaStream.getTracks().forEach(track => {
           callPC.addTrack(track, mediaStream);
@@ -5075,13 +5088,15 @@ document.addEventListener('DOMContentLoaded', () => {
           if (remoteVideo) {
             remoteVideo.srcObject = remoteStream;
             remoteVideo.style.display = 'block';
+            remoteVideo.play().catch(e => console.warn('Remote video play error:', e));
             const remoteAvatarImg = document.getElementById('remote-avatar-img');
             if (remoteAvatarImg) remoteAvatarImg.style.display = 'none';
           }
         }
 
-        const remoteAudio = document.getElementById('mock-remote-audio') || document.createElement('audio');
-        if (!remoteAudio.id) {
+        let remoteAudio = document.getElementById('mock-remote-audio');
+        if (!remoteAudio) {
+          remoteAudio = document.createElement('audio');
           remoteAudio.id = 'mock-remote-audio';
           remoteAudio.autoplay = true;
           remoteAudio.style.display = 'none';
@@ -5089,6 +5104,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         remoteAudio.srcObject = remoteStream;
         remoteAudio.volume = isSpeakerMuted ? 0 : 1;
+        remoteAudio.play().catch(e => console.warn('Remote audio play error:', e));
       };
 
       if (isInitiator) {
@@ -5155,19 +5171,24 @@ document.addEventListener('DOMContentLoaded', () => {
           const AudioCtx = window.AudioContext || window.webkitAudioContext;
           if (AudioCtx) audioCtx = new AudioCtx();
         }
-        if (audioCtx && audioCtx.state !== 'closed') {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.type = type;
-          osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-          gain.gain.setValueAtTime(0, audioCtx.currentTime);
-          gain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 0.02);
-          gain.gain.setValueAtTime(0.08, audioCtx.currentTime + duration - 0.05);
-          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-          osc.connect(gain);
-          gain.connect(audioCtx.destination);
-          osc.start();
-          osc.stop(audioCtx.currentTime + duration);
+        if (audioCtx) {
+          if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+          }
+          if (audioCtx.state !== 'closed') {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 0.02);
+            gain.gain.setValueAtTime(0.08, audioCtx.currentTime + duration - 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+          }
         }
       } catch (e) {
         console.warn(e);
@@ -5553,6 +5574,13 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    const hangUpBtn = document.getElementById('hang-up-btn');
+    if (hangUpBtn) {
+      hangUpBtn.addEventListener('click', () => {
+        hangUp();
+      });
+    }
+
     // Add Participant Modal & Button
     const modal = document.createElement('div');
     modal.id = 'call-add-user-modal';
@@ -5697,15 +5725,30 @@ document.addEventListener('DOMContentLoaded', () => {
       navigator.mediaDevices.getUserMedia(constraints)
         .then((stream) => {
           mediaStream = stream;
+
+          // Show local video preview
           const videoEl = document.getElementById('mock-local-video');
           if (videoEl && isVideo) {
             const videoTrack = stream.getVideoTracks()[0];
             if (videoTrack) {
               const videoOnlyStream = new MediaStream([videoTrack]);
               videoEl.srcObject = videoOnlyStream;
+              videoEl.play().catch(e => console.warn('Local video play error:', e));
             }
           }
-          // Mic access confirmed — no banner needed
+
+          // If the RTC connection was already established before the stream was ready,
+          // add the tracks now so the remote peer receives audio/video.
+          if (callPC && callPC.signalingState !== 'closed') {
+            stream.getTracks().forEach(track => {
+              // Avoid adding duplicates
+              const senders = callPC.getSenders();
+              const alreadyAdded = senders.some(s => s.track && s.track.id === track.id);
+              if (!alreadyAdded) {
+                callPC.addTrack(track, stream);
+              }
+            });
+          }
         })
         .catch((err) => {
           console.warn('Media access denied:', err);
@@ -5716,7 +5759,16 @@ document.addEventListener('DOMContentLoaded', () => {
           // Try audio-only as fallback for video calls
           if (isVideo) {
             navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-              .then((audioStream) => { mediaStream = audioStream; })
+              .then((audioStream) => {
+                mediaStream = audioStream;
+                if (callPC && callPC.signalingState !== 'closed') {
+                  audioStream.getTracks().forEach(track => {
+                    const senders = callPC.getSenders();
+                    const alreadyAdded = senders.some(s => s.track && s.track.id === track.id);
+                    if (!alreadyAdded) callPC.addTrack(track, audioStream);
+                  });
+                }
+              })
               .catch(() => {});
           }
         });
@@ -6086,27 +6138,28 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         }
         messagesArea.scrollTop = messagesArea.scrollHeight;
-        const unreadMessageIds = data
+         const unreadMessageIds = data
           .filter((msg) => Number(msg.sender_id) !== currentUserId && !msg.read_at)
           .map((msg) => Number(msg.id))
           .filter((id) => Number.isFinite(id));
+
+        document.querySelectorAll(`.message-item[data-contact-id="${numericContactId}"]`).forEach((item) => {
+          item.dataset.unread = '0';
+          item.classList.remove('unread-msg');
+          const unreadDot = item.querySelector('.unread-dot');
+          if (unreadDot) unreadDot.style.display = 'none';
+          const preview = item.querySelector(`#chat-preview-${numericContactId}`) || item.querySelector(`#mobile-chat-preview-${numericContactId}`);
+          if (preview) {
+            preview.style.fontWeight = '400';
+            preview.style.color = 'var(--text-secondary)';
+          }
+        });
+        updateMobileMessagesBadge();
+
         if (unreadMessageIds.length > 0) {
           socket.emit('chat-mark-read', {
             partnerId: numericContactId
           });
-
-          document.querySelectorAll(`.message-item[data-contact-id="${numericContactId}"]`).forEach((item) => {
-            item.dataset.unread = '0';
-            item.classList.remove('unread-msg');
-            const unreadDot = item.querySelector('.unread-dot');
-            if (unreadDot) unreadDot.style.display = 'none';
-            const preview = item.querySelector(`#chat-preview-${numericContactId}`) || item.querySelector(`#mobile-chat-preview-${numericContactId}`);
-            if (preview) {
-              preview.style.fontWeight = '400';
-              preview.style.color = 'var(--text-secondary)';
-            }
-          });
-          updateMobileMessagesBadge();
         }
         if (input) input.focus();
       })
