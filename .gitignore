@@ -7,6 +7,7 @@ config/vapid.json
 
 # Clés privées Firebase (NE JAMAIS committer)
 firebase-service-account.json
+firebase-service-account-local.json
 *-firebase-adminsdk-*.json
 
 # Fichiers uploadés par les utilisateurs (trop lourds pour git)
