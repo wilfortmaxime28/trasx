@@ -2496,7 +2496,7 @@ exports.sendAdminMessage = async (req, res) => {
             is_read: 0,
             read_at: null,
             created_at: new Date().toISOString(),
-            actor_name: 'Administration',
+            actor_name: 'TrasX',
             actor_username: 'admin',
             actor_avatar: '/assets/trasx-logo-mark.png'
           });
@@ -2553,7 +2553,7 @@ exports.sendAdminMessage = async (req, res) => {
             is_read: 0,
             read_at: null,
             created_at: new Date().toISOString(),
-            actor_name: 'Administration',
+            actor_name: 'TrasX',
             actor_username: 'admin',
             actor_avatar: '/assets/trasx-logo-mark.png'
           });
@@ -2594,7 +2594,7 @@ exports.sendAdminMessage = async (req, res) => {
         is_read: 0,
         read_at: null,
         created_at: new Date().toISOString(),
-        actor_name: 'Administration',
+        actor_name: 'TrasX',
         actor_username: 'admin',
         actor_avatar: '/assets/trasx-logo-mark.png'
       });
