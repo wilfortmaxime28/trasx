@@ -4909,7 +4909,7 @@
 
             <div class="form-group">
               <label style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: var(--text-main);">Destinataire</label>
-              <div style="display: flex; gap: 16px; align-items: center; margin-top: 6px;">
+              <div style="display: flex; gap: 16px; align-items: center; margin-top: 6px; flex-wrap: wrap;">
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; color: var(--text-main);">
                   <input type="radio" name="target_type" value="all" checked style="accent-color: var(--primary);">
                   Tous les utilisateurs
@@ -4917,6 +4917,10 @@
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; color: var(--text-main);">
                   <input type="radio" name="target_type" value="single" style="accent-color: var(--primary);">
                   Un utilisateur spécifique
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; color: var(--text-main);">
+                  <input type="radio" name="target_type" value="group" style="accent-color: var(--primary);">
+                  Un groupe d'utilisateurs
                 </label>
               </div>
             </div>
@@ -4928,6 +4932,16 @@
                 <% users.forEach(user => { %>
                   <option value="<%= user.id %>"><%= user.first_name %> <%= user.last_name %> (@<%= user.username %>)</option>
                 <% }) %>
+              </select>
+            </div>
+
+            <div class="form-group" id="groupUserSelectGroup" style="display: none;">
+              <label for="target_group" style="display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: var(--text-main);">Sélectionner le groupe</label>
+              <select id="target_group" name="target_group" style="width: 100%; height: 42px; border-radius: 8px; border: 1px solid var(--border); padding: 0 12px; background: var(--card-bg); color: var(--text-main); font-size: 14px; outline: none;">
+                <option value="">-- Choisir un groupe --</option>
+                <option value="active">Tous les utilisateurs actifs</option>
+                <option value="certified">Tous les utilisateurs certifiés (Basique, VIP, etc.)</option>
+                <option value="uncertified">Tous les utilisateurs non certifiés (None)</option>
               </select>
             </div>
 
@@ -4948,7 +4962,9 @@
         document.addEventListener('DOMContentLoaded', () => {
           const radioAll = document.querySelector('input[name="target_type"][value="all"]');
           const radioSingle = document.querySelector('input[name="target_type"][value="single"]');
+          const radioGroup = document.querySelector('input[name="target_type"][value="group"]');
           const singleGroup = document.getElementById('singleUserSelectGroup');
+          const groupGroup = document.getElementById('groupUserSelectGroup');
           const form = document.getElementById('adminMessagingForm');
           const alertBox = document.getElementById('messagingAlert');
           const submitBtn = document.getElementById('messagingSubmitBtn');
@@ -4957,15 +4973,25 @@
             if (radioSingle && radioSingle.checked) {
               singleGroup.style.display = 'block';
               document.getElementById('target_user_id').required = true;
+              groupGroup.style.display = 'none';
+              document.getElementById('target_group').required = false;
+            } else if (radioGroup && radioGroup.checked) {
+              singleGroup.style.display = 'none';
+              document.getElementById('target_user_id').required = false;
+              groupGroup.style.display = 'block';
+              document.getElementById('target_group').required = true;
             } else {
               singleGroup.style.display = 'none';
               document.getElementById('target_user_id').required = false;
+              groupGroup.style.display = 'none';
+              document.getElementById('target_group').required = false;
             }
           }
 
-          if (radioAll && radioSingle) {
+          if (radioAll && radioSingle && radioGroup) {
             radioAll.addEventListener('change', toggleGroup);
             radioSingle.addEventListener('change', toggleGroup);
+            radioGroup.addEventListener('change', toggleGroup);
           }
 
           if (form) {
@@ -4978,6 +5004,7 @@
               const formData = {
                 target_type: form.elements['target_type'].value,
                 target_user_id: form.elements['target_user_id'].value,
+                target_group: form.elements['target_group'] ? form.elements['target_group'].value : '',
                 message_text: form.elements['message_text'].value
               };
 

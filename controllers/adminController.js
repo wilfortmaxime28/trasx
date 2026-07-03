@@ -2508,6 +2508,63 @@ exports.sendAdminMessage = async (req, res) => {
       
       await ActivityLog.log(adminActorId, 'admin', 'broadcast_notification', 'all_users', null, { message: cleanMessage }, req);
       res.json({ success: true, message: 'Message diffusé avec succès à tous les utilisateurs.' });
+    } else if (target_type === 'group') {
+      const { target_group } = req.body;
+      if (!target_group) {
+        return res.status(400).json({ success: false, error: 'Veuillez sélectionner un groupe d’utilisateurs.' });
+      }
+
+      let query = 'SELECT id, username, email FROM users';
+      let params = [];
+
+      if (target_group === 'active') {
+        query += " WHERE account_status = 'Active'";
+      } else if (target_group === 'certified') {
+        query += " WHERE certification_type IS NOT NULL AND certification_type != 'None'";
+      } else if (target_group === 'uncertified') {
+        query += " WHERE certification_type IS NULL OR certification_type = 'None'";
+      }
+
+      const [groupUsers] = await db.query(query, params);
+
+      if (!groupUsers || groupUsers.length === 0) {
+        return res.status(404).json({ success: false, error: 'Aucun utilisateur trouvé dans ce groupe.' });
+      }
+
+      for (const user of groupUsers) {
+        try {
+          const notificationId = await Notification.create({
+            recipientId: user.id,
+            actorId: null,
+            type: 'message',
+            message: cleanMessage
+          });
+          const unreadCount = await Notification.getUnreadCount(user.id);
+          
+          io.to(`user:${user.id}`).emit('notification-created', {
+            id: notificationId,
+            recipient_id: user.id,
+            actor_id: null,
+            type: 'message',
+            message: cleanMessage,
+            post_id: null,
+            share_id: null,
+            comment_id: null,
+            is_read: 0,
+            read_at: null,
+            created_at: new Date().toISOString(),
+            actor_name: 'Administration',
+            actor_username: 'admin',
+            actor_avatar: '/assets/trasx-logo-mark.png'
+          });
+          io.to(`user:${user.id}`).emit('notification-count-updated', { unreadCount });
+        } catch (err) {
+          console.error(`Failed to send group notification to user ${user.id}:`, err);
+        }
+      }
+
+      await ActivityLog.log(adminActorId, 'admin', 'group_notification', 'group', null, { group: target_group, message: cleanMessage }, req);
+      res.json({ success: true, message: `Message envoyé avec succès aux ${groupUsers.length} utilisateurs du groupe.` });
     } else {
       if (!target_user_id) {
         return res.status(400).json({ success: false, error: 'Veuillez sélectionner un utilisateur.' });
