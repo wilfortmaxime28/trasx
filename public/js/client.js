@@ -5079,7 +5079,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
 
           <!-- Floating Picture-in-Picture Local Video Card (Video Calls Only) -->
-          \${isVideo ? `
+          ${isVideo ? `
             <div id="local-video-card" style="position: absolute; top: 0; right: 20px; width: 105px; height: 160px; background: #111827; border-radius: 16px; overflow: hidden; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 15px 30px rgba(0,0,0,0.6); z-index: 10; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease;">
               <video id="mock-local-video" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
               <div id="local-video-placeholder" style="display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
@@ -5090,7 +5090,7 @@ document.addEventListener('DOMContentLoaded', () => {
           ` : ''}
 
           <!-- Audio Call Visual Waves -->
-          \${!isVideo ? `
+          ${!isVideo ? `
             <div class="call-wave-container" style="position: absolute; bottom: 0; display: flex; gap: 6px; align-items: center; height: 40px;">
               <span class="call-wave-bar" style="width: 4px; height: 12px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out;"></span>
               <span class="call-wave-bar" style="width: 4px; height: 24px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.15s;"></span>
@@ -5156,7 +5156,7 @@ document.addEventListener('DOMContentLoaded', () => {
             background: #1f2937;
             border-radius: 16px;
             overflow: hidden;
-            border: 2px solid \${p.isMe ? 'var(--primary)' : 'rgba(255,255,255,0.1)'};
+            border: 2px solid ${p.isMe ? 'var(--primary)' : 'rgba(255,255,255,0.1)'};
             position: relative;
             aspect-ratio: 1;
             display: flex;
@@ -5179,14 +5179,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isVideoOff) {
               video.style.display = 'none';
               const placeholder = document.createElement('div');
-              placeholder.innerHTML = `<img src="\${p.avatar}" style="width: 64px; height: 64px; border-radius: 50%; border: 2px solid white;">`;
+              placeholder.innerHTML = `<img src="${p.avatar}" style="width: 64px; height: 64px; border-radius: 50%; border: 2px solid white;">`;
               card.appendChild(placeholder);
             }
           } else {
             if (!p.isJoined) {
               card.innerHTML = `
                 <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 10px;">
-                  <img src="\${p.avatar}" style="width: 56px; height: 56px; border-radius: 50%; opacity: 0.5;">
+                  <img src="${p.avatar}" style="width: 56px; height: 56px; border-radius: 50%; opacity: 0.5;">
                   <span style="font-size: 10px; color: #eab308; font-weight: 600; display: flex; align-items: center; gap: 4px;">
                     <span class="call-wave-bar" style="width: 2px; height: 6px; background: #eab308; animation: call-wave-anim 1s infinite;"></span>
                     Appel...
@@ -5196,8 +5196,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
               card.innerHTML = `
                 <div style="width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; background: #111827;">
-                  <img src="\${p.avatar}" style="width: 72px; height: 72px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
-                  \${isVideo ? `
+                  <img src="${p.avatar}" style="width: 72px; height: 72px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                  ${isVideo ? `
                     <div style="position: absolute; top: 8px; right: 8px; background: rgba(16,185,129,0.2); padding: 2px 6px; border-radius: 8px; font-size: 8px; font-weight: 700; color: #10b981; border: 1px solid rgba(16,185,129,0.4);">MOCK VIDEO</div>
                   ` : `
                     <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; border: 2px solid var(--primary); border-radius: 16px; opacity: 0.6; animation: call-ring-pulse 2s infinite ease-in-out;"></div>
@@ -5223,7 +5223,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     overlay.innerHTML = `
       <!-- Blurred Background Avatar -->
-      <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: url('\${avatarUrl}') no-repeat center center; background-size: cover; filter: blur(40px) brightness(0.25); z-index: 1; transform: scale(1.15);"></div>
+      <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: url('${avatarUrl}') no-repeat center center; background-size: cover; filter: blur(40px) brightness(0.25); z-index: 1; transform: scale(1.15);"></div>
       <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(17,24,39,0.75) 0%, rgba(3,7,18,0.96) 100%); z-index: 2;"></div>
 
       <!-- Top Info Box -->
@@ -5232,10 +5232,10 @@ document.addEventListener('DOMContentLoaded', () => {
           <i data-lucide="shield-check" style="width: 13px; height: 13px; color: #10b981;"></i>
           <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: rgba(255,255,255,0.8);">Sécurisé par chiffrement</span>
         </div>
-        <h2 style="font-size: 28px; font-weight: 700; color: #ffffff !important; margin: 8px 0 4px 0; text-shadow: 0 2px 10px rgba(0,0,0,0.5); letter-spacing: -0.5px;">\${contactName}</h2>
+        <h2 style="font-size: 28px; font-weight: 700; color: #ffffff !important; margin: 8px 0 4px 0; text-shadow: 0 2px 10px rgba(0,0,0,0.5); letter-spacing: -0.5px;">${contactName}</h2>
         <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
           <span id="call-status-icon-container" style="display: flex; align-items: center; justify-content: center;">
-            <i data-lucide="\${isVideo ? 'video' : 'phone'}" style="width: 16px; height: 16px; color: var(--primary);"></i>
+            <i data-lucide="${isVideo ? 'video' : 'phone'}" style="width: 16px; height: 16px; color: var(--primary);"></i>
           </span>
           <p id="call-status-text" style="font-size: 15px; color: rgba(255,255,255,0.85); margin: 0; font-weight: 500; letter-spacing: 0.2px; text-shadow: 0 1px 4px rgba(0,0,0,0.5);">Connexion...</p>
         </div>
@@ -5247,11 +5247,11 @@ document.addEventListener('DOMContentLoaded', () => {
         <!-- Remote Partner Avatar / Ring Area -->
         <div id="remote-stream-area" style="position: relative; width: 180px; height: 180px; display: flex; align-items: center; justify-content: center;">
           <div class="call-avatar-ring" id="call-avatar-ring" style="position: absolute; top: -15px; left: -15px; right: -15px; bottom: -15px; border-radius: 50%; border: 3px solid var(--primary); animation: call-ring-pulse 2s infinite ease-in-out;"></div>
-          <img id="remote-avatar-img" src="\${avatarUrl}" alt="\${contactName}" style="width: 180px; height: 180px; border-radius: 50%; object-fit: cover; border: 6px solid rgba(255,255,255,0.15); box-shadow: 0 15px 35px rgba(0,0,0,0.6); transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);">
+          <img id="remote-avatar-img" src="${avatarUrl}" alt="${contactName}" style="width: 180px; height: 180px; border-radius: 50%; object-fit: cover; border: 6px solid rgba(255,255,255,0.15); box-shadow: 0 15px 35px rgba(0,0,0,0.6); transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);">
         </div>
 
         <!-- Floating Picture-in-Picture Local Video Card (Video Calls Only) -->
-        \${isVideo ? \`
+        ${isVideo ? `
           <div id="local-video-card" style="position: absolute; top: 0; right: 20px; width: 105px; height: 160px; background: #111827; border-radius: 16px; overflow: hidden; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 15px 30px rgba(0,0,0,0.6); z-index: 10; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease;">
             <video id="mock-local-video" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
             <div id="local-video-placeholder" style="display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
@@ -5259,10 +5259,10 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 8px; font-size: 9px; font-weight: 700; color: white; backdrop-filter: blur(4px);">Moi</div>
           </div>
-        \` : ''}
+        ` : ''}
 
         <!-- Audio Call Visual Waves -->
-        \${!isVideo ? \`
+        ${!isVideo ? `
           <div class="call-wave-container" style="position: absolute; bottom: 0; display: flex; gap: 6px; align-items: center; height: 40px;">
             <span class="call-wave-bar" style="width: 4px; height: 12px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out;"></span>
             <span class="call-wave-bar" style="width: 4px; height: 24px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.15s;"></span>
@@ -5270,7 +5270,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="call-wave-bar" style="width: 4px; height: 24px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.45s;"></span>
             <span class="call-wave-bar" style="width: 4px; height: 12px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.6s;"></span>
           </div>
-        \` : ''}
+        ` : ''}
       </div>
 
       <!-- Bottom Control Bar -->
@@ -5282,11 +5282,11 @@ document.addEventListener('DOMContentLoaded', () => {
           </button>
           
           <!-- Camera Toggle (Only Video calls) -->
-          \${isVideo ? \`
+          ${isVideo ? `
             <button id="call-toggle-video-btn" style="width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.12); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;" title="Désactiver caméra">
               <i id="call-video-icon" data-lucide="video" style="width: 20px; height: 20px; color: white;"></i>
             </button>
-          \` : ''}
+          ` : ''}
 
           <!-- Speaker Toggle Button -->
           <button id="call-toggle-speaker-btn" style="width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.12); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;" title="Haut-parleur">
@@ -5408,7 +5408,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Filter out contacts already in activeParticipants or the main caller
     const filteredContacts = (contactsList || []).filter(c => {
-      const fullName = \`\${c.first_name || ''} \${c.last_name || ''}\`.trim() || c.name || '';
+      const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.name || '';
       return fullName !== contactName && !activeParticipants.some(ap => ap.name === fullName);
     });
 
@@ -5417,30 +5417,30 @@ document.addEventListener('DOMContentLoaded', () => {
       contactsHtml = '<p style="font-size: 12px; color: rgba(255,255,255,0.4); text-align: center; margin: 20px 0;">Aucun autre contact disponible</p>';
     } else {
       filteredContacts.forEach((c, idx) => {
-        const fullName = \`\${c.first_name || ''} \${c.last_name || ''}\`.trim() || c.name || 'Utilisateur';
-        contactsHtml += \`
+        const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || c.name || 'Utilisateur';
+        contactsHtml += `
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <img src="\${c.avatar}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
-              <span style="font-size: 13px; font-weight: 500; color: white;">\${fullName}</span>
+              <img src="${c.avatar}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
+              <span style="font-size: 13px; font-weight: 500; color: white;">${fullName}</span>
             </div>
-            <button class="invite-contact-btn" data-index="\${idx}" style="background: var(--primary); color: white; border: none; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+            <button class="invite-contact-btn" data-index="${idx}" style="background: var(--primary); color: white; border: none; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
               Inviter
             </button>
           </div>
-        \`;
+        `;
       });
     }
 
-    modal.innerHTML = \`
+    modal.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
         <span style="font-size: 14px; font-weight: 700;">Ajouter à la conférence</span>
         <button id="call-close-modal-btn" style="background: none; border: none; color: rgba(255,255,255,0.6); cursor: pointer; padding: 4px;"><i data-lucide="x" style="width: 16px; height: 16px;"></i></button>
       </div>
       <div style="overflow-y: auto; max-height: 240px; display: flex; flex-direction: column;">
-        \${contactsHtml}
+        ${contactsHtml}
       </div>
-    \`;
+    `;
 
     overlay.appendChild(modal);
 
@@ -5469,7 +5469,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.style.background = 'rgba(255,255,255,0.15)';
         btn.style.color = 'rgba(255,255,255,0.4)';
 
-        const fullName = \`\${contact.first_name || ''} \${contact.last_name || ''}\`.trim() || contact.name || 'Utilisateur';
+        const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.name || 'Utilisateur';
         
         // Add pending participant
         activeParticipants.push({
@@ -5479,7 +5479,7 @@ document.addEventListener('DOMContentLoaded', () => {
           isMe: false
         });
 
-        showToast(\`Invitation envoyée à \${fullName}...\`);
+        showToast(`Invitation envoyée à ${fullName}...`);
         
         // Play dial chime
         playTone(440, 0.15, 'sine');
@@ -5499,8 +5499,8 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => playTone(659.25, 0.1, 'sine'), 100); // E5
             setTimeout(() => playTone(783.99, 0.15, 'sine'), 200); // G5
             
-            showToast(\`\${fullName} a rejoint la conférence\`);
-            updateStatusText(\`Conférence en cours (\${activeParticipants.length + 1} participants)\`, 'shield-check', '#10b981');
+            showToast(`${fullName} a rejoint la conférence`);
+            updateStatusText(`Conférence en cours (${activeParticipants.length + 1} participants)`, 'shield-check', '#10b981');
             
             // Re-render grid
             renderGrid();
@@ -5723,12 +5723,15 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
               const statusTextEl = document.getElementById('call-status-text');
               if (statusTextEl) {
-                statusTextEl.textContent = `Conférence en cours (\${activeParticipants.length + 1} participants) - \${timerText}`;
+                statusTextEl.textContent = `Conférence en cours (${activeParticipants.length + 1} participants) - ${timerText}`;
               }
             }
           }, 1000);
 
         }, 5500);
+      }, 1500);
+    }
+  };
 
   const getContactsFromDOM = () => {
     const unique = {};
