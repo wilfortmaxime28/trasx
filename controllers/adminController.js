@@ -16,6 +16,9 @@ const { getNumberSetting, getSetting, setSetting } = require('../utils/appSettin
 const { createTranslator, normalizeLocale } = require('../utils/i18n');
 const receiptCrypto = require('../utils/receiptCrypto');
 const OfficialSeedService = require('../services/officialSeedService');
+const mediaOptimizer = require('../utils/mediaOptimizer');
+const fs = require('fs');
+const path = require('path');
 
 const PLATFORM_NAME = 'TrasX';
 const ADMIN_PRIMARY_BALANCE_ENTRY_TYPES = new Set([
@@ -1969,7 +1972,29 @@ exports.addBackground = async (req, res) => {
     let imageUrl = '';
     
     if (req.file) {
-      imageUrl = '/assets/uploads/' + req.file.filename;
+      const originalPath = req.file.path;
+      const optimizedFilename = 'opt_' + path.basename(req.file.filename, path.extname(req.file.filename)) + '.webp';
+      const optimizedPath = path.join(req.file.destination, optimizedFilename);
+
+      try {
+        // Optimize to WebP, max width 1000px, quality 85 (optimal for background displays)
+        await mediaOptimizer.optimizeImage(originalPath, optimizedPath, {
+          maxWidth: 1000,
+          maxHeight: 1000,
+          quality: 85
+        });
+        
+        // Remove the original non-optimized file
+        if (fs.existsSync(originalPath)) {
+          fs.unlinkSync(originalPath);
+        }
+        
+        imageUrl = '/assets/uploads/' + optimizedFilename;
+      } catch (optErr) {
+        console.error('Failed to optimize admin background image:', optErr);
+        // Fallback to original image if optimization fails
+        imageUrl = '/assets/uploads/' + req.file.filename;
+      }
     } else if (req.body.imageUrl) {
       imageUrl = req.body.imageUrl.trim();
     }
