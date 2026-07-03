@@ -7281,7 +7281,7 @@ body[data-theme="dark"] .chat-icon-btn:hover {
 
 .chat-msg-wrapper.outgoing .chat-msg-time,
 .chat-msg-wrapper.outgoing .chat-msg-status {
-  color: rgba(255, 255, 255, 0.84);
+  color: var(--text-muted) !important;
 }
 
 .chat-msg-wrapper.outgoing .chat-msg-status.read {
@@ -24572,5 +24572,30 @@ body.dark-mode .skeleton-base {
   .chat-header {
     height: calc(60px + env(safe-area-inset-top)) !important;
     padding-top: env(safe-area-inset-top) !important;
+  }
+}
+
+/* Mock Calling UI animations */
+@keyframes call-ring-pulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.1) rotate(0.02deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
+
+@keyframes call-wave-anim {
+  0%, 100% {
+    transform: scaleY(0.4);
+  }
+  50% {
+    transform: scaleY(1.2);
   }
 }

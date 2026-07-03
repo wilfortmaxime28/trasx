@@ -4916,6 +4916,142 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Messagerie active en Temps Réel (Facebook-style) ---
   const chatBoxesContainer = document.getElementById('chatBoxesContainer');
 
+  const initiateMockCall = (contactName, avatarUrl, isVideo) => {
+    if (document.getElementById('mock-call-overlay')) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'mock-call-overlay';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: radial-gradient(circle, rgba(16, 23, 41, 0.95) 0%, rgba(3, 7, 18, 0.98) 100%);
+      backdrop-filter: blur(15px);
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 60px 20px 80px 20px;
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      box-sizing: border-box;
+    `;
+
+    const statusText = isVideo ? 'Appel vidéo en cours...' : 'Appel en cours...';
+
+    overlay.innerHTML = `
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; margin-top: 40px; text-align: center;">
+        <div class="call-avatar-wrapper" style="position: relative; width: 120px; height: 120px;">
+          <div class="call-avatar-ring" style="position: absolute; top: -10px; left: -10px; right: -10px; bottom: -10px; border-radius: 50%; border: 3px solid var(--primary); animation: call-ring-pulse 2s infinite ease-in-out;"></div>
+          <img src="${avatarUrl}" alt="${contactName}" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid rgba(255,255,255,0.1); box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+        </div>
+        <h2 style="font-size: 24px; font-weight: 700; margin: 12px 0 4px 0; letter-spacing: -0.5px;">${contactName}</h2>
+        <p style="font-size: 14px; color: rgba(255,255,255,0.6); margin: 0; font-weight: 500; display: flex; align-items: center; gap: 8px; justify-content: center;">
+          <i data-lucide="${isVideo ? 'video' : 'phone'}" style="width: 16px; height: 16px; color: var(--primary);"></i>
+          ${statusText}
+        </p>
+      </div>
+
+      ${isVideo ? `
+        <div style="width: 90%; max-width: 320px; aspect-ratio: 9/16; background: #1f2937; border-radius: 20px; overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 15px 35px rgba(0,0,0,0.4); margin: 20px 0;">
+          <video id="mock-local-video" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
+          <div style="position: absolute; bottom: 12px; left: 12px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; backdrop-filter: blur(4px);">Moi</div>
+        </div>
+      ` : `
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 40px 0;">
+          <div class="call-wave-container" style="display: flex; gap: 4px; align-items: center; height: 30px;">
+            <span class="call-wave-bar" style="width: 3px; height: 8px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out;"></span>
+            <span class="call-wave-bar" style="width: 3px; height: 16px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.2s;"></span>
+            <span class="call-wave-bar" style="width: 3px; height: 24px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.4s;"></span>
+            <span class="call-wave-bar" style="width: 3px; height: 16px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.6s;"></span>
+            <span class="call-wave-bar" style="width: 3px; height: 8px; background: var(--primary); border-radius: 3px; animation: call-wave-anim 1.2s infinite ease-in-out; animation-delay: 0.8s;"></span>
+          </div>
+        </div>
+      `}
+
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
+        <button id="hang-up-btn" style="width: 64px; height: 64px; border-radius: 50%; background: #ef4444; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s, background-color 0.2s; box-shadow: 0 10px 25px rgba(239, 68, 68, 0.4);" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+          <i data-lucide="phone-off" style="width: 28px; height: 28px; color: white;"></i>
+        </button>
+        <span style="font-size: 12px; color: rgba(255,255,255,0.4); font-weight: 500; text-transform: uppercase; letter-spacing: 1px;">Raccrocher</span>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [overlay] });
+
+    let ringInterval = null;
+    let audioCtx = null;
+    
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        audioCtx = new AudioCtx();
+        const playRingSequence = () => {
+          if (!audioCtx || audioCtx.state === 'closed') return;
+          
+          const osc1 = audioCtx.createOscillator();
+          const osc2 = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          
+          osc1.type = 'sine';
+          osc2.type = 'sine';
+          
+          osc1.frequency.setValueAtTime(400, audioCtx.currentTime);
+          osc2.frequency.setValueAtTime(450, audioCtx.currentTime);
+          
+          gain.gain.setValueAtTime(0, audioCtx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.05);
+          gain.gain.setValueAtTime(0.1, audioCtx.currentTime + 1.5);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.8);
+          
+          osc1.connect(gain);
+          osc2.connect(gain);
+          gain.connect(audioCtx.destination);
+          
+          osc1.start();
+          osc2.start();
+          osc1.stop(audioCtx.currentTime + 1.8);
+          osc2.stop(audioCtx.currentTime + 1.8);
+        };
+        
+        playRingSequence();
+        ringInterval = setInterval(playRingSequence, 3000);
+      }
+    } catch (err) {
+      console.error('Failed to init calling audio:', err);
+    }
+
+    let mediaStream = null;
+    if (isVideo && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        .then((stream) => {
+          mediaStream = stream;
+          const videoEl = document.getElementById('mock-local-video');
+          if (videoEl) videoEl.srcObject = stream;
+        })
+        .catch((err) => {
+          console.warn('Camera access denied or unavailable:', err);
+        });
+    }
+
+    const hangUp = () => {
+      if (ringInterval) clearInterval(ringInterval);
+      if (audioCtx) {
+        audioCtx.close().catch(() => {});
+      }
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+      }
+      overlay.remove();
+    };
+
+    document.getElementById('hang-up-btn').addEventListener('click', hangUp);
+  };
+
   function openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText = '', isPendingRequest = false, contactUsername = '') {
     if (!chatBoxesContainer) return;
     const currentUserId = getCurrentUserId();
@@ -4998,7 +5134,6 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="chat-header-actions">
           <button type="button" class="chat-header-btn phone-chat" title="Appeler"><i data-lucide="phone" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
           <button type="button" class="chat-header-btn video-chat" title="Appel vidéo"><i data-lucide="video" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
-          <button type="button" class="chat-header-btn info-chat" title="Informations"><i data-lucide="info" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
           
           <button type="button" class="chat-header-btn minimize-chat" title="Minimiser"><i data-lucide="minus" style="width: 14px; height: 14px;"></i></button>
           <button type="button" class="chat-header-btn close-chat desktop-close-btn" title="Fermer"><i data-lucide="x" style="width: 14px; height: 14px;"></i></button>
@@ -5020,7 +5155,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <form class="chat-input-wrapper input-wrapper" id="chat-form-${numericContactId}" ${formStyle}>
         <input type="file" class="chat-attachment-input" id="chat-attachment-input-${numericContactId}" accept="image/*,video/*,application/pdf,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z" style="display:none;">
         <div class="chat-input-left-buttons">
-          <button type="button" class="chat-icon-btn plus-btn" title="Plus"><i data-lucide="plus"></i></button>
           <button type="button" class="chat-icon-btn camera-btn" title="Appareil photo"><i data-lucide="camera"></i></button>
           <button type="button" class="chat-icon-btn attachment-trigger-btn gallery-btn" title="Galerie"><i data-lucide="image"></i></button>
           <button type="button" class="chat-icon-btn voice-trigger-btn mic-btn" title="Enregistrer un message vocal"><i data-lucide="mic"></i></button>
@@ -5385,15 +5519,25 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Camera and Plus button handlers to trigger file selection
+    // Camera button handler to trigger file selection
     const cameraBtn = chatBox.querySelector('.camera-btn');
     if (cameraBtn && attachmentInput) {
       cameraBtn.addEventListener('click', () => attachmentInput.click());
     }
 
-    const plusBtn = chatBox.querySelector('.plus-btn');
-    if (plusBtn && attachmentInput) {
-      plusBtn.addEventListener('click', () => attachmentInput.click());
+    // Phone and Video Call buttons
+    const phoneChatBtn = chatBox.querySelector('.phone-chat');
+    if (phoneChatBtn) {
+      phoneChatBtn.addEventListener('click', () => {
+        initiateMockCall(contactName, avatarUrl, false);
+      });
+    }
+
+    const videoChatBtn = chatBox.querySelector('.video-chat');
+    if (videoChatBtn) {
+      videoChatBtn.addEventListener('click', () => {
+        initiateMockCall(contactName, avatarUrl, true);
+      });
     }
   }
 
