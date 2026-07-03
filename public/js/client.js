@@ -636,6 +636,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const category = escapeHtml(contact?.category || 'general');
     const requestStatus = escapeHtml(contact?.request_status || contact?.requestStatus || '');
     const canManageRequest = !!(contact?.can_manage_request || contact?.canManageRequest);
+    const isUnread = !!(contact?.is_unread || contact?.isUnread);
     const requestActionsHtml = canManageRequest ? `
       <div class="message-request-actions">
         <button type="button" class="message-request-action accept" data-message-request-action="accept" data-requester-id="${contactId}">Accepter</button>
@@ -644,7 +645,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ` : '';
 
     return `
-      <div class="message-item ${isOnline ? 'online' : ''}" data-contact-id="${contactId}" data-message-category="${category}" data-message-request-status="${requestStatus}" data-can-manage-request="${canManageRequest ? '1' : '0'}" data-follow-target-id="${contactId}" data-following="${isFollowing ? '1' : '0'}" data-followed-by="${isFollowedBy ? '1' : '0'}" data-mutual="${isMutual ? '1' : '0'}" data-is-online="${isOnline ? '1' : '0'}" data-last-seen-text="${presenceText}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 14px; border-radius: var(--border-radius-item); background-color: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-sm);">
+      <div class="message-item ${isOnline ? 'online' : ''} ${isUnread ? 'unread-msg' : ''}" data-unread="${isUnread ? '1' : '0'}" data-contact-id="${contactId}" data-message-category="${category}" data-message-request-status="${requestStatus}" data-can-manage-request="${canManageRequest ? '1' : '0'}" data-follow-target-id="${contactId}" data-following="${isFollowing ? '1' : '0'}" data-followed-by="${isFollowedBy ? '1' : '0'}" data-mutual="${isMutual ? '1' : '0'}" data-is-online="${isOnline ? '1' : '0'}" data-last-seen-text="${presenceText}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 14px; border-radius: var(--border-radius-item); background-color: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-sm);">
         <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
           <div class="msg-avatar-wrapper ${isOnline ? 'online' : ''}">
             <div class="avatar" style="width: 36px; height: 36px;">
@@ -654,11 +655,12 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           <div class="message-details" style="flex: 1; min-width: 0;">
             <h4 class="contact-name" style="margin: 0; font-size: 13.5px; font-weight: 600; color: var(--text-primary);">${name}</h4>
-            <p class="message-preview" id="chat-preview-${contactId}" style="margin: 2px 0 0 0; font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${preview}</p>
+            <p class="message-preview" id="chat-preview-${contactId}" style="margin: 2px 0 0 0; font-size: 11px; color: ${isUnread ? 'var(--text-primary)' : 'var(--text-secondary)'}; font-weight: ${isUnread ? '700' : '400'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${preview}</p>
             <p class="message-presence" id="chat-presence-${contactId}" style="margin: 2px 0 0 0; font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${presenceText}</p>
           </div>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+          <span class="unread-dot" id="chat-unread-dot-${contactId}" style="width: 8px; height: 8px; background-color: var(--primary); border-radius: 50%; display: ${isUnread ? 'inline-block' : 'none'}; flex-shrink: 0;"></span>
           <span class="chat-time" id="chat-time-${contactId}" style="font-size: 10px; color: var(--text-muted); white-space: nowrap;">${timeText}</span>
           <button type="button" class="follow-toggle-btn" data-follow-target-id="${contactId}" data-following="${isFollowing ? '1' : '0'}" title="${isFollowing ? 'Unfollow' : 'Follow'}" aria-label="${isFollowing ? 'Unfollow' : 'Follow'}">
             <i data-lucide="${isFollowing ? 'user-check' : 'user-plus'}" style="width: 14px; height: 14px;"></i>
@@ -710,12 +712,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const timeText = conversation.timeText || '';
 
     if (existing) {
-      const preview = existing.querySelector(`#chat-preview-${contactId}`);
-      const time = existing.querySelector(`#chat-time-${contactId}`);
-      const presence = existing.querySelector(`#chat-presence-${contactId}`);
+      const preview = existing.querySelector(`#chat-preview-${contactId}`) || existing.querySelector(`#mobile-chat-preview-${contactId}`);
+      const time = existing.querySelector(`#chat-time-${contactId}`) || existing.querySelector(`#mobile-chat-time-${contactId}`);
+      const presence = existing.querySelector(`#chat-presence-${contactId}`) || existing.querySelector(`#mobile-chat-presence-${contactId}`);
       if (preview) preview.textContent = previewText;
       if (time) time.textContent = timeText;
       if (presence) presence.textContent = conversation.isOnline ? 'Online now' : (conversation.presenceText || 'Offline');
+      
+      existing.dataset.unread = conversation.isUnread ? '1' : '0';
+      existing.classList.toggle('unread-msg', !!conversation.isUnread);
+      const unreadDot = existing.querySelector('.unread-dot');
+      if (unreadDot) {
+        unreadDot.style.display = conversation.isUnread ? 'inline-block' : 'none';
+      }
+      if (preview) {
+        preview.style.fontWeight = conversation.isUnread ? '700' : '400';
+        preview.style.color = conversation.isUnread ? 'var(--text-primary)' : 'var(--text-secondary)';
+      }
+
       existing.dataset.messageCategory = conversation.category || existing.dataset.messageCategory || 'general';
       existing.dataset.messageRequestStatus = conversation.requestStatus || '';
       existing.dataset.canManageRequest = conversation.canManageRequest ? '1' : '0';
@@ -760,7 +774,8 @@ document.addEventListener('DOMContentLoaded', () => {
         is_mutual: conversation.isMutual,
         category: conversation.category,
         request_status: conversation.requestStatus,
-        can_manage_request: conversation.canManageRequest
+        can_manage_request: conversation.canManageRequest,
+        is_unread: !!conversation.isUnread
       }).trim();
       const item = wrapper.firstElementChild;
       if (item) list.prepend(item);
@@ -828,6 +843,16 @@ document.addEventListener('DOMContentLoaded', () => {
         item.dataset.messageCategory = 'general';
         item.dataset.messageRequestStatus = data.status || 'general';
         item.dataset.canManageRequest = '0';
+        item.dataset.unread = '0';
+        item.classList.remove('unread-msg');
+        const unreadDot = item.querySelector('.unread-dot');
+        if (unreadDot) unreadDot.style.display = 'none';
+        const preview = item.querySelector(`#chat-preview-${requesterId}`) || item.querySelector(`#mobile-chat-preview-${requesterId}`);
+        if (preview) {
+          preview.style.fontWeight = '400';
+          preview.style.color = 'var(--text-secondary)';
+        }
+        
         item.querySelector('.message-request-actions')?.remove();
         const card = item.closest('.messages-card');
         const targetList = card?.querySelector('.messages-list[data-message-tab-list="general"]');
@@ -837,6 +862,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (card) syncMessageTabCounts(card);
       });
+
+      updateMobileMessagesBadge();
 
       showToast(data.status === 'accepted' ? 'Demande de message acceptée.' : 'Demande de message refusée.');
     } catch (error) {
@@ -5925,6 +5952,19 @@ document.addEventListener('DOMContentLoaded', () => {
           socket.emit('chat-mark-read', {
             partnerId: numericContactId
           });
+
+          document.querySelectorAll(`.message-item[data-contact-id="${numericContactId}"]`).forEach((item) => {
+            item.dataset.unread = '0';
+            item.classList.remove('unread-msg');
+            const unreadDot = item.querySelector('.unread-dot');
+            if (unreadDot) unreadDot.style.display = 'none';
+            const preview = item.querySelector(`#chat-preview-${numericContactId}`) || item.querySelector(`#mobile-chat-preview-${numericContactId}`);
+            if (preview) {
+              preview.style.fontWeight = '400';
+              preview.style.color = 'var(--text-secondary)';
+            }
+          });
+          updateMobileMessagesBadge();
         }
         if (input) input.focus();
       })
@@ -6631,6 +6671,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const previewText = conversation?.preview || getChatMessagePreviewText(message);
 
+    const chatMsgArea = document.getElementById(`chat-messages-${partnerId}`);
+    const isChatOpen = !!chatMsgArea && chatMsgArea.offsetParent !== null;
+    const isUnread = !isOutgoing && !isChatOpen;
+
     upsertConversationAcrossCards({
       contactId: partnerId,
       contactName: conversation?.contactName || sender_name,
@@ -6645,11 +6689,13 @@ document.addEventListener('DOMContentLoaded', () => {
       requestStatus: conversation?.requestStatus || '',
       canManageRequest: !!conversation?.canManageRequest,
       isOnline: !!conversation?.isOnline,
-      presenceText: conversation?.presenceText || ''
+      presenceText: conversation?.presenceText || '',
+      isUnread: isUnread
     });
 
+    updateMobileMessagesBadge();
+
     // Mettre à jour la boîte de chat correspondante
-    const chatMsgArea = document.getElementById(`chat-messages-${partnerId}`);
     if (chatMsgArea) {
       const emptyText = chatMsgArea.querySelector('div');
       if (emptyText && (emptyText.textContent.includes('No messages') || emptyText.textContent.includes('Loading'))) {
@@ -14054,6 +14100,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     syncMessageTabCounts(card);
+    updateMobileMessagesBadge();
   });
 
   document.querySelectorAll('.profile-message-btn[data-profile-message-id]').forEach((button) => {
@@ -15447,6 +15494,29 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   };
+
+  const updateMobileMessagesBadge = () => {
+    const btn = document.getElementById('mobileMessagesBtn');
+    if (!btn) return;
+    const unreadIds = new Set();
+    document.querySelectorAll('.message-item[data-unread="1"]').forEach(item => {
+      const cid = item.getAttribute('data-contact-id');
+      if (cid) unreadIds.add(cid);
+    });
+    const unreadCount = unreadIds.size;
+    let badge = btn.querySelector('.nav-badge');
+    if (unreadCount > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'nav-badge red';
+        btn.appendChild(badge);
+      }
+      badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+    } else {
+      if (badge) badge.remove();
+    }
+  };
+  window.updateMobileMessagesBadge = updateMobileMessagesBadge;
 
   const prependNotificationItem = (notification) => {
     if (!notificationItemsList) return;
