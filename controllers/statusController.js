@@ -159,7 +159,7 @@ class StatusController {
         const senderName = currentUser ? `${currentUser.first_name} ${currentUser.last_name}` : 'Quelqu\'un';
 
         const excerpt = content.slice(0, 50);
-        const notificationMessage = `${senderName} a repondu a votre statut : "${excerpt}${content.length > 50 ? '...' : ''}"`;
+        const notificationMessage = `${senderName} a commenté votre statut : "${excerpt}${content.length > 50 ? '...' : ''}"`;
         const notificationId = await Notification.create({
           recipientId: status.user_id,
           actorId: currentUserId,

@@ -32,7 +32,7 @@ const ActivityLog = require('./models/ActivityLog');
 const installController = require('./controllers/installController');
 const presence = require('./utils/presence');
 const { createTranslator, createSourceTextTranslator, normalizeLocale, SUPPORTED_LOCALES, flattenTranslations, flattenSourceTextTranslations } = require('./utils/i18n');
-const { getNumberSetting } = require('./utils/appSettings');
+const { getNumberSetting, getSetting, setSetting } = require('./utils/appSettings');
 const { isNewUserWithinWindow, computePromoDailyTarget } = require('./utils/promoReach');
 const gamesManager = require('./utils/gamesManager');
 const { getFeedPage } = require('./services/feedService');
@@ -47,6 +47,7 @@ const {
 } = require('./config/sessionConfig');
 const QRCode = require('qrcode');
 const bscMonitor = require('./utils/bscMonitor');
+const nowPayments = require('./utils/nowPayments');
 const mailer = require('./utils/mailer');
 const { ethers } = require('ethers');
 
@@ -65,11 +66,15 @@ const BSC_PROVIDER_URL = process.env.BSC_PROVIDER_URL || process.env.BSC_RPC_URL
 const BSC_USDT_CONTRACT = (process.env.BSC_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955').trim();
 const WITHDRAWAL_CONFIRMATIONS_REQUIRED = Math.max(1, Number.parseInt(process.env.BSC_WITHDRAW_CONFIRMATIONS || '1', 10) || 1);
 const WITHDRAWAL_MONITOR_INTERVAL_MS = Math.max(4000, Number.parseInt(process.env.BSC_WITHDRAW_MONITOR_INTERVAL_MS || '7000', 10) || 7000);
+const NOWPAYMENTS_SYNC_INTERVAL_MS = Math.max(8000, Number.parseInt(process.env.NOWPAYMENTS_SYNC_INTERVAL_MS || '15000', 10) || 15000);
+const NOWPAYMENTS_PENDING_FETCH_LIMIT = Math.max(1, Number.parseInt(process.env.NOWPAYMENTS_PENDING_FETCH_LIMIT || '20', 10) || 20);
 const USDT_TRANSFER_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
 
 let bscRpcProvider = null;
 let withdrawalMonitorTimer = null;
 let withdrawalMonitorRunning = false;
+let nowPaymentsSyncTimer = null;
+let nowPaymentsSyncRunning = false;
 
 async function emitRealtimeBalanceUpdate(userId, message = null) {
   const user = await User.getById(userId);
@@ -228,6 +233,24 @@ async function ensureBscDepositsSchema() {
         await db.query('ALTER TABLE bsc_deposits ADD COLUMN log_index INT NOT NULL DEFAULT 0 AFTER tx_hash');
       }
 
+      const depositColumnDefinitions = [
+        ['provider', "ALTER TABLE bsc_deposits ADD COLUMN provider VARCHAR(32) NOT NULL DEFAULT 'bsc' AFTER user_id"],
+        ['payment_id', 'ALTER TABLE bsc_deposits ADD COLUMN payment_id VARCHAR(100) NULL DEFAULT NULL AFTER tx_hash'],
+        ['order_id', 'ALTER TABLE bsc_deposits ADD COLUMN order_id VARCHAR(190) NULL DEFAULT NULL AFTER payment_id'],
+        ['pay_currency', 'ALTER TABLE bsc_deposits ADD COLUMN pay_currency VARCHAR(40) NULL DEFAULT NULL AFTER token_symbol'],
+        ['pay_amount', 'ALTER TABLE bsc_deposits ADD COLUMN pay_amount DECIMAL(24,8) NULL DEFAULT NULL AFTER pay_currency'],
+        ['provider_status', 'ALTER TABLE bsc_deposits ADD COLUMN provider_status VARCHAR(64) NULL DEFAULT NULL AFTER status'],
+        ['provider_reference', 'ALTER TABLE bsc_deposits ADD COLUMN provider_reference VARCHAR(190) NULL DEFAULT NULL AFTER provider_status'],
+        ['provider_metadata', 'ALTER TABLE bsc_deposits ADD COLUMN provider_metadata LONGTEXT NULL DEFAULT NULL AFTER provider_reference']
+      ];
+
+      for (const [columnName, sql] of depositColumnDefinitions) {
+        const [columnRows] = await db.query('SHOW COLUMNS FROM bsc_deposits LIKE ?', [columnName]);
+        if (!columnRows || columnRows.length === 0) {
+          await db.query(sql);
+        }
+      }
+
       const [depositIndexes] = await db.query('SHOW INDEX FROM bsc_deposits');
       const indexesByName = new Map();
       for (const indexRow of depositIndexes) {
@@ -261,6 +284,16 @@ async function ensureBscDepositsSchema() {
 
       if (!hasCompositeTxLogUnique) {
         await db.query('ALTER TABLE bsc_deposits ADD UNIQUE INDEX uniq_bsc_deposits_tx_log (tx_hash, log_index)');
+      }
+
+      const [depositPaymentIndexRows] = await db.query("SHOW INDEX FROM bsc_deposits WHERE Key_name = 'idx_bsc_deposits_payment_id'");
+      if (!depositPaymentIndexRows || depositPaymentIndexRows.length === 0) {
+        await db.query('ALTER TABLE bsc_deposits ADD INDEX idx_bsc_deposits_payment_id (payment_id)');
+      }
+
+      const [depositOrderIndexRows] = await db.query("SHOW INDEX FROM bsc_deposits WHERE Key_name = 'idx_bsc_deposits_order_id'");
+      if (!depositOrderIndexRows || depositOrderIndexRows.length === 0) {
+        await db.query('ALTER TABLE bsc_deposits ADD INDEX idx_bsc_deposits_order_id (order_id)');
       }
     })().catch((error) => {
       bscDepositsSchemaPromise = null;
@@ -348,9 +381,31 @@ async function ensureWithdrawalsSchema() {
         await db.query("ALTER TABLE bsc_withdrawals ADD COLUMN updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
       }
 
+      const withdrawalColumnDefinitions = [
+        ['provider', "ALTER TABLE bsc_withdrawals ADD COLUMN provider VARCHAR(32) NOT NULL DEFAULT 'bsc' AFTER user_id"],
+        ['provider_currency', 'ALTER TABLE bsc_withdrawals ADD COLUMN provider_currency VARCHAR(40) NULL DEFAULT NULL AFTER recipient_address'],
+        ['provider_status', 'ALTER TABLE bsc_withdrawals ADD COLUMN provider_status VARCHAR(64) NULL DEFAULT NULL AFTER status'],
+        ['payout_batch_id', 'ALTER TABLE bsc_withdrawals ADD COLUMN payout_batch_id VARCHAR(100) NULL DEFAULT NULL AFTER tx_hash'],
+        ['payout_id', 'ALTER TABLE bsc_withdrawals ADD COLUMN payout_id VARCHAR(100) NULL DEFAULT NULL AFTER payout_batch_id'],
+        ['provider_reference', 'ALTER TABLE bsc_withdrawals ADD COLUMN provider_reference VARCHAR(190) NULL DEFAULT NULL AFTER payout_id'],
+        ['provider_metadata', 'ALTER TABLE bsc_withdrawals ADD COLUMN provider_metadata LONGTEXT NULL DEFAULT NULL AFTER provider_reference']
+      ];
+
+      for (const [columnName, sql] of withdrawalColumnDefinitions) {
+        const [columnRows] = await db.query('SHOW COLUMNS FROM bsc_withdrawals LIKE ?', [columnName]);
+        if (!columnRows || columnRows.length === 0) {
+          await db.query(sql);
+        }
+      }
+
       const [withdrawalTxIndexRows] = await db.query("SHOW INDEX FROM bsc_withdrawals WHERE Key_name = 'idx_bsc_withdrawals_tx_hash'");
       if (!withdrawalTxIndexRows || withdrawalTxIndexRows.length === 0) {
         await db.query('ALTER TABLE bsc_withdrawals ADD INDEX idx_bsc_withdrawals_tx_hash (tx_hash)');
+      }
+
+      const [withdrawalPayoutIndexRows] = await db.query("SHOW INDEX FROM bsc_withdrawals WHERE Key_name = 'idx_bsc_withdrawals_payout_id'");
+      if (!withdrawalPayoutIndexRows || withdrawalPayoutIndexRows.length === 0) {
+        await db.query('ALTER TABLE bsc_withdrawals ADD INDEX idx_bsc_withdrawals_payout_id (payout_id)');
       }
     })().catch((error) => {
       withdrawalSchemaPromise = null;
@@ -358,6 +413,678 @@ async function ensureWithdrawalsSchema() {
     });
   }
   return withdrawalSchemaPromise;
+}
+
+const NOWPAYMENTS_DEPOSIT_SUCCESS_STATUSES = new Set(['finished']);
+const NOWPAYMENTS_DEPOSIT_FAILED_STATUSES = new Set(['failed', 'expired', 'refunded']);
+const NOWPAYMENTS_WITHDRAWAL_SUCCESS_STATUSES = new Set(['finished', 'sent', 'completed', 'success']);
+const NOWPAYMENTS_WITHDRAWAL_FAILED_STATUSES = new Set(['failed', 'rejected', 'expired', 'cancelled', 'refunded']);
+
+function normalizeProviderValue(value, fallback = '') {
+  return String(value || fallback).trim().toLowerCase();
+}
+
+function createNowPaymentsPlaceholderHash(reference, prefix = 'np') {
+  const clean = String(reference || '').replace(/[^a-zA-Z0-9_-]+/g, '').slice(0, 60);
+  return `${prefix}_${clean || Date.now()}`;
+}
+
+function stringifyProviderMetadata(payload) {
+  try {
+    return JSON.stringify(payload || null);
+  } catch (_) {
+    return null;
+  }
+}
+
+function mapNowPaymentsDepositStatus(rawStatus) {
+  const normalized = normalizeProviderValue(rawStatus, 'waiting');
+  if (NOWPAYMENTS_DEPOSIT_SUCCESS_STATUSES.has(normalized)) return 'confirmed';
+  if (NOWPAYMENTS_DEPOSIT_FAILED_STATUSES.has(normalized)) return 'failed';
+  return 'pending';
+}
+
+function mapNowPaymentsWithdrawalStatus(rawStatus) {
+  const normalized = normalizeProviderValue(rawStatus, 'waiting');
+  if (NOWPAYMENTS_WITHDRAWAL_SUCCESS_STATUSES.has(normalized)) return 'completed';
+  if (NOWPAYMENTS_WITHDRAWAL_FAILED_STATUSES.has(normalized)) return 'failed';
+  return 'pending';
+}
+
+function formatNowPaymentsStatus(rawStatus) {
+  const normalized = normalizeProviderValue(rawStatus, 'waiting');
+  const labels = {
+    waiting: 'En attente de paiement',
+    confirming: 'Confirmation en cours',
+    confirmed: 'Confirmé par le réseau',
+    sending: 'Envoi en cours',
+    finished: 'Terminé',
+    partially_paid: 'Paiement partiel',
+    failed: 'Échoué',
+    expired: 'Expiré',
+    refunded: 'Remboursé',
+    created: 'Créé',
+    verifying: 'Vérification 2FA',
+    processing: 'Traitement',
+    pending: 'En attente',
+    sent: 'Envoyé',
+    completed: 'Terminé',
+    success: 'Réussi',
+    rejected: 'Rejeté',
+    cancelled: 'Annulé'
+  };
+  return labels[normalized] || normalized || 'En attente';
+}
+
+async function isNowPaymentsProviderActive() {
+  const provider = normalizeProviderValue(await getSetting('payments_provider', 'nowpayments'), 'nowpayments');
+  return provider === 'nowpayments';
+}
+
+async function getNowPaymentsDepositMinimum(config = null, payCurrency = '') {
+  const activeConfig = config?.apiKey ? config : await nowPayments.ensureConfig(['apiKey']);
+  const currencyCode = String(payCurrency || '').trim().toLowerCase();
+
+  if (!currencyCode) {
+    throw new Error('Missing NOWPayments pay currency for minimum amount lookup.');
+  }
+
+  const payload = await nowPayments.getMinimumAmount({
+    currencyFrom: 'usd',
+    currencyTo: currencyCode,
+    isFeePaidByUser: true
+  });
+
+  const amount = Number.parseFloat(payload?.min_amount);
+  return Number.isFinite(amount) && amount > 0 ? Number(amount.toFixed(2)) : null;
+}
+
+async function getNowPaymentsDepositMinimums(config = null) {
+  const activeConfig = config?.apiKey ? config : await nowPayments.ensureConfig(['apiKey']);
+  const [usdtMinimum, bnbMinimum] = await Promise.all([
+    getNowPaymentsDepositMinimum(activeConfig, activeConfig.depositUsdtCurrency),
+    getNowPaymentsDepositMinimum(activeConfig, activeConfig.depositBnbCurrency)
+  ]);
+
+  return {
+    currency: 'USD',
+    amounts: {
+      USDT: usdtMinimum,
+      BNB: bnbMinimum
+    }
+  };
+}
+
+function buildNowPaymentsDepositSocketPayload(record, type, message) {
+  return {
+    type,
+    provider: 'nowpayments',
+    paymentId: record.payment_id || null,
+    orderId: record.order_id || null,
+    providerStatus: record.provider_status || null,
+    amount: Number(record.amount_usdt || 0),
+    currency: String(record.token_symbol || 'USDT').toUpperCase(),
+    payAmount: record.pay_amount !== null && record.pay_amount !== undefined ? Number(record.pay_amount) : null,
+    payCurrency: record.pay_currency || null,
+    txHash: record.tx_hash && !String(record.tx_hash).startsWith('np_') ? record.tx_hash : null,
+    message
+  };
+}
+
+function buildNowPaymentsWithdrawalSocketPayload(record, type, message) {
+  return {
+    type,
+    provider: 'nowpayments',
+    amount: Number(record.amount_usdt || 0),
+    netAmount: Number(record.net_amount_usdt || 0),
+    payoutId: record.payout_id || null,
+    batchId: record.payout_batch_id || null,
+    providerStatus: record.provider_status || null,
+    txHash: record.tx_hash && !String(record.tx_hash).startsWith('np_') ? record.tx_hash : null,
+    message
+  };
+}
+
+async function updateNowPaymentsDepositRow(connection, rowId, values) {
+  const columns = [];
+  const params = [];
+  for (const [key, value] of Object.entries(values || {})) {
+    columns.push(`${key} = ?`);
+    params.push(value);
+  }
+  if (!columns.length) return;
+  params.push(rowId);
+  await connection.query(`UPDATE bsc_deposits SET ${columns.join(', ')} WHERE id = ?`, params);
+}
+
+async function syncNowPaymentsDepositRow(row, statusPayload) {
+  if (!row || normalizeProviderValue(row.provider, 'bsc') !== 'nowpayments' || !row.payment_id) {
+    return row;
+  }
+
+  const connection = await db.getConnection();
+  let finalRecord = row;
+  let shouldEmitBalance = false;
+  let shouldEmitConfirmed = false;
+  let shouldEmitFailed = false;
+  let marketMessage = '';
+
+  try {
+    await connection.beginTransaction();
+
+    const [lockedRows] = await connection.query(
+      'SELECT * FROM bsc_deposits WHERE id = ? LIMIT 1 FOR UPDATE',
+      [row.id]
+    );
+    const locked = lockedRows[0];
+    if (!locked || normalizeProviderValue(locked.provider, 'bsc') !== 'nowpayments') {
+      await connection.rollback();
+      return row;
+    }
+
+    const providerStatus = normalizeProviderValue(
+      statusPayload?.payment_status || statusPayload?.status || locked.provider_status,
+      'waiting'
+    );
+    const nextStatus = mapNowPaymentsDepositStatus(providerStatus);
+    const payoutHash = String(
+      statusPayload?.payin_hash
+      || statusPayload?.tx_hash
+      || (locked.tx_hash && !String(locked.tx_hash).startsWith('np_') ? locked.tx_hash : '')
+      || createNowPaymentsPlaceholderHash(locked.payment_id)
+    ).trim();
+    const creditAmount = Number(
+      statusPayload?.price_amount
+      ?? statusPayload?.actually_paid_at_fiat
+      ?? locked.amount_usdt
+      ?? 0
+    );
+    const payAmount = statusPayload?.pay_amount !== undefined && statusPayload?.pay_amount !== null
+      ? Number(statusPayload.pay_amount)
+      : (locked.pay_amount !== null && locked.pay_amount !== undefined ? Number(locked.pay_amount) : null);
+    const payCurrency = String(statusPayload?.pay_currency || locked.pay_currency || '').toLowerCase() || null;
+    const confirmations = Math.max(0, Number(statusPayload?.payin_confirmations || statusPayload?.confirmations || locked.confirmations || 0));
+
+    const baseUpdates = {
+      tx_hash: payoutHash,
+      amount_usdt: Number.isFinite(creditAmount) && creditAmount > 0 ? Number(creditAmount.toFixed(6)) : Number(locked.amount_usdt || 0),
+      pay_amount: Number.isFinite(payAmount) ? Number(payAmount.toFixed(8)) : locked.pay_amount,
+      pay_currency: payCurrency || locked.pay_currency,
+      provider_status: providerStatus,
+      provider_reference: statusPayload?.payment_id || locked.payment_id,
+      provider_metadata: stringifyProviderMetadata(statusPayload),
+      confirmations
+    };
+
+    if (String(statusPayload?.pay_address || '').trim()) {
+      baseUpdates.to_address = String(statusPayload.pay_address).trim();
+    }
+
+    if (String(statusPayload?.payer_address || statusPayload?.customer_address || '').trim()) {
+      baseUpdates.from_address = String(statusPayload.payer_address || statusPayload.customer_address).trim();
+    }
+
+    if (nextStatus === 'confirmed' && locked.status !== 'confirmed') {
+      await connection.query(
+        'UPDATE users SET deposit_account_balance = deposit_account_balance + ? WHERE id = ?',
+        [baseUpdates.amount_usdt, locked.user_id]
+      );
+      await updateNowPaymentsDepositRow(connection, locked.id, {
+        ...baseUpdates,
+        status: 'confirmed',
+        credited_at: new Date()
+      });
+      shouldEmitBalance = true;
+      shouldEmitConfirmed = true;
+      marketMessage = `Votre dépôt de ${baseUpdates.amount_usdt.toFixed(2)} USDT a été crédité avec succès.`;
+    } else {
+      await updateNowPaymentsDepositRow(connection, locked.id, {
+        ...baseUpdates,
+        status: nextStatus
+      });
+      shouldEmitFailed = nextStatus === 'failed' && locked.status !== 'failed';
+    }
+
+    await connection.commit();
+
+    finalRecord = {
+      ...locked,
+      ...baseUpdates,
+      status: nextStatus === 'confirmed' && locked.status !== 'confirmed' ? 'confirmed' : nextStatus,
+      credited_at: nextStatus === 'confirmed' ? (locked.credited_at || new Date()) : locked.credited_at
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+
+  if (shouldEmitBalance) {
+    await emitMarketNotification(finalRecord.user_id, null, marketMessage);
+    await emitRealtimeBalanceUpdate(finalRecord.user_id, marketMessage);
+  }
+
+  if (shouldEmitConfirmed) {
+    io.to(`user:${finalRecord.user_id}`).emit(
+      'deposit-status',
+      buildNowPaymentsDepositSocketPayload(
+        finalRecord,
+        'confirmed',
+        marketMessage
+      )
+    );
+  } else if (shouldEmitFailed) {
+    io.to(`user:${finalRecord.user_id}`).emit(
+      'deposit-status',
+      buildNowPaymentsDepositSocketPayload(
+        finalRecord,
+        'failed',
+        `Le paiement ${finalRecord.payment_id} a échoué ou a expiré.`
+      )
+    );
+  } else if (finalRecord.status === 'pending') {
+    io.to(`user:${finalRecord.user_id}`).emit(
+      'deposit-status',
+      buildNowPaymentsDepositSocketPayload(
+        finalRecord,
+        'pending',
+        `Statut du paiement : ${formatNowPaymentsStatus(finalRecord.provider_status)}.`
+      )
+    );
+  }
+
+  return finalRecord;
+}
+
+async function refreshNowPaymentsDepositByRecord(record) {
+  if (!record?.payment_id) return record;
+  try {
+    const payload = await nowPayments.getPaymentStatus(record.payment_id);
+    return await syncNowPaymentsDepositRow(record, payload);
+  } catch (error) {
+    console.error(`[NOWPayments] Unable to refresh deposit ${record.payment_id}:`, error.message || error);
+    return record;
+  }
+}
+
+async function findNowPaymentsDepositByReference(userId, reference, { allowAnyUser = false } = {}) {
+  const cleanReference = String(reference || '').trim();
+  if (!cleanReference) return null;
+
+  const bindings = allowAnyUser
+    ? [cleanReference, cleanReference, cleanReference]
+    : [userId, cleanReference, cleanReference, cleanReference];
+  const whereClause = allowAnyUser
+    ? "provider = 'nowpayments' AND (payment_id = ? OR order_id = ? OR tx_hash = ?)"
+    : "user_id = ? AND provider = 'nowpayments' AND (payment_id = ? OR order_id = ? OR tx_hash = ?)";
+
+  const [rows] = await db.query(
+    `SELECT * FROM bsc_deposits WHERE ${whereClause} ORDER BY id DESC LIMIT 1`,
+    bindings
+  );
+  return rows[0] || null;
+}
+
+async function upsertNowPaymentsDepositFromRemote(userId, reference) {
+  const payload = await nowPayments.getPaymentStatus(reference);
+  const orderId = String(payload?.order_id || '').trim();
+  if (!orderId || !orderId.startsWith(`trasx_dep_${userId}_`)) {
+    return null;
+  }
+
+  const paymentId = String(payload?.payment_id || reference).trim();
+  const tokenSymbol = String(payload?.pay_currency || 'USDT').toLowerCase().includes('bnb') ? 'BNB' : 'USDT';
+  const placeholderHash = createNowPaymentsPlaceholderHash(paymentId);
+
+  const [existingRows] = await db.query(
+    "SELECT * FROM bsc_deposits WHERE provider = 'nowpayments' AND payment_id = ? LIMIT 1",
+    [paymentId]
+  );
+
+  if (!existingRows.length) {
+    await db.query(
+      `INSERT INTO bsc_deposits
+       (user_id, provider, tx_hash, payment_id, order_id, log_index, from_address, to_address, amount_wei, amount_usdt, token_symbol, pay_currency, pay_amount, confirmations, status, provider_status, provider_reference, provider_metadata)
+       VALUES (?, 'nowpayments', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, ?, ?)`,
+      [
+        userId,
+        placeholderHash,
+        paymentId,
+        orderId,
+        String(payload?.payer_address || '').trim(),
+        String(payload?.pay_address || '').trim(),
+        String(payload?.pay_amount || payload?.price_amount || '0'),
+        Number(payload?.price_amount || payload?.actually_paid_at_fiat || 0),
+        tokenSymbol,
+        String(payload?.pay_currency || '').toLowerCase(),
+        payload?.pay_amount !== undefined && payload?.pay_amount !== null ? Number(payload.pay_amount) : null,
+        normalizeProviderValue(payload?.payment_status || payload?.status, 'waiting'),
+        paymentId,
+        stringifyProviderMetadata(payload)
+      ]
+    );
+  }
+
+  const record = await findNowPaymentsDepositByReference(userId, paymentId);
+  if (!record) return null;
+  return syncNowPaymentsDepositRow(record, payload);
+}
+
+async function reconcileNowPaymentsDepositsForUser(userId, limit = NOWPAYMENTS_PENDING_FETCH_LIMIT) {
+  const [rows] = await db.query(
+    `SELECT * FROM bsc_deposits
+     WHERE user_id = ? AND provider = 'nowpayments' AND status = 'pending'
+     ORDER BY created_at DESC
+     LIMIT ?`,
+    [userId, limit]
+  );
+
+  for (const row of rows) {
+    await refreshNowPaymentsDepositByRecord(row);
+  }
+}
+
+async function creditNowPaymentsWithdrawalFee(withdrawalRow, gasCostUsdt = 0) {
+  const amountUsdt = Number(withdrawalRow.amount_usdt || 0);
+  const netAmountUsdt = Number(withdrawalRow.net_amount_usdt || 0);
+  const feeVal = Number((amountUsdt - netAmountUsdt).toFixed(6));
+  const netAdminFee = Number(Math.max(0, feeVal - Number(gasCostUsdt || 0)).toFixed(6));
+
+  if (!(netAdminFee > 0)) return;
+
+  try {
+    const admin = await Admin.getPrimaryAdmin();
+    if (!admin) return;
+
+    await db.query(
+      'UPDATE admins SET withdrawal_fees_balance = COALESCE(withdrawal_fees_balance, 0) + ? WHERE id = ?',
+      [netAdminFee, admin.id]
+    );
+    await PlatformRevenue.recordUsd({
+      amount: netAdminFee,
+      entryType: 'withdrawal_fee',
+      payerUserId: withdrawalRow.user_id,
+      referenceId: String(withdrawalRow.id),
+      note: `Frais de retrait NOWPayments sur le retrait #${withdrawalRow.id} (Brut: ${amountUsdt.toFixed(2)} USDT)`
+    });
+  } catch (error) {
+    console.error('[NOWPayments] Failed to credit admin withdrawal fee:', error);
+  }
+}
+
+async function completeNowPaymentsWithdrawal(withdrawalRow, statusPayload) {
+  if (!withdrawalRow || withdrawalRow.status !== 'pending') {
+    return false;
+  }
+
+  const providerStatus = normalizeProviderValue(statusPayload?.status || statusPayload?.provider_status || withdrawalRow.provider_status, 'finished');
+  const txHash = String(statusPayload?.hash || statusPayload?.tx_hash || withdrawalRow.tx_hash || '').trim() || null;
+  const [updateResult] = await db.query(
+    `UPDATE bsc_withdrawals
+     SET status = 'completed',
+         provider_status = ?,
+         tx_hash = ?,
+         confirmations = 1,
+         gas_cost_usdt = 0,
+         completed_at = NOW(),
+         updated_at = NOW(),
+         provider_metadata = ?
+     WHERE id = ? AND status = 'pending'`,
+    [providerStatus, txHash, stringifyProviderMetadata(statusPayload), withdrawalRow.id]
+  );
+
+  if (!updateResult || updateResult.affectedRows === 0) {
+    return false;
+  }
+
+  const finalRow = {
+    ...withdrawalRow,
+    provider_status: providerStatus,
+    tx_hash: txHash,
+    confirmations: 1,
+    gas_cost_usdt: 0,
+    status: 'completed'
+  };
+
+  await creditNowPaymentsWithdrawalFee(finalRow, 0);
+
+  try {
+    const amountUsdt = Number(finalRow.amount_usdt || 0);
+    const netAmountUsdt = Number(finalRow.net_amount_usdt || 0);
+    const marketMessage = `Votre retrait de ${amountUsdt.toFixed(2)} USDT (net ${netAmountUsdt.toFixed(2)} USDT) a été finalisé.`;
+
+    await emitMarketNotification(finalRow.user_id, null, marketMessage);
+    await emitRealtimeBalanceUpdate(finalRow.user_id, marketMessage);
+    await sendWithdrawalReceiptEmail(finalRow.user_id, finalRow.id);
+
+    io.to(`user:${finalRow.user_id}`).emit(
+      'withdrawal-status',
+      buildNowPaymentsWithdrawalSocketPayload(finalRow, 'completed', marketMessage)
+    );
+  } catch (error) {
+    console.error('[NOWPayments] Failed to broadcast completed withdrawal:', error);
+  }
+
+  return true;
+}
+
+async function emitNowPaymentsWithdrawalProgress(withdrawalRow, providerStatus, metadata = null) {
+  const normalizedStatus = normalizeProviderValue(providerStatus, 'waiting');
+  await db.query(
+    `UPDATE bsc_withdrawals
+     SET provider_status = ?, provider_metadata = ?, updated_at = NOW()
+     WHERE id = ? AND status = 'pending'`,
+    [normalizedStatus, stringifyProviderMetadata(metadata), withdrawalRow.id]
+  );
+
+  io.to(`user:${withdrawalRow.user_id}`).emit(
+    'withdrawal-status',
+    buildNowPaymentsWithdrawalSocketPayload(
+      {
+        ...withdrawalRow,
+        provider_status: normalizedStatus
+      },
+      'pending',
+      `Retrait en cours : ${formatNowPaymentsStatus(normalizedStatus)}.`
+    )
+  );
+}
+
+async function refreshNowPaymentsWithdrawalByRecord(record) {
+  if (!record?.payout_id) return record;
+  try {
+    const payload = await nowPayments.getPayoutStatus(record.payout_id);
+    const providerStatus = normalizeProviderValue(payload?.status || record.provider_status, 'waiting');
+    const mappedStatus = mapNowPaymentsWithdrawalStatus(providerStatus);
+
+    if (mappedStatus === 'completed') {
+      await completeNowPaymentsWithdrawal(record, payload);
+    } else if (mappedStatus === 'failed') {
+      await failPendingWithdrawal(record, payload?.error || payload?.message || `Retrait ${record.payout_id} échoué.`);
+    } else {
+      await emitNowPaymentsWithdrawalProgress(record, providerStatus, payload);
+    }
+  } catch (error) {
+    console.error(`[NOWPayments] Unable to refresh withdrawal ${record.payout_id}:`, error.message || error);
+  }
+
+  return record;
+}
+
+async function reconcileNowPaymentsWithdrawalsForUser(userId, limit = NOWPAYMENTS_PENDING_FETCH_LIMIT) {
+  const [rows] = await db.query(
+    `SELECT * FROM bsc_withdrawals
+     WHERE user_id = ? AND provider = 'nowpayments' AND status = 'pending'
+     ORDER BY created_at DESC
+     LIMIT ?`,
+    [userId, limit]
+  );
+  for (const row of rows) {
+    await refreshNowPaymentsWithdrawalByRecord(row);
+  }
+}
+
+function scheduleNowPaymentsSync(delayMs = NOWPAYMENTS_SYNC_INTERVAL_MS) {
+  if (nowPaymentsSyncTimer) {
+    clearTimeout(nowPaymentsSyncTimer);
+  }
+  nowPaymentsSyncTimer = setTimeout(() => {
+    syncPendingNowPaymentsRecords().catch((error) => {
+      console.error('[NOWPayments] Scheduled sync failed:', error);
+    });
+  }, delayMs);
+}
+
+async function syncPendingNowPaymentsRecords() {
+  if (nowPaymentsSyncRunning) return;
+  nowPaymentsSyncRunning = true;
+
+  try {
+    if (!(await isNowPaymentsProviderActive())) {
+      return;
+    }
+
+    const [depositRows] = await db.query(
+      `SELECT * FROM bsc_deposits
+       WHERE provider = 'nowpayments' AND status = 'pending'
+       ORDER BY created_at ASC
+       LIMIT ?`,
+      [NOWPAYMENTS_PENDING_FETCH_LIMIT]
+    );
+    for (const row of depositRows) {
+      await refreshNowPaymentsDepositByRecord(row);
+    }
+
+    const [withdrawalRows] = await db.query(
+      `SELECT * FROM bsc_withdrawals
+       WHERE provider = 'nowpayments' AND status = 'pending'
+       ORDER BY created_at ASC
+       LIMIT ?`,
+      [NOWPAYMENTS_PENDING_FETCH_LIMIT]
+    );
+    for (const row of withdrawalRows) {
+      await refreshNowPaymentsWithdrawalByRecord(row);
+    }
+  } finally {
+    nowPaymentsSyncRunning = false;
+    scheduleNowPaymentsSync();
+  }
+}
+
+function startNowPaymentsSync() {
+  scheduleNowPaymentsSync(1000);
+}
+
+function triggerNowPaymentsSync() {
+  if (nowPaymentsSyncTimer) {
+    clearTimeout(nowPaymentsSyncTimer);
+    nowPaymentsSyncTimer = null;
+  }
+  if (nowPaymentsSyncRunning) return;
+  syncPendingNowPaymentsRecords().catch((error) => {
+    console.error('[NOWPayments] Immediate sync failed:', error);
+  });
+}
+
+async function executeNowPaymentsWithdrawal(userId, logId, recipientAddress, amountUsdt, netAmountUsdt) {
+  let authToken = null;
+  try {
+    const config = await nowPayments.ensureConfig(['apiKey', 'email', 'password', 'withdrawCurrency']);
+    if (!config.twoFactorSecret) {
+      throw new Error("Clé 2FA NOWPayments manquante. Configurez nowpayments_2fa_secret dans l'administration.");
+    }
+
+    authToken = await nowPayments.authenticate();
+    await nowPayments.validateAddress({
+      address: recipientAddress,
+      currency: config.withdrawCurrency
+    }, authToken);
+
+    const payoutResponse = await nowPayments.createPayout({
+      withdrawals: [{
+        address: recipientAddress,
+        currency: config.withdrawCurrency,
+        amount: Number(Number(netAmountUsdt || 0).toFixed(6)),
+        ipn_callback_url: nowPayments.getIpnUrl(config.callbackBaseUrl) || undefined
+      }]
+    }, authToken);
+
+    const batchId = String(payoutResponse?.id || payoutResponse?.batch_withdrawal_id || '').trim();
+    const firstWithdrawal = Array.isArray(payoutResponse?.withdrawals) ? payoutResponse.withdrawals[0] : null;
+    const payoutId = String(firstWithdrawal?.id || payoutResponse?.withdrawal_id || '').trim();
+    const providerStatus = normalizeProviderValue(firstWithdrawal?.status || payoutResponse?.status, 'created');
+    const txHash = String(firstWithdrawal?.hash || firstWithdrawal?.tx_hash || '').trim() || null;
+
+    const verificationCode = nowPayments.generateTotp(config.twoFactorSecret);
+    await nowPayments.verifyPayout(batchId, verificationCode, authToken);
+
+    await db.query(
+      `UPDATE bsc_withdrawals
+       SET tx_hash = ?,
+           submitted_at = NOW(),
+           confirmations = 0,
+           provider = 'nowpayments',
+           provider_currency = ?,
+           provider_status = ?,
+           payout_batch_id = ?,
+           payout_id = ?,
+           provider_reference = ?,
+           provider_metadata = ?,
+           error_message = NULL,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [
+        txHash || createNowPaymentsPlaceholderHash(payoutId || batchId, 'npo'),
+        config.withdrawCurrency,
+        providerStatus || 'created',
+        batchId || null,
+        payoutId || null,
+        payoutId || batchId || null,
+        stringifyProviderMetadata(payoutResponse),
+        logId
+      ]
+    );
+
+    io.to(`user:${userId}`).emit(
+      'withdrawal-status',
+      buildNowPaymentsWithdrawalSocketPayload(
+        {
+          id: logId,
+          user_id: userId,
+          amount_usdt: amountUsdt,
+          net_amount_usdt: netAmountUsdt,
+          payout_id: payoutId || null,
+          payout_batch_id: batchId || null,
+          provider_status: providerStatus || 'created',
+          tx_hash: txHash
+        },
+        'submitted',
+        `Demande de retrait soumise${payoutId ? ` (référence ${payoutId})` : ''}.`
+      )
+    );
+
+    triggerNowPaymentsSync();
+  } catch (error) {
+    console.error(`[NOWPayments] Withdrawal failed for log ${logId}:`, error);
+    const reason = error?.payload?.message || error?.message || 'Le retrait a échoué.';
+    try {
+      const withdrawalRow = await getWithdrawalById(logId);
+      await failPendingWithdrawal(
+        withdrawalRow || {
+          id: logId,
+          user_id: userId,
+          amount_usdt: amountUsdt,
+          net_amount_usdt: netAmountUsdt,
+          tx_hash: null,
+          status: 'pending'
+        },
+        reason
+      );
+    } catch (rollbackError) {
+      console.error(`[NOWPayments] Failed to rollback withdrawal ${logId}:`, rollbackError);
+    }
+  }
 }
 
 function pickRandomInteger(min, max) {
@@ -517,6 +1244,10 @@ function customRateLimiter(options = {}) {
 
 // ANTI-BOT & ANTI-SCRAPING MIDDLEWARE
 function antiScrapingMiddleware(req, res, next) {
+  if (req.path === '/api/nowpayments/ipn') {
+    return next();
+  }
+
   const userAgent = req.headers['user-agent'] || '';
   const blockedBots = [
     /curl/i, /wget/i, /python/i, /scrap/i, /crawl/i, /spider/i, /bot/i, 
@@ -539,6 +1270,57 @@ app.use(antiScrapingMiddleware);
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain');
   res.send("User-agent: *\nDisallow: /");
+});
+
+app.post('/api/nowpayments/ipn', express.raw({ type: 'application/json' }), async (req, res) => {
+  const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body || '');
+  const signature = String(req.headers['x-nowpayments-sig'] || '').trim();
+
+  try {
+    const config = await nowPayments.getConfig();
+    if (!config.ipnSecret) {
+      console.warn('[NOWPayments IPN] Secret missing, webhook ignored.');
+      return res.status(200).json({ success: true, ignored: true });
+    }
+
+    if (!nowPayments.verifyIpnSignature(rawBody, signature, config.ipnSecret)) {
+      console.warn('[NOWPayments IPN] Invalid signature received.');
+      return res.status(401).json({ success: false, error: 'Invalid signature' });
+    }
+
+    const payload = rawBody ? JSON.parse(rawBody) : {};
+
+    if (payload?.payment_id) {
+      const record = await findNowPaymentsDepositByReference(null, String(payload.payment_id), { allowAnyUser: true });
+      if (record) {
+        await syncNowPaymentsDepositRow(record, payload);
+      }
+    } else if (payload?.id || payload?.withdrawal_id) {
+      const payoutId = String(payload.id || payload.withdrawal_id || '').trim();
+      if (payoutId) {
+        const [rows] = await db.query(
+          "SELECT * FROM bsc_withdrawals WHERE provider = 'nowpayments' AND payout_id = ? ORDER BY id DESC LIMIT 1",
+          [payoutId]
+        );
+        const row = rows[0];
+        if (row) {
+          const mappedStatus = mapNowPaymentsWithdrawalStatus(payload?.status);
+          if (mappedStatus === 'completed') {
+            await completeNowPaymentsWithdrawal(row, payload);
+          } else if (mappedStatus === 'failed') {
+            await failPendingWithdrawal(row, payload?.error || payload?.message || 'Retrait échoué.');
+          } else {
+            await emitNowPaymentsWithdrawalProgress(row, payload?.status, payload);
+          }
+        }
+      }
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[NOWPayments IPN] Error while processing webhook:', error);
+    return res.status(500).json({ success: false, error: 'Webhook processing failed' });
+  }
 });
 
 // Parser pour le contenu JSON et formulaires
@@ -2200,8 +2982,11 @@ app.post('/api/wallet/address', requireAuth, async (req, res) => {
       [walletAddress.trim(), userId]
     );
     
-    // Proactively trigger a check just in case there are pending transfers
-    bscMonitor.triggerCheck();
+    if (await isNowPaymentsProviderActive()) {
+      triggerNowPaymentsSync();
+    } else {
+      bscMonitor.triggerCheck();
+    }
     
     res.json({ success: true, walletAddress });
   } catch (err) {
@@ -2214,11 +2999,9 @@ app.get('/api/wallet/deposit-info', requireAuth, async (req, res) => {
   try {
     const userId = req.session.userId;
     const user = await User.getById(userId);
-    const platformWallet = PLATFORM_WALLET_ADDRESS;
-    let qrDataUrl = null;
-
     const minWithdrawalAmount = await getNumberSetting('min_withdrawal_amount', 50);
     const withdrawalFeePercent = await getNumberSetting('withdrawal_fee_percent', 30);
+    const showDepositBnb = await getNumberSetting('show_deposit_bnb', 1);
     
     // Check if this is the user's first withdrawal
     const [withdrawalCountRows] = await db.query(
@@ -2233,9 +3016,47 @@ app.get('/api/wallet/deposit-info', requireAuth, async (req, res) => {
       [userId]
     );
     const hasPassedKyc = kycRows.length > 0;
-    
-    // Generate QR code data URL
-    qrDataUrl = await QRCode.toDataURL(platformWallet, {
+    const paymentsProvider = await getSetting('payments_provider', 'nowpayments');
+
+    if (normalizeProviderValue(paymentsProvider, 'nowpayments') === 'nowpayments') {
+      const config = await nowPayments.getConfig();
+      let depositMinimums = { USDT: null, BNB: null };
+      let depositMinimumCurrency = 'USD';
+
+      try {
+        const minimumPayload = await getNowPaymentsDepositMinimums(config);
+        depositMinimums = minimumPayload.amounts;
+        depositMinimumCurrency = minimumPayload.currency || 'USD';
+      } catch (minimumError) {
+        console.warn('[NOWPayments] Unable to load deposit minimums:', minimumError?.message || minimumError);
+      }
+
+      return res.json({
+        success: true,
+        paymentsProvider: 'nowpayments',
+        providerLabel: 'Paiement crypto',
+        depositCurrencies: {
+          USDT: config.depositUsdtCurrency,
+          BNB: config.depositBnbCurrency
+        },
+        showDepositBnb: Number(showDepositBnb) === 1 ? 1 : 0,
+        depositMinimums,
+        depositMinimumCurrency,
+        webhookEnabled: Boolean(config.callbackBaseUrl),
+        userWallet: user?.wallet_address || null,
+        walletAddressUpdatedAt: user?.wallet_address_updated_at || null,
+        hasPin: !!user?.withdrawal_pin,
+        withdrawalBalance: user?.withdrawal_account_balance || 0,
+        minWithdrawalAmount,
+        withdrawalFeePercent,
+        withdrawalConfirmationsRequired: 1,
+        isFirstWithdrawal,
+        hasPassedKyc
+      });
+    }
+
+    const platformWallet = PLATFORM_WALLET_ADDRESS;
+    const qrDataUrl = await QRCode.toDataURL(platformWallet, {
       width: 200,
       margin: 2,
       color: {
@@ -2244,10 +3065,12 @@ app.get('/api/wallet/deposit-info', requireAuth, async (req, res) => {
       }
     });
 
-    res.json({
+    return res.json({
       success: true,
+      paymentsProvider: 'bsc',
       platformWallet,
       qrDataUrl,
+      showDepositBnb: Number(showDepositBnb) === 1 ? 1 : 0,
       userWallet: user?.wallet_address || null,
       walletAddressUpdatedAt: user?.wallet_address_updated_at || null,
       hasPin: !!user?.withdrawal_pin,
@@ -2261,6 +3084,124 @@ app.get('/api/wallet/deposit-info', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Error getting deposit info:', err);
     res.status(500).json({ success: false, error: 'Erreur lors de la récupération des détails de dépôt.' });
+  }
+});
+
+app.post('/api/deposits/create', requireAuth, async (req, res) => {
+  try {
+    if (!(await isNowPaymentsProviderActive())) {
+      return res.status(400).json({ success: false, error: 'Le fournisseur de paiement actif ne permet pas la génération automatique de paiement.' });
+    }
+
+    const userId = Number(req.session.userId);
+    const user = await User.getById(userId);
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Utilisateur introuvable.' });
+    }
+
+    const amount = Number.parseFloat(req.body?.amount);
+    const currency = String(req.body?.currency || 'USDT').trim().toUpperCase();
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, error: 'Montant invalide.' });
+    }
+    if (!['USDT', 'BNB'].includes(currency)) {
+      return res.status(400).json({ success: false, error: 'Devise de dépôt invalide.' });
+    }
+
+    const config = await nowPayments.ensureConfig(['apiKey']);
+    const payCurrency = currency === 'BNB' ? config.depositBnbCurrency : config.depositUsdtCurrency;
+    const minimumAmount = await getNowPaymentsDepositMinimum(config, payCurrency);
+
+    if (Number.isFinite(minimumAmount) && amount + 1e-9 < minimumAmount) {
+      return res.status(400).json({
+        success: false,
+        error: `Le montant minimum pour générer ce dépôt est ${minimumAmount.toFixed(2)} USD.`,
+        minimumAmount,
+        minimumCurrency: 'USD',
+        payCurrency
+      });
+    }
+
+    const orderId = `trasx_dep_${userId}_${Date.now()}_${Math.round(Math.random() * 1e6)}`;
+    const payload = {
+      price_amount: Number(amount.toFixed(2)),
+      price_currency: 'usd',
+      pay_currency: payCurrency,
+      order_id: orderId,
+      order_description: `TRASX deposit for @${user.username || userId}`,
+      is_fixed_rate: true,
+      is_fee_paid_by_user: true
+    };
+
+    const ipnCallbackUrl = nowPayments.getIpnUrl(config.callbackBaseUrl);
+    if (ipnCallbackUrl) {
+      payload.ipn_callback_url = ipnCallbackUrl;
+    }
+
+    const payment = await nowPayments.createPayment(payload);
+    const paymentId = String(payment?.payment_id || '').trim();
+    if (!paymentId) {
+      throw new Error('Le service de paiement n’a pas retourné de référence.');
+    }
+
+    const payAddress = String(payment?.pay_address || '').trim();
+    const payAmount = payment?.pay_amount !== undefined && payment?.pay_amount !== null
+      ? Number(payment.pay_amount)
+      : null;
+    const qrDataUrl = payAddress
+      ? await QRCode.toDataURL(payAddress, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff'
+        }
+      })
+      : null;
+
+    const placeholderHash = createNowPaymentsPlaceholderHash(paymentId);
+    await db.query(
+      `INSERT INTO bsc_deposits
+       (user_id, provider, tx_hash, payment_id, order_id, log_index, from_address, to_address, amount_wei, amount_usdt, token_symbol, pay_currency, pay_amount, confirmations, status, provider_status, provider_reference, provider_metadata)
+       VALUES (?, 'nowpayments', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, ?, ?)`,
+      [
+        userId,
+        placeholderHash,
+        paymentId,
+        orderId,
+        '',
+        payAddress,
+        String(payAmount ?? amount),
+        Number(amount.toFixed(6)),
+        currency,
+        payCurrency,
+        Number.isFinite(payAmount) ? Number(payAmount.toFixed(8)) : null,
+        normalizeProviderValue(payment?.payment_status || payment?.status, 'waiting'),
+        paymentId,
+        stringifyProviderMetadata(payment)
+      ]
+    );
+
+    return res.json({
+      success: true,
+      provider: 'nowpayments',
+      paymentId,
+      orderId,
+      payAddress,
+      payAmount,
+      payCurrency,
+      priceAmount: Number(amount.toFixed(2)),
+      paymentStatus: normalizeProviderValue(payment?.payment_status || payment?.status, 'waiting'),
+      expirationEstimateDate: payment?.expiration_estimate_date || null,
+      qrDataUrl
+    });
+  } catch (error) {
+    console.error('[NOWPayments] Failed to create deposit payment:', error);
+    const status = error.code === 'NOWPAYMENTS_CONFIG_MISSING' ? 400 : (error.status || 500);
+    return res.status(status).json({
+      success: false,
+      error: error?.payload?.message || error?.message || 'Impossible de générer le paiement.'
+    });
   }
 });
 
@@ -2599,6 +3540,110 @@ app.post('/api/wallet/withdraw', requireAuth, async (req, res) => {
     if (!pin || !/^\d{6}$/.test(pin)) {
       return res.status(400).json({ success: false, error: 'Code secret de retrait invalide.' });
     }
+
+    if (await isNowPaymentsProviderActive()) {
+      await connection.beginTransaction();
+
+      const [userRows] = await connection.query(
+        'SELECT id, withdrawal_account_balance, wallet_address, withdrawal_pin FROM users WHERE id = ? FOR UPDATE',
+        [userId]
+      );
+      const user = userRows[0];
+
+      if (!user) {
+        await connection.rollback();
+        connection.release();
+        return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
+      }
+
+      const [withdrawalCountRows] = await connection.query(
+        "SELECT COUNT(*) AS count FROM bsc_withdrawals WHERE user_id = ? AND status != 'failed'",
+        [userId]
+      );
+      const isFirstWithdrawal = (withdrawalCountRows[0]?.count || 0) === 0;
+
+      if (isFirstWithdrawal) {
+        const [kycRows] = await connection.query(
+          "SELECT id FROM kyc_requests WHERE user_id = ? AND request_type = 'withdrawal' AND status = 'approved' LIMIT 1",
+          [userId]
+        );
+        if (!kycRows.length) {
+          await connection.rollback();
+          connection.release();
+          return res.status(400).json({
+            success: false,
+            error: "Veuillez d'abord passer votre KYC avant d'effectuer votre premier retrait."
+          });
+        }
+      }
+
+      if (!user.wallet_address) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({ success: false, error: 'Veuillez configurer votre adresse de portefeuille avant de demander un retrait.' });
+      }
+
+      if (!user.withdrawal_pin) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({ success: false, error: 'Veuillez configurer votre code secret de retrait avant de continuer.' });
+      }
+
+      const bcrypt = require('bcryptjs');
+      const pinMatch = await bcrypt.compare(pin, user.withdrawal_pin);
+      if (!pinMatch) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({ success: false, error: 'Code secret de retrait incorrect.' });
+      }
+
+      const userBal = parseFloat(user.withdrawal_account_balance || 0);
+      if (amountVal > userBal) {
+        await connection.rollback();
+        connection.release();
+        return res.status(400).json({ success: false, error: 'Solde de retrait insuffisant.' });
+      }
+
+      const feeVal = amountVal * (withdrawalFeePercent / 100);
+      const netVal = amountVal - feeVal;
+
+      await connection.query(
+        'UPDATE users SET withdrawal_account_balance = withdrawal_account_balance - ? WHERE id = ?',
+        [amountVal, userId]
+      );
+
+      const [insertRes] = await connection.query(
+        `INSERT INTO bsc_withdrawals
+         (user_id, provider, provider_currency, recipient_address, amount_usdt, fee_usdt, net_amount_usdt, status, provider_status)
+         VALUES (?, 'nowpayments', ?, ?, ?, ?, ?, 'pending', 'creating')`,
+        [
+          userId,
+          (await nowPayments.getConfig()).withdrawCurrency,
+          user.wallet_address,
+          amountVal,
+          feeVal,
+          netVal
+        ]
+      );
+      const withdrawalLogId = insertRes.insertId;
+
+      await connection.commit();
+      connection.release();
+
+      await emitRealtimeBalanceUpdate(userId, 'Retrait en cours de traitement...');
+
+      executeNowPaymentsWithdrawal(userId, withdrawalLogId, user.wallet_address, amountVal, netVal)
+        .catch((err) => {
+          console.error('[NOWPayments Withdrawal] Unhandled async error:', err);
+        });
+
+      return res.json({
+        success: true,
+        provider: 'nowpayments',
+        message: 'Demande de retrait enregistrée et transmise.',
+        withdrawalLogId
+      });
+    }
     
     await connection.beginTransaction();
     
@@ -2707,6 +3752,9 @@ app.post('/api/wallet/withdraw', requireAuth, async (req, res) => {
 app.get('/api/withdrawals/history', requireAuth, async (req, res) => {
   try {
     const userId = req.session.userId;
+    if (await isNowPaymentsProviderActive()) {
+      await reconcileNowPaymentsWithdrawalsForUser(userId, 8);
+    }
     const [rows] = await db.query(
       'SELECT * FROM bsc_withdrawals WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
       [userId]
@@ -2734,6 +3782,25 @@ app.get('/api/deposits/history', requireAuth, async (req, res) => {
   try {
     const userId = req.session.userId;
     const shouldRefresh = String(req.query.refresh || '').trim() === '1';
+
+    if (await isNowPaymentsProviderActive()) {
+      if (shouldRefresh) {
+        await reconcileNowPaymentsDepositsForUser(userId, 10);
+      } else {
+        await reconcileNowPaymentsDepositsForUser(userId, 4);
+      }
+
+      const [rows] = await db.query(
+        'SELECT * FROM bsc_deposits WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
+        [userId]
+      );
+      return res.json({
+        success: true,
+        provider: 'nowpayments',
+        deposits: rows,
+        requiredConfirmations: 1
+      });
+    }
 
     if (shouldRefresh) {
       try {
@@ -2773,13 +3840,61 @@ app.post('/api/deposits/claim-txid', requireAuth, async (req, res) => {
   claimInProgress.add(lockKey);
 
   try {
-    const { txHash } = req.body;
+    const reference = String(req.body?.reference || req.body?.txHash || '').trim();
+    if (!reference) {
+      return res.status(400).json({ success: false, error: 'Référence de paiement invalide.' });
+    }
 
-    if (!txHash || typeof txHash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(txHash.trim())) {
+    if (await isNowPaymentsProviderActive()) {
+      let record = await findNowPaymentsDepositByReference(userId, reference);
+      if (!record) {
+        record = await upsertNowPaymentsDepositFromRemote(userId, reference);
+      } else {
+        record = await refreshNowPaymentsDepositByRecord(record);
+      }
+
+      if (!record) {
+        return res.status(404).json({
+          success: false,
+          error: 'Paiement introuvable pour cet utilisateur. Utilisez la référence affichée dans le modal ou dans l’historique.'
+        });
+      }
+
+      const normalizedStatus = mapNowPaymentsDepositStatus(record.provider_status);
+      if (normalizedStatus === 'confirmed') {
+        return res.json({
+          success: true,
+          provider: 'nowpayments',
+          message: `Paiement ${record.payment_id} confirmé et crédité (${Number(record.amount_usdt || 0).toFixed(2)} USDT).`,
+          amount: Number(record.amount_usdt || 0),
+          currency: String(record.token_symbol || 'USDT').toUpperCase(),
+          paymentId: record.payment_id
+        });
+      }
+
+      if (normalizedStatus === 'failed') {
+        return res.status(400).json({
+          success: false,
+          provider: 'nowpayments',
+          error: `Le paiement ${record.payment_id} a le statut "${formatNowPaymentsStatus(record.provider_status)}".`
+        });
+      }
+
+      return res.status(202).json({
+        success: false,
+        pending: true,
+        provider: 'nowpayments',
+        error: `Le paiement ${record.payment_id} est encore en cours : ${formatNowPaymentsStatus(record.provider_status)}.`,
+        paymentId: record.payment_id,
+        status: record.provider_status
+      });
+    }
+
+    if (!/^0x[a-fA-F0-9]{64}$/.test(reference)) {
       return res.status(400).json({ success: false, error: 'TxID invalide. Format attendu : 0x suivi de 64 caractères hexadécimaux.' });
     }
 
-    const cleanHash = txHash.trim().toLowerCase();
+    const cleanHash = reference.toLowerCase();
     const bscMonitor = require('./utils/bscMonitor');
     const deposit = await bscMonitor.inspectDepositTransaction(cleanHash);
 
@@ -7809,7 +8924,6 @@ server.listen(PORT, async () => {
       
       // Ensure default settings are present in app_settings table
       try {
-        const { setSetting, getSetting } = require('./utils/appSettings');
         const hasMin = await getSetting('min_withdrawal_amount');
         if (hasMin === null) {
           await setSetting('min_withdrawal_amount', '50');
@@ -7836,12 +8950,48 @@ server.listen(PORT, async () => {
           );
           console.log('Initialized default show_app_download_ios: 1');
         }
+        const hasShowDepositBnb = await getSetting('show_deposit_bnb');
+        if (hasShowDepositBnb === null) {
+          await db.query(
+            "INSERT INTO app_settings (setting_key, setting_value, description) VALUES (?, ?, ?)",
+            ['show_deposit_bnb', '1', 'Afficher le dépôt BNB dans le modal de dépôt (1 = Oui, 0 = Non)']
+          );
+          console.log('Initialized default show_deposit_bnb: 1');
+        }
+
+        const nowPaymentsDefaults = [
+          ['payments_provider', 'nowpayments', 'Fournisseur de paiements actif (nowpayments ou bsc)'],
+          ['nowpayments_api_host', 'https://api.nowpayments.io', 'Hôte API NOWPayments'],
+          ['nowpayments_api_key', '', 'Clé API NOWPayments'],
+          ['nowpayments_email', '', 'Email du compte NOWPayments'],
+          ['nowpayments_password', '', 'Mot de passe du compte NOWPayments'],
+          ['nowpayments_ipn_secret', '', 'Secret IPN NOWPayments'],
+          ['nowpayments_2fa_secret', '', 'Secret TOTP NOWPayments pour vérifier automatiquement les payouts'],
+          ['nowpayments_callback_base_url', '', 'URL publique de base utilisée pour les webhooks NOWPayments'],
+          ['nowpayments_deposit_currency_usdt', 'usdtbsc', 'Code NOWPayments utilisé pour les dépôts USDT'],
+          ['nowpayments_deposit_currency_bnb', 'bnbbsc', 'Code NOWPayments utilisé pour les dépôts BNB'],
+          ['nowpayments_withdraw_currency', 'usdtbsc', 'Code NOWPayments utilisé pour les retraits']
+        ];
+
+        for (const [settingKey, settingValue, description] of nowPaymentsDefaults) {
+          const existingValue = await getSetting(settingKey);
+          if (existingValue === null) {
+            await db.query(
+              "INSERT INTO app_settings (setting_key, setting_value, description) VALUES (?, ?, ?)",
+              [settingKey, settingValue, description]
+            );
+          }
+        }
       } catch (settErr) {
         console.error('Failed to initialize default appSettings:', settErr);
       }
-      
-      bscMonitor.start(io);
-      startWithdrawalMonitor();
+
+      if (await isNowPaymentsProviderActive()) {
+        startNowPaymentsSync();
+      } else {
+        bscMonitor.start(io);
+        startWithdrawalMonitor();
+      }
 
       setInterval(async () => {
         await resolveExpiredChessClocks();

@@ -12,7 +12,7 @@ const Comment = require('../models/Comment');
 const PostReport = require('../models/PostReport');
 const ActivityLog = require('../models/ActivityLog');
 const db = require('../config/db');
-const { getNumberSetting, setSetting } = require('../utils/appSettings');
+const { getNumberSetting, getSetting, setSetting } = require('../utils/appSettings');
 const { createTranslator, normalizeLocale } = require('../utils/i18n');
 const receiptCrypto = require('../utils/receiptCrypto');
 const OfficialSeedService = require('../services/officialSeedService');
@@ -842,6 +842,18 @@ exports.getAdminDashboard = async (req, res) => {
     const withdrawalFeePercent = await getNumberSetting('withdrawal_fee_percent', 30);
     const showAppDownloadAndroid = await getNumberSetting('show_app_download_android', 1);
     const showAppDownloadIos = await getNumberSetting('show_app_download_ios', 1);
+    const showDepositBnb = await getNumberSetting('show_deposit_bnb', 1);
+    const paymentsProvider = await getSetting('payments_provider', 'nowpayments');
+    const nowPaymentsApiHost = await getSetting('nowpayments_api_host', 'https://api.nowpayments.io');
+    const nowPaymentsApiKey = await getSetting('nowpayments_api_key', '');
+    const nowPaymentsEmail = await getSetting('nowpayments_email', '');
+    const nowPaymentsPassword = await getSetting('nowpayments_password', '');
+    const nowPaymentsIpnSecret = await getSetting('nowpayments_ipn_secret', '');
+    const nowPaymentsTwoFactorSecret = await getSetting('nowpayments_2fa_secret', '');
+    const nowPaymentsCallbackBaseUrl = await getSetting('nowpayments_callback_base_url', '');
+    const nowPaymentsDepositCurrencyUsdt = await getSetting('nowpayments_deposit_currency_usdt', 'usdtbsc');
+    const nowPaymentsDepositCurrencyBnb = await getSetting('nowpayments_deposit_currency_bnb', 'bnbbsc');
+    const nowPaymentsWithdrawCurrency = await getSetting('nowpayments_withdraw_currency', 'usdtbsc');
     const platformRevenueSummary = await PlatformRevenue.getSummary();
     const platformRevenueEntries = await PlatformRevenue.getRecentEntries(25);
     const postsForReview = await Post.getAllForAdmin();
@@ -1051,6 +1063,18 @@ exports.getAdminDashboard = async (req, res) => {
       withdrawalFeePercent,
       showAppDownloadAndroid,
       showAppDownloadIos,
+      showDepositBnb,
+      paymentsProvider,
+      nowPaymentsApiHost,
+      nowPaymentsApiKey,
+      nowPaymentsEmail,
+      nowPaymentsPassword,
+      nowPaymentsIpnSecret,
+      nowPaymentsTwoFactorSecret,
+      nowPaymentsCallbackBaseUrl,
+      nowPaymentsDepositCurrencyUsdt,
+      nowPaymentsDepositCurrencyBnb,
+      nowPaymentsWithdrawCurrency,
       platformRevenueSummary,
       platformRevenueEntries,
       postsForReview,
@@ -1244,9 +1268,17 @@ exports.updateSettings = async (req, res) => {
         || key === 'withdrawal_fee_percent'
         || key === 'show_app_download_android'
         || key === 'show_app_download_ios'
+        || key === 'show_deposit_bnb'
+        || key === 'payments_provider'
+        || key.startsWith('nowpayments_')
       ) {
         let val = settings[key];
-        if (key === 'token_price_usd' || key === 'events_unlock_fee' || key === 'min_withdrawal_amount' || key === 'withdrawal_fee_percent') {
+        if (
+          key === 'token_price_usd'
+          || key === 'events_unlock_fee'
+          || key === 'min_withdrawal_amount'
+          || key === 'withdrawal_fee_percent'
+        ) {
           val = String(val || '').replace(/,/g, '.').trim();
         }
         await setSetting(key, val);

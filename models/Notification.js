@@ -85,11 +85,14 @@ class Notification {
           [recipientId]
         );
         if (subs && subs.length > 0) {
+          const destinationUrl = statusId
+            ? `/?status=${encodeURIComponent(String(statusId))}`
+            : (type === 'message' ? '/?view=messages' : (type === 'game' ? '/?view=games' : '/?view=notifications'));
           const webpush = require('web-push');
           const payload = JSON.stringify({
             title: 'TrasX',
             body: truncatedMessage,
-            url: type === 'message' ? '/?view=messages' : (type === 'game' ? '/?view=games' : '/?view=notifications'),
+            url: destinationUrl,
             type: type
           });
 

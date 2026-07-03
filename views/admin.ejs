@@ -2704,7 +2704,7 @@
             <div style="display: flex; gap: 16px; margin-bottom: 20px; align-items: center; background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.15); padding: 16px; border-radius: 10px;">
               <i data-lucide="piggy-bank" style="width: 24px; height: 24px; color: var(--success);"></i>
               <div>
-                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 2px;">Bénéfice net total accumulé sur les retraits (après déduction gas)</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 2px;">Bénéfice net total accumulé sur les retraits (après déduction des frais réseau)</div>
                 <div style="font-size: 20px; font-weight: 700; color: var(--success); font-family: 'Outfit', sans-serif;">$<%= totalProfit.toFixed(2) %> USD</div>
               </div>
             </div>
@@ -2725,7 +2725,7 @@
                       <th>Adresse Dest.</th>
                       <th>Brut Demandé</th>
                       <th>Frais Brut</th>
-                      <th>Frais Gas BSC</th>
+                      <th>Frais réseau</th>
                       <th style="background: rgba(16, 185, 129, 0.05);">Bénéfice Net</th>
                       <th>Net Transféré</th>
                       <th>Statut</th>
@@ -2793,8 +2793,8 @@
       <!-- Manual Deposit Recovery Card -->
       <div class="section-card" id="admin-deposit-recovery" style="margin-top: 24px;">
         <div class="section-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 20px;">
-          <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--text-main);">Récupération manuelle de dépôt via TxID</h3>
-          <p style="color: var(--text-muted); margin-top: 4px; font-size: 13px;">Saisissez le TxID d'une transaction BSC et l'email de l'utilisateur pour forcer la détection on-chain et créditer son compte.</p>
+          <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--text-main);">Récupération manuelle d'un dépôt</h3>
+          <p style="color: var(--text-muted); margin-top: 4px; font-size: 13px;">Saisissez une référence NOWPayments, un order ID ou un TxID et l'email de l'utilisateur pour synchroniser et créditer son compte si le paiement est confirmé.</p>
         </div>
         
         <form id="adminRecoverDepositForm" onsubmit="handleAdminRecoverDeposit(event)" style="max-width: 600px;">
@@ -2804,15 +2804,15 @@
               <input type="email" id="adminRecoverUserEmail" required placeholder="Ex. jean@gmail.com" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-main);">
             </div>
             <div class="form-group">
-              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-muted);">TxID (Hash Transaction BSC)</label>
-              <input type="text" id="adminRecoverTxHash" required placeholder="0x..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-main); font-family: monospace;">
+              <label style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: var(--text-muted);">Référence paiement / Order ID / TxID</label>
+              <input type="text" id="adminRecoverTxHash" required placeholder="payment_id / order_id / 0x..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-main); font-family: monospace;">
             </div>
           </div>
           
           <div id="adminRecoverStatusMsg" style="display: none; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;"></div>
           
           <button type="submit" class="btn" id="adminRecoverSubmitBtn" style="background: var(--primary); color: white; padding: 10px 20px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
-            Vérifier et créditer le dépôt
+            Vérifier et synchroniser le dépôt
           </button>
         </form>
       </div>
@@ -2820,8 +2820,8 @@
       <!-- Manual Withdrawal Creation Card -->
       <div class="section-card" id="admin-withdrawal-creation" style="margin-top: 24px;">
         <div class="section-header" style="border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 20px;">
-          <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--text-main);">Exécution manuelle de retrait USDT (BEP-20)</h3>
-          <p style="color: var(--text-muted); margin-top: 4px; font-size: 13px;">Saisissez l'adresse email de l'utilisateur et le montant en USDT pour exécuter un transfert en direct depuis le portefeuille de la plateforme vers son adresse de portefeuille enregistrée.</p>
+          <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: var(--text-main);">Exécution manuelle de retrait USDT</h3>
+          <p style="color: var(--text-muted); margin-top: 4px; font-size: 13px;">Saisissez l'adresse email de l'utilisateur et le montant en USDT pour créer un payout sécurisé vers son adresse de portefeuille enregistrée.</p>
         </div>
         
         <form id="adminCreateWithdrawalForm" onsubmit="handleAdminCreateWithdrawal(event)" style="max-width: 600px;">
@@ -2846,7 +2846,7 @@
           <div id="adminWithdrawStatusMsg" style="display: none; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;"></div>
           
           <button type="submit" class="btn" id="adminWithdrawSubmitBtn" style="background: var(--primary); color: white; padding: 10px 20px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
-            Vérifier et envoyer le retrait
+            Vérifier et créer le retrait
           </button>
         </form>
       </div>
@@ -4204,6 +4204,68 @@
                   <input type="number" name="withdrawal_fee_percent" min="0" max="100" step="0.1" value="<%= Number(withdrawalFeePercent || 30).toFixed(1) %>">
                 </div>
                 <button type="submit" class="btn" style="width: fit-content;">Enregistrer les paramètres tarifaires</button>
+              </form>
+            </div>
+
+            <div style="border: 1px solid var(--border); border-radius: 18px; padding: 20px; background: var(--card-soft);">
+              <div style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; margin-bottom: 6px;">Paiements NOWPayments</div>
+              <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Activez NOWPayments et gérez toutes les clés nécessaires depuis le dashboard sans dépendre du fichier <code>.env</code>.</div>
+              <form action="/admin/settings" method="POST" style="display: grid; gap: 12px;">
+                <div class="form-group">
+                  <label>Fournisseur de paiements actif</label>
+                  <select name="payments_provider" style="padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit;">
+                    <option value="nowpayments" <%= String(paymentsProvider || 'nowpayments') === 'nowpayments' ? 'selected' : '' %>>NOWPayments</option>
+                    <option value="bsc" <%= String(paymentsProvider || 'nowpayments') === 'bsc' ? 'selected' : '' %>>Ancien mode BSC</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Hôte API</label>
+                  <input type="text" name="nowpayments_api_host" value="<%= nowPaymentsApiHost || 'https://api.nowpayments.io' %>" placeholder="https://api.nowpayments.io">
+                </div>
+                <div class="form-group">
+                  <label>Clé API NOWPayments</label>
+                  <input type="text" name="nowpayments_api_key" value="<%= nowPaymentsApiKey || '' %>" placeholder="Clé API">
+                </div>
+                <div class="form-group">
+                  <label>Email du compte NOWPayments</label>
+                  <input type="email" name="nowpayments_email" value="<%= nowPaymentsEmail || '' %>" placeholder="Email NOWPayments">
+                </div>
+                <div class="form-group">
+                  <label>Mot de passe NOWPayments</label>
+                  <input type="text" name="nowpayments_password" value="<%= nowPaymentsPassword || '' %>" placeholder="Mot de passe">
+                </div>
+                <div class="form-group">
+                  <label>Secret IPN</label>
+                  <input type="text" name="nowpayments_ipn_secret" value="<%= nowPaymentsIpnSecret || '' %>" placeholder="Secret IPN">
+                </div>
+                <div class="form-group">
+                  <label>Secret 2FA (TOTP)</label>
+                  <input type="text" name="nowpayments_2fa_secret" value="<%= nowPaymentsTwoFactorSecret || '' %>" placeholder="Secret base32 2FA">
+                </div>
+                <div class="form-group">
+                  <label>URL publique de callback</label>
+                  <input type="url" name="nowpayments_callback_base_url" value="<%= nowPaymentsCallbackBaseUrl || '' %>" placeholder="https://votre-domaine.com">
+                </div>
+                <div class="form-group">
+                  <label>Code devise dépôt USDT</label>
+                  <input type="text" name="nowpayments_deposit_currency_usdt" value="<%= nowPaymentsDepositCurrencyUsdt || 'usdtbsc' %>" placeholder="usdtbsc">
+                </div>
+                <div class="form-group">
+                  <label>Code devise dépôt BNB</label>
+                  <input type="text" name="nowpayments_deposit_currency_bnb" value="<%= nowPaymentsDepositCurrencyBnb || 'bnbbsc' %>" placeholder="bnbbsc">
+                </div>
+                <div class="form-group">
+                  <label>Afficher le dépôt BNB</label>
+                  <select name="show_deposit_bnb" style="padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit;">
+                    <option value="1" <%= Number(showDepositBnb) === 1 ? 'selected' : '' %>>Afficher</option>
+                    <option value="0" <%= Number(showDepositBnb) === 0 ? 'selected' : '' %>>Masquer</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Code devise retrait</label>
+                  <input type="text" name="nowpayments_withdraw_currency" value="<%= nowPaymentsWithdrawCurrency || 'usdtbsc' %>" placeholder="usdtbsc">
+                </div>
+                <button type="submit" class="btn" style="width: fit-content;">Enregistrer la configuration NOWPayments</button>
               </form>
             </div>
 
@@ -5648,14 +5710,14 @@
         showRecoverMsg('error', "Veuillez saisir une adresse email valide.");
         return;
       }
-      if (!txHash || !/^0x[a-fA-F0-9]{64}$/i.test(txHash)) {
-        showRecoverMsg('error', "Veuillez saisir un TxID valide (0x + 64 caractères hexadécimaux).");
+      if (!txHash) {
+        showRecoverMsg('error', "Veuillez saisir une référence de paiement ou un TxID valide.");
         return;
       }
 
       btn.disabled = true;
       btn.textContent = 'Vérification...';
-      showRecoverMsg('info', 'Contact de la blockchain en cours...');
+      showRecoverMsg('info', 'Synchronisation du paiement en cours...');
 
       try {
         const response = await fetch('/admin/deposits/recover-txid', {
@@ -5683,13 +5745,13 @@
         } else {
           showRecoverMsg('error', result.error || 'Une erreur est survenue.');
           btn.disabled = false;
-          btn.textContent = 'Vérifier et créditer le dépôt';
+          btn.textContent = 'Vérifier et synchroniser le dépôt';
         }
       } catch (err) {
         console.error(err);
         showRecoverMsg('error', 'Erreur réseau ou serveur.');
         btn.disabled = false;
-        btn.textContent = 'Vérifier et créditer le dépôt';
+        btn.textContent = 'Vérifier et synchroniser le dépôt';
       }
     }
 
@@ -5717,7 +5779,7 @@
 
       btn.disabled = true;
       btn.textContent = 'Envoi en cours...';
-      showWithdrawMsg('info', 'Signature et envoi de la transaction sur la blockchain BSC en cours...');
+      showWithdrawMsg('info', 'Création du retrait sécurisé en cours...');
 
       try {
         const response = await fetch('/admin/withdrawals/create', {
@@ -5741,13 +5803,13 @@
         } else {
           showWithdrawMsg('error', result.error || 'Une erreur est survenue.');
           btn.disabled = false;
-          btn.textContent = 'Vérifier et envoyer le retrait';
+          btn.textContent = 'Vérifier et créer le retrait';
         }
       } catch (err) {
         console.error(err);
         showWithdrawMsg('error', 'Erreur réseau ou serveur.');
         btn.disabled = false;
-        btn.textContent = 'Vérifier et envoyer le retrait';
+        btn.textContent = 'Vérifier et créer le retrait';
       }
     }
 

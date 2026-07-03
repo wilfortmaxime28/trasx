@@ -72,6 +72,7 @@ class ProfileController {
       const moderationNotices = await AdminModerationNotice.getActiveForUser(currentUserId);
       const minWithdrawalAmount = await getNumberSetting('min_withdrawal_amount', 50);
       const withdrawalFeePercent = await getNumberSetting('withdrawal_fee_percent', 30);
+      const showDepositBnb = await getNumberSetting('show_deposit_bnb', 1);
       const activeAds = await Ad.getActiveAds();
 
       res.render('profile', {
@@ -92,6 +93,7 @@ class ProfileController {
         dashboard,
         minWithdrawalAmount,
         withdrawalFeePercent,
+        showDepositBnb,
         activeAds,
         activeTab: 'profile',
         success: req.query.success,

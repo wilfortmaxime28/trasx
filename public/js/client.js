@@ -12,6 +12,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialisation du client Socket.io
   const socket = io();
   let depositStatusRefreshTimer = null;
+  window.activePaymentsProvider = window.activePaymentsProvider || 'bsc';
+  window.currentDepositPaymentId = window.currentDepositPaymentId || null;
+  window.currentDepositOrderId = window.currentDepositOrderId || null;
 
   // Écouter l'événement de déconnexion/session expirée du socket
   socket.on('session-expired', (data) => {
@@ -2573,7 +2576,20 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   const openStatusViewerById = (statusId) => {
     if (!statusId) return;
-    fetch(`/statuses/${statusId}`)
+    const normalizedStatusId = Number.parseInt(statusId, 10);
+    if (!Number.isFinite(normalizedStatusId) || normalizedStatusId <= 0) return;
+
+    if (!statusViewerModal) {
+      const targetUrl = `/?status=${encodeURIComponent(String(normalizedStatusId))}`;
+      if (typeof navigateWithGameProtection === 'function') {
+        navigateWithGameProtection(targetUrl);
+      } else {
+        window.location.href = targetUrl;
+      }
+      return;
+    }
+
+    fetch(`/statuses/${normalizedStatusId}`)
       .then(res => res.json())
       .then(data => {
         if (data && data.success && data.status) {
@@ -7836,9 +7852,26 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!data) return;
     const badge = document.getElementById('depositStatusBadge');
     const msg = document.getElementById('depositStatusMessage');
-    const assetLabel = data.currency === 'BNB' ? 'BNB' : 'USDT';
-    
+    const provider = String(data.provider || window.activePaymentsProvider || 'bsc').toLowerCase();
+
     if (badge && msg) {
+      if (provider === 'nowpayments') {
+        renderDepositTrackerFromHistoryRecord({
+          provider: 'nowpayments',
+          status: data.type === 'confirmed' ? 'confirmed' : (data.type === 'failed' ? 'failed' : 'pending'),
+          payment_id: data.paymentId || window.currentDepositPaymentId || null,
+          order_id: data.orderId || window.currentDepositOrderId || null,
+          amount_usdt: data.amount || 0,
+          token_symbol: data.currency || 'USDT',
+          pay_amount: data.payAmount,
+          pay_currency: data.payCurrency,
+          provider_status: data.providerStatus || null,
+          tx_hash: data.txHash || null
+        }, 1, 'nowpayments', data.message || '');
+        return;
+      }
+
+      const assetLabel = data.currency === 'BNB' ? 'BNB' : 'USDT';
       if (data.type === 'pending') {
         badge.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #eab308; animation: pulse 1.5s infinite;"></span> ${assetLabel} en attente (${data.confirmations}/${data.required})`;
         msg.textContent = data.message;
@@ -7847,27 +7880,95 @@ document.addEventListener('DOMContentLoaded', () => {
         badge.innerHTML = `<span style="color: #10b981; font-weight: 600;">✓</span> ${data.currency === 'BNB' ? 'BNB confirmé' : 'Confirmé'}`;
         msg.textContent = data.message || 'Dépôt crédité avec succès !';
         msg.style.color = '#10b981';
+      } else if (data.type === 'failed') {
+        badge.innerHTML = `<span style="color: #ef4444; font-weight: 700;">!</span> Échoué`;
+        msg.textContent = data.message || 'Le dépôt a échoué.';
+        msg.style.color = '#ef4444';
       }
     }
   });
+
+  function formatNowPaymentsStatusClient(rawStatus) {
+    const normalized = String(rawStatus || 'waiting').trim().toLowerCase();
+    const labels = {
+      waiting: 'En attente de paiement',
+      confirming: 'Confirmation en cours',
+      confirmed: 'Confirmé',
+      sending: 'Envoi en cours',
+      finished: 'Terminé',
+      partially_paid: 'Paiement partiel',
+      failed: 'Échoué',
+      expired: 'Expiré',
+      refunded: 'Remboursé',
+      created: 'Créé',
+      verifying: 'Vérification',
+      processing: 'Traitement',
+      pending: 'En attente',
+      sent: 'Envoyé',
+      completed: 'Terminé',
+      success: 'Réussi',
+      rejected: 'Rejeté',
+      cancelled: 'Annulé'
+    };
+    return labels[normalized] || normalized || 'En attente';
+  }
 
   function resetDepositTrackerUi() {
     const badge = document.getElementById('depositStatusBadge');
     const msg = document.getElementById('depositStatusMessage');
     if (badge && msg) {
       badge.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3b82f6; animation: pulse 1.5s infinite;"></span> En attente...`;
-      msg.textContent = "En attente d'un dépôt USDT ou BNB sur le réseau BSC...";
+      msg.textContent = window.activePaymentsProvider === 'nowpayments'
+        ? "Générez une demande de paiement pour commencer."
+        : "En attente d'un dépôt USDT ou BNB sur le réseau BSC...";
       msg.style.color = 'var(--text-muted)';
     }
   }
 
-  function renderDepositTrackerFromHistoryRecord(record, requiredConfirmations = 12) {
+  function renderDepositTrackerFromHistoryRecord(record, requiredConfirmations = 12, providerOverride = null, forcedMessage = '') {
     const badge = document.getElementById('depositStatusBadge');
     const msg = document.getElementById('depositStatusMessage');
     if (!badge || !msg) return;
 
     if (!record) {
       resetDepositTrackerUi();
+      return;
+    }
+
+    const provider = String(providerOverride || record.provider || window.activePaymentsProvider || 'bsc').toLowerCase();
+
+    if (provider === 'nowpayments') {
+      const paymentId = String(record.payment_id || record.paymentId || window.currentDepositPaymentId || '').trim();
+      const providerStatus = formatNowPaymentsStatusClient(record.provider_status || record.providerStatus || 'waiting');
+      const amountUsdt = Number(record.amount_usdt ?? record.amount ?? 0);
+      const payAmount = record.pay_amount !== null && record.pay_amount !== undefined
+        ? Number(record.pay_amount)
+        : (record.payAmount !== null && record.payAmount !== undefined ? Number(record.payAmount) : null);
+      const payCurrency = String(record.pay_currency || record.payCurrency || record.token_symbol || 'USDT').toUpperCase();
+      const txHash = String(record.tx_hash || record.txHash || '').trim();
+
+      if (String(record.status || '').toLowerCase() === 'confirmed') {
+        badge.innerHTML = `<span style="color: #10b981; font-weight: 600;">✓</span> Confirmé`;
+        msg.textContent = forcedMessage || `Paiement ${paymentId || 'référence'} confirmé et crédité (${amountUsdt.toFixed(2)} USDT).`;
+        msg.style.color = '#10b981';
+        return;
+      }
+
+      if (String(record.status || '').toLowerCase() === 'failed') {
+        badge.innerHTML = `<span style="color: #ef4444; font-weight: 700;">!</span> Échoué`;
+        msg.textContent = forcedMessage || `Le paiement ${paymentId || 'demandé'} a échoué ou a expiré.`;
+        msg.style.color = '#ef4444';
+        return;
+      }
+
+      badge.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #eab308; animation: pulse 1.5s infinite;"></span> ${providerStatus}`;
+      msg.textContent = forcedMessage || [
+        paymentId ? `Réf. ${paymentId}` : 'Paiement en cours',
+        Number.isFinite(payAmount) && payAmount > 0 ? `Envoyer ${payAmount.toFixed(8)} ${payCurrency}` : null,
+        amountUsdt > 0 ? `Crédit prévu ${amountUsdt.toFixed(2)} USDT` : null,
+        txHash && !txHash.startsWith('np_') ? `Hash ${txHash.slice(0, 12)}...` : null
+      ].filter(Boolean).join(' • ');
+      msg.style.color = '#eab308';
       return;
     }
 
@@ -7895,6 +7996,18 @@ document.addEventListener('DOMContentLoaded', () => {
   function pickRelevantDepositRecord(deposits = []) {
     if (!Array.isArray(deposits) || deposits.length === 0) return null;
 
+    if (window.currentDepositPaymentId || window.currentDepositOrderId) {
+      const targetedRecord = deposits.find((item) => {
+        const paymentId = String(item?.payment_id || '').trim();
+        const orderId = String(item?.order_id || '').trim();
+        return (
+          (window.currentDepositPaymentId && paymentId === String(window.currentDepositPaymentId).trim())
+          || (window.currentDepositOrderId && orderId === String(window.currentDepositOrderId).trim())
+        );
+      });
+      if (targetedRecord) return targetedRecord;
+    }
+
     const pending = deposits.find((item) => String(item?.status || '').toLowerCase() === 'pending');
     if (pending) return pending;
 
@@ -7921,7 +8034,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!data?.success) return;
 
       const relevantRecord = pickRelevantDepositRecord(data.deposits || []);
-      renderDepositTrackerFromHistoryRecord(relevantRecord, data.requiredConfirmations || 12);
+      renderDepositTrackerFromHistoryRecord(
+        relevantRecord,
+        data.requiredConfirmations || 12,
+        data.provider || window.activePaymentsProvider || 'bsc'
+      );
     } catch (err) {
       console.error('Deposit tracker refresh failed:', err);
     }
@@ -7955,6 +8072,48 @@ document.addEventListener('DOMContentLoaded', () => {
       const amount = Number(data.amount || 0);
       const feePct = Number(window.withdrawalFeePercent !== undefined ? window.withdrawalFeePercent : 30);
       const netAmt = Number(data.netAmount !== undefined ? data.netAmount : (amount * (1 - feePct / 100)));
+      const provider = String(data.provider || window.activePaymentsProvider || 'bsc').toLowerCase();
+
+      if (provider === 'nowpayments') {
+        if (data.type === 'submitted') {
+          icon.className = 'animate-spin';
+          icon.setAttribute('data-lucide', 'loader');
+          icon.style.color = 'var(--primary)';
+          title.textContent = 'Demande transmise';
+          desc.innerHTML = [
+            `Votre retrait de <strong>${amount.toFixed(2)} USDT</strong> a bien été transmis.`,
+            data.payoutId ? `Référence payout : <br><code style="font-family: monospace; font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${data.payoutId}</code>` : '',
+            data.txHash ? `Hash réseau : <br><code style="font-family: monospace; font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${data.txHash}</code>` : ''
+          ].filter(Boolean).join('<br><br>');
+        } else if (data.type === 'pending') {
+          icon.setAttribute('data-lucide', 'clock-3');
+          icon.style.color = '#eab308';
+          title.textContent = 'Traitement du retrait';
+          desc.innerHTML = [
+            data.message || `Retrait en cours (${formatNowPaymentsStatusClient(data.providerStatus)}).`,
+            data.payoutId ? `Référence payout : <br><code style="font-family: monospace; font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${data.payoutId}</code>` : '',
+            data.txHash ? `Hash réseau : <br><code style="font-family: monospace; font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${data.txHash}</code>` : ''
+          ].filter(Boolean).join('<br><br>');
+        } else if (data.type === 'completed') {
+          icon.setAttribute('data-lucide', 'check-circle');
+          icon.style.color = '#10b981';
+          title.textContent = 'Retrait réussi !';
+          desc.innerHTML = [
+            `Votre retrait de <strong>${amount.toFixed(2)} USDT</strong> est terminé (Somme reçue : <strong>${netAmt.toFixed(2)} USDT</strong> après frais).`,
+            data.payoutId ? `Référence payout : <br><code style="font-family: monospace; font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${data.payoutId}</code>` : '',
+            data.txHash ? `Hash réseau : <br><code style="font-family: monospace; font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${data.txHash}</code>` : ''
+          ].filter(Boolean).join('<br><br>');
+        } else if (data.type === 'failed') {
+          icon.setAttribute('data-lucide', 'x-circle');
+          icon.style.color = 'var(--danger)';
+          title.textContent = 'Retrait échoué';
+          desc.textContent = data.error || data.message || 'Le retrait a échoué. Votre solde a été restitué.';
+        }
+
+        closeBtn.style.display = 'block';
+        if (window.lucide) window.lucide.createIcons();
+        return;
+      }
 
       if (data.type === 'submitted') {
         icon.className = 'animate-spin';
@@ -18276,6 +18435,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const requestedView = params.get('view');
     const requestedSection = params.get('section');
     const requestedModal = params.get('modal');
+    const requestedStatusId = Number.parseInt(params.get('status') || '', 10);
 
     if (requestedView === 'shorts') {
       showShortsView();
@@ -18299,6 +18459,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (requestedModal === 'settings') {
       window.location.href = '/settings';
+    }
+
+    if (Number.isFinite(requestedStatusId) && requestedStatusId > 0) {
+      window.setTimeout(() => {
+        openStatusViewerById(requestedStatusId);
+        if (window.history?.replaceState) {
+          const nextUrl = new URL(window.location.href);
+          nextUrl.searchParams.delete('status');
+          const nextSearch = nextUrl.searchParams.toString();
+          window.history.replaceState(
+            window.history.state || {},
+            '',
+            `${nextUrl.pathname}${nextSearch ? `?${nextSearch}` : ''}${nextUrl.hash}`
+          );
+        }
+      }, 350);
     }
   };
 
@@ -25082,6 +25258,185 @@ document.addEventListener('DOMContentLoaded', () => {
     const walletInput = document.getElementById('walletSetupAddressInput');
     const walletError = document.getElementById('walletSetupError');
     const copyBtn = document.getElementById('depositCopyBtn');
+    const copyReferenceBtn = document.getElementById('depositCopyReferenceBtn');
+    const depositAmountPanel = document.getElementById('depositAmountPanel');
+    const depositAmountInput = document.getElementById('depositAmountInput');
+    const depositGenerateBtn = document.getElementById('depositGenerateBtn');
+    const depositPaymentCard = document.getElementById('depositPaymentCard');
+    const depositAddressLabel = document.getElementById('depositAddressLabel');
+    const depositPayAmountRow = document.getElementById('depositPayAmountRow');
+    const depositPayAmountDisplay = document.getElementById('depositPayAmountDisplay');
+    const depositPaymentReferenceRow = document.getElementById('depositPaymentReferenceRow');
+    const depositReferenceValue = document.getElementById('depositReferenceValue');
+    const depositPaymentMeta = document.getElementById('depositPaymentMeta');
+    const depositWarningMessage = document.getElementById('depositWarningMessage');
+    const depositUserWalletRow = document.getElementById('depositUserWalletRow');
+    const depositTabUsdtBtn = document.getElementById('depositTabUsdt');
+    const depositTabBnbBtn = document.getElementById('depositTabBnb');
+    const claimDepositText = document.getElementById('claimDepositText');
+    const claimDepositInput = document.getElementById('claimTxHashInput');
+    const depositProviderPill = document.getElementById('depositProviderPill');
+    const depositGenerateHint = document.getElementById('depositGenerateHint');
+    const depositVisualMinimumAmount = 6;
+
+    const updateCopyButtonIcon = (button, iconName) => {
+      const icon = button?.querySelector('i');
+      if (!icon) return;
+      icon.setAttribute('data-lucide', iconName);
+      if (window.lucide) window.lucide.createIcons();
+    };
+
+    const copyTextWithFeedback = async (value, button, successMessage) => {
+      if (!value) return;
+      try {
+        await navigator.clipboard.writeText(value);
+        showToast(successMessage);
+        updateCopyButtonIcon(button, 'check');
+        setTimeout(() => updateCopyButtonIcon(button, 'copy'), 2000);
+      } catch (err) {
+        console.error('Copy failed', err);
+      }
+    };
+
+    const formatDepositMinimumAmount = (value) => {
+      const amount = Number.parseFloat(value);
+      if (!Number.isFinite(amount) || amount <= 0) return null;
+      return new Intl.NumberFormat('fr-FR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(amount);
+    };
+
+    const getCurrentDepositCurrency = () => (
+      typeof _currentDepositTab === 'string' && _currentDepositTab
+        ? _currentDepositTab
+        : 'USDT'
+    ).toUpperCase();
+
+    const getCurrentDepositMinimumAmount = (currency = null) => {
+      const activeCurrency = String(currency || getCurrentDepositCurrency()).toUpperCase();
+      const minimumAmount = Number.parseFloat(window.depositMinimums?.[activeCurrency]);
+      return Number.isFinite(minimumAmount) && minimumAmount > 0 ? minimumAmount : null;
+    };
+
+    const updateDepositAmountRequirements = () => {
+      if (String(window.activePaymentsProvider || '').toLowerCase() !== 'nowpayments') {
+        return;
+      }
+
+      if (depositAmountInput) {
+        depositAmountInput.min = String(depositVisualMinimumAmount.toFixed(2));
+      }
+
+      if (depositGenerateHint) {
+        depositGenerateHint.textContent = `Choisissez l’actif à envoyer puis générez une nouvelle adresse de paiement. Montant minimum de dépôt : ${formatDepositMinimumAmount(depositVisualMinimumAmount)} USD.`;
+      }
+    };
+
+    function resetDepositGeneratedPaymentUi() {
+      const qrImg = document.getElementById('depositPlatformQr');
+      const platformAddrInput = document.getElementById('depositPlatformAddress');
+      if (qrImg) qrImg.src = '';
+      if (platformAddrInput) platformAddrInput.value = '';
+      if (depositPayAmountDisplay) depositPayAmountDisplay.textContent = '-';
+      if (depositReferenceValue) depositReferenceValue.value = '';
+      if (depositPaymentMeta) {
+        depositPaymentMeta.innerHTML = '';
+        depositPaymentMeta.style.display = 'none';
+      }
+      if (depositPayAmountRow) depositPayAmountRow.style.display = 'none';
+      if (depositPaymentReferenceRow) depositPaymentReferenceRow.style.display = 'none';
+      if (depositPaymentCard && window.activePaymentsProvider === 'nowpayments') {
+        depositPaymentCard.style.display = 'none';
+      }
+      window.currentDepositPaymentId = null;
+      window.currentDepositOrderId = null;
+    }
+
+    function configureDepositDetailsUi(data) {
+      const qrImg = document.getElementById('depositPlatformQr');
+      const platformAddrInput = document.getElementById('depositPlatformAddress');
+      const userWalletCode = document.getElementById('depositUserWalletDisplay');
+      const provider = String(data?.paymentsProvider || 'bsc').toLowerCase();
+      const isNowPayments = provider === 'nowpayments';
+
+      window.activePaymentsProvider = provider;
+      window.currentDepositPaymentId = null;
+      window.currentDepositOrderId = null;
+      window.depositMinimums = data?.depositMinimums || null;
+      window.depositMinimumCurrency = data?.depositMinimumCurrency || 'USD';
+      window.showDepositBnbOption = Number(data?.showDepositBnb ?? 1) === 1;
+
+      if (depositTabBnbBtn) {
+        depositTabBnbBtn.style.display = window.showDepositBnbOption ? 'block' : 'none';
+      }
+      if (depositTabUsdtBtn) {
+        depositTabUsdtBtn.style.flex = '1';
+      }
+
+      if (depositProviderPill) {
+        depositProviderPill.textContent = isNowPayments ? 'Paiement crypto' : 'BSC direct';
+        depositProviderPill.style.background = isNowPayments ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)';
+        depositProviderPill.style.color = isNowPayments ? '#22c55e' : '#3b82f6';
+      }
+
+      if (depositAmountPanel) {
+        depositAmountPanel.style.display = isNowPayments ? 'block' : 'none';
+      }
+      if (depositGenerateHint) {
+        depositGenerateHint.textContent = isNowPayments
+          ? 'Choisissez l’actif à envoyer puis générez une nouvelle adresse de paiement.'
+          : 'Envoyez directement vos fonds vers l’adresse de la plateforme.';
+      }
+
+      if (claimDepositText) {
+        claimDepositText.textContent = isNowPayments
+          ? 'Collez votre référence de paiement, votre order ID ou le hash de transaction ci-dessous :'
+          : 'Collez votre TxID (hash de transaction BSC, USDT ou BNB) ci-dessous :';
+      }
+      if (claimDepositInput) {
+        claimDepositInput.placeholder = isNowPayments ? 'Payment ID / Order ID / TxID' : '0x...';
+      }
+
+      if (depositAddressLabel) {
+        depositAddressLabel.textContent = isNowPayments ? 'Adresse de paiement unique' : 'Adresse de la plateforme';
+      }
+
+      if (depositUserWalletRow) {
+        depositUserWalletRow.style.display = !isNowPayments && data?.userWallet ? 'block' : 'none';
+      }
+      if (userWalletCode) {
+        userWalletCode.textContent = data?.userWallet || '';
+      }
+
+      if (depositWarningMessage) {
+        depositWarningMessage.innerHTML = isNowPayments
+          ? 'Générez un paiement puis envoyez <strong id="depositAssetHint">uniquement l’actif sélectionné</strong> à l’adresse affichée. N’envoyez jamais un ancien montant sur une ancienne adresse.'
+          : 'Envoyez <strong id="depositAssetHint">uniquement l’actif sélectionné sur le réseau BSC</strong> depuis votre adresse enregistrée.';
+      }
+
+      if (isNowPayments) {
+        if (depositAmountInput) {
+          depositAmountInput.value = '';
+        }
+        updateDepositAmountRequirements();
+        resetDepositGeneratedPaymentUi();
+      } else {
+        if (qrImg) qrImg.src = data.qrDataUrl || '';
+        if (platformAddrInput) platformAddrInput.value = data.platformWallet || '';
+        if (depositPaymentCard) depositPaymentCard.style.display = 'flex';
+        if (depositPayAmountRow) depositPayAmountRow.style.display = 'none';
+        if (depositPaymentReferenceRow) depositPaymentReferenceRow.style.display = 'none';
+        if (depositPaymentMeta) {
+          depositPaymentMeta.style.display = 'none';
+          depositPaymentMeta.innerHTML = '';
+        }
+      }
+
+      if (typeof window.switchDepositTab === 'function') {
+        window.switchDepositTab('USDT');
+      }
+    }
     
     if (depositBtn && depositModal) {
       depositBtn.addEventListener('click', async (e) => {
@@ -25104,13 +25459,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
           }
 
-
-          
-          if (!data.userWallet) {
-            // Step 1: needs config
+          if (String(data.paymentsProvider || 'bsc').toLowerCase() !== 'nowpayments' && !data.userWallet) {
             setupStep.style.display = 'block';
           } else {
-            // Step 2: show details
             showDepositDetails(data);
           }
         } catch (err) {
@@ -25124,15 +25475,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function showDepositDetails(data) {
       setupStep.style.display = 'none';
       detailsStep.style.display = 'block';
-      
-      const qrImg = document.getElementById('depositPlatformQr');
-      const platformAddrInput = document.getElementById('depositPlatformAddress');
-      const userWalletCode = document.getElementById('depositUserWalletDisplay');
-      
-      if (qrImg) qrImg.src = data.qrDataUrl;
-      if (platformAddrInput) platformAddrInput.value = data.platformWallet;
-      if (userWalletCode) userWalletCode.textContent = data.userWallet;
-      
+
+      configureDepositDetailsUi(data);
       // Reset tracker state
       resetDepositTrackerUi();
       startDepositStatusRefresh();
@@ -25182,21 +25526,120 @@ document.addEventListener('DOMContentLoaded', () => {
     if (copyBtn) {
       copyBtn.addEventListener('click', () => {
         const addr = document.getElementById('depositPlatformAddress');
-        if (addr) {
-          navigator.clipboard.writeText(addr.value).then(() => {
-            showToast('Adresse copiée !');
-            const icon = copyBtn.querySelector('i');
-            if (icon) {
-              icon.setAttribute('data-lucide', 'check');
-              if (window.lucide) window.lucide.createIcons();
-              setTimeout(() => {
-                icon.setAttribute('data-lucide', 'copy');
-                if (window.lucide) window.lucide.createIcons();
-              }, 2000);
-            }
-          }).catch(err => {
-            console.error('Copy failed', err);
+        copyTextWithFeedback(addr?.value || '', copyBtn, 'Adresse copiée !');
+      });
+    }
+
+    if (copyReferenceBtn) {
+      copyReferenceBtn.addEventListener('click', () => {
+        copyTextWithFeedback(depositReferenceValue?.value || '', copyReferenceBtn, 'Référence copiée !');
+      });
+    }
+
+    window.onDepositCurrencyChanged = () => {
+      if (window.activePaymentsProvider === 'nowpayments') {
+        resetDepositGeneratedPaymentUi();
+        resetDepositTrackerUi();
+        updateDepositAmountRequirements();
+      }
+    };
+
+    if (depositGenerateBtn) {
+      depositGenerateBtn.addEventListener('click', async () => {
+        if (window.activePaymentsProvider !== 'nowpayments') {
+          return;
+        }
+
+        const amount = Number.parseFloat(depositAmountInput?.value || '');
+        const currency = typeof _currentDepositTab === 'string' ? _currentDepositTab : 'USDT';
+        const minimumAmount = getCurrentDepositMinimumAmount(currency);
+        const minimumCurrency = String(window.depositMinimumCurrency || 'USD').toUpperCase();
+
+        if (!Number.isFinite(amount) || amount <= 0) {
+          showToast('Saisissez un montant valide.');
+          return;
+        }
+
+        if (minimumAmount !== null && amount + 1e-9 < minimumAmount) {
+          showToast(`Le montant minimum pour générer ce dépôt est ${formatDepositMinimumAmount(minimumAmount)} ${minimumCurrency}.`);
+          return;
+        }
+
+        depositGenerateBtn.disabled = true;
+        depositGenerateBtn.textContent = 'Génération...';
+
+        try {
+          const res = await fetch('/api/deposits/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount, currency })
           });
+          const data = await res.json();
+
+          if (!data.success) {
+            const apiMinimumAmount = Number.parseFloat(data.minimumAmount);
+            if (Number.isFinite(apiMinimumAmount) && apiMinimumAmount > 0) {
+              window.depositMinimums = {
+                ...(window.depositMinimums || {}),
+                [String(currency).toUpperCase()]: apiMinimumAmount
+              };
+              if (data.minimumCurrency) {
+                window.depositMinimumCurrency = data.minimumCurrency;
+              }
+              updateDepositAmountRequirements();
+            }
+            showToast(data.error || 'Impossible de générer le paiement.');
+            return;
+          }
+
+          window.currentDepositPaymentId = data.paymentId || null;
+          window.currentDepositOrderId = data.orderId || null;
+
+          const qrImg = document.getElementById('depositPlatformQr');
+          const platformAddrInput = document.getElementById('depositPlatformAddress');
+          if (qrImg) qrImg.src = data.qrDataUrl || '';
+          if (platformAddrInput) platformAddrInput.value = data.payAddress || '';
+          if (depositPaymentCard) depositPaymentCard.style.display = 'flex';
+          if (depositPayAmountRow) depositPayAmountRow.style.display = 'block';
+          if (depositPayAmountDisplay) {
+            const amountLabel = Number.isFinite(Number(data.payAmount))
+              ? `${Number(data.payAmount).toFixed(8)} ${String(data.payCurrency || currency).toUpperCase()}`
+              : `${Number(amount).toFixed(2)} ${String(currency).toUpperCase()}`;
+            depositPayAmountDisplay.textContent = amountLabel;
+          }
+          if (depositPaymentReferenceRow) depositPaymentReferenceRow.style.display = 'block';
+          if (depositReferenceValue) depositReferenceValue.value = data.paymentId || data.orderId || '';
+          if (depositPaymentMeta) {
+            const metaParts = [
+              `Crédit visé : ${Number(data.priceAmount || amount).toFixed(2)} USDT`,
+              data.expirationEstimateDate ? `Expiration estimée : ${new Date(data.expirationEstimateDate).toLocaleString('fr-FR')}` : null
+            ].filter(Boolean);
+            depositPaymentMeta.innerHTML = metaParts.join('<br>');
+            depositPaymentMeta.style.display = metaParts.length ? 'block' : 'none';
+          }
+
+          renderDepositTrackerFromHistoryRecord({
+            provider: 'nowpayments',
+            status: 'pending',
+            payment_id: data.paymentId || null,
+            order_id: data.orderId || null,
+            amount_usdt: data.priceAmount || amount,
+            token_symbol: currency,
+            pay_amount: data.payAmount,
+            pay_currency: data.payCurrency,
+            provider_status: data.paymentStatus || 'waiting'
+          }, 1, 'nowpayments',
+          Number.isFinite(Number(data.payAmount))
+            ? `Paiement généré. Envoyez exactement ${Number(data.payAmount).toFixed(8)} ${String(data.payCurrency || currency).toUpperCase()} à l’adresse affichée.`
+            : 'Paiement généré. Envoyez exactement le montant affiché à l’adresse indiquée.');
+          startDepositStatusRefresh();
+          showToast('Paiement généré avec succès.');
+        } catch (err) {
+          console.error(err);
+          showToast('Erreur de connexion.');
+        } finally {
+          depositGenerateBtn.disabled = false;
+          depositGenerateBtn.textContent = 'Générer le paiement';
         }
       });
     }
@@ -25583,6 +26026,8 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
+        window.activePaymentsProvider = String(data.paymentsProvider || window.activePaymentsProvider || 'bsc').toLowerCase();
+
         if (data.isFirstWithdrawal && !data.hasPassedKyc) {
           if (withdrawStepKycRequired) {
             withdrawStepKycRequired.style.display = 'block';
@@ -25887,9 +26332,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const feePercent = Number(window.withdrawalFeePercent !== undefined ? window.withdrawalFeePercent : 30);
         const feeFactor = feePercent / 100;
         const netAmount = amount * (1 - feeFactor);
+        const isNowPaymentsWithdrawal = String(window.activePaymentsProvider || 'bsc').toLowerCase() === 'nowpayments';
 
         withdrawStatusTitle.textContent = tText('Traitement en cours');
-        withdrawStatusDesc.textContent = tText("Votre transaction de retrait de {amount} USDT (Somme reçue : {netAmount} USDT après {feePercent}% de frais) est en cours d'envoi sur la blockchain BSC...").replace('{amount}', amount.toFixed(2)).replace('{netAmount}', netAmount.toFixed(2)).replace('{feePercent}', feePercent);
+        withdrawStatusDesc.textContent = isNowPaymentsWithdrawal
+          ? tText("Votre demande de retrait de {amount} USDT (Somme reçue : {netAmount} USDT après {feePercent}% de frais) est en cours de traitement...").replace('{amount}', amount.toFixed(2)).replace('{netAmount}', netAmount.toFixed(2)).replace('{feePercent}', feePercent)
+          : tText("Votre transaction de retrait de {amount} USDT (Somme reçue : {netAmount} USDT après {feePercent}% de frais) est en cours d'envoi sur la blockchain BSC...").replace('{amount}', amount.toFixed(2)).replace('{netAmount}', netAmount.toFixed(2)).replace('{feePercent}', feePercent);
         
         try {
           const res = await fetch('/api/wallet/withdraw', {
@@ -25909,7 +26357,9 @@ document.addEventListener('DOMContentLoaded', () => {
             withdrawStatusDesc.textContent = data.error || tText('Erreur lors de la validation du retrait.');
             withdrawCloseStatusBtn.style.display = 'block';
           } else {
-            withdrawStatusDesc.textContent = tText("Demande de retrait de {amount} USDT enregistrée (Somme reçue : {netAmount} USDT après {feePercent}% de frais). Signature et envoi de la transaction sur la blockchain BSC...").replace('{amount}', amount.toFixed(2)).replace('{netAmount}', netAmount.toFixed(2)).replace('{feePercent}', feePercent);
+            withdrawStatusDesc.textContent = isNowPaymentsWithdrawal
+              ? tText("Demande de retrait de {amount} USDT enregistrée (Somme reçue : {netAmount} USDT après {feePercent}% de frais). Préparation du paiement en cours...").replace('{amount}', amount.toFixed(2)).replace('{netAmount}', netAmount.toFixed(2)).replace('{feePercent}', feePercent)
+              : tText("Demande de retrait de {amount} USDT enregistrée (Somme reçue : {netAmount} USDT après {feePercent}% de frais). Signature et envoi de la transaction sur la blockchain BSC...").replace('{amount}', amount.toFixed(2)).replace('{netAmount}', netAmount.toFixed(2)).replace('{feePercent}', feePercent);
           }
         } catch (err) {
           console.error(err);
@@ -26021,14 +26471,42 @@ document.addEventListener('DOMContentLoaded', () => {
           if (depData.success && depData.deposits && depData.deposits.length > 0) {
             depositsList.innerHTML = depData.deposits.map(d => {
               const dateStr = new Date(d.created_at).toLocaleString('fr-FR');
-              const shortTx = d.tx_hash ? `${d.tx_hash.slice(0, 10)}...${d.tx_hash.slice(-8)}` : '-';
+              const provider = String(d.provider || depData.provider || 'bsc').toLowerCase();
+              const isNowPayments = provider === 'nowpayments';
+              const hasRealTxHash = Boolean(d.tx_hash && !String(d.tx_hash).startsWith('np_'));
+              const shortTx = hasRealTxHash ? `${d.tx_hash.slice(0, 10)}...${d.tx_hash.slice(-8)}` : '-';
+              const reference = String(d.payment_id || d.order_id || d.tx_hash || '-');
+              const shortReference = reference.length > 28 ? `${reference.slice(0, 16)}...${reference.slice(-8)}` : reference;
               
               let statusClass = 'market-status-badge--pending';
               let statusText = 'En attente';
               if (d.status === 'confirmed') {
                 statusClass = 'market-status-badge--completed';
                 statusText = 'Confirmé';
+              } else if (d.status === 'failed') {
+                statusClass = 'market-status-badge--disputed';
+                statusText = 'Échoué';
+              } else if (isNowPayments) {
+                statusText = formatNowPaymentsStatusClient(d.provider_status);
               }
+
+              const metaRight = isNowPayments
+                ? (Number.isFinite(Number(d.pay_amount)) && Number(d.pay_amount) > 0
+                    ? `À envoyer : ${Number(d.pay_amount).toFixed(8)} ${String(d.pay_currency || d.token_symbol || 'USDT').toUpperCase()}`
+                    : `Réf. ${shortReference}`)
+                : `Confirmations : ${d.confirmations}/${Number(depData.requiredConfirmations || 12)}`;
+
+              const detailSection = isNowPayments ? `
+                <div style="font-size: 11px; color: var(--text-muted); word-break: break-all; font-family: monospace; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                  <span>Réf: ${shortReference}</span>
+                  ${hasRealTxHash ? `<a href="https://bscscan.com/tx/${d.tx_hash}" target="_blank" style="color: var(--primary); text-decoration: none; display: inline-flex; align-items: center; gap: 2px;">Voir <i data-lucide="external-link" style="width: 10px; height: 10px;"></i></a>` : ''}
+                </div>
+              ` : `
+                <div style="font-size: 11px; color: var(--text-muted); word-break: break-all; font-family: monospace; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>TX: ${shortTx}</span>
+                  ${hasRealTxHash ? `<a href="https://bscscan.com/tx/${d.tx_hash}" target="_blank" style="color: var(--primary); text-decoration: none; display: inline-flex; align-items: center; gap: 2px;">Voir <i data-lucide="external-link" style="width: 10px; height: 10px;"></i></a>` : '<span>-</span>'}
+                </div>
+              `;
 
               return `
                 <div style="padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 10px; display: flex; flex-direction: column; gap: 6px;">
@@ -26038,12 +26516,9 @@ document.addEventListener('DOMContentLoaded', () => {
                   </div>
                   <div style="font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between;">
                     <span>Date : ${dateStr}</span>
-                    <span>Confirmations : ${d.confirmations}/12</span>
+                    <span>${metaRight}</span>
                   </div>
-                  <div style="font-size: 11px; color: var(--text-muted); word-break: break-all; font-family: monospace; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
-                    <span>TX: ${shortTx}</span>
-                    <a href="https://bscscan.com/tx/${d.tx_hash}" target="_blank" style="color: var(--primary); text-decoration: none; display: inline-flex; align-items: center; gap: 2px;">Voir <i data-lucide="external-link" style="width: 10px; height: 10px;"></i></a>
-                  </div>
+                  ${detailSection}
                 </div>
               `;
             }).join('');
@@ -26057,7 +26532,11 @@ document.addEventListener('DOMContentLoaded', () => {
           if (witData.success && witData.withdrawals && witData.withdrawals.length > 0) {
             withdrawalsList.innerHTML = witData.withdrawals.map(w => {
               const dateStr = new Date(w.created_at).toLocaleString('fr-FR');
-              const shortTx = w.tx_hash ? `${w.tx_hash.slice(0, 10)}...${w.tx_hash.slice(-8)}` : '-';
+              const provider = String(w.provider || 'bsc').toLowerCase();
+              const isNowPayments = provider === 'nowpayments';
+              const hasRealTxHash = Boolean(w.tx_hash && !String(w.tx_hash).startsWith('np_'));
+              const shortTx = hasRealTxHash ? `${w.tx_hash.slice(0, 10)}...${w.tx_hash.slice(-8)}` : '-';
+              const payoutReference = String(w.payout_id || w.payout_batch_id || '');
               
               let statusClass = 'market-status-badge--pending';
               let statusText = 'En attente';
@@ -26069,6 +26548,8 @@ document.addEventListener('DOMContentLoaded', () => {
               } else if (w.status === 'failed') {
                 statusClass = 'market-status-badge--disputed';
                 statusText = 'Échoué';
+              } else if (isNowPayments) {
+                statusText = formatNowPaymentsStatusClient(w.provider_status);
               } else if (w.tx_hash) {
                 statusText = requiredConfirmations > 1
                   ? `Confirmation ${Math.min(currentConfirmations, requiredConfirmations)}/${requiredConfirmations}`
@@ -26077,12 +26558,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusText = 'Envoi...';
               }
 
-              const txSection = w.tx_hash ? `
+              const txSection = hasRealTxHash ? `
                 <div style="font-size: 11px; color: var(--text-muted); word-break: break-all; font-family: monospace; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
                   <span>TX: ${shortTx}</span>
                   <a href="https://bscscan.com/tx/${w.tx_hash}" target="_blank" style="color: var(--primary); text-decoration: none; display: inline-flex; align-items: center; gap: 2px;">Voir <i data-lucide="external-link" style="width: 10px; height: 10px;"></i></a>
                 </div>
-              ` : '';
+              ` : (isNowPayments && payoutReference ? `
+                <div style="font-size: 11px; color: var(--text-muted); word-break: break-all; font-family: monospace; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 4px;">
+                  Réf. payout : ${payoutReference}
+                </div>
+              ` : '');
 
               const errSection = w.error_message ? `
                 <div style="font-size: 11px; color: var(--danger); padding: 4px; border: 1px solid rgba(239, 68, 68, 0.1); background: rgba(239, 68, 68, 0.05); border-radius: 6px;">
@@ -37003,21 +37488,32 @@ async function submitDepositClaim() {
   const btn = document.getElementById('claimDepositBtn');
   if (!input || !msgEl || !btn) return;
 
-  const txHash = (input.value || '').trim();
-  if (!txHash || !/^0x[a-fA-F0-9]{64}$/i.test(txHash)) {
+  const reference = (input.value || '').trim();
+  const provider = String(window.activePaymentsProvider || 'bsc').toLowerCase();
+
+  if (!reference) {
+    showClaimMsg('error', provider === 'nowpayments'
+      ? 'Référence de paiement invalide.'
+      : 'TxID invalide. Il doit commencer par 0x et contenir 64 caractères hexadécimaux.');
+    return;
+  }
+
+  if (provider !== 'nowpayments' && !/^0x[a-fA-F0-9]{64}$/i.test(reference)) {
     showClaimMsg('error', 'TxID invalide. Il doit commencer par 0x et contenir 64 caractères hexadécimaux.');
     return;
   }
 
   btn.disabled = true;
   btn.textContent = 'Vérification en cours…';
-  showClaimMsg('info', 'Vérification de la transaction sur la blockchain BSC…');
+  showClaimMsg('info', provider === 'nowpayments'
+    ? 'Vérification du paiement…'
+    : 'Vérification de la transaction sur la blockchain BSC…');
 
   try {
     const res = await fetch('/api/deposits/claim-txid', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ txHash })
+      body: JSON.stringify({ reference })
     });
     const data = await res.json();
 
