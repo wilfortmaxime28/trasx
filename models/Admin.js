@@ -15,7 +15,8 @@ const ADMIN_PAGE_KEYS = [
   'admins',
   'disputes',
   'conversations',
-  'comments'
+  'comments',
+  'messaging'
 ];
 
 const ADMIN_ACTION_KEYS = [
