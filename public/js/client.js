@@ -15495,7 +15495,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
-  const updateMobileMessagesBadge = () => {
+  function updateMobileMessagesBadge() {
     const btn = document.getElementById('mobileMessagesBtn');
     if (!btn) return;
     const unreadIds = new Set();
@@ -15515,7 +15515,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       if (badge) badge.remove();
     }
-  };
+  }
   window.updateMobileMessagesBadge = updateMobileMessagesBadge;
 
   const prependNotificationItem = (notification) => {

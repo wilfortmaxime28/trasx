@@ -1,6 +1,14 @@
 <% 
-  const mobileMessageBadgeCount = (typeof messageInbox !== 'undefined' && messageInbox && messageInbox.counts)
-    ? messageInbox.counts.requests : 0;
+  let unreadGeneralConversations = 0;
+  if (typeof messageInbox !== 'undefined' && messageInbox && messageInbox.sections && messageInbox.sections.general && typeof currentUser !== 'undefined' && currentUser) {
+    messageInbox.sections.general.forEach(contact => {
+      if (contact.last_message && Number(contact.last_message.receiver_id) === Number(currentUser.id) && !contact.last_message.read_at) {
+        unreadGeneralConversations++;
+      }
+    });
+  }
+  const mobileMessageBadgeCount = ((typeof messageInbox !== 'undefined' && messageInbox && messageInbox.counts)
+    ? messageInbox.counts.requests : 0) + unreadGeneralConversations;
   const _navView = typeof activeView !== 'undefined' ? activeView : (typeof activeTab !== 'undefined' ? activeTab : 'feed');
 %>
   <!-- Mobile Bottom Navigation (Sticky on Mobile) -->
