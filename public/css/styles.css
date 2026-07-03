@@ -7233,7 +7233,11 @@ body[data-theme="dark"] .chat-icon-btn:hover {
 
 .chat-msg-wrapper.incoming {
   align-self: flex-start;
-  align-items: flex-start;
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 8px !important;
+  align-items: flex-end !important;
+  max-width: 85% !important;
 }
 
 .chat-msg-bubble {
@@ -24393,5 +24397,180 @@ body.dark-mode .skeleton-base {
   100% {
     transform: scale(1) translateY(0);
     opacity: 1;
+  }
+}
+
+/* Messenger-like mobile & desktop chat box customization */
+.chat-header {
+  display: flex !important;
+  align-items: center !important;
+  padding: 8px 12px !important;
+  background-color: var(--bg-card) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  height: 56px !important;
+}
+
+.chat-header-info {
+  flex: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  min-width: 0 !important;
+}
+
+.chat-header-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.chat-header-btn {
+  background: none !important;
+  border: none !important;
+  cursor: pointer !important;
+  padding: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  transition: background 0.2s !important;
+}
+
+.chat-header-btn:hover {
+  background-color: var(--bg-hover) !important;
+}
+
+/* Specific button toggling based on mobile/desktop */
+.mobile-back-btn {
+  display: none !important;
+}
+
+.phone-chat, .video-chat, .info-chat {
+  display: none !important;
+}
+
+@media screen and (max-width: 768px) {
+  .mobile-back-btn {
+    display: flex !important;
+    margin-right: 8px !important;
+  }
+  
+  .phone-chat, .video-chat, .info-chat {
+    display: flex !important;
+  }
+  
+  .minimize-chat, .desktop-close-btn {
+    display: none !important;
+  }
+}
+
+/* Chat Input custom styles */
+.chat-input-left-buttons {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  flex-shrink: 0 !important;
+}
+
+.chat-input-right-buttons {
+  display: flex !important;
+  align-items: center !important;
+  flex-shrink: 0 !important;
+}
+
+.chat-input-pill {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  background-color: var(--bg-input) !important;
+  border-radius: 20px !important;
+  padding: 0 4px 0 14px !important;
+  min-width: 0 !important;
+  border: 1px solid var(--border-color) !important;
+  height: 38px !important;
+}
+
+.chat-input-pill .chat-input {
+  flex: 1 !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  height: 100% !important;
+  color: var(--text-primary) !important;
+  font-size: 14px !important;
+  outline: none !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+.chat-input-pill .emoji-trigger-btn {
+  background: none !important;
+  border: none !important;
+  cursor: pointer !important;
+  padding: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  transition: background 0.2s !important;
+  color: var(--primary) !important;
+}
+
+.chat-input-pill .emoji-trigger-btn i,
+.chat-input-pill .emoji-trigger-btn svg {
+  color: var(--primary) !important;
+  stroke: var(--primary) !important;
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.chat-input-left-buttons .chat-icon-btn,
+.chat-input-right-buttons .chat-send-btn,
+.chat-input-right-buttons .chat-like-btn {
+  background: none !important;
+  border: none !important;
+  cursor: pointer !important;
+  width: 34px !important;
+  height: 34px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  transition: background 0.2s !important;
+  flex-shrink: 0 !important;
+}
+
+.chat-input-left-buttons .chat-icon-btn:hover,
+.chat-input-right-buttons .chat-send-btn:hover,
+.chat-input-right-buttons .chat-like-btn:hover {
+  background-color: var(--bg-hover) !important;
+  transform: none !important;
+}
+
+.chat-input-left-buttons .chat-icon-btn i,
+.chat-input-left-buttons .chat-icon-btn svg,
+.chat-input-right-buttons .chat-send-btn i,
+.chat-input-right-buttons .chat-send-btn svg,
+.chat-input-right-buttons .chat-like-btn i,
+.chat-input-right-buttons .chat-like-btn svg {
+  width: 20px !important;
+  height: 20px !important;
+  color: var(--primary) !important;
+  stroke: var(--primary) !important;
+  fill: none !important;
+}
+
+/* On desktop, hide extra buttons to fit in narrow chat boxes */
+@media screen and (min-width: 769px) {
+  .chat-input-left-buttons .plus-btn,
+  .chat-input-left-buttons .camera-btn {
+    display: none !important;
+  }
+}
+
+/* Ensure mobile header height override respects safe area notch */
+@media screen and (max-width: 768px) {
+  .chat-header {
+    height: calc(60px + env(safe-area-inset-top)) !important;
+    padding-top: env(safe-area-inset-top) !important;
   }
 }

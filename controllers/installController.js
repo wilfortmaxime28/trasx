@@ -70,7 +70,7 @@ exports.getInstallPage = async (req, res) => {
     
     // Pass existing env variables to the view for pre-filling
     const dbConfig = {
-      host: process.env.DB_HOST || 'localhost',
+      host: process.env.DB_HOST || '127.0.0.1',
       user: process.env.DB_USER || 'root',
       password: process.env.DB_PASSWORD || '',
       database: process.env.DB_NAME || 'weshare',
@@ -90,7 +90,7 @@ exports.testDbConnection = async (req, res) => {
   let testPool = null;
   try {
     testPool = mysql.createPool({
-      host: host || 'localhost',
+      host: host || '127.0.0.1',
       user: user || 'root',
       password: password || '',
       port: Number(port) || 3306,
@@ -133,7 +133,7 @@ exports.performInstall = async (req, res) => {
   try {
     // 1. Verify DB credentials work & database is created
     setupPool = mysql.createPool({
-      host: db_host || 'localhost',
+      host: db_host || '127.0.0.1',
       user: db_user || 'root',
       password: db_password || '',
       port: Number(db_port) || 3306,
@@ -147,7 +147,7 @@ exports.performInstall = async (req, res) => {
     
     // 2. Write/Update .env file
     updateEnvFile({
-      DB_HOST: db_host || 'localhost',
+      DB_HOST: db_host || '127.0.0.1',
       DB_USER: db_user || 'root',
       DB_PASSWORD: db_password || '',
       DB_NAME: db_name || 'weshare',

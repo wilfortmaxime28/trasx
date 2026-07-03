@@ -84,68 +84,6 @@
           <i data-lucide="bell"></i>
           <span class="badge red notification-badge" id="notificationBadge" style="<%= unreadCount > 0 ? '' : 'display:none;' %>"><%= unreadCount > 99 ? '99+' : unreadCount %></span>
         </button>
-        <div class="dropdown-menu notifications-dropdown-panel" id="notificationsDropdown" style="width: 320px; right: 0; padding: 12px 0; display: none; position: absolute; top: 50px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-item); box-shadow: var(--shadow-lg); z-index: 200;">
-          <div style="padding: 0 16px 10px 16px; border-bottom: 1px solid var(--border-color); font-weight: 700; font-size: 14px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: var(--text-primary);"><%= t('header.notifications', 'Notifications') %></span>
-            <button id="markAllReadBtn" style="font-size: 11px; color: var(--primary); font-weight: 600; cursor: pointer;"><%= t('header.markAllRead', 'Mark all as read') %></button>
-          </div>
-          <div id="notificationItemsList" style="max-height: 250px; overflow-y: auto;">
-            <% if (notificationItems.length > 0) { %>
-              <% notificationItems.forEach((notification) => { %>
-                <div class="notification-item <%= notification.is_read ? '' : 'is-unread' %>" data-notification-id="<%= notification.id %>" data-ad-url="<%= notification.ad_url || '' %>" data-post-id="<%= notification.post_id || '' %>" data-comment-id="<%= notification.comment_id || '' %>" data-post-content="<%= notification.post_content || '' %>" data-status-id="<%= notification.status_id || '' %>" data-status-media-url="<%= notification.status_media_url || '' %>" data-status-media-type="<%= notification.status_media_type || '' %>" data-status-caption="<%= notification.status_caption || '' %>" data-status-bg-color="<%= notification.status_bg_color || '' %>" data-type="<%= notification.type %>" data-actor-username="<%= notification.actor_username || '' %>" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; <%= notification.is_read ? '' : 'background: rgba(59, 130, 246, 0.06);' %>">
-                  <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0; overflow: hidden;">
-                    <img src="<%= notification.actor_avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= notification.actor_name %>" style="width: 100%; height: 100%; object-fit: cover;">
-                  </div>
-                  <div style="font-size: 12.5px; line-height: 1.35; color: var(--text-secondary); flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
-                    <strong style="color: var(--text-primary);"><%= notification.actor_name %></strong>
-                    <span><%= notification.message %></span>
-                    <% if (notification.post_id && notification.post_content) { %>
-                      <div class="notification-post-quote" style="margin-top: 6px; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid var(--primary, #3b82f6); border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<%= notification.post_content %>">
-                        <strong>Statut :</strong> <span><%= notification.post_content %></span>
-                      </div>
-                    <% } %>
-                    <% if (notification.status_id) { %>
-                      <% 
-                        let sCaption = notification.status_caption || '';
-                        let sMediaType = notification.status_media_type || 'text';
-                        let sMediaUrl = notification.status_media_url || '';
-                        let sBgColor = notification.status_bg_color || 'var(--primary)';
-                        let previewStr = sMediaType !== 'text' ? (sCaption || '[Statut média]') : sCaption;
-                      %>
-                      <div class="notification-status-quote" style="margin-top: 6px; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid #10b981; border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; box-sizing: border-box;">
-                        <div style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                          <strong>Statut concerné :</strong> <span><%= previewStr %></span>
-                        </div>
-                        <% if (sMediaType && sMediaType.startsWith('image/') && sMediaUrl) { %>
-                          <img src="<%= sMediaUrl %>" style="width: 24px; height: 24px; object-fit: cover; border-radius: 3px; flex-shrink: 0;" />
-                        <% } else if (sMediaType && sMediaType.startsWith('video/') && sMediaUrl) { %>
-                          <div style="position: relative; width: 24px; height: 24px; border-radius: 3px; background: #000; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
-                            <video src="<%= sMediaUrl %>" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;"></video>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="position: absolute; color: white;"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-                          </div>
-                        <% } else if (sMediaType === 'text') { %>
-                          <div style="width: 24px; height: 24px; border-radius: 3px; background: <%= sBgColor %>; color: #fff; font-size: 6px; line-height: 1.1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 1px; text-align: center; font-weight: bold; flex-shrink: 0; word-break: break-all;">
-                            <%= sCaption.substring(0, 8) %>
-                          </div>
-                        <% } %>
-                      </div>
-                    <% } %>
-                    <% if (notification.ad_image_url) { %>
-                      <div style="margin-top: 6px; width: 100%; max-width: 180px; height: 55px; border-radius: 6px; overflow: hidden; background: #000;">
-                        <img src="<%= notification.ad_image_url %>" alt="Banner" style="width: 100%; height: 100%; object-fit: cover;">
-                      </div>
-                    <% } %>
-                    <div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;"><%= new Date(notification.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) %></div>
-                  </div>
-                </div>
-              <% }) %>
-            <% } else { %>
-              <div data-notification-empty style="padding: 22px 16px; text-align: center; color: var(--text-muted); font-size: 13px;">
-                <%= t('header.noNotifications', 'No notifications yet.') %>
-              </div>
-            <% } %>
-          </div>
-        </div>
       </div>
       <button class="icon-btn" aria-label="<%= t('nav.bookmarks', 'Bookmarks') %>" id="bookmarkBtn">
         <i data-lucide="bookmark"></i>
@@ -171,6 +109,70 @@
       </div>
     </div>
   </header>
+
+  <!-- Notifications Dropdown (Outside headers so it remains visible when toggled on mobile) -->
+  <div class="dropdown-menu notifications-dropdown-panel" id="notificationsDropdown" style="width: 320px; right: 0; padding: 12px 0; display: none; position: absolute; top: 50px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-item); box-shadow: var(--shadow-lg); z-index: 2200;">
+    <div style="padding: 0 16px 10px 16px; border-bottom: 1px solid var(--border-color); font-weight: 700; font-size: 14px; display: flex; justify-content: space-between; align-items: center;">
+      <span style="color: var(--text-primary);"><%= t('header.notifications', 'Notifications') %></span>
+      <button id="markAllReadBtn" style="font-size: 11px; color: var(--primary); font-weight: 600; cursor: pointer;"><%= t('header.markAllRead', 'Mark all as read') %></button>
+    </div>
+    <div id="notificationItemsList" style="max-height: 250px; overflow-y: auto;">
+      <% if (notificationItems.length > 0) { %>
+        <% notificationItems.forEach((notification) => { %>
+          <div class="notification-item <%= notification.is_read ? '' : 'is-unread' %>" data-notification-id="<%= notification.id %>" data-ad-url="<%= notification.ad_url || '' %>" data-post-id="<%= notification.post_id || '' %>" data-comment-id="<%= notification.comment_id || '' %>" data-post-content="<%= notification.post_content || '' %>" data-status-id="<%= notification.status_id || '' %>" data-status-media-url="<%= notification.status_media_url || '' %>" data-status-media-type="<%= notification.status_media_type || '' %>" data-status-caption="<%= notification.status_caption || '' %>" data-status-bg-color="<%= notification.status_bg_color || '' %>" data-type="<%= notification.type %>" data-actor-username="<%= notification.actor_username || '' %>" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; <%= notification.is_read ? '' : 'background: rgba(59, 130, 246, 0.06);' %>">
+            <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0; overflow: hidden;">
+              <img src="<%= notification.actor_avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= notification.actor_name %>" style="width: 100%; height: 100%; object-fit: cover;">
+            </div>
+            <div style="font-size: 12.5px; line-height: 1.35; color: var(--text-secondary); flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+              <strong style="color: var(--text-primary);"><%= notification.actor_name %></strong>
+              <span><%= notification.message %></span>
+              <% if (notification.post_id && notification.post_content) { %>
+                <div class="notification-post-quote" style="margin-top: 6px; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid var(--primary, #3b82f6); border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<%= notification.post_content %>">
+                  <strong>Statut :</strong> <span><%= notification.post_content %></span>
+                </div>
+              <% } %>
+              <% if (notification.status_id) { %>
+                <% 
+                  let sCaption = notification.status_caption || '';
+                  let sMediaType = notification.status_media_type || 'text';
+                  let sMediaUrl = notification.status_media_url || '';
+                  let sBgColor = notification.status_bg_color || 'var(--primary)';
+                  let previewStr = sMediaType !== 'text' ? (sCaption || '[Statut média]') : sCaption;
+                %>
+                <div class="notification-status-quote" style="margin-top: 6px; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid #10b981; border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; box-sizing: border-box;">
+                  <div style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <strong>Statut concerné :</strong> <span><%= previewStr %></span>
+                  </div>
+                  <% if (sMediaType && sMediaType.startsWith('image/') && sMediaUrl) { %>
+                    <img src="<%= sMediaUrl %>" style="width: 24px; height: 24px; object-fit: cover; border-radius: 3px; flex-shrink: 0;" />
+                  <% } else if (sMediaType && sMediaType.startsWith('video/') && sMediaUrl) { %>
+                    <div style="position: relative; width: 24px; height: 24px; border-radius: 3px; background: #000; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                      <video src="<%= sMediaUrl %>" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;"></video>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="position: absolute; color: white;"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                    </div>
+                  <% } else if (sMediaType === 'text') { %>
+                    <div style="width: 24px; height: 24px; border-radius: 3px; background: <%= sBgColor %>; color: #fff; font-size: 6px; line-height: 1.1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 1px; text-align: center; font-weight: bold; flex-shrink: 0; word-break: break-all;">
+                      <%= sCaption.substring(0, 8) %>
+                    </div>
+                  <% } %>
+                </div>
+              <% } %>
+              <% if (notification.ad_image_url) { %>
+                <div style="margin-top: 6px; width: 100%; max-width: 180px; height: 55px; border-radius: 6px; overflow: hidden; background: #000;">
+                  <img src="<%= notification.ad_image_url %>" alt="Banner" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+              <% } %>
+              <div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;"><%= new Date(notification.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) %></div>
+            </div>
+          </div>
+        <% }) %>
+      <% } else { %>
+        <div data-notification-empty style="padding: 22px 16px; text-align: center; color: var(--text-muted); font-size: 13px;">
+          <%= t('header.noNotifications', 'No notifications yet.') %>
+        </div>
+      <% } %>
+    </div>
+  </div>
   
   <script>
     <% if (typeof currentUser !== 'undefined' && currentUser) { %>

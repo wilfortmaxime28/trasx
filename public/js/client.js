@@ -1364,11 +1364,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!messageId) return;
     document.querySelectorAll(`.chat-msg-wrapper[data-message-id="${messageId}"]`).forEach((wrapper) => {
       wrapper.dataset.messageStatus = status;
-      const statusNode = wrapper.querySelector('.chat-msg-status');
-      if (!statusNode) return;
+      let statusNode = wrapper.querySelector('.chat-msg-status');
       const footer = wrapper.querySelector('.chat-msg-footer');
       if (!footer) return;
-      statusNode.className = `chat-msg-status ${status}`;
+      if (!statusNode) {
+        statusNode = document.createElement('span');
+        statusNode.className = `chat-msg-status ${status}`;
+        footer.appendChild(statusNode);
+      } else {
+        statusNode.className = `chat-msg-status ${status}`;
+      }
       statusNode.innerHTML = status === 'sent'
         ? '<i data-lucide="check" style="width: 11px; height: 11px;"></i>'
         : '<i data-lucide="check" style="width: 11px; height: 11px;"></i><i data-lucide="check" style="width: 11px; height: 11px;"></i>';
@@ -1505,17 +1510,36 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
 
-    return `
-      <div class="chat-msg-wrapper ${msgType}${isSharedSnapshot ? ' chat-msg-wrapper-shared' : ''}" data-message-id="${escapeHtml(message?.id ?? '')}" data-parent-id="${escapeHtml(message?.parent_id ?? '')}" data-message-status="${escapeHtml(status || '')}" style="position: relative;">
-        ${actionsTriggerHtml}
-        ${bubbleContentHtml}
-        ${attachmentHtml}
-        <div class="chat-msg-footer">
-          <span class="chat-msg-time">${timestamp}</span>
-          ${msgType === 'outgoing' ? renderMessageStatusHtml(status) : ''}
+    if (msgType === 'outgoing') {
+      return `
+        <div class="chat-msg-wrapper outgoing${isSharedSnapshot ? ' chat-msg-wrapper-shared' : ''}" data-message-id="${escapeHtml(message?.id ?? '')}" data-parent-id="${escapeHtml(message?.parent_id ?? '')}" data-message-status="${escapeHtml(status || '')}" style="position: relative;">
+          ${actionsTriggerHtml}
+          ${bubbleContentHtml}
+          ${attachmentHtml}
+          <div class="chat-msg-footer">
+            <span class="chat-msg-time">${timestamp}</span>
+            ${renderMessageStatusHtml(status)}
+          </div>
         </div>
-      </div>
-    `;
+      `;
+    } else {
+      const senderAvatar = message.sender_avatar || '/assets/avatar_placeholder.jpg';
+      return `
+        <div class="chat-msg-wrapper incoming${isSharedSnapshot ? ' chat-msg-wrapper-shared' : ''}" data-message-id="${escapeHtml(message?.id ?? '')}" data-parent-id="${escapeHtml(message?.parent_id ?? '')}" data-message-status="${escapeHtml(status || '')}" style="position: relative;">
+          <div class="chat-msg-avatar-wrapper" style="width: 28px; height: 28px; border-radius: 50%; overflow: hidden; flex-shrink: 0; align-self: flex-end; margin-bottom: 4px;">
+            <img src="${senderAvatar}" style="width: 100%; height: 100%; object-fit: cover;">
+          </div>
+          <div class="chat-msg-content-wrapper" style="display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1;">
+            ${actionsTriggerHtml}
+            ${bubbleContentHtml}
+            ${attachmentHtml}
+            <div class="chat-msg-footer">
+              <span class="chat-msg-time">${timestamp}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
   };
 
   const renderGameInvitationBubble = (gameData, msgType, messageId) => {
@@ -4940,14 +4964,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     chatBox.innerHTML = `
       <div class="chat-header">
+        <button class="chat-header-btn close-chat mobile-back-btn" title="Retour">
+          <i data-lucide="arrow-left" style="width: 20px; height: 20px; color: var(--primary);"></i>
+        </button>
         <div class="chat-header-info">
-          <div class="msg-avatar-wrapper ${onlineClass}" style="width: 28px; height: 28px;">
-            <div class="avatar" style="width: 28px; height: 28px;">
+          <div class="msg-avatar-wrapper ${onlineClass}" style="width: 32px; height: 32px; position: relative; flex-shrink: 0;">
+            <div class="avatar" style="width: 32px; height: 32px;">
               <img src="${avatarUrl}" alt="${contactName}">
             </div>
             <span class="status-dot"></span>
           </div>
-          <div style="display:flex; flex-direction:column; min-width:0;">
+          <div style="display:flex; flex-direction:column; min-width:0; margin-left: 8px;">
             <span class="chat-header-name" style="display: flex; align-items: center; gap: 6px;">
               ${contactName}
               <button type="button" class="chat-game-request-btn"
@@ -4965,12 +4992,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 <i data-lucide="gamepad-2" style="width: 14px; height: 14px; color: var(--primary); flex-shrink: 0;"></i>
               </button>
             </span>
-            <span class="chat-header-status" data-online="${isOnline ? '1' : '0'}" style="font-size: 10px; color: var(--text-muted); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${isOnline ? 'Online now' : (presenceText || 'Offline')}</span>
+            <span class="chat-header-status" data-online="${isOnline ? '1' : '0'}" style="font-size: 10px; color: var(--text-muted); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${isOnline ? (window.getPageLocale && window.getPageLocale() === 'fr' ? 'En ligne' : 'Online now') : (presenceText || (window.getPageLocale && window.getPageLocale() === 'fr' ? 'Hors ligne' : 'Offline'))}</span>
           </div>
         </div>
         <div class="chat-header-actions">
-          <button class="chat-header-btn minimize-chat" title="Minimiser"><i data-lucide="minus" style="width: 14px; height: 14px;"></i></button>
-          <button class="chat-header-btn close-chat" title="Fermer"><i data-lucide="x" style="width: 14px; height: 14px;"></i></button>
+          <button type="button" class="chat-header-btn phone-chat" title="Appeler"><i data-lucide="phone" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
+          <button type="button" class="chat-header-btn video-chat" title="Appel vidéo"><i data-lucide="video" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
+          <button type="button" class="chat-header-btn info-chat" title="Informations"><i data-lucide="info" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
+          
+          <button type="button" class="chat-header-btn minimize-chat" title="Minimiser"><i data-lucide="minus" style="width: 14px; height: 14px;"></i></button>
+          <button type="button" class="chat-header-btn close-chat desktop-close-btn" title="Fermer"><i data-lucide="x" style="width: 14px; height: 14px;"></i></button>
         </div>
       </div>
       <div class="chat-messages" id="chat-messages-${numericContactId}">
@@ -4988,11 +5019,20 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
       <form class="chat-input-wrapper input-wrapper" id="chat-form-${numericContactId}" ${formStyle}>
         <input type="file" class="chat-attachment-input" id="chat-attachment-input-${numericContactId}" accept="image/*,video/*,application/pdf,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z" style="display:none;">
-        <input type="text" placeholder="Aa" class="chat-input" id="chat-input-${numericContactId}" autocomplete="off">
-        <button type="button" class="chat-icon-btn emoji-trigger-btn" title="Add an emoji"><i data-lucide="smile" style="width: 14px; height: 14px;"></i></button>
-        <button type="button" class="chat-icon-btn attachment-trigger-btn" title="Attach a file"><i data-lucide="paperclip" style="width: 14px; height: 14px;"></i></button>
-        <button type="button" class="chat-icon-btn voice-trigger-btn" title="Record a voice note"><i data-lucide="mic" style="width: 14px; height: 14px;"></i></button>
-        <button type="submit" class="chat-send-btn"><i data-lucide="send" style="width: 14px; height: 14px;"></i></button>
+        <div class="chat-input-left-buttons">
+          <button type="button" class="chat-icon-btn plus-btn" title="Plus"><i data-lucide="plus"></i></button>
+          <button type="button" class="chat-icon-btn camera-btn" title="Appareil photo"><i data-lucide="camera"></i></button>
+          <button type="button" class="chat-icon-btn attachment-trigger-btn gallery-btn" title="Galerie"><i data-lucide="image"></i></button>
+          <button type="button" class="chat-icon-btn voice-trigger-btn mic-btn" title="Enregistrer un message vocal"><i data-lucide="mic"></i></button>
+        </div>
+        <div class="chat-input-pill">
+          <input type="text" placeholder="Message" class="chat-input" id="chat-input-${numericContactId}" autocomplete="off">
+          <button type="button" class="chat-icon-btn emoji-trigger-btn" title="Ajouter un emoji"><i data-lucide="smile"></i></button>
+        </div>
+        <div class="chat-input-right-buttons">
+          <button type="button" class="chat-icon-btn chat-like-btn" title="J'aime"><i data-lucide="thumbs-up"></i></button>
+          <button type="submit" class="chat-send-btn" style="display:none;"><i data-lucide="send"></i></button>
+        </div>
       </form>
       <div class="chat-request-actions-overlay" id="chat-request-overlay-${numericContactId}" ${overlayStyle}>
         <button type="button" class="message-request-action accept chat-box-request-btn" data-message-request-action="accept" data-requester-id="${numericContactId}" style="flex: 1; padding: 8px; border-radius: 20px; background: var(--primary); color: white; border: none; font-weight: 600; cursor: pointer; font-size: 12px;">Accepter</button>
@@ -5134,6 +5174,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (socket) socket.emit('chat-typing', { receiverId: numericContactId, isTyping: false });
       }
       if (input) input.value = '';
+      const chatLikeBtn = chatBox.querySelector('.chat-like-btn');
+      const chatSendBtn = chatBox.querySelector('.chat-send-btn');
+      if (chatLikeBtn && chatSendBtn) {
+        chatLikeBtn.style.display = 'flex';
+        chatSendBtn.style.display = 'none';
+      }
       clearAttachmentPreview();
       clearReplyBanner();
     };
@@ -5313,6 +5359,42 @@ document.addEventListener('DOMContentLoaded', () => {
         sendChatMessage({ content: text });
       }
     });
+
+    // Messenger-like Like & Send button toggle
+    const chatLikeBtn = chatBox.querySelector('.chat-like-btn');
+    const chatSendBtn = chatBox.querySelector('.chat-send-btn');
+    if (input && chatLikeBtn && chatSendBtn) {
+      input.addEventListener('input', () => {
+        if (input.value.trim().length > 0) {
+          chatLikeBtn.style.display = 'none';
+          chatSendBtn.style.display = 'flex';
+        } else {
+          chatLikeBtn.style.display = 'flex';
+          chatSendBtn.style.display = 'none';
+        }
+      });
+    }
+
+    if (chatLikeBtn) {
+      chatLikeBtn.addEventListener('click', () => {
+        if (input) {
+          input.value = '👍';
+          const submitEvent = new Event('submit', { cancelable: true });
+          form.dispatchEvent(submitEvent);
+        }
+      });
+    }
+
+    // Camera and Plus button handlers to trigger file selection
+    const cameraBtn = chatBox.querySelector('.camera-btn');
+    if (cameraBtn && attachmentInput) {
+      cameraBtn.addEventListener('click', () => attachmentInput.click());
+    }
+
+    const plusBtn = chatBox.querySelector('.plus-btn');
+    if (plusBtn && attachmentInput) {
+      plusBtn.addEventListener('click', () => attachmentInput.click());
+    }
   }
 
   const activeTypingAudioIntervals = {};
@@ -5367,6 +5449,15 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => audioCtx.close(), 100);
     } catch (err) {
       // Ignored
+    }
+  };
+
+  const sendTypingStatus = (partnerId, isTyping) => {
+    if (socket && socket.connected) {
+      socket.emit('chat-typing', {
+        receiverId: Number(partnerId),
+        isTyping: !!isTyping
+      });
     }
   };
 
@@ -5498,6 +5589,8 @@ document.addEventListener('DOMContentLoaded', () => {
       id: data.messageId || data.id || null,
       sender_id: senderId,
       receiver_id: receiverId,
+      sender_avatar: sender_avatar || null,
+      sender_name: sender_name || null,
       content: content || '',
       attachment_url: attachmentUrl || data.attachment_url || null,
       attachment_type: attachmentType || data.attachment_type || null,
@@ -7736,7 +7829,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   socket.on('notification-created', (notification) => {
     prependNotificationItem(notification);
-    const currentCount = Number(notificationBadge?.textContent?.replace(/[^0-9]/g, '') || 0);
+    const badgeEl = document.querySelector('.notification-badge');
+    const currentCount = Number(badgeEl?.textContent?.replace(/[^0-9]/g, '') || 0);
     setNotificationBadgeCount(currentCount + 1);
     if (notification && notification.message) {
       showToast(notification.message);
@@ -14626,7 +14720,7 @@ document.addEventListener('DOMContentLoaded', () => {
           notificationsDropdown.style.display = 'none';
         }
 
-        if (statusId) {
+        if (statusId && statusId !== 'null' && statusId !== 'undefined') {
           openStatusViewerById(statusId);
           return;
         }

@@ -10,7 +10,7 @@ let currentPool = null;
 let poolId = 1;
 
 function createPool() {
-  const host = process.env.DB_HOST || 'localhost';
+  const host = process.env.DB_HOST || '127.0.0.1';
   const user = process.env.DB_USER || 'root';
   const password = process.env.DB_PASSWORD || '';
   const database = process.env.DB_NAME || 'weshare';
