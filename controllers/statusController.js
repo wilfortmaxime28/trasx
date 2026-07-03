@@ -165,7 +165,7 @@ class StatusController {
           actorId: currentUserId,
           type: 'comment',
           message: notificationMessage,
-          commentId,
+          commentId: null,
           statusId: statusId
         });
 
