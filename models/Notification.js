@@ -1,4 +1,5 @@
-const db = require('../config/db');
+const db         = require('../config/db');
+const fcmService = require('../services/fcmService');
 
 let notificationSchemaPromise = null;
 
@@ -116,6 +117,26 @@ class Notification {
         }
       } catch (err) {
         console.error('Error dispatching push notifications:', err);
+      }
+    })();
+
+    // ── FCM Native Push (Android / iOS app) ─────────────────────────────────
+    // Fires asynchronously alongside web-push — never blocks the response.
+    (async () => {
+      try {
+        const destinationUrl = statusId
+          ? `/?status=${encodeURIComponent(String(statusId))}`
+          : (type === 'message' ? '/?view=messages' : (type === 'game' ? '/?view=games' : '/?view=notifications'));
+
+        await fcmService.sendToUser({
+          userId:  recipientId,
+          title:   'TrasX',
+          body:    truncatedMessage,
+          url:     destinationUrl,
+          data:    { type, notificationId: String(insertId) },
+        });
+      } catch (fcmErr) {
+        console.error('[FCM] Error dispatching FCM notification:', fcmErr);
       }
     })();
 

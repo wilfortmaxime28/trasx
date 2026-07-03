@@ -1538,6 +1538,59 @@ app.get('/events/tickets/:code', async (req, res) => {
 const { requireAuth } = require('./middleware/authMiddleware');
 app.use(requireAuth);
 
+// ─── FCM Token management (native mobile push) ────────────────────────────────
+const fcmService = require('./services/fcmService');
+
+// Ensure the fcm_tokens table exists at startup
+fcmService.ensureFcmTokensTable().catch((err) =>
+  console.error('[FCM] Table init error:', err.message)
+);
+
+/**
+ * POST /api/notifications/fcm-token
+ * Body: { token: string, platform?: 'android'|'ios'|'mobile' }
+ * Registers the FCM device token for the authenticated user.
+ */
+app.post('/api/notifications/fcm-token', requireAuth, async (req, res) => {
+  try {
+    const userId   = Number(req.session.userId);
+    const { token, platform } = req.body;
+
+    if (!token || typeof token !== 'string' || token.trim().length < 10) {
+      return res.status(400).json({ success: false, error: 'Invalid FCM token.' });
+    }
+
+    await fcmService.saveToken(userId, token.trim(), platform || 'mobile');
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[FCM] /api/notifications/fcm-token POST error:', err);
+    return res.status(500).json({ success: false, error: 'Server error.' });
+  }
+});
+
+/**
+ * DELETE /api/notifications/fcm-token
+ * Body: { token?: string }
+ * Removes a specific FCM token on logout (or all tokens if none specified).
+ */
+app.delete('/api/notifications/fcm-token', requireAuth, async (req, res) => {
+  try {
+    const userId = Number(req.session.userId);
+    const { token } = req.body;
+
+    if (token && token.trim().length > 0) {
+      await fcmService.removeToken(userId, token.trim());
+    } else {
+      await fcmService.removeAllTokens(userId);
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[FCM] /api/notifications/fcm-token DELETE error:', err);
+    return res.status(500).json({ success: false, error: 'Server error.' });
+  }
+});
+
 // Route principale
 app.get('/', feedController.getFeed);
 app.get('/api/feed/birthdays', feedController.getBirthdayCards);

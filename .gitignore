@@ -4,3 +4,16 @@ config/vapid.json
 .env
 .env.*
 !.env.example
+
+# Clés privées Firebase (NE JAMAIS committer)
+firebase-service-account.json
+*-firebase-adminsdk-*.json
+
+# Fichiers uploadés par les utilisateurs (trop lourds pour git)
+public/uploads/
+
+# Base de données locale
+database.sqlite
+
+# Scripts temporaires
+scratch/
