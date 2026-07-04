@@ -25,7 +25,7 @@ const STATIC_ASSETS = Array.from(new Set([
   '/assets/platform-end-chime.mp3',
   '/manifest.json',
   '/manifest.webmanifest',
-  'https://unpkg.com/lucide@latest',
+  'https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js',
   ...APP_BRAND_ASSETS
 ]));
 
@@ -116,7 +116,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   const isSameOrigin = request.url.startsWith(self.location.origin);
-  const isAllowedCdn = url.hostname.includes('unpkg.com') || url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com');
+  const isAllowedCdn = url.hostname.includes('unpkg.com') || url.hostname.includes('cdn.jsdelivr.net') || url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com');
 
   if (!isSameOrigin && !isAllowedCdn) return;
 
@@ -153,6 +153,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('.ico') || 
     url.pathname.endsWith('.webp') || 
     url.hostname.includes('unpkg.com') ||
+    url.hostname.includes('cdn.jsdelivr.net') ||
     url.hostname.includes('fonts.googleapis.com') ||
     url.hostname.includes('fonts.gstatic.com');
 

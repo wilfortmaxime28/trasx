@@ -1193,7 +1193,18 @@ app.use('/assets', express.static(path.join(__dirname, 'public', 'assets'), {
     }
   }
 }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    // Prevent caching client.js to ensure real-time UI updates can be received
+    if (filePath.endsWith('client.js')) {
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+    } else if (/\.(css|png|jpe?g|svg|webp|gif|ico|woff2?|ttf)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+    }
+  }
+}));
 app.use('/vendor/tfjs', express.static(path.join(__dirname, 'node_modules/@tensorflow/tfjs/dist')));
 app.use('/vendor/face-api', express.static(path.join(__dirname, 'node_modules/face-api.js/dist')));
 app.use('/vendor/tesseract', express.static(path.join(__dirname, 'node_modules/tesseract.js/dist')));

@@ -6154,8 +6154,8 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         </div>
         <div class="chat-header-actions">
-          <button type="button" class="chat-header-btn phone-chat" title="Appeler"><i data-lucide="phone" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
-          <button type="button" class="chat-header-btn video-chat" title="Appel vidéo"><i data-lucide="video" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
+          <button type="button" class="chat-header-btn phone-chat" title="Appeler" style="display: none;"><i data-lucide="phone" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
+          <button type="button" class="chat-header-btn video-chat" title="Appel vidéo" style="display: none;"><i data-lucide="video" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
           
           <button type="button" class="chat-header-btn minimize-chat" title="Minimiser"><i data-lucide="minus" style="width: 14px; height: 14px;"></i></button>
           <button type="button" class="chat-header-btn close-chat desktop-close-btn" title="Fermer"><i data-lucide="x" style="width: 14px; height: 14px;"></i></button>
@@ -9754,7 +9754,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const textWidth = textAlignment === 'justify' ? '100%' : 'auto';
     const textDisplay = textAlignment === 'justify' ? 'block' : 'inline-block';
 
-    const bgImageStyle = post.bg_image_url ? `background-image: url('${post.bg_image_url}');` : 'background-color: var(--bg-hover);';
+    const bgImageStyle = post.bg_image_url ? `background: #111827 url('${post.bg_image_url}') center/cover no-repeat;` : 'background-color: var(--bg-hover);';
     return `
       <div class="post-bg-container" style="${bgImageStyle} color: ${textColor}; font-family: ${textFont}; align-items: stretch; justify-content: ${verticalJustify}; font-size: ${textSize}; --bg-text-size: ${textSize};">
         <div class="post-bg-text-shell" data-text-align="${textAlignment}" style="width: 100%; display: flex; justify-content: ${horizontalJustify};">
