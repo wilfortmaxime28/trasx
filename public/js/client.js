@@ -5018,12 +5018,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Emit socket call-invite so the remote device receives the incoming call notification
     let callResponseHandler = null;
     let callEndedHandler = null;
-    if (contactId && isOnline) {
+    if (contactId && isOnline && !otherSocketId) {
       socket.emit('call-invite', { receiverId: contactId, isVideo: !!isVideo });
     }
 
     let ringInterval = null;
     let callTimerInterval = null;
+    let stateTimeout = null;
     let audioCtx = null;
     const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
     if (AudioCtxClass) {
