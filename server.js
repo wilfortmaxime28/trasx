@@ -5188,14 +5188,21 @@ io.on('connection', (socket) => {
 
     try {
       if (socket.request.session && typeof socket.request.session.reload === 'function') {
-        await new Promise((resolve) => {
+        const reloadError = await new Promise((resolve) => {
           socket.request.session.reload((err) => {
-            if (err) {
-              console.warn(`[Socket Session] Erreur lors du rechargement de la session pour le socket ${socket.id}:`, err.message);
-            }
-            resolve();
+            resolve(err);
           });
         });
+
+        if (reloadError) {
+          console.warn(`[Socket Session] Session expirée ou invalide pour le socket ${socket.id}:`, reloadError.message);
+          if (socket.request.session) {
+            delete socket.request.session.userId;
+          }
+          socket.emit('session-expired', { message: 'Session expirée ou utilisateur déconnecté.' });
+          socket.disconnect(true);
+          return next(new Error('Session expirée.'));
+        }
       }
 
       const currentUserId = socket.request.session?.userId;
