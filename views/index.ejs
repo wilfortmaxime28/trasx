@@ -3567,13 +3567,23 @@ function getYouTubeId(url) {
               <div class="mobile-messages-section" id="mobileMessagesSection"
                 style="display: <%= currentView === 'messages' ? 'flex' : 'none' %>; flex-direction: column; gap: 20px; width: 100%;">
                 <!-- Messages Header -->
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; gap: 12px;">
                   <h2
-                    style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--text-primary);">
+                    style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: var(--text-primary); margin: 0;">
                     <i data-lucide="message-square" style="color: var(--primary);"></i> Messages
                   </h2>
+                  <div style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
+                    <button class="card-action-icon-btn" aria-label="Ajouter quelqu'un" id="mobileAddContactBtn" type="button" title="Ajouter quelqu'un"
+                      style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-primary); padding: 0;">
+                      <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i>
+                    </button>
+                    <button class="card-action-icon-btn" aria-label="<%= tText("Compose Message") %>" id="mobileComposeMessageBtn" type="button"
+                      style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-primary); padding: 0;">
+                      <i data-lucide="edit" style="width: 18px; height: 18px;"></i>
+                    </button>
+                  </div>
                   <button class="icon-btn" id="mobileMessagesBackBtn" title="<%= tText("Back to Feed") %>"
-                    style="font-size: 13px; font-weight: 600; padding: 0 16px; border-radius: 20px; background: var(--bg-card); border: 1px solid var(--border-color); width: auto; height: 36px; display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer;">
+                    style="font-size: 13px; font-weight: 600; padding: 0 16px; border-radius: 20px; background: var(--bg-card); border: 1px solid var(--border-color); width: auto; height: 36px; display: flex; align-items: center; gap: 6px; color: var(--text-primary); cursor: pointer; margin: 0;">
                     <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Feed
                   </button>
                 </div>

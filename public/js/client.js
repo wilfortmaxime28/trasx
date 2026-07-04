@@ -14410,10 +14410,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const composeMessageBtn = document.getElementById('composeMessageBtn');
+  const mobileComposeMessageBtn = document.getElementById('mobileComposeMessageBtn');
   const composeMessageModal = document.getElementById('composeMessageModal');
   const composeMessageSearch = document.getElementById('composeMessageSearch');
 
   const addContactBtn = document.getElementById('addContactBtn');
+  const mobileAddContactBtn = document.getElementById('mobileAddContactBtn');
   const addContactModal = document.getElementById('addContactModal');
   const addContactCloseBtn = document.getElementById('addContactCloseBtn');
   const addContactInput = document.getElementById('addContactInput');
@@ -14537,12 +14539,14 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // Add Contact Event Listeners
-  if (addContactBtn && addContactModal) {
-    addContactBtn.addEventListener('click', (e) => {
+  if (addContactModal) {
+    const handleAddContactClick = (e) => {
       e.preventDefault();
       e.stopPropagation();
       setAddContactModalState(true);
-    });
+    };
+    if (addContactBtn) addContactBtn.addEventListener('click', handleAddContactClick);
+    if (mobileAddContactBtn) mobileAddContactBtn.addEventListener('click', handleAddContactClick);
 
     addContactCloseBtn?.addEventListener('click', () => {
       setAddContactModalState(false);
@@ -14566,8 +14570,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (composeMessageBtn && composeMessageModal) {
-    composeMessageBtn.addEventListener('click', (e) => {
+  if (composeMessageModal) {
+    const handleComposeMessageClick = (e) => {
       e.preventDefault();
       e.stopPropagation();
       setComposeMessageModalState(true);
@@ -14576,7 +14580,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       filterComposeMessageItems('');
       setTimeout(() => composeMessageSearch?.focus(), 50);
-    });
+    };
+    if (composeMessageBtn) composeMessageBtn.addEventListener('click', handleComposeMessageClick);
+    if (mobileComposeMessageBtn) mobileComposeMessageBtn.addEventListener('click', handleComposeMessageClick);
 
     composeMessageModal.addEventListener('click', (e) => {
       if (e.target === composeMessageModal || e.target.closest('[data-compose-close]')) {
