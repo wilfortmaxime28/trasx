@@ -5120,31 +5120,35 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       callPC.ontrack = (event) => {
-        const remoteStream = event.streams[0];
-        if (!remoteStream) return;
+        let remoteStream = event.streams[0];
+        if (!remoteStream) {
+          remoteStream = new MediaStream();
+          remoteStream.addTrack(event.track);
+        }
 
         if (isVideo) {
           const remoteVideo = document.getElementById('mock-remote-video');
           if (remoteVideo) {
             remoteVideo.srcObject = remoteStream;
             remoteVideo.style.display = 'block';
+            remoteVideo.volume = isSpeakerMuted ? 0 : 1;
             remoteVideo.play().catch(e => console.warn('Remote video play error:', e));
             const remoteAvatarImg = document.getElementById('remote-avatar-img');
             if (remoteAvatarImg) remoteAvatarImg.style.display = 'none';
           }
+        } else {
+          let remoteAudio = document.getElementById('mock-remote-audio');
+          if (!remoteAudio) {
+            remoteAudio = document.createElement('audio');
+            remoteAudio.id = 'mock-remote-audio';
+            remoteAudio.autoplay = true;
+            remoteAudio.style.cssText = 'position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none;';
+            document.body.appendChild(remoteAudio);
+          }
+          remoteAudio.srcObject = remoteStream;
+          remoteAudio.volume = isSpeakerMuted ? 0 : 1;
+          remoteAudio.play().catch(e => console.warn('Remote audio play error:', e));
         }
-
-        let remoteAudio = document.getElementById('mock-remote-audio');
-        if (!remoteAudio) {
-          remoteAudio = document.createElement('audio');
-          remoteAudio.id = 'mock-remote-audio';
-          remoteAudio.autoplay = true;
-          remoteAudio.style.display = 'none';
-          document.body.appendChild(remoteAudio);
-        }
-        remoteAudio.srcObject = remoteStream;
-        remoteAudio.volume = isSpeakerMuted ? 0 : 1;
-        remoteAudio.play().catch(e => console.warn('Remote audio play error:', e));
       };
 
       if (isInitiator) {
