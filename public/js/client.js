@@ -5051,6 +5051,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     let callPC = null;
+    let iceCandidateQueue = [];
     const rtcConfig = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -5150,10 +5151,31 @@ document.addEventListener('DOMContentLoaded', () => {
               isCallSignal: true
             }
           });
+
+          // Drain candidate queue
+          if (iceCandidateQueue.length > 0) {
+            for (const candidate of iceCandidateQueue) {
+              try { await callPC.addIceCandidate(candidate); } catch(e) {}
+            }
+            iceCandidateQueue = [];
+          }
         } else if (signal.type === 'answer') {
           await callPC.setRemoteDescription(new RTCSessionDescription(signal));
+
+          // Drain candidate queue
+          if (iceCandidateQueue.length > 0) {
+            for (const candidate of iceCandidateQueue) {
+              try { await callPC.addIceCandidate(candidate); } catch(e) {}
+            }
+            iceCandidateQueue = [];
+          }
         } else if (signal.type === 'candidate' && signal.candidate) {
-          await callPC.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          const candidate = new RTCIceCandidate(signal.candidate);
+          if (callPC.remoteDescription) {
+            await callPC.addIceCandidate(candidate);
+          } else {
+            iceCandidateQueue.push(candidate);
+          }
         }
       } catch (err) {
         console.error('Error processing call WebRTC signal:', err);
