@@ -14360,10 +14360,102 @@ document.addEventListener('DOMContentLoaded', () => {
   const composeMessageModal = document.getElementById('composeMessageModal');
   const composeMessageSearch = document.getElementById('composeMessageSearch');
 
+  const addContactBtn = document.getElementById('addContactBtn');
+  const addContactModal = document.getElementById('addContactModal');
+  const addContactCloseBtn = document.getElementById('addContactCloseBtn');
+  const addContactInput = document.getElementById('addContactInput');
+  const addContactForm = document.getElementById('addContactForm');
+  const addContactSearchResults = document.getElementById('addContactSearchResults');
+
   const setComposeMessageModalState = (isOpen) => {
     if (!composeMessageModal) return;
     composeMessageModal.classList.toggle('active', !!isOpen);
     composeMessageModal.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+  };
+
+  const setAddContactModalState = (isOpen) => {
+    if (!addContactModal) return;
+    addContactModal.style.display = isOpen ? 'flex' : 'none';
+    addContactModal.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+    if (isOpen) {
+      if (addContactInput) addContactInput.value = '';
+      renderAddContactResults([]);
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      setTimeout(() => addContactInput?.focus(), 50);
+    }
+  };
+
+  const renderAddContactResults = (users = []) => {
+    if (!addContactSearchResults) return;
+    addContactSearchResults.innerHTML = '';
+
+    const queryVal = addContactInput?.value.trim() || '';
+
+    if (!queryVal) {
+      addContactSearchResults.innerHTML = `
+        <div id="addContactSearchPlaceholder" style="text-align: center; padding: 20px 10px; font-size: 0.85rem; color: var(--text-muted);">
+          Saisissez un nom d'utilisateur ou un email pour lancer la recherche.
+        </div>
+      `;
+      return;
+    }
+
+    const filtered = users.filter(u => Number(u.id) !== Number(window.currentUserId));
+
+    if (filtered.length === 0) {
+      addContactSearchResults.innerHTML = `
+        <div style="text-align: center; padding: 20px 10px; font-size: 0.85rem; color: var(--text-muted);">
+          Aucun utilisateur trouvé pour « ${escapeHtml(queryVal)} ».
+        </div>
+      `;
+      return;
+    }
+
+    filtered.forEach(user => {
+      const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'Utilisateur';
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 10px; cursor: pointer; transition: background 0.2s, transform 0.2s; background: rgba(255,255,255,0.02);';
+      row.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+          <img src="${user.avatar || '/assets/avatar_placeholder.jpg'}" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover;">
+          <div style="min-width: 0;">
+            <div style="font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem;">${escapeHtml(fullName)}</div>
+            <div style="font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@${escapeHtml(user.username || '')}</div>
+            ${user.email ? `<div style="font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(user.email)}</div>` : ''}
+          </div>
+        </div>
+        <button type="button" class="settings-primary-btn" style="height: 28px; font-size: 11px; padding: 0 10px; border-radius: 6px; flex-shrink: 0; font-weight:700;">Discuter</button>
+      `;
+
+      row.addEventListener('mouseenter', () => {
+        row.style.background = 'rgba(255, 255, 255, 0.05)';
+        row.style.transform = 'translateY(-1px)';
+      });
+      row.addEventListener('mouseleave', () => {
+        row.style.background = 'rgba(255,255,255,0.02)';
+        row.style.transform = 'translateY(0)';
+      });
+
+      row.addEventListener('click', () => {
+        setAddContactModalState(false);
+        openChatBox(user.id, fullName, user.avatar || '/assets/avatar_placeholder.jpg', user.isOnline, '', false, user.username);
+      });
+
+      addContactSearchResults.appendChild(row);
+    });
+  };
+
+  const performAddContactSearch = async () => {
+    const query = addContactInput?.value.trim() || '';
+    if (!query) return;
+
+    try {
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+      const users = await res.json();
+      renderAddContactResults(users);
+    } catch (err) {
+      console.error('Error in add contact search:', err);
+    }
   };
 
   const filterComposeMessageItems = (query = '') => {
@@ -14390,6 +14482,36 @@ document.addEventListener('DOMContentLoaded', () => {
       emptyState.style.display = anyVisible ? 'none' : 'block';
     }
   };
+
+  // Add Contact Event Listeners
+  if (addContactBtn && addContactModal) {
+    addContactBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setAddContactModalState(true);
+    });
+
+    addContactCloseBtn?.addEventListener('click', () => {
+      setAddContactModalState(false);
+    });
+
+    addContactModal.addEventListener('click', (e) => {
+      if (e.target === addContactModal) {
+        setAddContactModalState(false);
+      }
+    });
+
+    let searchTimeout = null;
+    addContactInput?.addEventListener('input', () => {
+      if (searchTimeout) clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(performAddContactSearch, 300);
+    });
+
+    addContactForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await performAddContactSearch();
+    });
+  }
 
   if (composeMessageBtn && composeMessageModal) {
     composeMessageBtn.addEventListener('click', (e) => {
@@ -14431,6 +14553,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'Escape') {
         if (composeMessageModal.classList.contains('active')) {
           setComposeMessageModalState(false);
+        }
+        if (addContactModal && addContactModal.style.display === 'flex') {
+          setAddContactModalState(false);
         }
         if (statusCreateModal?.style.display === 'flex') {
           closeStatusModal();
