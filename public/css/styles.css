@@ -24457,10 +24457,6 @@ body.dark-mode .skeleton-base {
     display: flex !important;
     margin-right: 8px !important;
   }
-  
-  .phone-chat, .video-chat, .info-chat {
-    display: flex !important;
-  }
 }
 
 /* Chat Input custom styles */
