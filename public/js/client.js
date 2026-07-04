@@ -5015,12 +5015,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const currentUserAvatar = document.querySelector('.profile-btn img')?.getAttribute('src') || '/assets/avatar_placeholder.jpg';
 
-    // Emit socket call-invite so the remote device receives the incoming call notification
     let callResponseHandler = null;
     let callEndedHandler = null;
-    if (contactId && isOnline && !otherSocketId) {
-      socket.emit('call-invite', { receiverId: contactId, isVideo: !!isVideo });
-    }
 
     let ringInterval = null;
     let callTimerInterval = null;
@@ -5038,6 +5034,41 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     let mediaStream = null;
+
+    const playRingSequence = () => {
+      try {
+        if (!audioCtx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) audioCtx = new AudioCtx();
+        }
+        if (audioCtx && audioCtx.state !== 'closed') {
+          const osc1 = audioCtx.createOscillator();
+          const osc2 = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          
+          osc1.type = 'sine';
+          osc2.type = 'sine';
+          osc1.frequency.setValueAtTime(400, audioCtx.currentTime);
+          osc2.frequency.setValueAtTime(450, audioCtx.currentTime);
+          
+          gain.gain.setValueAtTime(0, audioCtx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 0.05);
+          gain.gain.setValueAtTime(0.08, audioCtx.currentTime + 1.5);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.8);
+          
+          osc1.connect(gain);
+          osc2.connect(gain);
+          gain.connect(audioCtx.destination);
+          
+          osc1.start();
+          osc2.start();
+          osc1.stop(audioCtx.currentTime + 1.8);
+          osc2.stop(audioCtx.currentTime + 1.8);
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    };
     let callDurationSeconds = 0;
     let currentCallState = 'connecting';
 
@@ -5812,6 +5843,20 @@ document.addEventListener('DOMContentLoaded', () => {
               }
             });
           }
+
+          // 1. If initiator and online: emit call-invite and start ringing now that mediaStream is ready
+          if (contactId && isOnline && !otherSocketId) {
+            socket.emit('call-invite', { receiverId: contactId, isVideo: !!isVideo });
+            playRingSequence();
+            if (ringInterval) clearInterval(ringInterval);
+            ringInterval = setInterval(playRingSequence, 3000);
+          }
+
+          // 2. If receiver: connect now and notify caller
+          if (otherSocketId) {
+            connectCallUI(otherSocketId, false);
+            socket.emit('call-response', { callerId: contactId, status: 'accepted' });
+          }
         })
         .catch((err) => {
           console.warn('Media access denied:', err);
@@ -5830,6 +5875,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     const alreadyAdded = senders.some(s => s.track && s.track.id === track.id);
                     if (!alreadyAdded) callPC.addTrack(track, audioStream);
                   });
+                }
+
+                // 1. If initiator and online: emit call-invite and start ringing
+                if (contactId && isOnline && !otherSocketId) {
+                  socket.emit('call-invite', { receiverId: contactId, isVideo: false });
+                  playRingSequence();
+                  if (ringInterval) clearInterval(ringInterval);
+                  ringInterval = setInterval(playRingSequence, 3000);
+                }
+
+                // 2. If receiver: connect now and notify caller
+                if (otherSocketId) {
+                  connectCallUI(otherSocketId, false);
+                  socket.emit('call-response', { callerId: contactId, status: 'accepted' });
                 }
               })
               .catch(() => {});
@@ -5941,8 +6000,7 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('call-ended', callEndedHandler);
 
     if (otherSocketId) {
-      // Receiver side: connect immediately using the caller's socket ID
-      connectCallUI(otherSocketId, false);
+      // Receiver side: we wait for getUserMedia to resolve before connecting and responding
     } else if (!isOnline) {
       currentCallState = 'offline';
       updateStatusText('Utilisateur hors ligne', 'phone-off', '#ef4444');
@@ -5963,48 +6021,10 @@ document.addEventListener('DOMContentLoaded', () => {
       currentCallState = 'connecting';
       updateStatusText('Connexion...', isVideo ? 'video' : 'phone');
 
-      const playRingSequence = () => {
-        try {
-          if (!audioCtx) {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (AudioCtx) audioCtx = new AudioCtx();
-          }
-          if (audioCtx && audioCtx.state !== 'closed') {
-            const osc1 = audioCtx.createOscillator();
-            const osc2 = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            
-            osc1.type = 'sine';
-            osc2.type = 'sine';
-            osc1.frequency.setValueAtTime(400, audioCtx.currentTime);
-            osc2.frequency.setValueAtTime(450, audioCtx.currentTime);
-            
-            gain.gain.setValueAtTime(0, audioCtx.currentTime);
-            gain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 0.05);
-            gain.gain.setValueAtTime(0.08, audioCtx.currentTime + 1.5);
-            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.8);
-            
-            osc1.connect(gain);
-            osc2.connect(gain);
-            gain.connect(audioCtx.destination);
-            
-            osc1.start();
-            osc2.start();
-            osc1.stop(audioCtx.currentTime + 1.8);
-            osc2.stop(audioCtx.currentTime + 1.8);
-          }
-        } catch (e) {
-          console.warn(e);
-        }
-      };
-
-      playRingSequence();
-      ringInterval = setInterval(playRingSequence, 3000);
-
-      if (contactId) {
-        // Real user call: do NOT auto connect, wait for accepted signal
-      } else {
+      if (!contactId) {
         // Mock preview call: simulate ringing and auto-connect
+        playRingSequence();
+        ringInterval = setInterval(playRingSequence, 3000);
         stateTimeout = setTimeout(() => {
           currentCallState = 'ringing';
           updateStatusText('Le téléphone sonne...', 'bell-ring', '#eab308');
@@ -6812,7 +6832,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       stopRing(); overlay.remove(); socket.off('call-ended', handleCallerHangup);
-      socket.emit('call-response', { callerId, status: 'accepted' });
       initiateMockCall(callerName, callerAvatar, isVideo, true, () => {}, [], callerId, callerSocketId);
     });
   });
