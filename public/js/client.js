@@ -5082,6 +5082,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     let callPC = null;
+    let remoteStream = null;
     let iceCandidateQueue = [];
     const rtcConfig = {
       iceServers: [
@@ -5093,131 +5094,148 @@ document.addEventListener('DOMContentLoaded', () => {
       ]
     };
 
-    const getOrCreateCallPC = (targetSocketId) => {
-      if (callPC) return callPC;
+    let offerHandler = null;
+    let answerHandler = null;
+    let iceCandidateHandler = null;
 
+    const drainIceCandidates = async () => {
+      if (iceCandidateQueue.length > 0) {
+        for (const candidate of iceCandidateQueue) {
+          try {
+            if (callPC) {
+              await callPC.addIceCandidate(new RTCIceCandidate(candidate));
+            }
+          } catch (e) {
+            console.warn('Error draining ICE candidate:', e);
+          }
+        }
+        iceCandidateQueue = [];
+      }
+    };
+
+    const createPeerConnection = (targetSocketId) => {
       callPC = new RTCPeerConnection(rtcConfig);
 
-      // Send ICE candidate to target socket
-      callPC.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit('webrtc-signal', {
-            targetSocketId,
-            signal: {
-              type: 'candidate',
-              candidate: event.candidate,
-              isCallSignal: true
-            }
-          });
-        }
-      };
+      remoteStream = new MediaStream();
 
-      // Receive remote media track stream
-      callPC.ontrack = (event) => {
-        let remoteStream = event.streams[0];
-        if (!remoteStream) {
-          remoteStream = new MediaStream();
-          remoteStream.addTrack(event.track);
+      if (isVideo) {
+        const remoteVideo = document.getElementById('mock-remote-video');
+        if (remoteVideo) {
+          remoteVideo.srcObject = remoteStream;
+          remoteVideo.volume = isSpeakerMuted ? 0 : 1;
         }
-
-        if (isVideo) {
-          const remoteVideo = document.getElementById('mock-remote-video');
-          if (remoteVideo) {
-            remoteVideo.srcObject = remoteStream;
-            remoteVideo.style.display = 'block';
-            remoteVideo.volume = isSpeakerMuted ? 0 : 1;
-            remoteVideo.play().catch(e => console.warn('Remote video play error:', e));
-            const remoteAvatarImg = document.getElementById('remote-avatar-img');
-            if (remoteAvatarImg) remoteAvatarImg.style.display = 'none';
-          }
-        } else {
-          let remoteAudio = document.getElementById('mock-remote-audio');
-          if (!remoteAudio) {
-            remoteAudio = document.createElement('audio');
-            remoteAudio.id = 'mock-remote-audio';
-            remoteAudio.autoplay = true;
-            remoteAudio.style.cssText = 'position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none;';
-            document.body.appendChild(remoteAudio);
-          }
-          remoteAudio.srcObject = remoteStream;
-          remoteAudio.volume = isSpeakerMuted ? 0 : 1;
-          remoteAudio.play().catch(e => console.warn('Remote audio play error:', e));
+      } else {
+        let remoteAudio = document.getElementById('mock-remote-audio');
+        if (!remoteAudio) {
+          remoteAudio = document.createElement('audio');
+          remoteAudio.id = 'mock-remote-audio';
+          remoteAudio.autoplay = true;
+          remoteAudio.style.cssText = 'position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none;';
+          document.body.appendChild(remoteAudio);
         }
-      };
+        remoteAudio.srcObject = remoteStream;
+        remoteAudio.volume = isSpeakerMuted ? 0 : 1;
+      }
 
-      // If local player has a stream, add the tracks to the connection
       if (mediaStream) {
         mediaStream.getTracks().forEach(track => {
           callPC.addTrack(track, mediaStream);
         });
       }
 
-      return callPC;
+      callPC.ontrack = (event) => {
+        const incomingStream = event.streams[0] || new MediaStream([event.track]);
+        incomingStream.getTracks().forEach(track => {
+          const tracks = remoteStream.getTracks();
+          const alreadyAdded = tracks.some(t => t.id === track.id);
+          if (!alreadyAdded) {
+            remoteStream.addTrack(track);
+          }
+        });
+
+        if (isVideo) {
+          const remoteVideo = document.getElementById('mock-remote-video');
+          if (remoteVideo) {
+            remoteVideo.style.display = 'block';
+            remoteVideo.play().catch(e => console.warn('Remote video play error:', e));
+          }
+          const remoteAvatarImg = document.getElementById('remote-avatar-img');
+          if (remoteAvatarImg) remoteAvatarImg.style.display = 'none';
+        } else {
+          const remoteAudio = document.getElementById('mock-remote-audio');
+          if (remoteAudio) {
+            remoteAudio.play().catch(e => console.warn('Remote audio play error:', e));
+          }
+        }
+      };
+
+      callPC.onicecandidate = (event) => {
+        if (event.candidate && targetSocketId) {
+          socket.emit('ice-candidate', {
+            to: targetSocketId,
+            candidate: event.candidate
+          });
+        }
+      };
     };
 
     const initiateCallConnection = async (targetSocketId) => {
-      const pc = getOrCreateCallPC(targetSocketId);
+      createPeerConnection(targetSocketId);
       try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.emit('webrtc-signal', {
-          targetSocketId,
-          signal: {
-            type: 'offer',
-            sdp: offer.sdp,
-            isCallSignal: true
-          }
+        const offer = await callPC.createOffer();
+        await callPC.setLocalDescription(offer);
+        socket.emit('offer', {
+          to: targetSocketId,
+          offer
         });
       } catch (err) {
         console.error('Error creating offer for call:', err);
       }
     };
 
-    window.handleCallSignal = async (senderSocketId, signal) => {
-      const pc = getOrCreateCallPC(senderSocketId);
+    // Setup signaling event handlers
+    offerHandler = async (data) => {
+      otherSocketId = data.from;
+      createPeerConnection(data.from);
       try {
-        if (signal.type === 'offer') {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          socket.emit('webrtc-signal', {
-            targetSocketId: senderSocketId,
-            signal: {
-              type: 'answer',
-              sdp: answer.sdp,
-              isCallSignal: true
-            }
-          });
-
-          // Drain candidate queue
-          if (iceCandidateQueue.length > 0) {
-            for (const candidate of iceCandidateQueue) {
-              try { await pc.addIceCandidate(candidate); } catch(e) {}
-            }
-            iceCandidateQueue = [];
-          }
-        } else if (signal.type === 'answer') {
-          await pc.setRemoteDescription(new RTCSessionDescription(signal));
-
-          // Drain candidate queue
-          if (iceCandidateQueue.length > 0) {
-            for (const candidate of iceCandidateQueue) {
-              try { await pc.addIceCandidate(candidate); } catch(e) {}
-            }
-            iceCandidateQueue = [];
-          }
-        } else if (signal.type === 'candidate' && signal.candidate) {
-          const candidate = new RTCIceCandidate(signal.candidate);
-          if (pc.remoteDescription) {
-            await pc.addIceCandidate(candidate);
-          } else {
-            iceCandidateQueue.push(candidate);
-          }
-        }
+        await callPC.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await callPC.createAnswer();
+        await callPC.setLocalDescription(answer);
+        socket.emit('answer', {
+          to: data.from,
+          answer
+        });
+        await drainIceCandidates();
       } catch (err) {
-        console.error('Error processing call WebRTC signal:', err);
+        console.error('Error processing offer:', err);
       }
     };
+    socket.on('offer', offerHandler);
+
+    answerHandler = async (data) => {
+      try {
+        if (callPC) {
+          await callPC.setRemoteDescription(new RTCSessionDescription(data.answer));
+          await drainIceCandidates();
+        }
+      } catch (err) {
+        console.error('Error processing answer:', err);
+      }
+    };
+    socket.on('answer', answerHandler);
+
+    iceCandidateHandler = async (data) => {
+      if (callPC && callPC.remoteDescription) {
+        try {
+          await callPC.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } catch (e) {
+          console.warn('Error adding ICE candidate:', e);
+        }
+      } else if (callPC) {
+        iceCandidateQueue.push(data.candidate);
+      }
+    };
+    socket.on('ice-candidate', iceCandidateHandler);
 
     const updateStatusText = (text, iconName = null, iconColor = 'var(--primary)') => {
       const statusTextEl = document.getElementById('call-status-text');
@@ -5283,6 +5301,9 @@ document.addEventListener('DOMContentLoaded', () => {
       // Remove socket listeners
       if (callResponseHandler) socket.off('call-response-received', callResponseHandler);
       if (callEndedHandler) socket.off('call-ended', callEndedHandler);
+      if (offerHandler) socket.off('offer', offerHandler);
+      if (answerHandler) socket.off('answer', answerHandler);
+      if (iceCandidateHandler) socket.off('ice-candidate', iceCandidateHandler);
     };
 
     const hangUp = () => {
@@ -5961,7 +5982,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isInitiator) {
           initiateCallConnection(targetSocketId);
         } else {
-          getOrCreateCallPC(targetSocketId);
+          createPeerConnection(targetSocketId);
         }
       }
 

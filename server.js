@@ -8130,6 +8130,36 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('offer', (data) => {
+    const { to, offer } = data || {};
+    if (to) {
+      io.to(to).emit('offer', {
+        offer,
+        from: socket.id
+      });
+    }
+  });
+
+  socket.on('answer', (data) => {
+    const { to, answer } = data || {};
+    if (to) {
+      io.to(to).emit('answer', {
+        answer,
+        from: socket.id
+      });
+    }
+  });
+
+  socket.on('ice-candidate', (data) => {
+    const { to, candidate } = data || {};
+    if (to) {
+      io.to(to).emit('ice-candidate', {
+        candidate,
+        from: socket.id
+      });
+    }
+  });
+
   socket.on('game-webrtc-state', (data) => {
     const { gameId, isCamOn, isMicOn } = data || {};
     const currentUserId = session?.userId;
