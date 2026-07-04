@@ -6157,8 +6157,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <button type="button" class="chat-header-btn phone-chat" title="Appeler" style="display: none;"><i data-lucide="phone" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
           <button type="button" class="chat-header-btn video-chat" title="Appel vidéo" style="display: none;"><i data-lucide="video" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
           
-          <button type="button" class="chat-header-btn minimize-chat" title="Minimiser"><i data-lucide="minus" style="width: 14px; height: 14px;"></i></button>
-          <button type="button" class="chat-header-btn close-chat desktop-close-btn" title="Fermer"><i data-lucide="x" style="width: 14px; height: 14px;"></i></button>
+          <button type="button" class="chat-header-btn minimize-chat" title="Minimiser" style="display: none;"><i data-lucide="minus" style="width: 14px; height: 14px;"></i></button>
+          <button type="button" class="chat-header-btn close-chat desktop-close-btn" title="Fermer" style="display: none;"><i data-lucide="x" style="width: 14px; height: 14px;"></i></button>
         </div>
       </div>
       <div class="chat-messages" id="chat-messages-${numericContactId}">
