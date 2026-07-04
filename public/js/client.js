@@ -4977,6 +4977,13 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const initiateMockCall = (contactName, avatarUrl, isVideo, isOnline, onCallEnd, contactsList = [], contactId = null, otherSocketId = null) => {
+    if (contactId && Number(contactId) === Number(window.currentUserId)) {
+      showToast(getPageLocale() === 'fr' 
+        ? "Vous ne pouvez pas vous appeler vous-même !" 
+        : "You cannot call yourself!");
+      return;
+    }
+
     if (document.getElementById('mock-call-overlay')) return;
 
     // Pause any other playing video/audio elements on the page (anti-disturbance)
