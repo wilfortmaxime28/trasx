@@ -24448,6 +24448,10 @@ body.dark-mode .skeleton-base {
   display: none !important;
 }
 
+.minimize-chat, .desktop-close-btn {
+  display: none !important;
+}
+
 @media screen and (max-width: 768px) {
   .mobile-back-btn {
     display: flex !important;
@@ -24456,10 +24460,6 @@ body.dark-mode .skeleton-base {
   
   .phone-chat, .video-chat, .info-chat {
     display: flex !important;
-  }
-  
-  .minimize-chat, .desktop-close-btn {
-    display: none !important;
   }
 }
 
