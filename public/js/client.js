@@ -5093,19 +5093,12 @@ document.addEventListener('DOMContentLoaded', () => {
       ]
     };
 
-    const setupCallRTC = async (targetSocketId, isInitiator) => {
-      if (callPC) {
-        try { callPC.close(); } catch(e) {}
-      }
+    const getOrCreateCallPC = (targetSocketId) => {
+      if (callPC) return callPC;
+
       callPC = new RTCPeerConnection(rtcConfig);
 
-      // Add local tracks if mediaStream is already available
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => {
-          callPC.addTrack(track, mediaStream);
-        });
-      }
-
+      // Send ICE candidate to target socket
       callPC.onicecandidate = (event) => {
         if (event.candidate) {
           socket.emit('webrtc-signal', {
@@ -5119,6 +5112,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       };
 
+      // Receive remote media track stream
       callPC.ontrack = (event) => {
         let remoteStream = event.streams[0];
         if (!remoteStream) {
@@ -5151,33 +5145,41 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       };
 
-      if (isInitiator) {
-        try {
-          const offer = await callPC.createOffer();
-          await callPC.setLocalDescription(offer);
-          socket.emit('webrtc-signal', {
-            targetSocketId,
-            signal: {
-              type: 'offer',
-              sdp: offer.sdp,
-              isCallSignal: true
-            }
-          });
-        } catch (err) {
-          console.error('Error creating offer for call:', err);
-        }
+      // If local player has a stream, add the tracks to the connection
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => {
+          callPC.addTrack(track, mediaStream);
+        });
+      }
+
+      return callPC;
+    };
+
+    const initiateCallConnection = async (targetSocketId) => {
+      const pc = getOrCreateCallPC(targetSocketId);
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('webrtc-signal', {
+          targetSocketId,
+          signal: {
+            type: 'offer',
+            sdp: offer.sdp,
+            isCallSignal: true
+          }
+        });
+      } catch (err) {
+        console.error('Error creating offer for call:', err);
       }
     };
 
     window.handleCallSignal = async (senderSocketId, signal) => {
-      if (!callPC) {
-        await setupCallRTC(senderSocketId, false);
-      }
+      const pc = getOrCreateCallPC(senderSocketId);
       try {
         if (signal.type === 'offer') {
-          await callPC.setRemoteDescription(new RTCSessionDescription(signal));
-          const answer = await callPC.createAnswer();
-          await callPC.setLocalDescription(answer);
+          await pc.setRemoteDescription(new RTCSessionDescription(signal));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
           socket.emit('webrtc-signal', {
             targetSocketId: senderSocketId,
             signal: {
@@ -5190,24 +5192,24 @@ document.addEventListener('DOMContentLoaded', () => {
           // Drain candidate queue
           if (iceCandidateQueue.length > 0) {
             for (const candidate of iceCandidateQueue) {
-              try { await callPC.addIceCandidate(candidate); } catch(e) {}
+              try { await pc.addIceCandidate(candidate); } catch(e) {}
             }
             iceCandidateQueue = [];
           }
         } else if (signal.type === 'answer') {
-          await callPC.setRemoteDescription(new RTCSessionDescription(signal));
+          await pc.setRemoteDescription(new RTCSessionDescription(signal));
 
           // Drain candidate queue
           if (iceCandidateQueue.length > 0) {
             for (const candidate of iceCandidateQueue) {
-              try { await callPC.addIceCandidate(candidate); } catch(e) {}
+              try { await pc.addIceCandidate(candidate); } catch(e) {}
             }
             iceCandidateQueue = [];
           }
         } else if (signal.type === 'candidate' && signal.candidate) {
           const candidate = new RTCIceCandidate(signal.candidate);
-          if (callPC.remoteDescription) {
-            await callPC.addIceCandidate(candidate);
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(candidate);
           } else {
             iceCandidateQueue.push(candidate);
           }
@@ -5956,7 +5958,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (targetSocketId) {
-        setupCallRTC(targetSocketId, isInitiator);
+        if (isInitiator) {
+          initiateCallConnection(targetSocketId);
+        } else {
+          getOrCreateCallPC(targetSocketId);
+        }
       }
 
       callTimerInterval = setInterval(() => {
