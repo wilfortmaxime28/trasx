@@ -22,67 +22,7 @@
     return `$${Number.isFinite(price) ? price.toFixed(2) : '0.00'}`;
   };
   const composeSections = inbox.sections || { general: [], requests: [] };
-  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[char]);
-  const renderComposeItem = (contact) => {
-    const relationLabel = contact.is_mutual
-      ? translate('messages.friends', 'Friends')
-      : (contact.is_followed_by && !contact.is_following)
-        ? translate('messages.followBack', 'Follow back')
-        : contact.is_following
-          ? translate('messages.following', 'Following')
-          : translate('messages.request', 'Message request');
-    const searchText = String([
-      contact.name || '',
-      contact.username || '',
-      contact.preview || '',
-      contact.presence_text || '',
-      relationLabel
-    ].join(' ')).toLowerCase();
-
-    return `
-      <button
-        type="button"
-        class="compose-contact-item"
-        data-compose-contact-id="${escapeHtml(contact.id)}"
-        data-compose-contact-name="${escapeHtml(contact.name)}"
-        data-compose-contact-avatar="${escapeHtml(contact.avatar)}"
-        data-compose-contact-online="${contact.is_online ? '1' : '0'}"
-        data-compose-contact-presence="${escapeHtml(contact.presence_text || '')}"
-        data-compose-contact-username="${escapeHtml(contact.username || '')}"
-        data-compose-contact-following="${contact.is_following ? '1' : '0'}"
-        data-compose-contact-followed-by="${contact.is_followed_by ? '1' : '0'}"
-        data-compose-contact-mutual="${contact.is_mutual ? '1' : '0'}"
-        data-search-text="${escapeHtml(searchText)}"
-      >
-        <div class="compose-contact-main">
-          <div class="msg-avatar-wrapper ${contact.is_online ? 'online' : ''}">
-            <div class="avatar" style="width: 40px; height: 40px;">
-              <img src="${escapeHtml(contact.avatar)}" alt="${escapeHtml(contact.name)}">
-            </div>
-            <span class="status-dot"></span>
-          </div>
-          <div class="compose-contact-copy">
-            <div class="compose-contact-topline">
-              <h4 class="compose-contact-name">${escapeHtml(contact.name)}</h4>
-              <span class="compose-contact-chip">${escapeHtml(relationLabel)}</span>
-            </div>
-            <div class="compose-contact-username">@${escapeHtml(contact.username)}</div>
-            <div class="compose-contact-preview">${escapeHtml(contact.preview || translate('messages.startConversation', 'Start a conversation...'))}</div>
-          </div>
-        </div>
-        <div class="compose-contact-meta">
-          <div class="compose-contact-presence">${escapeHtml(contact.presence_text || translate('messages.offline', 'Offline'))}</div>
-          ${contact.time_text ? `<div class="compose-contact-time">${escapeHtml(contact.time_text)}</div>` : ''}
-        </div>
-      </button>
-    `;
-  };
+  /* escapeHtml and renderComposeItem are defined in the parent index.ejs scope */
   const renderMessageItem = (contact) => {
     const isUnread = (contact.category === 'requests' && contact.can_manage_request) || 
                      (contact.last_message && Number(contact.last_message.receiver_id) === Number(currentUser.id) && !contact.last_message.read_at);
