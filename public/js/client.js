@@ -29290,11 +29290,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
         const users = await res.json();
-        const existingOfflineUsers = Array.isArray(users)
+        const filtered = Array.isArray(users)
           ? users.filter(u => Number(u.id) !== Number(window.currentUserId))
           : [];
 
-        if (existingOfflineUsers.length > 0) {
+        const activeOnlineMatches = filtered.filter(u => u.isOnline);
+
+        if (activeOnlineMatches.length > 0) {
+          renderGameOpponentSearchResults(activeOnlineMatches);
+        } else if (filtered.length > 0) {
           renderGameOpponentSearchResults([], "Cet utilisateur existe mais il est hors ligne. Contactez-le pour qu'il vienne se connecter.");
         } else {
           renderGameOpponentSearchResults([], 'Aucun utilisateur trouvé.');

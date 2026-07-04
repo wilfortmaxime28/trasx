@@ -738,6 +738,18 @@ class User {
     return this.attachGameStatsList(rows);
   }
 
+  static async getByIds(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+    await ensureEventAccessColumns();
+    const placeholders = ids.map(() => '?').join(', ');
+    const [rows] = await db.query(
+      `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar, game_matches_played, game_matches_won
+       FROM users WHERE id IN (${placeholders})`,
+      ids
+    );
+    return this.attachGameStatsList(rows);
+  }
+
   static async getFollowingForShare(userId) {
     const [rows] = await db.query(
       `

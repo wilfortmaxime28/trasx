@@ -4262,19 +4262,34 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
     if (query.startsWith('@')) {
       query = query.substring(1);
     }
+
+    const presence = require('./utils/presence');
     let users = [];
+
     if (!query.trim()) {
       if (!onlineOnly) {
         return res.json([]);
       }
-      users = await User.listForOpponentSearch(60);
+      const onlineIds = presence.getOnlineUserIds();
+      if (onlineIds.length > 0) {
+        users = await User.getByIds(onlineIds);
+      } else {
+        users = [];
+      }
     } else {
       users = await User.search(query);
     }
+
+    // Map online state to all users
+    users = users.map(u => ({
+      ...u,
+      isOnline: presence.isUserOnline(u.id)
+    }));
+
     if (onlineOnly) {
-      const presence = require('./utils/presence');
-      users = users.filter(u => presence.isUserOnline(u.id));
+      users = users.filter(u => u.isOnline);
     }
+
     res.json(users);
   } catch (err) {
     console.error('Erreur API search users:', err);

@@ -90,11 +90,22 @@ function getLastSeenAt(userId) {
   return state?.lastSeenAt || null;
 }
 
+function getOnlineUserIds() {
+  const ids = [];
+  for (const [id, state] of presenceMap.entries()) {
+    if (state && state.count > 0) {
+      ids.push(Number(id));
+    }
+  }
+  return ids;
+}
+
 module.exports = {
   markUserOnline,
   markUserOffline,
   isUserOnline,
   getLastSeenAt,
+  getOnlineUserIds,
   getPresenceText,
   formatRelativeTime
 };
