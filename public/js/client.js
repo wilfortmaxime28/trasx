@@ -5114,27 +5114,15 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const createPeerConnection = (targetSocketId) => {
-      callPC = new RTCPeerConnection(rtcConfig);
+      if (callPC) return;
 
+      callPC = new RTCPeerConnection(rtcConfig);
       remoteStream = new MediaStream();
 
-      if (isVideo) {
-        const remoteVideo = document.getElementById('mock-remote-video');
-        if (remoteVideo) {
-          remoteVideo.srcObject = remoteStream;
-          remoteVideo.volume = isSpeakerMuted ? 0 : 1;
-        }
-      } else {
-        let remoteAudio = document.getElementById('mock-remote-audio');
-        if (!remoteAudio) {
-          remoteAudio = document.createElement('audio');
-          remoteAudio.id = 'mock-remote-audio';
-          remoteAudio.autoplay = true;
-          remoteAudio.style.cssText = 'position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none;';
-          document.body.appendChild(remoteAudio);
-        }
-        remoteAudio.srcObject = remoteStream;
-        remoteAudio.volume = isSpeakerMuted ? 0 : 1;
+      const remoteVideo = document.getElementById('mock-remote-video');
+      if (remoteVideo) {
+        remoteVideo.srcObject = remoteStream;
+        remoteVideo.volume = isSpeakerMuted ? 0 : 1;
       }
 
       if (mediaStream) {
@@ -5153,19 +5141,13 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         });
 
-        if (isVideo) {
-          const remoteVideo = document.getElementById('mock-remote-video');
-          if (remoteVideo) {
+        if (remoteVideo) {
+          if (isVideo) {
             remoteVideo.style.display = 'block';
-            remoteVideo.play().catch(e => console.warn('Remote video play error:', e));
+            const remoteAvatarImg = document.getElementById('remote-avatar-img');
+            if (remoteAvatarImg) remoteAvatarImg.style.display = 'none';
           }
-          const remoteAvatarImg = document.getElementById('remote-avatar-img');
-          if (remoteAvatarImg) remoteAvatarImg.style.display = 'none';
-        } else {
-          const remoteAudio = document.getElementById('mock-remote-audio');
-          if (remoteAudio) {
-            remoteAudio.play().catch(e => console.warn('Remote audio play error:', e));
-          }
+          remoteVideo.play().catch(e => console.warn('Remote media play error:', e));
         }
       };
 
@@ -5331,9 +5313,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div id="remote-stream-area" style="position: relative; width: 180px; height: 180px; display: flex; align-items: center; justify-content: center;">
             <div class="call-avatar-ring" id="call-avatar-ring" style="position: absolute; top: -15px; left: -15px; right: -15px; bottom: -15px; border-radius: 50%; border: 3px solid var(--primary); animation: call-ring-pulse 2s infinite ease-in-out; z-index: 2;"></div>
             <img id="remote-avatar-img" src="${avatarUrl}" alt="${contactName}" style="width: 180px; height: 180px; border-radius: 50%; object-fit: cover; border: 6px solid rgba(255,255,255,0.15); box-shadow: 0 15px 35px rgba(0,0,0,0.6); transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); z-index: 2;">
-            ${isVideo ? `
-              <video id="mock-remote-video" autoplay playsinline style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: none; z-index: 1;"></video>
-            ` : ''}
+            <video id="mock-remote-video" autoplay playsinline style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; display: none; z-index: 1;"></video>
           </div>
 
           <!-- Floating Picture-in-Picture Local Video Card (Video Calls Only) -->
