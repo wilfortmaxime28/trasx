@@ -4986,6 +4986,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (document.getElementById('mock-call-overlay')) return;
 
+    // Local debug helper
+    const addCallDebugLog = (msg) => {
+      console.log(`[WebRTC-Call] ${msg}`);
+      const logContainer = document.getElementById('call-debug-logs');
+      if (logContainer) {
+        const line = document.createElement('div');
+        line.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+        line.style.paddingBottom = '2px';
+        const now = new Date();
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+        line.innerHTML = `<span style="color: #a3a3a3;">[${timeStr}]</span> ${msg}`;
+        logContainer.appendChild(line);
+        logContainer.scrollTop = logContainer.scrollHeight;
+      }
+    };
+
+    addCallDebugLog("Initialisation de l'appel...");
+
     // Pause any other playing video/audio elements on the page (anti-disturbance)
     document.querySelectorAll('video, audio').forEach(el => {
       if (el.id !== 'mock-local-video' && el.id !== 'mock-remote-video' && el.id !== 'mock-remote-audio') {
@@ -5249,13 +5267,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const drainIceCandidates = async () => {
       if (iceCandidateQueue.length > 0) {
+        addCallDebugLog(`Dépilage de ${iceCandidateQueue.length} ICE candidates mis en attente...`);
         for (const candidate of iceCandidateQueue) {
           try {
             if (callPC) {
               await callPC.addIceCandidate(new RTCIceCandidate(candidate));
+              addCallDebugLog("ICE candidate dépilé et ajouté avec succès.");
             }
           } catch (e) {
-            console.warn('Error draining ICE candidate:', e);
+            addCallDebugLog(`Erreur lors du dépilage d'un ICE candidate: ${e.message || e}`);
           }
         }
         iceCandidateQueue = [];
@@ -5263,14 +5283,18 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const createPeerConnection = (targetSocketId) => {
-      if (callPC) return;
+      if (callPC) {
+        addCallDebugLog("createPeerConnection: callPC existe déjà, ignoré.");
+        return;
+      }
 
+      addCallDebugLog(`Création de RTCPeerConnection pour targetSocketId: ${targetSocketId}`);
       callPC = new RTCPeerConnection(rtcConfig);
       remoteStream = null;
 
       // ICE state listeners for troubleshooting
       callPC.oniceconnectionstatechange = () => {
-        console.log('ICE Connection State:', callPC.iceConnectionState);
+        addCallDebugLog(`ICE Connection State: ${callPC.iceConnectionState}`);
         if (callPC.iceConnectionState === 'failed') {
           showToast(getPageLocale() === 'fr' 
             ? "Échec de connexion WebRTC (Pare-feu/NAT bloquant)" 
@@ -5279,17 +5303,21 @@ document.addEventListener('DOMContentLoaded', () => {
       };
 
       callPC.onconnectionstatechange = () => {
-        console.log('Peer Connection State:', callPC.connectionState);
+        addCallDebugLog(`Peer Connection State: ${callPC.connectionState}`);
       };
 
       if (mediaStream) {
+        addCallDebugLog(`Ajout de ${mediaStream.getTracks().length} pistes locales à RTCPeerConnection.`);
         mediaStream.getTracks().forEach(track => {
           callPC.addTrack(track, mediaStream);
         });
+      } else {
+        addCallDebugLog("Attention: Aucun mediaStream local disponible lors de la création de PeerConnection.");
       }
 
       callPC.ontrack = (event) => {
         const incomingStream = event.streams[0] || new MediaStream([event.track]);
+        addCallDebugLog(`ontrack reçu: type=${event.track.kind}, id=${event.track.id}`);
 
         if (event.track.kind === 'video') {
           remoteStream = incomingStream;
@@ -5297,14 +5325,18 @@ document.addEventListener('DOMContentLoaded', () => {
           if (rVideo) {
             rVideo.srcObject = remoteStream;
             rVideo.muted = true;
+            addCallDebugLog("Liaison du flux vidéo distant à la balise vidéo.");
             rVideo.play()
               .then(() => {
+                addCallDebugLog("Lecture vidéo distante commencée.");
                 applyVideoLayout();
               })
               .catch(e => {
-                console.warn('Remote video play error:', e);
+                addCallDebugLog(`Erreur lecture vidéo distante: ${e.message || e}`);
                 applyVideoLayout();
               });
+          } else {
+            addCallDebugLog("Erreur: Balise mock-remote-video introuvable dans le DOM.");
           }
         } else if (event.track.kind === 'audio') {
           let remoteAudio = document.getElementById('mock-remote-audio');
@@ -5313,77 +5345,106 @@ document.addEventListener('DOMContentLoaded', () => {
             remoteAudio.id = 'mock-remote-audio';
             remoteAudio.autoplay = true;
             document.body.appendChild(remoteAudio);
+            addCallDebugLog("Création dynamique de la balise audio distante.");
           }
           remoteAudio.srcObject = incomingStream;
           remoteAudio.volume = isSpeakerMuted ? 0 : 1;
-          remoteAudio.play().catch(e => console.warn('Remote audio play error:', e));
+          addCallDebugLog("Liaison du flux audio distant à la balise audio.");
+          remoteAudio.play()
+            .then(() => addCallDebugLog("Lecture audio distante commencée."))
+            .catch(e => addCallDebugLog(`Erreur lecture audio distante: ${e.message || e}`));
         }
       };
 
       callPC.onicecandidate = (event) => {
         if (event.candidate && targetSocketId) {
+          addCallDebugLog(`Génération candidat ICE local: ${event.candidate.candidate.substring(0, 40)}...`);
           socket.emit('ice-candidate', {
             to: targetSocketId,
             candidate: event.candidate
           });
+        } else if (!event.candidate) {
+          addCallDebugLog("Collecte des candidats ICE locaux terminée.");
         }
       };
     };
 
     const initiateCallConnection = async (targetSocketId) => {
+      addCallDebugLog(`initiateCallConnection vers: ${targetSocketId}`);
       createPeerConnection(targetSocketId);
       try {
+        addCallDebugLog("Création de l'offre (offer)...");
         const offer = await callPC.createOffer();
+        addCallDebugLog("Offre créée.");
         await callPC.setLocalDescription(offer);
+        addCallDebugLog("Description locale (offer) définie.");
         socket.emit('offer', {
           to: targetSocketId,
           offer
         });
+        addCallDebugLog("Offre émise via Socket.io.");
       } catch (err) {
-        console.error('Error creating offer for call:', err);
+        addCallDebugLog(`Erreur lors de la création de l'offre: ${err.message || err}`);
       }
     };
 
     // Setup signaling event handlers
     offerHandler = async (data) => {
+      addCallDebugLog(`Socket.io: Offre WebRTC reçue de ${data.from}`);
       otherSocketId = data.from;
       createPeerConnection(data.from);
       try {
+        addCallDebugLog("Définition de la description distante (offer)...");
         await callPC.setRemoteDescription(new RTCSessionDescription(data.offer));
+        addCallDebugLog("Description distante (offer) définie.");
+        addCallDebugLog("Création de la réponse (answer)...");
         const answer = await callPC.createAnswer();
+        addCallDebugLog("Réponse (answer) créée.");
         await callPC.setLocalDescription(answer);
+        addCallDebugLog("Description locale (answer) définie.");
         socket.emit('answer', {
           to: data.from,
           answer
         });
+        addCallDebugLog("Réponse émise via Socket.io.");
         await drainIceCandidates();
       } catch (err) {
-        console.error('Error processing offer:', err);
+        addCallDebugLog(`Erreur traitement de l'offre: ${err.message || err}`);
       }
     };
     socket.on('offer', offerHandler);
 
     answerHandler = async (data) => {
+      addCallDebugLog("Socket.io: Réponse WebRTC reçue");
       try {
         if (callPC) {
+          addCallDebugLog("Définition de la description distante (answer)...");
           await callPC.setRemoteDescription(new RTCSessionDescription(data.answer));
+          addCallDebugLog("Description distante (answer) définie.");
           await drainIceCandidates();
+        } else {
+          addCallDebugLog("Avertissement: Réponse reçue mais callPC est null.");
         }
       } catch (err) {
-        console.error('Error processing answer:', err);
+        addCallDebugLog(`Erreur traitement de la réponse: ${err.message || err}`);
       }
     };
     socket.on('answer', answerHandler);
 
     iceCandidateHandler = async (data) => {
+      addCallDebugLog("Socket.io: Candidat ICE distant reçu");
       if (callPC && callPC.remoteDescription) {
         try {
           await callPC.addIceCandidate(new RTCIceCandidate(data.candidate));
+          addCallDebugLog("Candidat ICE distant ajouté avec succès.");
         } catch (e) {
-          console.warn('Error adding ICE candidate:', e);
+          addCallDebugLog(`Erreur d'ajout de candidat ICE: ${e.message || e}`);
         }
       } else if (callPC) {
+        addCallDebugLog("Candidat ICE mis en file d'attente (description distante non définie).");
         iceCandidateQueue.push(data.candidate);
+      } else {
+        addCallDebugLog("Avertissement: Candidat ICE reçu mais callPC est null.");
       }
     };
     socket.on('ice-candidate', iceCandidateHandler);
@@ -5678,6 +5739,21 @@ document.addEventListener('DOMContentLoaded', () => {
       <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: url('${avatarUrl}') no-repeat center center; background-size: cover; filter: blur(40px) brightness(0.25); z-index: 1; transform: scale(1.15);"></div>
       <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(17,24,39,0.75) 0%, rgba(3,7,18,0.96) 100%); z-index: 2;"></div>
 
+      <!-- Debug Console Button & Panel -->
+      <button id="call-debug-toggle-btn" style="position: absolute; top: 20px; left: 20px; z-index: 10001; background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; padding: 6px 14px; color: #fff; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.35);">
+        <i data-lucide="bug" style="width: 13px; height: 13px; color: #f59e0b;"></i> Debug Console
+      </button>
+
+      <div id="call-debug-panel" style="position: fixed; bottom: 120px; left: 20px; right: 20px; height: 220px; background: rgba(17,24,39,0.95); border: 1px solid rgba(255,255,255,0.15); border-radius: 16px; z-index: 10002; display: none; flex-direction: column; overflow: hidden; font-family: monospace; font-size: 11px; box-shadow: 0 20px 50px rgba(0,0,0,0.85); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);">
+        <div style="background: rgba(255,255,255,0.06); padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); font-weight: 700; color: #f3f4f6; letter-spacing: 0.5px;">
+          <span style="display:flex;align-items:center;gap:6px;"><i data-lucide="terminal" style="width:14px;height:14px;color:#10b981;"></i> DIAGNOSTICS DE CONNEXION WEBRTC</span>
+          <button id="call-debug-close-btn" style="background: rgba(255,255,255,0.1); border: none; color: #fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor: pointer; font-size: 10px; font-weight: 700; transition: background 0.15s;">✕</button>
+        </div>
+        <div id="call-debug-logs" style="flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px; color: #34d399; text-align: left; background: #0b0f19;">
+          <div>[DEBUG] Initialisation de la console diagnostique...</div>
+        </div>
+      </div>
+
       <!-- Top Info Box -->
       <div style="position: relative; z-index: 3; display: flex; flex-direction: column; align-items: center; text-align: center; width: 100%; margin-top: 10px;">
         <div style="display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.4); padding: 6px 14px; border-radius: 20px; backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); margin-bottom: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
@@ -5763,6 +5839,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.body.appendChild(overlay);
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [overlay] });
+
+    // Debug Console Toggle Handlers
+    const debugToggleBtn = document.getElementById('call-debug-toggle-btn');
+    if (debugToggleBtn) {
+      debugToggleBtn.addEventListener('click', () => {
+        const panel = document.getElementById('call-debug-panel');
+        if (panel) {
+          panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+          addCallDebugLog("Console de debug basculée.");
+        }
+      });
+    }
+
+    const debugCloseBtn = document.getElementById('call-debug-close-btn');
+    if (debugCloseBtn) {
+      debugCloseBtn.addEventListener('click', () => {
+        const panel = document.getElementById('call-debug-panel');
+        if (panel) panel.style.display = 'none';
+      });
+    }
 
     // Toggle Handlers
     const toggleMicBtn = document.getElementById('call-toggle-mic-btn');
