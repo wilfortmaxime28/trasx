@@ -6219,11 +6219,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (timerEl) timerEl.textContent = timerText;
         
         if (activeParticipants.length === 1) {
-          updateStatusText(`Appel en cours... (${timerText})`, 'shield-check', '#10b981');
+          updateStatusText('Appel en cours...', 'shield-check', '#10b981');
         } else {
           const statusTextEl = document.getElementById('call-status-text');
           if (statusTextEl) {
-            statusTextEl.textContent = `Conférence en cours (${activeParticipants.length + 1} participants) - ${timerText}`;
+            statusTextEl.textContent = `Conférence en cours (${activeParticipants.length + 1} participants)`;
           }
         }
       }, 1000);
