@@ -5072,6 +5072,169 @@ document.addEventListener('DOMContentLoaded', () => {
     let callDurationSeconds = 0;
     let currentCallState = 'connecting';
 
+    let isVideoSwapped = false;
+    const applyVideoLayout = () => {
+      const remoteArea = document.getElementById('remote-stream-area');
+      const localCard = document.getElementById('local-video-card');
+      const remoteVideo = document.getElementById('mock-remote-video');
+      const remoteAvatarImg = document.getElementById('remote-avatar-img');
+      const localVideo = document.getElementById('mock-local-video');
+      const avatarRing = document.getElementById('call-avatar-ring');
+      const middleArea = document.getElementById('call-middle-area');
+
+      if (!remoteArea || !localCard) return;
+
+      if (avatarRing) avatarRing.style.display = 'none';
+      if (middleArea) {
+        middleArea.style.height = '100%';
+        middleArea.style.position = 'absolute';
+        middleArea.style.top = '0';
+        middleArea.style.left = '0';
+        middleArea.style.zIndex = '2';
+      }
+
+      if (isVideoSwapped) {
+        // SWAPPED: Local video is fullscreen background, Remote video is in PIP card
+        
+        // Remote Area becomes the small PIP card
+        remoteArea.style.position = 'absolute';
+        remoteArea.style.top = '20px';
+        remoteArea.style.right = '20px';
+        remoteArea.style.left = 'auto';
+        remoteArea.style.width = '105px';
+        remoteArea.style.height = '160px';
+        remoteArea.style.borderRadius = '16px';
+        remoteArea.style.border = '2px solid rgba(255,255,255,0.3)';
+        remoteArea.style.boxShadow = '0 15px 30px rgba(0,0,0,0.6)';
+        remoteArea.style.overflow = 'hidden';
+        remoteArea.style.zIndex = '10';
+        remoteArea.style.cursor = 'pointer';
+        remoteArea.style.transition = 'all 0.3s ease';
+        remoteArea.style.display = 'flex';
+        remoteArea.style.alignItems = 'center';
+        remoteArea.style.justifyContent = 'center';
+        remoteArea.style.background = '#111827';
+
+        if (remoteVideo) {
+          remoteVideo.style.position = 'absolute';
+          remoteVideo.style.top = '0';
+          remoteVideo.style.left = '0';
+          remoteVideo.style.width = '100%';
+          remoteVideo.style.height = '100%';
+          remoteVideo.style.objectFit = 'cover';
+          remoteVideo.style.borderRadius = '0';
+          remoteVideo.style.border = 'none';
+          remoteVideo.style.zIndex = '1';
+          remoteVideo.style.display = remoteVideo.srcObject ? 'block' : 'none';
+        }
+
+        if (remoteAvatarImg) {
+          remoteAvatarImg.style.position = 'absolute';
+          remoteAvatarImg.style.top = '50%';
+          remoteAvatarImg.style.left = '50%';
+          remoteAvatarImg.style.transform = 'translate(-50%, -50%)';
+          remoteAvatarImg.style.width = '50px';
+          remoteAvatarImg.style.height = '50px';
+          remoteAvatarImg.style.borderRadius = '50%';
+          remoteAvatarImg.style.border = '2px solid white';
+          remoteAvatarImg.style.objectFit = 'cover';
+          remoteAvatarImg.style.zIndex = '2';
+          remoteAvatarImg.style.display = remoteVideo.srcObject ? 'none' : 'block';
+        }
+
+        // Local Card becomes fullscreen background
+        localCard.style.position = 'fixed';
+        localCard.style.top = '0';
+        localCard.style.left = '0';
+        localCard.style.right = '0';
+        localCard.style.bottom = '0';
+        localCard.style.width = '100vw';
+        localCard.style.height = '100vh';
+        localCard.style.zIndex = '1';
+        localCard.style.border = 'none';
+        localCard.style.boxShadow = 'none';
+        localCard.style.borderRadius = '0';
+        localCard.style.cursor = 'pointer';
+        localCard.style.transition = 'all 0.3s ease';
+
+        if (localVideo) {
+          localVideo.style.width = '100vw';
+          localVideo.style.height = '100vh';
+          localVideo.style.objectFit = 'contain';
+        }
+
+      } else {
+        // DEFAULT: Remote video is fullscreen, Local video is in PIP card
+        
+        // Remote Area becomes fullscreen background
+        remoteArea.style.position = 'fixed';
+        remoteArea.style.top = '0';
+        remoteArea.style.left = '0';
+        remoteArea.style.right = '0';
+        remoteArea.style.bottom = '0';
+        remoteArea.style.width = '100vw';
+        remoteArea.style.height = '100vh';
+        remoteArea.style.borderRadius = '0';
+        remoteArea.style.border = 'none';
+        remoteArea.style.boxShadow = 'none';
+        remoteArea.style.zIndex = '1';
+        remoteArea.style.cursor = 'pointer';
+        remoteArea.style.transition = 'all 0.3s ease';
+        remoteArea.style.display = 'flex';
+        remoteArea.style.alignItems = 'center';
+        remoteArea.style.justifyContent = 'center';
+
+        if (remoteVideo) {
+          remoteVideo.style.position = 'fixed';
+          remoteVideo.style.top = '0';
+          remoteVideo.style.left = '0';
+          remoteVideo.style.width = '100vw';
+          remoteVideo.style.height = '100vh';
+          remoteVideo.style.objectFit = 'contain';
+          remoteVideo.style.borderRadius = '0';
+          remoteVideo.style.border = 'none';
+          remoteVideo.style.zIndex = '1';
+          remoteVideo.style.display = remoteVideo.srcObject ? 'block' : 'none';
+        }
+
+        if (remoteAvatarImg) {
+          remoteAvatarImg.style.position = 'fixed';
+          remoteAvatarImg.style.top = '0';
+          remoteAvatarImg.style.left = '0';
+          remoteAvatarImg.style.transform = 'none';
+          remoteAvatarImg.style.width = '100vw';
+          remoteAvatarImg.style.height = '100vh';
+          remoteAvatarImg.style.borderRadius = '0';
+          remoteAvatarImg.style.border = 'none';
+          remoteAvatarImg.style.objectFit = 'cover';
+          remoteAvatarImg.style.zIndex = '1';
+          remoteAvatarImg.style.display = remoteVideo.srcObject ? 'none' : 'block';
+        }
+
+        // Local Card becomes the small PIP card
+        localCard.style.position = 'absolute';
+        localCard.style.top = '20px';
+        localCard.style.right = '20px';
+        localCard.style.left = 'auto';
+        localCard.style.width = '105px';
+        localCard.style.height = '160px';
+        localCard.style.background = '#111827';
+        localCard.style.borderRadius = '16px';
+        localCard.style.overflow = 'hidden';
+        localCard.style.border = '2px solid rgba(255,255,255,0.3)';
+        localCard.style.boxShadow = '0 15px 30px rgba(0,0,0,0.6)';
+        localCard.style.zIndex = '10';
+        localCard.style.cursor = 'pointer';
+        localCard.style.transition = 'all 0.3s ease';
+
+        if (localVideo) {
+          localVideo.style.width = '100%';
+          localVideo.style.height = '100%';
+          localVideo.style.objectFit = 'cover';
+        }
+      }
+    };
+
     // Interactive Button States
     let isMicMuted = false;
     let isVideoOff = false;
@@ -5351,41 +5514,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (currentCallState === 'connected' && isVideo) {
-          const remoteAvatarImg = document.getElementById('remote-avatar-img');
-          const avatarRing = document.getElementById('call-avatar-ring');
-          const remoteVideo = document.getElementById('mock-remote-video');
-          if (remoteVideo) {
-            remoteVideo.style.position = 'fixed';
-            remoteVideo.style.top = '0';
-            remoteVideo.style.left = '0';
-            remoteVideo.style.width = '100vw';
-            remoteVideo.style.height = '100vh';
-            remoteVideo.style.borderRadius = '0';
-            remoteVideo.style.border = 'none';
-            remoteVideo.style.zIndex = '1';
-            // Show video track if already available, otherwise track listener will show it
-            if (remoteVideo.srcObject) {
-              remoteVideo.style.display = 'block';
-              if (remoteAvatarImg) remoteAvatarImg.style.display = 'none';
-            }
+          applyVideoLayout();
+        }
+
+        if (isVideo) {
+          const localCard = document.getElementById('local-video-card');
+          const remoteArea = document.getElementById('remote-stream-area');
+          if (localCard) {
+            localCard.onclick = (e) => {
+              e.stopPropagation();
+              isVideoSwapped = !isVideoSwapped;
+              applyVideoLayout();
+            };
           }
-          if (remoteAvatarImg) {
-            remoteAvatarImg.style.width = '100vw';
-            remoteAvatarImg.style.height = '100vh';
-            remoteAvatarImg.style.borderRadius = '0';
-            remoteAvatarImg.style.border = 'none';
-            remoteAvatarImg.style.position = 'fixed';
-            remoteAvatarImg.style.top = '0';
-            remoteAvatarImg.style.left = '0';
-            remoteAvatarImg.style.zIndex = '1';
-            
-            middleArea.style.height = '100%';
-            middleArea.style.position = 'absolute';
-            middleArea.style.top = '0';
-            middleArea.style.left = '0';
-            middleArea.style.zIndex = '2';
+          if (remoteArea) {
+            remoteArea.onclick = (e) => {
+              e.stopPropagation();
+              isVideoSwapped = !isVideoSwapped;
+              applyVideoLayout();
+            };
           }
-          if (avatarRing) avatarRing.style.display = 'none';
         }
       } else {
         const remoteAvatarImg = document.getElementById('remote-avatar-img');
@@ -5928,40 +6076,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const avatarRing = document.getElementById('call-avatar-ring');
       const remoteVideo = document.getElementById('mock-remote-video');
 
-      if (remoteVideo && isVideo) {
-        remoteVideo.style.position = 'fixed';
-        remoteVideo.style.top = '0';
-        remoteVideo.style.left = '0';
-        remoteVideo.style.width = '100vw';
-        remoteVideo.style.height = '100vh';
-        remoteVideo.style.borderRadius = '0';
-        remoteVideo.style.border = 'none';
-        remoteVideo.style.zIndex = '1';
-        if (remoteVideo.srcObject) {
-          remoteVideo.style.display = 'block';
-          if (remoteAvatarImg) remoteAvatarImg.style.display = 'none';
-        }
-      }
-
-      if (remoteAvatarImg) {
-        remoteAvatarImg.style.width = '100vw';
-        remoteAvatarImg.style.height = '100vh';
-        remoteAvatarImg.style.borderRadius = '0';
-        remoteAvatarImg.style.border = 'none';
-        remoteAvatarImg.style.position = 'fixed';
-        remoteAvatarImg.style.top = '0';
-        remoteAvatarImg.style.left = '0';
-        remoteAvatarImg.style.zIndex = '1';
-        
-        const middleArea = document.getElementById('call-middle-area');
-        if (middleArea) {
-          middleArea.style.height = '100%';
-          middleArea.style.position = 'absolute';
-          middleArea.style.top = '0';
-          middleArea.style.left = '0';
-          middleArea.style.zIndex = '2';
-        }
-        if (avatarRing) avatarRing.style.display = 'none';
+      if (isVideo) {
+        applyVideoLayout();
       }
 
       if (targetSocketId) {
