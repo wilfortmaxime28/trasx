@@ -6055,38 +6055,16 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .catch((err) => {
           console.warn('Media access denied:', err);
-          const mediaType = (err.name === 'NotAllowedError' || err.message?.includes('video'))
-            ? (isVideo ? 'video' : 'audio')
-            : 'audio';
-          showPermissionDeniedBanner(mediaType);
-          // Try audio-only as fallback for video calls
-          if (isVideo) {
-            navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-              .then((audioStream) => {
-                mediaStream = audioStream;
-                if (callPC && callPC.signalingState !== 'closed') {
-                  audioStream.getTracks().forEach(track => {
-                    const senders = callPC.getSenders();
-                    const alreadyAdded = senders.some(s => s.track && s.track.id === track.id);
-                    if (!alreadyAdded) callPC.addTrack(track, audioStream);
-                  });
-                }
-
-                // 1. If initiator and online: emit call-invite and start ringing
-                if (contactId && isOnline && !otherSocketId) {
-                  socket.emit('call-invite', { receiverId: contactId, isVideo: false });
-                  playRingSequence();
-                  if (ringInterval) clearInterval(ringInterval);
-                  ringInterval = setInterval(playRingSequence, 3000);
-                }
-
-                // 2. If receiver: connect now and notify caller
-                if (otherSocketId) {
-                  connectCallUI(otherSocketId, false);
-                  socket.emit('call-response', { callerId: contactId, status: 'accepted' });
-                }
-              })
-              .catch(() => {});
+          // If local media access fails, skip showing any banner and proceed so they can receive remote streams
+          if (contactId && isOnline && !otherSocketId) {
+            socket.emit('call-invite', { receiverId: contactId, isVideo: !!isVideo });
+            playRingSequence();
+            if (ringInterval) clearInterval(ringInterval);
+            ringInterval = setInterval(playRingSequence, 3000);
+          }
+          if (otherSocketId) {
+            connectCallUI(otherSocketId, false);
+            socket.emit('call-response', { callerId: contactId, status: 'accepted' });
           }
         });
     }
