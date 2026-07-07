@@ -6,7 +6,13 @@ const { getNumberSetting } = require('../utils/appSettings');
 const requireAuth = async (req, res, next) => {
   const isApi = req.path.startsWith('/api/') || req.originalUrl.startsWith('/api/') || (req.headers.accept && req.headers.accept.includes('application/json'));
 
+  console.log('[Auth Middleware] URL:', req.originalUrl);
+  console.log('[Auth Middleware] Incoming Cookies:', req.headers.cookie);
+  console.log('[Auth Middleware] Session ID:', req.sessionID);
+  console.log('[Auth Middleware] Session User ID:', req.session?.userId);
+
   if (!req.session || !req.session.userId) {
+    console.warn('[Auth Middleware] Unauthenticated request to:', req.originalUrl);
     if (isApi) {
       return res.status(401).json({ error: 'Session expirée. Veuillez vous reconnecter.', code: 'SESSION_EXPIRED' });
     }

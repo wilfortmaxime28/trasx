@@ -11,6 +11,9 @@ router.get('/terms', authController.getTerms);
 
 router.get('/login', authController.getLogin);
 router.post('/login', authController.postLogin);
+router.post('/api-login', authController.postLoginApi);
+router.post('/api-register', authController.postRegisterApi);
+router.post('/api-verify', authController.postVerifyApi);
 router.post('/dispute', authController.postDispute);
 router.get('/forgot-password', authController.getForgotPassword);
 router.post('/forgot-password', authController.postForgotPassword);

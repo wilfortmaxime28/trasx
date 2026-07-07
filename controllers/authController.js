@@ -496,3 +496,204 @@ exports.postDispute = async (req, res) => {
     });
   }
 };
+
+exports.postLoginApi = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Veuillez saisir votre identifiant et mot de passe.' });
+    }
+
+    const user = await User.getByIdentifier(email);
+
+    if (!user) {
+      return res.status(401).json({ error: 'Identifiants invalides.' });
+    }
+
+    if (!user.is_verified) {
+      return res.status(403).json({ error: 'Veuillez d\'abord vérifier votre adresse e-mail.' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Identifiants invalides.' });
+    }
+
+    if (user.account_status === 'Blocked') {
+      return res.status(403).json({ error: 'Votre compte a été bloqué par l\'administration.' });
+    }
+
+    if (user.account_status === 'Frozen') {
+      return res.status(403).json({ error: 'Votre compte a été gelé par l\'administration.' });
+    }
+
+    req.session.userId = user.id;
+    await ActivityLog.log(user.id, 'user', 'login', 'user', user.id, { username: user.username }, req);
+
+    req.session.rememberMe = true;
+    req.session.cookie.maxAge = SESSION_MAX_AGE_MS;
+    req.session.cookie.expires = new Date(Date.now() + SESSION_MAX_AGE_MS);
+
+    req.session.save((saveError) => {
+      if (saveError) {
+        console.error('API Login Session Save Error:', saveError);
+        return res.status(500).json({ error: 'Erreur de session serveur.' });
+      }
+
+      return res.json({
+        success: true,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          avatar: user.avatar || '/assets/avatar_placeholder.jpg'
+        }
+      });
+    });
+  } catch (error) {
+    console.error('API Login Error:', error);
+    res.status(500).json({ error: 'Erreur serveur.' });
+  }
+};
+
+exports.postRegisterApi = async (req, res) => {
+  try {
+    let { username, email, password, first_name, last_name, dob, phone, country } = req.body;
+
+    if (username) username = username.replace(/\s+/g, '').trim();
+    if (email) email = email.trim();
+    if (first_name) first_name = first_name.trim().replace(/<[^>]*>/g, '');
+    if (last_name) last_name = last_name.trim().replace(/<[^>]*>/g, '');
+    if (phone) phone = phone.trim().replace(/[^0-9+\s-]/g, '');
+    if (country) country = country.trim().replace(/<[^>]*>/g, '');
+
+    if (!username || !email || !password || !first_name || !last_name || !dob || !phone) {
+      return res.status(400).json({ error: 'Veuillez remplir tous les champs requis avec des données réelles.' });
+    }
+
+    if (username.includes('@')) {
+      return res.status(400).json({ error: 'Le nom d\'utilisateur ne peut pas ressembler à une adresse e-mail.' });
+    }
+
+    if (dob) {
+      const parts = dob.split('-');
+      if (parts.length === 3) {
+        const birthYear = parseInt(parts[0], 10);
+        const birthMonth = parseInt(parts[1], 10) - 1;
+        const birthDay = parseInt(parts[2], 10);
+
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth();
+        const currentDay = today.getDate();
+
+        let age = currentYear - birthYear;
+        if (currentMonth < birthMonth || (currentMonth === birthMonth && currentDay < birthDay)) {
+          age--;
+        }
+
+        if (age < 18) {
+          return res.status(400).json({ error: 'Vous devez avoir au moins 18 ans pour vous inscrire.' });
+        }
+      }
+    }
+
+    const existingUser = await User.getByEmail(email) || await User.getByUsername(username);
+    if (existingUser) {
+      return res.status(400).json({ error: 'Un utilisateur avec cet e-mail ou ce nom d\'utilisateur existe déjà.' });
+    }
+
+    const password_hash = await bcrypt.hash(password, 10);
+    const verification_code = Math.floor(100000 + Math.random() * 900000).toString();
+    const baseDailyViews = await getNumberSetting('new_user_daily_view_base', 1000);
+
+    const userId = await User.create({
+      username,
+      email,
+      password_hash,
+      first_name,
+      last_name,
+      dob,
+      phone,
+      country: country || 'US',
+      verification_code,
+      promo_post_daily_base: baseDailyViews,
+      promo_reel_daily_base: baseDailyViews
+    });
+
+    await ActivityLog.log(userId, 'user', 'register', 'user', userId, { username, email }, req);
+
+    const emailSent = await mailer.sendVerificationEmail(email, verification_code);
+
+    if (!emailSent) {
+      req.session.pendingVerificationFallback = {
+        userId: Number(userId),
+        email,
+        code: verification_code,
+        createdAt: Date.now()
+      };
+      return res.json({
+        success: true,
+        userId: Number(userId),
+        email,
+        requiresVerification: true,
+        fallbackCode: verification_code,
+        message: 'Inscription réussie. Code de vérification généré.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      userId: Number(userId),
+      email,
+      requiresVerification: true,
+      message: 'Inscription réussie. Un code de vérification a été envoyé à votre e-mail.'
+    });
+  } catch (error) {
+    console.error('API Register Error:', error);
+    res.status(500).json({ error: 'Une erreur est survenue lors de l\'inscription.' });
+  }
+};
+
+exports.postVerifyApi = async (req, res) => {
+  try {
+    const { userId, code } = req.body;
+    if (!userId || !code) {
+      return res.status(400).json({ error: 'Données manquantes.' });
+    }
+
+    const user = await User.getById(userId);
+    if (!user) {
+      return res.status(400).json({ error: 'Utilisateur introuvable.' });
+    }
+
+    if (user.is_verified) {
+      return res.json({ success: true, message: 'Compte déjà vérifié.' });
+    }
+
+    if (user.verification_code !== code) {
+      const fallback = req.session.pendingVerificationFallback;
+      if (fallback && Number(fallback.userId) === Number(userId) && fallback.code === code) {
+        // Matched fallback
+      } else {
+        return res.status(400).json({ error: 'Code de vérification invalide.' });
+      }
+    }
+
+    await User.verifyEmail(userId);
+    if (req.session.pendingVerificationFallback && Number(req.session.pendingVerificationFallback.userId) === Number(userId)) {
+      delete req.session.pendingVerificationFallback;
+    }
+
+    return res.json({
+      success: true,
+      message: 'Votre compte a été vérifié avec succès. Vous pouvez maintenant vous connecter.'
+    });
+  } catch (error) {
+    console.error('API Verify Error:', error);
+    res.status(500).json({ error: 'Une erreur est survenue lors de la vérification.' });
+  }
+};
+

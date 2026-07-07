@@ -24445,7 +24445,7 @@ body.dark-mode .skeleton-base {
 }
 
 .phone-chat, .video-chat, .info-chat {
-  display: none !important;
+  display: flex !important;
 }
 
 .minimize-chat, .desktop-close-btn {

@@ -50,6 +50,9 @@ const bscMonitor = require('./utils/bscMonitor');
 const nowPayments = require('./utils/nowPayments');
 const mailer = require('./utils/mailer');
 const { ethers } = require('ethers');
+const { initMediasoup, handleSocket: handleMediasoupSocket } = require('./mediasoup/index');
+const handleLiveSocket = require('./socket/live');
+const handleVideoCallSocket = require('./socket/videoCall');
 
 const compression = require('compression');
 const app = express();
@@ -1402,7 +1405,34 @@ const sessionMiddleware = session({
 });
 app.use(sessionMiddleware);
 io.engine.use(sessionMiddleware);
-io.use((socket, next) => sessionMiddleware(socket.request, {}, next));
+io.use((socket, next) => {
+  console.log('[Socket Auth] Incoming headers:', JSON.stringify(socket.request.headers));
+  console.log('[Socket Auth] Handshake auth:', JSON.stringify(socket.handshake.auth));
+  console.log('[Socket Auth] Handshake query:', JSON.stringify(socket.handshake.query));
+
+  if (!socket.request.headers.cookie) {
+    const rawCookie = socket.handshake.auth?.token || socket.handshake.query?.sid;
+    console.log('[Socket Auth] Fallback raw cookie:', rawCookie);
+    if (rawCookie) {
+      if (rawCookie.includes('=')) {
+        socket.request.headers.cookie = rawCookie;
+      } else {
+        socket.request.headers.cookie = `${SESSION_COOKIE_NAME}=${rawCookie}`;
+      }
+      console.log('[Socket Auth] Injected cookie:', socket.request.headers.cookie);
+    }
+  }
+
+  sessionMiddleware(socket.request, {}, (err) => {
+    if (err) {
+      console.error('[Socket Auth] Session middleware error:', err);
+      return next(err);
+    }
+    console.log('[Socket Auth] Loaded session:', JSON.stringify(socket.request.session));
+    console.log('[Socket Auth] User ID:', socket.request.session?.userId);
+    next();
+  });
+});
 
 // Middleware d'interception d'installation (redirige si pas installé)
 app.use(async (req, res, next) => {
@@ -5273,6 +5303,11 @@ io.on('connection', (socket) => {
     });
   }
 
+  // Register Mediasoup and Live/Call socket handlers
+  handleMediasoupSocket(socket, io);
+  handleLiveSocket(socket, io);
+  handleVideoCallSocket(socket, io);
+
   socket.on('feed-posts-watch', (data) => {
     const nextPostIds = Array.isArray(data?.postIds)
       ? data.postIds.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0).slice(0, 240)
@@ -7696,6 +7731,23 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    // Clean up mediasoup peer if active in a room
+    if (socket.roomId && socket.peerId) {
+      try {
+        const roomManager = require('./mediasoup/roomManager');
+        const room = roomManager.getRoom(socket.roomId);
+        if (room) {
+          room.removePeer(socket.peerId);
+          if (socket.isHost) {
+            socket.to(socket.roomId).emit('live:ended');
+            roomManager.closeRoom(socket.roomId);
+          }
+        }
+      } catch (err) {
+        console.error('[Mediasoup Disconnect Cleanup] Error:', err);
+      }
+    }
+
     if (!session?.userId) return;
     presence.markUserOffline(session.userId).then((state) => {
       if (!state?.changed) return;
@@ -9061,7 +9113,8 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, async () => {
+initMediasoup().then(() => {
+  server.listen(PORT, async () => {
   try {
     const installed = await installController.checkIsInstalled();
     if (installed) {
@@ -9221,6 +9274,9 @@ server.listen(PORT, async () => {
     console.error('Failed to initialize deposits or schema:', err);
   }
   console.log(`Le serveur tourne sur http://localhost:${PORT}`);
+  });
+}).catch(err => {
+  console.error("CRITICAL: Failed to initialize mediasoup workers:", err);
 });
 
 process.on('uncaughtException', (err) => {

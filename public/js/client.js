@@ -5086,11 +5086,17 @@ document.addEventListener('DOMContentLoaded', () => {
     let iceCandidateQueue = [];
     const rtcConfig = {
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' }
+        { urls: 'stun:turn.trasx.com:3478' },
+        {
+          urls: 'turn:turn.trasx.com:3478',
+          username: 'trasx',
+          credential: 'MotDePasseTresFort123'
+        },
+        {
+          urls: 'turns:turn.trasx.com:5349',
+          username: 'trasx',
+          credential: 'MotDePasseTresFort123'
+        }
       ]
     };
 
@@ -6154,6 +6160,8 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         </div>
         <div class="chat-header-actions">
+          <button type="button" class="chat-header-btn phone-chat" title="Appeler"><i data-lucide="phone" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
+          <button type="button" class="chat-header-btn video-chat" title="Appel vidéo"><i data-lucide="video" style="width: 18px; height: 18px; color: var(--primary);"></i></button>
           <button type="button" class="chat-header-btn minimize-chat" title="Minimiser" style="display: none !important;"><i data-lucide="minus" style="width: 14px; height: 14px;"></i></button>
           <button type="button" class="chat-header-btn close-chat desktop-close-btn" title="Fermer" style="display: none !important;"><i data-lucide="x" style="width: 14px; height: 14px;"></i></button>
         </div>
@@ -38468,8 +38476,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── WebRTC Live Game Streaming Variables ──
   const rtcConfig = {
     iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
+      { urls: 'stun:turn.trasx.com:3478' },
+      {
+        urls: 'turn:turn.trasx.com:3478',
+        username: 'trasx',
+        credential: 'MotDePasseTresFort123'
+      },
+      {
+        urls: 'turns:turn.trasx.com:5349',
+        username: 'trasx',
+        credential: 'MotDePasseTresFort123'
+      }
     ]
   };
 
