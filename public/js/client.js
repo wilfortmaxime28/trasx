@@ -5254,12 +5254,17 @@ document.addEventListener('DOMContentLoaded', () => {
         { urls: 'stun:stun4.l.google.com:19302' },
         { urls: 'stun:turn.trasx.com:3478' },
         {
-          urls: 'turn:turn.trasx.com:3478',
+          urls: [
+            'turn:turn.trasx.com:3478?transport=udp',
+            'turn:turn.trasx.com:3478?transport=tcp'
+          ],
           username: 'trasx',
           credential: 'MotDePasseTresFort123'
         },
         {
-          urls: 'turns:turn.trasx.com:5349',
+          urls: [
+            'turns:turn.trasx.com:5349?transport=tcp'
+          ],
           username: 'trasx',
           credential: 'MotDePasseTresFort123'
         }
@@ -38722,12 +38727,17 @@ document.addEventListener('DOMContentLoaded', () => {
       { urls: 'stun:stun4.l.google.com:19302' },
       { urls: 'stun:turn.trasx.com:3478' },
       {
-        urls: 'turn:turn.trasx.com:3478',
+        urls: [
+          'turn:turn.trasx.com:3478?transport=udp',
+          'turn:turn.trasx.com:3478?transport=tcp'
+        ],
         username: 'trasx',
         credential: 'MotDePasseTresFort123'
       },
       {
-        urls: 'turns:turn.trasx.com:5349',
+        urls: [
+          'turns:turn.trasx.com:5349?transport=tcp'
+        ],
         username: 'trasx',
         credential: 'MotDePasseTresFort123'
       }
