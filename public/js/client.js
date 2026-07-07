@@ -5266,13 +5266,21 @@ document.addEventListener('DOMContentLoaded', () => {
       if (callPC) return;
 
       callPC = new RTCPeerConnection(rtcConfig);
-      remoteStream = new MediaStream();
+      remoteStream = null;
 
-      const remoteVideo = document.getElementById('mock-remote-video');
-      if (remoteVideo) {
-        remoteVideo.srcObject = remoteStream;
-        remoteVideo.volume = isSpeakerMuted ? 0 : 1;
-      }
+      // ICE state listeners for troubleshooting
+      callPC.oniceconnectionstatechange = () => {
+        console.log('ICE Connection State:', callPC.iceConnectionState);
+        if (callPC.iceConnectionState === 'failed') {
+          showToast(getPageLocale() === 'fr' 
+            ? "Échec de connexion WebRTC (Pare-feu/NAT bloquant)" 
+            : "WebRTC connection failed (Firewall/NAT blocking)");
+        }
+      };
+
+      callPC.onconnectionstatechange = () => {
+        console.log('Peer Connection State:', callPC.connectionState);
+      };
 
       if (mediaStream) {
         mediaStream.getTracks().forEach(track => {
@@ -5282,21 +5290,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
       callPC.ontrack = (event) => {
         const incomingStream = event.streams[0] || new MediaStream([event.track]);
-        incomingStream.getTracks().forEach(track => {
-          const tracks = remoteStream.getTracks();
-          const alreadyAdded = tracks.some(t => t.id === track.id);
-          if (!alreadyAdded) {
-            remoteStream.addTrack(track);
-          }
-        });
 
-        const rVideo = document.getElementById('mock-remote-video');
-        if (rVideo) {
-          rVideo.srcObject = remoteStream;
-          if (isVideo) {
-            rVideo.play().catch(e => console.warn('Remote media play error:', e));
-            applyVideoLayout();
+        if (event.track.kind === 'video') {
+          remoteStream = incomingStream;
+          const rVideo = document.getElementById('mock-remote-video');
+          if (rVideo) {
+            rVideo.srcObject = remoteStream;
+            rVideo.muted = true;
+            rVideo.play()
+              .then(() => {
+                applyVideoLayout();
+              })
+              .catch(e => {
+                console.warn('Remote video play error:', e);
+                applyVideoLayout();
+              });
           }
+        } else if (event.track.kind === 'audio') {
+          let remoteAudio = document.getElementById('mock-remote-audio');
+          if (!remoteAudio) {
+            remoteAudio = document.createElement('audio');
+            remoteAudio.id = 'mock-remote-audio';
+            remoteAudio.autoplay = true;
+            document.body.appendChild(remoteAudio);
+          }
+          remoteAudio.srcObject = incomingStream;
+          remoteAudio.volume = isSpeakerMuted ? 0 : 1;
+          remoteAudio.play().catch(e => console.warn('Remote audio play error:', e));
         }
       };
 
