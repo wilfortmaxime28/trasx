@@ -5313,10 +5313,11 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         });
 
-        if (remoteVideo) {
-          remoteVideo.srcObject = remoteStream;
+        const rVideo = document.getElementById('mock-remote-video');
+        if (rVideo) {
+          rVideo.srcObject = remoteStream;
           if (isVideo) {
-            remoteVideo.play().catch(e => console.warn('Remote media play error:', e));
+            rVideo.play().catch(e => console.warn('Remote media play error:', e));
             applyVideoLayout();
           }
         }
