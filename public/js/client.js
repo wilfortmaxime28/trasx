@@ -5084,9 +5084,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!remoteArea || !localCard) return;
 
-      const hasVideoTrack = remoteVideo && remoteVideo.srcObject && 
-                           (remoteVideo.srcObject.getVideoTracks && remoteVideo.srcObject.getVideoTracks().length > 0);
-
       if (avatarRing) avatarRing.style.display = 'none';
       if (middleArea) {
         middleArea.style.height = '100%';
@@ -5128,21 +5125,11 @@ document.addEventListener('DOMContentLoaded', () => {
           remoteVideo.style.borderRadius = '0';
           remoteVideo.style.border = 'none';
           remoteVideo.style.zIndex = '1';
-          remoteVideo.style.display = hasVideoTrack ? 'block' : 'none';
+          remoteVideo.style.display = 'block';
         }
 
         if (remoteAvatarImg) {
-          remoteAvatarImg.style.position = 'absolute';
-          remoteAvatarImg.style.top = '50%';
-          remoteAvatarImg.style.left = '50%';
-          remoteAvatarImg.style.transform = 'translate(-50%, -50%)';
-          remoteAvatarImg.style.width = '50px';
-          remoteAvatarImg.style.height = '50px';
-          remoteAvatarImg.style.borderRadius = '50%';
-          remoteAvatarImg.style.border = '2px solid white';
-          remoteAvatarImg.style.objectFit = 'cover';
-          remoteAvatarImg.style.zIndex = '2';
-          remoteAvatarImg.style.display = hasVideoTrack ? 'none' : 'block';
+          remoteAvatarImg.style.display = 'none';
         }
 
         // Local Card becomes fullscreen background
@@ -5197,21 +5184,11 @@ document.addEventListener('DOMContentLoaded', () => {
           remoteVideo.style.borderRadius = '0';
           remoteVideo.style.border = 'none';
           remoteVideo.style.zIndex = '1';
-          remoteVideo.style.display = hasVideoTrack ? 'block' : 'none';
+          remoteVideo.style.display = 'block';
         }
 
         if (remoteAvatarImg) {
-          remoteAvatarImg.style.position = 'fixed';
-          remoteAvatarImg.style.top = '0';
-          remoteAvatarImg.style.left = '0';
-          remoteAvatarImg.style.transform = 'none';
-          remoteAvatarImg.style.width = '100vw';
-          remoteAvatarImg.style.height = '100vh';
-          remoteAvatarImg.style.borderRadius = '0';
-          remoteAvatarImg.style.border = 'none';
-          remoteAvatarImg.style.objectFit = 'cover';
-          remoteAvatarImg.style.zIndex = '1';
-          remoteAvatarImg.style.display = hasVideoTrack ? 'none' : 'block';
+          remoteAvatarImg.style.display = 'none';
         }
 
         // Local Card becomes the small PIP card
