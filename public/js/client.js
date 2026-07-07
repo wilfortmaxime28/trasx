@@ -5084,6 +5084,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!remoteArea || !localCard) return;
 
+      const hasVideoTrack = remoteVideo && remoteVideo.srcObject && 
+                           (remoteVideo.srcObject.getVideoTracks && remoteVideo.srcObject.getVideoTracks().length > 0);
+
       if (avatarRing) avatarRing.style.display = 'none';
       if (middleArea) {
         middleArea.style.height = '100%';
@@ -5125,7 +5128,7 @@ document.addEventListener('DOMContentLoaded', () => {
           remoteVideo.style.borderRadius = '0';
           remoteVideo.style.border = 'none';
           remoteVideo.style.zIndex = '1';
-          remoteVideo.style.display = remoteVideo.srcObject ? 'block' : 'none';
+          remoteVideo.style.display = hasVideoTrack ? 'block' : 'none';
         }
 
         if (remoteAvatarImg) {
@@ -5139,7 +5142,7 @@ document.addEventListener('DOMContentLoaded', () => {
           remoteAvatarImg.style.border = '2px solid white';
           remoteAvatarImg.style.objectFit = 'cover';
           remoteAvatarImg.style.zIndex = '2';
-          remoteAvatarImg.style.display = remoteVideo.srcObject ? 'none' : 'block';
+          remoteAvatarImg.style.display = hasVideoTrack ? 'none' : 'block';
         }
 
         // Local Card becomes fullscreen background
@@ -5194,7 +5197,7 @@ document.addEventListener('DOMContentLoaded', () => {
           remoteVideo.style.borderRadius = '0';
           remoteVideo.style.border = 'none';
           remoteVideo.style.zIndex = '1';
-          remoteVideo.style.display = remoteVideo.srcObject ? 'block' : 'none';
+          remoteVideo.style.display = hasVideoTrack ? 'block' : 'none';
         }
 
         if (remoteAvatarImg) {
@@ -5208,7 +5211,7 @@ document.addEventListener('DOMContentLoaded', () => {
           remoteAvatarImg.style.border = 'none';
           remoteAvatarImg.style.objectFit = 'cover';
           remoteAvatarImg.style.zIndex = '1';
-          remoteAvatarImg.style.display = remoteVideo.srcObject ? 'none' : 'block';
+          remoteAvatarImg.style.display = hasVideoTrack ? 'none' : 'block';
         }
 
         // Local Card becomes the small PIP card
@@ -5311,12 +5314,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (remoteVideo) {
+          remoteVideo.srcObject = remoteStream;
           if (isVideo) {
-            remoteVideo.style.display = 'block';
-            const remoteAvatarImg = document.getElementById('remote-avatar-img');
-            if (remoteAvatarImg) remoteAvatarImg.style.display = 'none';
+            remoteVideo.play().catch(e => console.warn('Remote media play error:', e));
+            applyVideoLayout();
           }
-          remoteVideo.play().catch(e => console.warn('Remote media play error:', e));
         }
       };
 
