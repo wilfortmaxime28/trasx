@@ -5542,36 +5542,49 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         middleArea.style.cssText = 'position: relative; z-index: 3; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;';
 
-        const gridContainer = document.createElement('div');
-        gridContainer.style.cssText = `
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-          gap: 16px;
-          width: 90%;
-          max-width: 600px;
-          aspect-ratio: 4/3;
-          margin: 10px auto;
-        `;
-
         const allParticipantsToRender = [
           { name: 'Moi', avatar: currentUserAvatar, isJoined: true, isMe: true },
           ...activeParticipants
         ];
 
+        let columnsCount = 2;
+        const total = allParticipantsToRender.length;
+        if (total <= 2) {
+          columnsCount = 2;
+        } else if (total === 3 || total === 4) {
+          columnsCount = 2;
+        } else {
+          columnsCount = 3;
+        }
+
+        const gridContainer = document.createElement('div');
+        gridContainer.style.cssText = `
+          display: grid;
+          grid-template-columns: repeat(${columnsCount}, 1fr);
+          gap: 12px;
+          width: 90%;
+          max-width: ${total > 2 ? '680px' : '520px'};
+          margin: 10px auto;
+          box-sizing: border-box;
+          padding: 10px;
+        `;
+
         allParticipantsToRender.forEach(p => {
           const card = document.createElement('div');
           card.style.cssText = `
-            background: #1f2937;
-            border-radius: 16px;
+            background: rgba(31, 41, 55, 0.45);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 20px;
             overflow: hidden;
-            border: 2px solid ${p.isMe ? 'var(--primary)' : 'rgba(255,255,255,0.1)'};
+            border: 2px solid ${p.isMe ? 'var(--primary)' : 'rgba(255,255,255,0.08)'};
             position: relative;
-            aspect-ratio: 1;
+            aspect-ratio: 4/3;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
-            transition: all 0.3s ease;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           `;
 
           if (p.isMe && isVideo) {
@@ -5587,36 +5600,57 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isVideoOff) {
               video.style.display = 'none';
               const placeholder = document.createElement('div');
-              placeholder.innerHTML = `<img src="${p.avatar}" style="width: 64px; height: 64px; border-radius: 50%; border: 2px solid white;">`;
+              placeholder.style.cssText = 'position: relative; display: flex; align-items: center; justify-content: center;';
+              placeholder.innerHTML = `
+                <div style="position: absolute; width: 72px; height: 72px; border-radius: 50%; background: var(--primary); opacity: 0.15; filter: blur(8px); animation: pulse 2s infinite;"></div>
+                <img src="${p.avatar}" style="width: 58px; height: 58px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); box-shadow: 0 8px 25px rgba(0,0,0,0.5); z-index: 2;">
+              `;
               card.appendChild(placeholder);
             }
           } else {
             if (!p.isJoined) {
               card.innerHTML = `
-                <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 10px;">
-                  <img src="${p.avatar}" style="width: 56px; height: 56px; border-radius: 50%; opacity: 0.5;">
-                  <span style="font-size: 10px; color: #eab308; font-weight: 600; display: flex; align-items: center; gap: 4px;">
-                    <span class="call-wave-bar" style="width: 2px; height: 6px; background: #eab308; animation: call-wave-anim 1s infinite;"></span>
-                    Appel...
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; width: 100%; height: 100%; background: rgba(0,0,0,0.25);">
+                  <div style="position: relative;">
+                    <div style="position: absolute; inset: -4px; border-radius: 50%; border: 2px dashed rgba(234, 179, 8, 0.4); animation: spin 4s linear infinite;"></div>
+                    <img src="${p.avatar}" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; opacity: 0.65; border: 2px solid rgba(255,255,255,0.1);">
+                  </div>
+                  <span style="font-size: 10px; color: #f59e0b; font-weight: 700; display: flex; align-items: center; gap: 5px; letter-spacing: 0.5px; text-transform: uppercase;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: #f59e0b; display: inline-block; animation: pulse 1.5s infinite;"></span>
+                    Appel en cours...
                   </span>
                 </div>
               `;
             } else {
-              card.innerHTML = `
-                <div style="width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; background: #111827;">
-                  <img src="${p.avatar}" style="width: 72px; height: 72px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
-                  ${isVideo ? `
-                    <div style="position: absolute; top: 8px; right: 8px; background: rgba(16,185,129,0.2); padding: 2px 6px; border-radius: 8px; font-size: 8px; font-weight: 700; color: #10b981; border: 1px solid rgba(16,185,129,0.4);">MOCK VIDEO</div>
-                  ` : `
-                    <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; border: 2px solid var(--primary); border-radius: 16px; opacity: 0.6; animation: call-ring-pulse 2s infinite ease-in-out;"></div>
-                  `}
-                </div>
-              `;
+              if (isVideo) {
+                card.innerHTML = `
+                  <div style="width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #1e1b4b 0%, #311042 100%);">
+                    <div style="position: absolute; inset: 0; background: linear-gradient(45deg, rgba(99,102,241,0.1) 0%, rgba(139,92,246,0.1) 100%);"></div>
+                    <div style="position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+                      <div style="position: relative;">
+                        <div style="position: absolute; inset: -3px; border-radius: 50%; background: #10b981; opacity: 0.2; filter: blur(4px); animation: pulse 2s infinite;"></div>
+                        <img src="${p.avatar}" style="width: 58px; height: 58px; border-radius: 50%; border: 2px solid #10b981; box-shadow: 0 8px 20px rgba(0,0,0,0.4); object-fit: cover;">
+                      </div>
+                    </div>
+                    <div style="position: absolute; top: 10px; right: 10px; background: rgba(16, 185, 129, 0.2); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); padding: 3px 8px; border-radius: 20px; font-size: 8px; font-weight: 700; color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); display: flex; align-items: center; gap: 3px; z-index: 5;">
+                      <span style="width: 5px; height: 5px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
+                      FLUX VIDEO
+                    </div>
+                  </div>
+                `;
+              } else {
+                card.innerHTML = `
+                  <div style="width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; background: #111827;">
+                    <div style="position: absolute; inset: 0; border: 2px solid var(--primary); border-radius: 20px; opacity: 0.3; animation: call-ring-pulse 2s infinite ease-in-out;"></div>
+                    <img src="${p.avatar}" style="width: 58px; height: 58px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); box-shadow: 0 8px 20px rgba(0,0,0,0.4); object-fit: cover;">
+                  </div>
+                `;
+              }
             }
           }
 
           const badge = document.createElement('div');
-          badge.style.cssText = 'position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 600; color: white; backdrop-filter: blur(4px); z-index: 5;';
+          badge.style.cssText = 'position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 8px; font-size: 9px; font-weight: 700; color: white; backdrop-filter: blur(4px); z-index: 5;';
           badge.textContent = p.name;
           card.appendChild(badge);
 
