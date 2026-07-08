@@ -18,6 +18,8 @@ module.exports = function(socket, io) {
       room.paidUsers = new Set(); // Track who has already paid
 
       const peer = room.addPeer(hostId, socket.id);
+      peer.name = hostName || 'Animateur';
+      peer.avatar = hostAvatar || '/assets/avatar_placeholder.jpg';
       
       socket.roomId = roomId;
       socket.peerId = hostId;

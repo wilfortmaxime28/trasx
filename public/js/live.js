@@ -75,7 +75,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       liveSpeakRequestBtn.title = 'Quitter la présentation';
       if (liveSpeakRequestBadge) liveSpeakRequestBadge.style.display = 'none';
       if (liveSpeakRequestIcon) {
-        liveSpeakRequestIcon.setAttribute('data-lucide', 'mic-off');
+        liveSpeakRequestIcon.setAttribute('data-lucide', 'phone-off');
         if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [liveSpeakRequestBtn] });
       }
     }
@@ -718,7 +718,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         liveSpeakRequestBtn.title = 'Quitter la présentation';
         if (liveSpeakRequestBadge) liveSpeakRequestBadge.style.display = 'none';
         if (liveSpeakRequestIcon) {
-          liveSpeakRequestIcon.setAttribute('data-lucide', 'mic-off');
+          liveSpeakRequestIcon.setAttribute('data-lucide', 'phone-off');
           if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [liveSpeakRequestBtn] });
         }
       }
