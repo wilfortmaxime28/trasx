@@ -6662,16 +6662,11 @@ body[data-theme="dark"] .birthday-feed-card-shell::before {
   display: none;
 }
 
-body.viewing-shorts .shorts-mobile-search-btn,
-body.viewing-shorts .shorts-mobile-live-btn {
-  display: inline-flex !important;
-}
-
 .shorts-mobile-live-btn {
-  position: absolute;
+  position: fixed;
   top: 14px;
   right: 70px;
-  z-index: 120;
+  z-index: 2000;
   width: 42px;
   height: 42px;
   border-radius: 50%;
@@ -6686,10 +6681,10 @@ body.viewing-shorts .shorts-mobile-live-btn {
 }
 
 .shorts-mobile-search-btn {
-  position: absolute;
+  position: fixed;
   top: 14px;
   right: 14px;
-  z-index: 120;
+  z-index: 2000;
   width: 42px;
   height: 42px;
   border-radius: 50%;
@@ -6963,6 +6958,11 @@ body.viewing-shorts .shorts-mobile-live-btn {
 
   body.viewing-shorts .mobile-nav-item.active {
     color: var(--shorts-bottom-bar-icon-active) !important;
+  }
+
+  body.viewing-shorts .shorts-mobile-search-btn,
+  body.viewing-shorts .shorts-mobile-live-btn {
+    display: inline-flex !important;
   }
 
   /* Hide the desktop-style shorts header on mobile and keep only the search button */
@@ -13337,13 +13337,15 @@ body[data-theme="dark"] .compose-contact-chip {
 }
 
 @media screen and (min-width: 769px) and (max-width: 1080px) {
-  body.viewing-shorts .desktop-short-create-btn {
+  body.viewing-shorts .desktop-short-create-btn,
+  body.viewing-shorts .desktop-live-create-btn {
     width: 42px;
     padding: 0;
     border-radius: 50%;
   }
 
-  body.viewing-shorts .desktop-short-create-btn span {
+  body.viewing-shorts .desktop-short-create-btn span,
+  body.viewing-shorts .desktop-live-create-btn span {
     display: none;
   }
 }
