@@ -945,6 +945,15 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     liveChatMessages.scrollTop = liveChatMessages.scrollHeight;
   });
 
+  // Socket: Viewer left notification
+  socket.on('live:viewerLeft', ({ peerId }) => {
+    const peerIdStr = String(peerId);
+    if (activeParticipants.has(peerIdStr)) {
+      activeParticipants.delete(peerIdStr);
+      updateVideoGrid();
+    }
+  });
+
   // --- Follow Button Actions ---
   if (liveFollowBtn) {
     liveFollowBtn.addEventListener('click', () => {
