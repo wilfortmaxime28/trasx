@@ -37,6 +37,9 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const liveChatInput = document.getElementById('liveChatInput');
   const sendLiveChatBtn = document.getElementById('sendLiveChatBtn');
+  const liveChatMessages = document.getElementById('liveChatMessages');
+  const liveFollowBtn = document.getElementById('liveFollowBtn');
+  const liveGiftBtn = document.getElementById('liveGiftBtn');
   const activeLivesContainer = document.getElementById('activeLivesContainer');
   const activeLivesList = document.getElementById('activeLivesList');
 
@@ -89,6 +92,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // Call refresh initially
   refreshActiveLives();
 
+  const stopAllOtherPlayback = () => {
+    document.querySelectorAll('video, audio').forEach(el => {
+      if (el.id !== 'liveHostVideo' && el.id !== 'liveGuestVideo' && el.id !== 'localVideo' && el.id !== 'remoteVideo') {
+        try {
+          el.pause();
+        } catch (e) {
+          console.warn(e);
+        }
+      }
+    });
+  };
+
   // Modals management
   const openLiveBtns = [openLiveCreateModalBtn, shortsMobileLiveBtn, desktopLiveCreateBtn];
   openLiveBtns.forEach(btn => {
@@ -111,6 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const roomId = `live-${window.currentUserId}`; // Room ID based on Host user ID
       
       try {
+        stopAllOtherPlayback();
         isHost = true;
         isSpeaker = true;
         currentRoomId = roomId;
@@ -121,6 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Show overlay
         liveOverlayViewer.style.display = 'flex';
+        if (liveFollowBtn) liveFollowBtn.style.display = 'none';
         liveHostVideo.srcObject = localStream;
         liveHostVideo.style.transform = 'scaleX(-1)'; // Mirror for host self preview
         liveHostName.textContent = 'Moi (Animateur)';
@@ -157,11 +174,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // Join Live as Spectator
   const joinLive = async (roomId) => {
     try {
+      stopAllOtherPlayback();
       isHost = false;
       isSpeaker = false;
       currentRoomId = roomId;
       
       liveOverlayViewer.style.display = 'flex';
+      if (liveFollowBtn) {
+        liveFollowBtn.style.display = 'inline-block';
+        liveFollowBtn.textContent = 'Suivre';
+        liveFollowBtn.style.background = '#ef4444';
+        liveFollowBtn.disabled = false;
+      }
       liveHostVideo.srcObject = null;
       liveHostVideo.style.transform = 'none';
       
@@ -484,12 +508,27 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (sendTransport) { sendTransport.close(); sendTransport = null; }
     if (recvTransport) { recvTransport.close(); recvTransport = null; }
-    
-    liveOverlayViewer.style.display = 'none';
+       liveOverlayViewer.style.display = 'none';
     liveGuestCard.style.display = 'none';
     liveMicToggleBtn.style.display = 'none';
     liveCamToggleBtn.style.display = 'none';
     liveSpeakRequestBtn.style.display = 'none';
+    
+    // Reset Chat & Follow button
+    if (liveChatMessages) {
+      liveChatMessages.innerHTML = `
+        <div style="background: rgba(0,0,0,0.3); padding: 6px 12px; border-radius: 12px; font-size: 12px; line-height: 1.4; display: inline-block; align-self: flex-start; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.05);">
+          <span style="font-weight: 700; color: #10b981; margin-right: 6px;">Système</span>
+          <span style="color: #e5e7eb;">Bienvenue dans le chat du direct ! Restez poli et courtois.</span>
+        </div>
+      `;
+    }
+    if (liveFollowBtn) {
+      liveFollowBtn.style.display = 'none';
+      liveFollowBtn.textContent = 'Suivre';
+      liveFollowBtn.style.background = '#ef4444';
+      liveFollowBtn.disabled = false;
+    }
     
     currentRoomId = null;
     isHost = false;
@@ -510,6 +549,141 @@ document.addEventListener('DOMContentLoaded', () => {
           socket.emit('live:leave', { roomId: currentRoomId, peerId: window.currentUserId });
           cleanUpLive();
         }
+      }
+    });
+  }
+
+  // --- Live Chat Client Logic ---
+  const sendLiveChatMessage = () => {
+    if (!currentRoomId || !liveChatInput) return;
+    const text = liveChatInput.value.trim();
+    if (!text) return;
+
+    const userAvatar = document.querySelector('.profile-btn img')?.getAttribute('src') || '/assets/avatar_placeholder.jpg';
+    socket.emit('live:chatMessage', {
+      roomId: currentRoomId,
+      peerId: window.currentUserId,
+      name: window.currentUserUsername || 'Anonyme',
+      avatar: userAvatar,
+      message: text
+    });
+    liveChatInput.value = '';
+  };
+
+  if (sendLiveChatBtn) {
+    sendLiveChatBtn.addEventListener('click', sendLiveChatMessage);
+  }
+  if (liveChatInput) {
+    liveChatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        sendLiveChatMessage();
+      }
+    });
+  }
+
+  // Socket: Receive Live Chat Message
+  socket.on('live:chatMessage', ({ peerId, name, avatar, message }) => {
+    if (!liveChatMessages) return;
+
+    const msgDiv = document.createElement('div');
+    msgDiv.style.background = 'rgba(0,0,0,0.35)';
+    msgDiv.style.padding = '6px 12px';
+    msgDiv.style.borderRadius = '12px';
+    msgDiv.style.fontSize = '12px';
+    msgDiv.style.lineHeight = '1.4';
+    msgDiv.style.display = 'inline-block';
+    msgDiv.style.alignSelf = 'flex-start';
+    msgDiv.style.backdropFilter = 'blur(4px)';
+    msgDiv.style.webkitBackdropFilter = 'blur(4px)';
+    msgDiv.style.border = '1px solid rgba(255,255,255,0.05)';
+    msgDiv.style.marginBottom = '4px';
+
+    // Customize system style vs user style
+    if (peerId === 'system-follow') {
+      msgDiv.innerHTML = `
+        <span style="font-weight: 700; color: #ff2d55; margin-right: 6px;">${name}</span>
+        <span style="color: #ff85a2; font-style: italic;">${message}</span>
+      `;
+    } else if (peerId === 'system-gift') {
+      msgDiv.innerHTML = `
+        <span style="font-weight: 700; color: #ff85a2; margin-right: 6px;">${name}</span>
+        <span style="color: #ffd166; font-weight: bold;">${message}</span>
+      `;
+      // Trigger local floating animation
+      showFloatingRose();
+    } else {
+      // Normal chat message
+      const isHostMsg = (peerId === currentRoomId.replace('live-', ''));
+      const nameColor = isHostMsg ? '#ffd166' : '#f3f4f6';
+      const badgeHtml = isHostMsg ? '<span style="font-size: 8px; background: #ef4444; color: white; padding: 1px 4px; border-radius: 4px; font-weight: 800; margin-right: 6px; vertical-align: middle;">HÔTE</span>' : '';
+      
+      msgDiv.innerHTML = `
+        ${badgeHtml}<span style="font-weight: 700; color: ${nameColor}; margin-right: 6px; vertical-align: middle;">${name}</span>
+        <span style="color: #e5e7eb; vertical-align: middle;">${message}</span>
+      `;
+    }
+
+    liveChatMessages.appendChild(msgDiv);
+    liveChatMessages.scrollTop = liveChatMessages.scrollHeight;
+  });
+
+  // --- Follow Button Actions ---
+  if (liveFollowBtn) {
+    liveFollowBtn.addEventListener('click', () => {
+      liveFollowBtn.textContent = 'Suivi';
+      liveFollowBtn.style.background = 'rgba(255,255,255,0.2)';
+      liveFollowBtn.disabled = true;
+
+      // Broadcast system notice
+      if (currentRoomId) {
+        socket.emit('live:chatMessage', {
+          roomId: currentRoomId,
+          peerId: 'system-follow',
+          name: window.currentUserUsername || 'Anonyme',
+          avatar: '',
+          message: "a commencé à suivre l'animateur ! 💖"
+        });
+      }
+    });
+  }
+
+  // --- Gift Button / Rose Click ---
+  const showFloatingRose = () => {
+    if (!liveOverlayViewer) return;
+    const rose = document.createElement('div');
+    rose.innerHTML = '🌹';
+    rose.style.position = 'absolute';
+    rose.style.bottom = '120px';
+    rose.style.right = (20 + Math.random() * 35) + 'px';
+    rose.style.fontSize = '26px';
+    rose.style.zIndex = '150';
+    rose.style.pointerEvents = 'none';
+    rose.style.transition = 'transform 1.5s cubic-bezier(0.25, 1, 0.50, 1), opacity 1.5s ease-out';
+    rose.style.transform = 'translateY(0) scale(0.6)';
+    rose.style.opacity = '1';
+    liveOverlayViewer.appendChild(rose);
+    
+    // Trigger animation
+    requestAnimationFrame(() => {
+      rose.style.transform = `translateY(-260px) translateX(${(Math.random() - 0.5) * 80}px) scale(1.6)`;
+      rose.style.opacity = '0';
+    });
+    
+    setTimeout(() => {
+      rose.remove();
+    }, 1500);
+  };
+
+  if (liveGiftBtn) {
+    liveGiftBtn.addEventListener('click', () => {
+      if (currentRoomId) {
+        socket.emit('live:chatMessage', {
+          roomId: currentRoomId,
+          peerId: 'system-gift',
+          name: window.currentUserUsername || 'Anonyme',
+          avatar: '',
+          message: 'a envoyé une Rose ! 🌹'
+        });
       }
     });
   }

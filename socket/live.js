@@ -135,4 +135,9 @@ module.exports = function(socket, io) {
   socket.on('live:removeSpeaker', ({ roomId, peerId }) => {
     socket.to(roomId).emit('live:removeSpeaker', { peerId });
   });
+
+  // Message de chat en direct
+  socket.on('live:chatMessage', ({ roomId, peerId, name, avatar, message }) => {
+    io.to(roomId).emit('live:chatMessage', { peerId, name, avatar, message });
+  });
 };
