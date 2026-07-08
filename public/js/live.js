@@ -1208,6 +1208,9 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     liveViewerCountBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       updateSpectatorsModalUI();
+      if (spectatorsListModal) {
+        spectatorsListModal.style.display = 'flex';
+      }
       if (spectatorsListModalOverlay) {
         spectatorsListModalOverlay.style.display = 'flex';
         spectatorsListModalOverlay.style.zIndex = '29999';
