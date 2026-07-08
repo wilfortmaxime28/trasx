@@ -24662,3 +24662,21 @@ body.dark-mode .skeleton-base {
     transform: scaleY(1.2);
   }
 }
+
+/* ── Live bottom bar ─────────────────────────────── */
+@keyframes live-badge-pulse {
+  0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgba(245,158,11,0.7); }
+  70%  { transform: scale(1.1); box-shadow: 0 0 0 5px rgba(245,158,11,0); }
+  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+}
+
+/* All live icon buttons stay perfectly round no matter what */
+#liveOverlayViewer button[style*="border-radius: 50%"],
+#liveMicToggleBtn,
+#liveCamToggleBtn,
+#liveSpeakRequestBtn,
+#liveRemoveSpeakerBtn,
+#liveGiftBtn {
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+}

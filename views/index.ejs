@@ -5622,7 +5622,7 @@ function getYouTubeId(url) {
           </div>
 
           <!-- Bottom Area: Chat en direct & Contrôles (TikTok Style) -->
-          <div style="position: relative; z-index: 10; padding: 20px 16px; display: flex; flex-direction: column; gap: 12px; background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);">
+          <div style="position: relative; z-index: 10; padding: 16px 16px 20px; display: flex; flex-direction: column; gap: 12px; background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);">
             
             <!-- Notification demande parole (Pour l'Hôte uniquement) -->
             <div id="liveHostNotification" style="display: none; background: rgba(24,119,242,0.9); padding: 8px 12px; border-radius: 12px; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
@@ -5633,25 +5633,48 @@ function getYouTubeId(url) {
               </div>
             </div>
 
-            <!-- Boutons de Contrôles & Formulaire -->
-            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
+            <!-- Barre principale : Chat + Boutons icônes fixes -->
+            <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
               
-              <!-- Chat Input minimal à gauche -->
-              <div style="flex: 1; max-width: 240px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.15); border-radius: 20px; padding: 6px 12px; border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
-                <input type="text" id="liveChatInput" placeholder="Commenter..." style="flex: 1; background: transparent; border: none; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; outline: none; font-size: 13px; font-family: 'Inter', sans-serif;">
-                <button id="sendLiveChatBtn" style="background: none; border: none; color: #3b82f6; cursor: pointer; display: flex; align-items: center;"><i data-lucide="send" style="width: 14px; height: 14px;"></i></button>
+              <!-- Chat Input -->
+              <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.15); border-radius: 22px; padding: 8px 14px; border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+                <input type="text" id="liveChatInput" placeholder="Commenter..." style="flex: 1; min-width: 0; background: transparent; border: none; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; outline: none; font-size: 13px; font-family: 'Inter', sans-serif;">
+                <button id="sendLiveChatBtn" style="background: none; border: none; color: #3b82f6; cursor: pointer; display: flex; align-items: center; flex-shrink: 0; padding: 0;">
+                  <i data-lucide="send" style="width: 14px; height: 14px;"></i>
+                </button>
               </div>
 
-              <!-- Boutons de Contrôles & Cadeaux à droite -->
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <button id="liveMicToggleBtn" style="display: none; background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; border-radius: 50%; color: white; cursor: pointer; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);"><i data-lucide="mic" style="width: 16px; height: 16px;"></i></button>
-                <button id="liveCamToggleBtn" style="display: none; background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; border-radius: 50%; color: white; cursor: pointer; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);"><i data-lucide="video" style="width: 16px; height: 16px;"></i></button>
-                
-                <button id="liveSpeakRequestBtn" style="display: none; background: #3b82f6; border: none; padding: 8px 14px; border-radius: 20px; color: white; font-weight: 700; font-size: 11px; cursor: pointer; align-items: center; gap: 4px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);"><i data-lucide="mic" style="width: 12px; height: 12px;"></i> Parler</button>
-                <button id="liveRemoveSpeakerBtn" style="display: none; background: #3b82f6; border: none; padding: 8px 14px; border-radius: 20px; color: white; font-weight: 700; font-size: 11px; cursor: pointer; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">Spectateur</button>
+              <!-- Boutons icônes fixes (toujours 36x36, jamais de texte) -->
+              <div style="display: flex; gap: 8px; align-items: center; flex-shrink: 0;">
 
-                <!-- Bouton Cadeau (Visuel style TikTok) -->
-                <button id="liveGiftBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Envoyer un Cadeau"><i data-lucide="gift" style="color: #3b82f6; width: 18px; height: 18px;"></i></button>
+                <!-- Micro (Speaker mode) -->
+                <button id="liveMicToggleBtn" style="display: none; background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+                  <i data-lucide="mic" style="width: 16px; height: 16px; pointer-events: none;"></i>
+                </button>
+
+                <!-- Caméra (Speaker mode) -->
+                <button id="liveCamToggleBtn" style="display: none; background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+                  <i data-lucide="video" style="width: 16px; height: 16px; pointer-events: none;"></i>
+                </button>
+
+                <!-- Bouton Demander la parole — icône fixe uniquement -->
+                <!-- États : idle = bleu mic | pending = animé | rejected = reset -->
+                <button id="liveSpeakRequestBtn" style="display: none; background: #3b82f6; border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; align-items: center; justify-content: center; position: relative; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Demander à parler">
+                  <i id="liveSpeakRequestIcon" data-lucide="mic" style="width: 16px; height: 16px; pointer-events: none;"></i>
+                  <!-- Badge animé quand en attente -->
+                  <span id="liveSpeakRequestBadge" style="display: none; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; background: #f59e0b; border-radius: 50%; border: 2px solid rgba(0,0,0,0.5); animation: live-badge-pulse 1s infinite;"></span>
+                </button>
+
+                <!-- Retour spectateur (Host retire la parole) -->
+                <button id="liveRemoveSpeakerBtn" style="display: none; background: #3b82f6; border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Redevenir spectateur">
+                  <i data-lucide="user" style="width: 16px; height: 16px; pointer-events: none;"></i>
+                </button>
+
+                <!-- Bouton Cadeau -->
+                <button id="liveGiftBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Envoyer un Cadeau">
+                  <i data-lucide="gift" style="color: #3b82f6; width: 18px; height: 18px; pointer-events: none;"></i>
+                </button>
+
               </div>
             </div>
           </div>

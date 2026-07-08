@@ -420,6 +420,9 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   }
 
   // Speak requests logic (Spectator UI side)
+  const liveSpeakRequestBadge = document.getElementById('liveSpeakRequestBadge');
+  const liveSpeakRequestIcon = document.getElementById('liveSpeakRequestIcon');
+
   if (liveSpeakRequestBtn) {
     liveSpeakRequestBtn.addEventListener('click', () => {
       if (currentRoomId) {
@@ -428,9 +431,16 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
           peerId: window.currentUserId,
           name: window.currentUserDisplayName || window.currentUsername || 'Spectateur'
         });
-        liveSpeakRequestBtn.textContent = 'Demande envoyée...';
+        // Visual feedback: amber badge pulsing, button slightly muted
         liveSpeakRequestBtn.disabled = true;
-        liveSpeakRequestBtn.style.opacity = '0.6';
+        liveSpeakRequestBtn.style.background = '#f59e0b';
+        liveSpeakRequestBtn.style.opacity = '0.85';
+        liveSpeakRequestBtn.title = 'Demande envoyée...';
+        if (liveSpeakRequestBadge) liveSpeakRequestBadge.style.display = 'block';
+        if (liveSpeakRequestIcon) {
+          liveSpeakRequestIcon.setAttribute('data-lucide', 'loader');
+          if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [liveSpeakRequestBtn] });
+        }
       }
     });
   }
@@ -464,9 +474,16 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   socket.on('live:rejectSpeaker', ({ peerId }) => {
     if (peerId === window.currentUserId) {
       alert("L'hôte a décliné votre demande d'intervention.");
-      liveSpeakRequestBtn.textContent = 'Demander à intervenir';
+      // Reset button to idle state
       liveSpeakRequestBtn.disabled = false;
+      liveSpeakRequestBtn.style.background = '#3b82f6';
       liveSpeakRequestBtn.style.opacity = '1';
+      liveSpeakRequestBtn.title = 'Demander à parler';
+      if (liveSpeakRequestBadge) liveSpeakRequestBadge.style.display = 'none';
+      if (liveSpeakRequestIcon) {
+        liveSpeakRequestIcon.setAttribute('data-lucide', 'mic');
+        if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [liveSpeakRequestBtn] });
+      }
     }
   });
 
@@ -495,9 +512,15 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       
       // Reset request button
       liveSpeakRequestBtn.style.display = 'inline-flex';
-      liveSpeakRequestBtn.textContent = 'Demander à intervenir';
       liveSpeakRequestBtn.disabled = false;
+      liveSpeakRequestBtn.style.background = '#3b82f6';
       liveSpeakRequestBtn.style.opacity = '1';
+      liveSpeakRequestBtn.title = 'Demander à parler';
+      if (liveSpeakRequestBadge) liveSpeakRequestBadge.style.display = 'none';
+      if (liveSpeakRequestIcon) {
+        liveSpeakRequestIcon.setAttribute('data-lucide', 'mic');
+        if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [liveSpeakRequestBtn] });
+      }
     } else {
       // Hide guest card for other viewers
       liveGuestCard.style.display = 'none';
