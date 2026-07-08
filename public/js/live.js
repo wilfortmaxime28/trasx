@@ -1,12 +1,16 @@
 // TRASX Native Live Client integration (mediasoup + Socket.IO)
+console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined');
 
 (function initLive() {
+  console.log('[live.js] initLive() called, io:', typeof io, 'readyState:', document.readyState);
   if (typeof io === 'undefined') {
     // Fallback: socket.io not yet loaded, wait for it
+    console.log('[live.js] io not ready, waiting for DOMContentLoaded...');
     document.addEventListener('DOMContentLoaded', initLive);
     return;
   }
   const socket = io();
+  console.log('[live.js] socket created:', !!socket);
   
   // DOM Elements
   const openLiveCreateModalBtn = document.getElementById('openLiveCreateModalBtn');
@@ -16,6 +20,14 @@
   const closeLiveCreateModal = document.getElementById('closeLiveCreateModal');
   const startLiveBtn = document.getElementById('startLiveBtn');
   const liveTitleInput = document.getElementById('liveTitleInput');
+
+  console.log('[live.js] DOM elements found:', {
+    openLiveCreateModalBtn: !!openLiveCreateModalBtn,
+    shortsMobileLiveBtn: !!shortsMobileLiveBtn,
+    desktopLiveCreateBtn: !!desktopLiveCreateBtn,
+    liveCreateModal: !!liveCreateModal,
+    startLiveBtn: !!startLiveBtn
+  });
 
   const liveOverlayViewer = document.getElementById('liveOverlayViewer');
   const leaveLiveBtn = document.getElementById('leaveLiveBtn');
