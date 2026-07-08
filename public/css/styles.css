@@ -24680,3 +24680,33 @@ body.dark-mode .skeleton-base {
   flex-shrink: 0 !important;
   box-sizing: border-box !important;
 }
+/* ── Speaking pulse for live video tiles ─────────────────────────────── */
+[data-peer-id] {
+  transition: box-shadow 0.15s ease, outline 0.15s ease;
+}
+
+@keyframes speaking-ring-pulse {
+  0%   { box-shadow: 0 0 0 3px rgba(59,130,246,0.5), 0 0 0 6px rgba(59,130,246,0.15); }
+  50%  { box-shadow: 0 0 0 4px rgba(59,130,246,0.7), 0 0 0 10px rgba(59,130,246,0.08); }
+  100% { box-shadow: 0 0 0 3px rgba(59,130,246,0.5), 0 0 0 6px rgba(59,130,246,0.15); }
+}
+
+/* Live paid lock badge animate */
+@keyframes paid-badge-shine {
+  0%   { filter: brightness(1); }
+  50%  { filter: brightness(1.4); }
+  100% { filter: brightness(1); }
+}
+
+/* Payment modal backdrop ensure display flex */
+#livePaymentConfirmModal[style*="display: flex"] {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Recipient select styling in dark mode */
+#giftLiveRecipientSelect option {
+  background: #1e2230;
+  color: #f0f0f0;
+}

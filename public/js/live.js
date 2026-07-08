@@ -46,10 +46,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   
   let currentSpectators = [];
 
-  // Move spectator modal to body to avoid backdrop-filter blur from parent containers
-  if (spectatorsListModal && spectatorsListModal.parentElement !== document.body) {
-    document.body.appendChild(spectatorsListModal);
-  }
+  // Move only the overlay (which now wraps the modal) to body — fixes blur from parent containers
   if (spectatorsListModalOverlay && spectatorsListModalOverlay.parentElement !== document.body) {
     document.body.appendChild(spectatorsListModalOverlay);
   }
@@ -62,6 +59,8 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
 
   // Map of active video participants: peerId -> { peerId, stream, name, isHost }
   let activeParticipants = new Map();
+  // Expose globally so openLiveGiftModal in client.js can populate recipient list
+  window.currentLiveParticipants = activeParticipants;
 
   const liveHostNotification = document.getElementById('liveHostNotification');
   const liveHostNotificationText = document.getElementById('liveHostNotificationText');
@@ -190,6 +189,48 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     _suppressInterval = null;
   };
 
+  // ── Speaking pulse via AudioContext ──────────────────────────────────────
+  let _audioAnalysers = new Map(); // peerId -> { analyser, source, rafId }
+  const startSpeakingPulse = (peerId, stream) => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const check = () => {
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((s, v) => s + v, 0) / data.length;
+        const tile = liveVideoGrid?.querySelector(`[data-peer-id="${peerId}"]`);
+        if (tile) {
+          tile.style.outline = avg > 12 ? '3px solid #3b82f6' : 'none';
+          tile.style.outlineOffset = avg > 12 ? '0px' : '0px';
+          tile.style.boxShadow = avg > 12 ? '0 0 0 3px rgba(59,130,246,0.5)' : 'none';
+        }
+        _audioAnalysers.get(peerId).rafId = requestAnimationFrame(check);
+      };
+      _audioAnalysers.set(peerId, { analyser, source, ctx, rafId: requestAnimationFrame(check) });
+    } catch(e) { /* AudioContext blocked on some browsers */ }
+  };
+  const stopSpeakingPulse = (peerId) => {
+    const entry = _audioAnalysers.get(peerId);
+    if (entry) {
+      cancelAnimationFrame(entry.rafId);
+      try { entry.ctx.close(); } catch(e){}
+      _audioAnalysers.delete(peerId);
+    }
+  };
+
+  // ── Paid/Free toggle in liveCreateModal ──────────────────────────────────
+  const liveAccessTypeSelect = document.getElementById('liveAccessType');
+  const livePriceContainer   = document.getElementById('livePriceContainer');
+  if (liveAccessTypeSelect && livePriceContainer) {
+    liveAccessTypeSelect.addEventListener('change', () => {
+      livePriceContainer.style.display = liveAccessTypeSelect.value === 'paid' ? 'flex' : 'none';
+    });
+  }
+
   // Initial Load - Fetch Active Lives
   const refreshActiveLives = () => {
     if (!activeLivesContainer) return;
@@ -206,15 +247,21 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
           lives.forEach(live => {
             const item = document.createElement('div');
             item.style.cssText = 'display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; min-width: 60px;';
+            const borderColor = live.isPaid ? '#f59e0b' : '#ef4444';
+            const badgeBg    = live.isPaid ? '#f59e0b' : '#ef4444';
+            const lockBadge  = live.isPaid
+              ? `<span title="Payant — $${Number(live.price).toFixed(2)}" style="position:absolute;top:-3px;right:-3px;background:#f59e0b;color:white;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;border:2px solid #000;">🔒</span>`
+              : '';
             item.innerHTML = `
-              <div style="position: relative; width: 44px; height: 44px; border-radius: 50%; border: 2px solid #ef4444; padding: 2px;">
+              <div style="position: relative; width: 44px; height: 44px; border-radius: 50%; border: 2px solid ${borderColor}; padding: 2px;">
                 <img src="${live.hostAvatar || '/assets/avatar_placeholder.jpg'}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
-                <span style="position: absolute; bottom: -3px; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; font-size: 7px; font-weight: 800; padding: 1px 4px; border-radius: 4px; text-transform: uppercase; font-family: 'Outfit', sans-serif;">LIVE</span>
+                <span style="position: absolute; bottom: -3px; left: 50%; transform: translateX(-50%); background: ${badgeBg}; color: white; font-size: 7px; font-weight: 800; padding: 1px 4px; border-radius: 4px; text-transform: uppercase; font-family: 'Outfit', sans-serif;">LIVE</span>
+                ${lockBadge}
               </div>
               <span class="story-username" style="font-family: 'Outfit', sans-serif; font-size: 11px; font-weight: 500; color: var(--text-secondary); text-align: center; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${live.hostName}</span>
             `;
             item.addEventListener('click', () => joinLive(live.roomId));
-            activeLivesList.appendChild(item);
+          activeLivesList.appendChild(item);
           });
         }
       } else {
@@ -264,10 +311,12 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   // Create & Start Live
   if (startLiveBtn) {
     startLiveBtn.addEventListener('click', async () => {
-      const title = liveTitleInput.value.trim() || 'Live TRASX';
-      const roomId = `live-${window.currentUserId}`; // Room ID based on Host user ID
-      
-      try {
+        const title = liveTitleInput.value.trim() || 'Live TRASX';
+        const roomId = `live-${window.currentUserId}`;
+        const isPaid = liveAccessTypeSelect?.value === 'paid';
+        const price  = isPaid ? Number(document.getElementById('livePriceInput')?.value || 1) : 0;
+        
+        try {
         stopAllOtherPlayback();
         isHost = true;
         isSpeaker = true;
@@ -304,7 +353,9 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
           hostId: window.currentUserId,
           title,
           hostName: window.currentUserDisplayName || window.currentUsername || 'Animateur',
-          hostAvatar: liveHostAvatar.src
+          hostAvatar: liveHostAvatar.src,
+          isPaid,
+          price
         }, async ({ success, error }) => {
           if (error) throw new Error(error);
           
@@ -341,6 +392,33 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       const viewerAvatar = document.querySelector('.profile-btn img')?.getAttribute('src') || '/assets/avatar_placeholder.jpg';
       const viewerName = window.currentUserDisplayName || window.currentUsername || 'Anonyme';
       socket.emit('live:join', { roomId, peerId: window.currentUserId, name: viewerName, avatar: viewerAvatar }, async (response) => {
+        if (response.error === 'PAYMENT_REQUIRED') {
+          // Show payment confirmation modal
+          const payModal = document.getElementById('livePaymentConfirmModal');
+          const payText  = document.getElementById('livePaymentConfirmText');
+          const payCancel = document.getElementById('livePaymentCancelBtn');
+          const payAccept = document.getElementById('livePaymentAcceptBtn');
+          if (payModal && payText) {
+            payText.textContent = `Ce direct de ${response.hostName} nécessite des frais d'accès de $${Number(response.price).toFixed(2)}. Le montant sera débité de votre solde de dépôt.`;
+            payModal.style.display = 'flex';
+            payModal.setAttribute('aria-hidden', 'false');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            payCancel.onclick = () => { payModal.style.display = 'none'; cleanUpLive(); };
+            payAccept.onclick = () => {
+              payAccept.disabled = true;
+              payAccept.textContent = 'Paiement…';
+              socket.emit('live:pay-entry', { roomId }, (res) => {
+                payAccept.disabled = false;
+                payAccept.textContent = 'Payer et entrer';
+                if (res.error) { return alert(res.error); }
+                payModal.style.display = 'none';
+                joinLive(roomId); // retry — will pass now
+              });
+            };
+          }
+          return;
+        }
+
         if (response.error) {
           alert(response.error);
           cleanUpLive();
@@ -473,20 +551,16 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         document.body.appendChild(audioEl);
         consumer.audioElement = audioEl;
       } else if (kind === 'video') {
-        // Add or update participant in video grid
         const existing = activeParticipants.get(peerIdStr);
         const name = producerName || (isHostPeer ? 'Animateur' : 'Intervenant');
         if (existing) {
           existing.stream = stream;
         } else {
-          activeParticipants.set(peerIdStr, {
-            peerId: peerIdStr,
-            stream,
-            name,
-            isHost: isHostPeer
-          });
+          activeParticipants.set(peerIdStr, { peerId: peerIdStr, stream, name, isHost: isHostPeer });
         }
         updateVideoGrid();
+        // Start speaking pulse on audio tracks of the same peer's local stream if available
+        if (stream.getAudioTracks().length > 0) startSpeakingPulse(peerIdStr, stream);
       }
     });
   }

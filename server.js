@@ -8695,7 +8695,10 @@ io.on('connection', (socket) => {
         throw new Error('Le direct est inactif ou introuvable.');
       }
 
-      const recipientUserId = Number(room.hostId);
+      const recipientUserId = Number(data?.recipientUserId || room.hostId);
+      if (!room.peers.has(String(recipientUserId))) {
+        throw new Error("Le destinataire spécifié n'est pas ou plus connecté à ce direct.");
+      }
       if (recipientUserId === Number(senderId)) {
         throw new Error('Vous ne pouvez pas vous envoyer un cadeau a vous-meme.');
       }

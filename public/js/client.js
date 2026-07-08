@@ -4422,7 +4422,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const subtitle = modal.querySelector('#giftPostModalSubtitle');
     if (subtitle) {
-      subtitle.textContent = "Choisissez un cadeau à envoyer à l'animateur du direct.";
+      subtitle.textContent = "Choisissez un cadeau à envoyer dans le direct.";
+    }
+
+    // Populate recipient selector from live participants
+    const recipientSection = document.getElementById('giftLiveRecipientSection');
+    const recipientSelect  = document.getElementById('giftLiveRecipientSelect');
+    const participants     = window.currentLiveParticipants;
+    if (recipientSection && recipientSelect && participants && participants.size > 0) {
+      recipientSelect.innerHTML = '';
+      participants.forEach((p) => {
+        const opt = document.createElement('option');
+        opt.value = p.peerId;
+        opt.textContent = p.name + (p.isHost ? ' \uD83C\uDF99\uFE0F' : '');
+        recipientSelect.appendChild(opt);
+      });
+      recipientSection.style.display = participants.size > 1 ? 'flex' : 'none';
+    } else if (recipientSection) {
+      recipientSection.style.display = 'none';
     }
 
     const presetCards = modal.querySelectorAll('.gift-preset-card');
@@ -4767,10 +4784,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (activeGiftTargetType === 'live') {
         eventName = 'live-gift-send';
+        const recipientSelect = document.getElementById('giftLiveRecipientSelect');
+        const recipientUserId = recipientSelect?.value ? Number(recipientSelect.value) : null;
         payload = {
           roomId: window.activeGiftLiveRoomId,
           giftName: activeGiftSelection.name,
-          amount: Number(activeGiftSelection.amount)
+          amount: Number(activeGiftSelection.amount),
+          ...(recipientUserId ? { recipientUserId } : {})
         };
       } else if (activeGiftTargetType === 'birthday') {
         eventName = 'birthday-gift-send';
