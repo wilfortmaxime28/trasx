@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // DOM Elements
   const openLiveCreateModalBtn = document.getElementById('openLiveCreateModalBtn');
+  const shortsMobileLiveBtn = document.getElementById('shortsMobileLiveBtn');
+  const desktopLiveCreateBtn = document.getElementById('desktopLiveCreateBtn');
   const liveCreateModal = document.getElementById('liveCreateModal');
   const closeLiveCreateModal = document.getElementById('closeLiveCreateModal');
   const startLiveBtn = document.getElementById('startLiveBtn');
@@ -88,11 +90,14 @@ document.addEventListener('DOMContentLoaded', () => {
   refreshActiveLives();
 
   // Modals management
-  if (openLiveCreateModalBtn) {
-    openLiveCreateModalBtn.addEventListener('click', () => {
-      liveCreateModal.style.display = 'flex';
-    });
-  }
+  const openLiveBtns = [openLiveCreateModalBtn, shortsMobileLiveBtn, desktopLiveCreateBtn];
+  openLiveBtns.forEach(btn => {
+    if (btn) {
+      btn.addEventListener('click', () => {
+        liveCreateModal.style.display = 'flex';
+      });
+    }
+  });
   if (closeLiveCreateModal) {
     closeLiveCreateModal.addEventListener('click', () => {
       liveCreateModal.style.display = 'none';

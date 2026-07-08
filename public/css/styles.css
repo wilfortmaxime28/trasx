@@ -6657,8 +6657,27 @@ body[data-theme="dark"] .birthday-feed-card-shell::before {
 }
 
 .shorts-mobile-search-btn,
+.shorts-mobile-live-btn,
 .shorts-search-overlay {
   display: none;
+}
+
+.shorts-mobile-live-btn {
+  position: fixed;
+  top: 14px;
+  right: 70px;
+  z-index: 120;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.7);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(10px);
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
+  cursor: pointer;
 }
 
 .shorts-mobile-search-btn {
@@ -6942,6 +6961,10 @@ body[data-theme="dark"] .birthday-feed-card-shell::before {
   }
 
   body.viewing-shorts .shorts-mobile-search-btn {
+    display: inline-flex !important;
+  }
+
+  body.viewing-shorts .shorts-mobile-live-btn {
     display: inline-flex !important;
   }
 
@@ -13137,7 +13160,8 @@ body[data-theme="dark"] .compose-contact-chip {
   transform: scale(1.05);
 }
 
-.desktop-short-create-btn {
+.desktop-short-create-btn,
+.desktop-live-create-btn {
   display: none;
 }
 
@@ -13183,6 +13207,40 @@ body[data-theme="dark"] .compose-contact-chip {
 
   body.viewing-shorts .desktop-short-create-btn i,
   body.viewing-shorts .desktop-short-create-btn svg {
+    width: 16px;
+    height: 16px;
+    color: #ffffff;
+    stroke-width: 2.6;
+  }
+
+  body.viewing-shorts .desktop-live-create-btn {
+    height: 42px;
+    padding: 0 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(239, 68, 68, 0.18);
+    background: #ef4444;
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1;
+    flex: 0 0 auto;
+    cursor: pointer;
+    box-shadow: 0 8px 22px rgba(239, 68, 68, 0.20);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+  }
+
+  body.viewing-shorts .desktop-live-create-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 18px 42px rgba(239, 68, 68, 0.34);
+    background: #dc2626;
+  }
+
+  body.viewing-shorts .desktop-live-create-btn i,
+  body.viewing-shorts .desktop-live-create-btn svg {
     width: 16px;
     height: 16px;
     color: #ffffff;

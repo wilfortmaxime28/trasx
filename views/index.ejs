@@ -2817,6 +2817,9 @@ function getYouTubeId(url) {
               <!-- Shorts Column View (Hidden by default) -->
               <div class="shorts-container-section" id="shortsSection"
                 style="display: <%= currentView === 'shorts' ? 'flex' : 'none' %>; flex-direction: column; gap: 20px; width: 100%;">
+                <button type="button" class="shorts-mobile-live-btn" id="shortsMobileLiveBtn" aria-label="<%= tText("Go Live") %>">
+                  <i data-lucide="video" style="width: 18px; height: 18px;"></i>
+                </button>
                 <button type="button" class="shorts-mobile-search-btn" id="shortsMobileSearchBtn" aria-label="<%= tText("Rechercher dans les shorts") %>">
                   <i data-lucide="search" style="width: 18px; height: 18px;"></i>
                 </button>
