@@ -36,6 +36,15 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   const liveTitleText = document.getElementById('liveTitleText');
   const liveBlurBg = document.getElementById('liveBlurBg');
   const liveViewerCountVal = document.getElementById('liveViewerCountVal');
+  const liveViewerCountBtn = document.getElementById('liveViewerCount');
+
+  // Spectator List Modal Elements
+  const spectatorsListModal = document.getElementById('spectatorsListModal');
+  const spectatorsListModalOverlay = document.getElementById('spectatorsListModalOverlay');
+  const spectatorsListContainer = document.getElementById('spectatorsListContainer');
+  const closeSpectatorsListModal = document.getElementById('closeSpectatorsListModal');
+  
+  let currentSpectators = [];
 
   const liveHostVideo = document.getElementById('liveHostVideo');
   const liveGuestCard = document.getElementById('liveGuestCard');
@@ -593,6 +602,12 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     currentRoomId = null;
     isHost = false;
     isSpeaker = false;
+    currentSpectators = [];
+    if (liveViewerCountVal) {
+      liveViewerCountVal.textContent = '0';
+    }
+    if (spectatorsListModal) spectatorsListModal.style.display = 'none';
+    if (spectatorsListModalOverlay) spectatorsListModalOverlay.style.display = 'none';
     
     refreshActiveLives();
   };
@@ -884,4 +899,67 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   socket.on('live:ended', () => {
     cleanUpLive();
   });
+
+  // Real-time Spectator updates
+  socket.on('live:spectators-updated', ({ spectatorsCount, spectators }) => {
+    currentSpectators = spectators || [];
+    if (liveViewerCountVal) {
+      liveViewerCountVal.textContent = spectatorsCount;
+    }
+    if (spectatorsListModal && spectatorsListModal.style.display !== 'none') {
+      updateSpectatorsModalUI();
+    }
+  });
+
+  // Modal rendering logic
+  const updateSpectatorsModalUI = () => {
+    if (!spectatorsListContainer) return;
+    if (currentSpectators.length === 0) {
+      spectatorsListContainer.innerHTML = '<div class="spectators-empty">Aucun spectateur pour le moment.</div>';
+    } else {
+      spectatorsListContainer.innerHTML = currentSpectators.map(s => {
+        const avatarSrc = s.avatar || '/assets/avatar_placeholder.jpg';
+        return `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <img src="${avatarSrc}" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 1.5px solid rgba(255,255,255,0.1); flex-shrink: 0;">
+            <div style="display: flex; flex-direction: column;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-align: left;">${s.name}</div>
+              <div style="font-size: 10px; color: var(--text-secondary); text-align: left;">Spectateur</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  };
+
+  // Bind Open/Close Events
+  if (liveViewerCountBtn) {
+    liveViewerCountBtn.style.cursor = 'pointer';
+    liveViewerCountBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      updateSpectatorsModalUI();
+      if (spectatorsListModal) {
+        spectatorsListModal.style.display = 'block';
+        spectatorsListModal.style.zIndex = '30000';
+      }
+      if (spectatorsListModalOverlay) {
+        spectatorsListModalOverlay.style.display = 'block';
+        spectatorsListModalOverlay.style.zIndex = '29999';
+      }
+    });
+  }
+
+  if (closeSpectatorsListModal) {
+    closeSpectatorsListModal.addEventListener('click', () => {
+      if (spectatorsListModal) spectatorsListModal.style.display = 'none';
+      if (spectatorsListModalOverlay) spectatorsListModalOverlay.style.display = 'none';
+    });
+  }
+
+  if (spectatorsListModalOverlay) {
+    spectatorsListModalOverlay.addEventListener('click', () => {
+      if (spectatorsListModal) spectatorsListModal.style.display = 'none';
+      if (spectatorsListModalOverlay) spectatorsListModalOverlay.style.display = 'none';
+    });
+  }
 })();

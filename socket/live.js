@@ -46,12 +46,31 @@ module.exports = function(socket, io) {
       }
 
       const peer = room.addPeer(peerId, socket.id);
+      peer.name = name || 'Spectateur';
+      peer.avatar = avatar || '/assets/avatar_placeholder.jpg';
+      
       socket.roomId = roomId;
       socket.peerId = peerId;
       socket.isHost = false;
 
       // Notifier l'hôte et les autres spectateurs
       socket.to(roomId).emit('live:viewerJoined', { peerId, name: name || 'Anonyme', avatar: avatar || '' });
+
+      // Envoyer la liste des spectateurs mise à jour (sans l'animateur/créateur)
+      const spectators = [];
+      room.peers.forEach(p => {
+        if (p.id !== room.hostId) {
+          spectators.push({
+            peerId: p.id,
+            name: p.name || 'Spectateur',
+            avatar: p.avatar || '/assets/avatar_placeholder.jpg'
+          });
+        }
+      });
+      io.to(roomId).emit('live:spectators-updated', {
+        spectatorsCount: spectators.length,
+        spectators
+      });
 
       // Envoyer la liste des producteurs déjà actifs dans le live
       const activeProducers = [];
@@ -114,6 +133,22 @@ module.exports = function(socket, io) {
           io.emit('live:ended-global', { roomId });
         } else {
           socket.to(roomId).emit('live:viewerLeft', { peerId });
+
+          // Envoyer la liste des spectateurs mise à jour (sans l'animateur/créateur)
+          const spectators = [];
+          room.peers.forEach(p => {
+            if (p.id !== room.hostId) {
+              spectators.push({
+                peerId: p.id,
+                name: p.name || 'Spectateur',
+                avatar: p.avatar || '/assets/avatar_placeholder.jpg'
+              });
+            }
+          });
+          io.to(roomId).emit('live:spectators-updated', {
+            spectatorsCount: spectators.length,
+            spectators
+          });
         }
       }
       if (callback) callback({ success: true });

@@ -7730,7 +7730,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('disconnect', () => {
+    socket.on('disconnect', () => {
     // Clean up mediasoup peer if active in a room
     if (socket.roomId && socket.peerId) {
       try {
@@ -7742,6 +7742,24 @@ io.on('connection', (socket) => {
             socket.to(socket.roomId).emit('live:ended');
             roomManager.closeRoom(socket.roomId);
             io.emit('live:ended-global', { roomId: socket.roomId });
+          } else {
+            socket.to(socket.roomId).emit('live:viewerLeft', { peerId: socket.peerId });
+
+            // Envoyer la liste des spectateurs mise à jour (sans l'animateur/créateur)
+            const spectators = [];
+            room.peers.forEach(p => {
+              if (p.id !== room.hostId) {
+                spectators.push({
+                  peerId: p.id,
+                  name: p.name || 'Spectateur',
+                  avatar: p.avatar || '/assets/avatar_placeholder.jpg'
+                });
+              }
+            });
+            io.to(socket.roomId).emit('live:spectators-updated', {
+              spectatorsCount: spectators.length,
+              spectators
+            });
           }
         }
       } catch (err) {
