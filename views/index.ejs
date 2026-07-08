@@ -5417,7 +5417,7 @@ function getYouTubeId(url) {
         <script>
           window.currentUserId = <%= currentUser.id %>;
           window.currentUsername = "<%= currentUser.username %>";
-          window.currentUserDisplayName = "<%= `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim() || currentUser.username %>";
+          window.currentUserDisplayName = "<%= currentUser.display_name || `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim() || currentUser.username %>";
           window.currentUserDepositBalance = <%= Number(currentUser.deposit_account_balance || 0) %>;
           window.currentUserWithdrawalBalance = <%= Number(currentUser.withdrawal_account_balance || 0) %>;
           window.currentUserTokenBalance = <%= Number(currentUser.token_balance || 0) %>;
@@ -5640,7 +5640,49 @@ function getYouTubeId(url) {
             <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
               
               <!-- Chat Input -->
-              <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.15); border-radius: 22px; padding: 8px 14px; border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+              <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); border-radius: 22px; padding: 8px 10px 8px 14px; border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); position: relative;">
+                <!-- Emoji picker panel (hidden by default) -->
+                <div id="liveEmojiPicker" style="display: none; position: absolute; bottom: 48px; left: 0; background: rgba(20,20,30,0.97); border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; padding: 10px; width: 260px; flex-wrap: wrap; gap: 4px; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); z-index: 9999; box-shadow: 0 8px 32px rgba(0,0,0,0.6);">
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">😂</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">❤️</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🔥</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">👏</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">😍</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🎉</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">😮</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">😢</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">💯</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🙌</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">👍</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">👎</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">😜</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🤩</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">😎</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🥺</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">💀</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🤯</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">😏</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🥳</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">💪</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🚀</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">💋</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">👑</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🌹</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🍑</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🎵</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">⚡</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🌊</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">✨</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">💫</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🤣</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">😅</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🥰</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">🤔</span>
+                    <span class="live-emoji-opt" style="font-size:20px;cursor:pointer;padding:2px;">😤</span>
+                  </div>
+                </div>
+                <button id="liveEmojiBtn" style="background: none; border: none; font-size: 16px; cursor: pointer; flex-shrink: 0; padding: 0; line-height: 1; display: flex; align-items: center;" title="Emoji">😊</button>
                 <input type="text" id="liveChatInput" placeholder="Commenter..." style="flex: 1; min-width: 0; background: transparent; border: none; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; outline: none; font-size: 13px; font-family: 'Inter', sans-serif;">
                 <button id="sendLiveChatBtn" style="background: none; border: none; color: #3b82f6; cursor: pointer; display: flex; align-items: center; flex-shrink: 0; padding: 0;">
                   <i data-lucide="send" style="width: 14px; height: 14px;"></i>

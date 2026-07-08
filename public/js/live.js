@@ -837,6 +837,41 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     });
   }
 
+  // --- Emoji Picker ---
+  const liveEmojiBtn    = document.getElementById('liveEmojiBtn');
+  const liveEmojiPicker = document.getElementById('liveEmojiPicker');
+
+  if (liveEmojiBtn && liveEmojiPicker) {
+    liveEmojiBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = liveEmojiPicker.style.display !== 'none';
+      liveEmojiPicker.style.display = isOpen ? 'none' : 'block';
+    });
+
+    // Insert emoji into input on click
+    liveEmojiPicker.querySelectorAll('.live-emoji-opt').forEach(span => {
+      span.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (liveChatInput) {
+          const pos = liveChatInput.selectionStart ?? liveChatInput.value.length;
+          const val = liveChatInput.value;
+          liveChatInput.value = val.slice(0, pos) + span.textContent + val.slice(pos);
+          liveChatInput.focus();
+          const newPos = pos + span.textContent.length;
+          liveChatInput.setSelectionRange(newPos, newPos);
+        }
+        liveEmojiPicker.style.display = 'none';
+      });
+    });
+
+    // Close picker on outside click
+    document.addEventListener('click', (e) => {
+      if (!liveEmojiPicker.contains(e.target) && e.target !== liveEmojiBtn) {
+        liveEmojiPicker.style.display = 'none';
+      }
+    });
+  }
+
   // Socket: Receive Live Chat Message
   socket.on('live:chatMessage', ({ peerId, name, avatar, message }) => {
     if (!liveChatMessages) return;
