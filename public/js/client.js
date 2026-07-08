@@ -5083,12 +5083,81 @@ document.addEventListener('DOMContentLoaded', () => {
           osc1.stop(audioCtx.currentTime + 1.8);
           osc2.stop(audioCtx.currentTime + 1.8);
         }
-      } catch (e) {
-        console.warn(e);
-      }
+      } catch (e)     const makeElementDraggableAndClickable = (el, onClick) => {
+      let posX = 0, posY = 0, mouseX = 0, mouseY = 0;
+      let hasDragged = false;
+      
+      const dragStart = (e) => {
+        if (e.target.closest('button') || e.target.closest('a')) return;
+        hasDragged = false;
+        
+        if (e.type === 'touchstart') {
+          mouseX = e.touches[0].clientX;
+          mouseY = e.touches[0].clientY;
+        } else {
+          e.preventDefault();
+          mouseX = e.clientX;
+          mouseY = e.clientY;
+        }
+        
+        const dragMove = (moveEvent) => {
+          let currentX, currentY;
+          if (moveEvent.type === 'touchmove') {
+            currentX = moveEvent.touches[0].clientX;
+            currentY = moveEvent.touches[0].clientY;
+          } else {
+            currentX = moveEvent.clientX;
+            currentY = moveEvent.clientY;
+          }
+          
+          posX = mouseX - currentX;
+          posY = mouseY - currentY;
+          mouseX = currentX;
+          mouseY = currentY;
+          
+          if (Math.abs(posX) > 3 || Math.abs(posY) > 3) {
+            hasDragged = true;
+          }
+          
+          let newTop = el.offsetTop - posY;
+          let newLeft = el.offsetLeft - posX;
+          
+          const rect = el.getBoundingClientRect();
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          
+          if (newTop < 10) newTop = 10;
+          if (newTop > viewportHeight - rect.height - 10) newTop = viewportHeight - rect.height - 10;
+          if (newLeft < 10) newLeft = 10;
+          if (newLeft > viewportWidth - rect.width - 10) newLeft = viewportWidth - rect.width - 10;
+          
+          el.style.top = `${newTop}px`;
+          el.style.left = `${newLeft}px`;
+          el.style.right = 'auto';
+          el.style.bottom = 'auto';
+        };
+        
+        const dragEnd = () => {
+          document.removeEventListener('mousemove', dragMove);
+          document.removeEventListener('mouseup', dragEnd);
+          document.removeEventListener('touchmove', dragMove);
+          document.removeEventListener('touchend', dragEnd);
+          
+          if (!hasDragged && typeof onClick === 'function') {
+            onClick();
+          }
+        };
+        
+        document.addEventListener('mousemove', dragMove);
+        document.addEventListener('mouseup', dragEnd);
+        document.addEventListener('touchmove', dragMove, { passive: false });
+        document.addEventListener('touchend', dragEnd);
+      };
+      
+      el.style.cursor = 'grab';
+      el.onmousedown = dragStart;
+      el.ontouchstart = dragStart;
     };
-    let callDurationSeconds = 0;
-    let currentCallState = 'connecting';
 
     let isVideoSwapped = false;
     const applyVideoLayout = () => {
@@ -5168,8 +5237,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (localVideo) {
           localVideo.style.width = '100vw';
           localVideo.style.height = '100vh';
-          localVideo.style.objectFit = 'contain';
+          localVideo.style.objectFit = 'cover';
         }
+
+        // Setup Drag & Click behavior for Remote PIP Area
+        makeElementDraggableAndClickable(remoteArea, () => {
+          isVideoSwapped = false;
+          applyVideoLayout();
+        });
+
+        localCard.style.cursor = 'pointer';
+        localCard.onmousedown = null;
+        localCard.ontouchstart = null;
+        localCard.onclick = (e) => {
+          e.stopPropagation();
+          isVideoSwapped = false;
+          applyVideoLayout();
+        };
 
       } else {
         // DEFAULT: Remote video is fullscreen, Local video is in PIP card
@@ -5198,7 +5282,7 @@ document.addEventListener('DOMContentLoaded', () => {
           remoteVideo.style.left = '0';
           remoteVideo.style.width = '100vw';
           remoteVideo.style.height = '100vh';
-          remoteVideo.style.objectFit = 'contain';
+          remoteVideo.style.objectFit = 'cover';
           remoteVideo.style.borderRadius = '0';
           remoteVideo.style.border = 'none';
           remoteVideo.style.zIndex = '1';
@@ -5230,6 +5314,21 @@ document.addEventListener('DOMContentLoaded', () => {
           localVideo.style.height = '100%';
           localVideo.style.objectFit = 'cover';
         }
+
+        // Setup Drag & Click behavior for Local PIP Card
+        makeElementDraggableAndClickable(localCard, () => {
+          isVideoSwapped = true;
+          applyVideoLayout();
+        });
+
+        remoteArea.style.cursor = 'pointer';
+        remoteArea.onmousedown = null;
+        remoteArea.ontouchstart = null;
+        remoteArea.onclick = (e) => {
+          e.stopPropagation();
+          isVideoSwapped = true;
+          applyVideoLayout();
+        };
       }
     };
 
@@ -5749,21 +5848,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: url('${avatarUrl}') no-repeat center center; background-size: cover; filter: blur(40px) brightness(0.25); z-index: 1; transform: scale(1.15);"></div>
       <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(17,24,39,0.75) 0%, rgba(3,7,18,0.96) 100%); z-index: 2;"></div>
 
-      <!-- Debug Console Button & Panel -->
-      <button id="call-debug-toggle-btn" style="position: absolute; top: 20px; left: 20px; z-index: 10001; background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.25); border-radius: 20px; padding: 6px 14px; color: #fff; font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: all 0.2s; box-shadow: 0 4px 12px rgba(0,0,0,0.35);">
-        <i data-lucide="bug" style="width: 13px; height: 13px; color: #f59e0b;"></i> Debug Console
-      </button>
-
-      <div id="call-debug-panel" style="position: fixed; bottom: 120px; left: 20px; right: 20px; height: 220px; background: rgba(17,24,39,0.95); border: 1px solid rgba(255,255,255,0.15); border-radius: 16px; z-index: 10002; display: none; flex-direction: column; overflow: hidden; font-family: monospace; font-size: 11px; box-shadow: 0 20px 50px rgba(0,0,0,0.85); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);">
-        <div style="background: rgba(255,255,255,0.06); padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); font-weight: 700; color: #f3f4f6; letter-spacing: 0.5px;">
-          <span style="display:flex;align-items:center;gap:6px;"><i data-lucide="terminal" style="width:14px;height:14px;color:#10b981;"></i> DIAGNOSTICS DE CONNEXION WEBRTC</span>
-          <button id="call-debug-close-btn" style="background: rgba(255,255,255,0.1); border: none; color: #fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor: pointer; font-size: 10px; font-weight: 700; transition: background 0.15s;">✕</button>
-        </div>
-        <div id="call-debug-logs" style="flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px; color: #34d399; text-align: left; background: #0b0f19;">
-          <div>[DEBUG] Initialisation de la console diagnostique...</div>
-        </div>
-      </div>
-
       <!-- Top Info Box -->
       <div style="position: relative; z-index: 3; display: flex; flex-direction: column; align-items: center; text-align: center; width: 100%; margin-top: 10px;">
         <div style="display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.4); padding: 6px 14px; border-radius: 20px; backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); margin-bottom: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
@@ -5796,7 +5880,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <div id="local-video-placeholder" style="display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
               <i data-lucide="video-off" style="width: 24px; height: 24px; color: rgba(255,255,255,0.5);"></i>
             </div>
-            <div style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 8px; font-size: 9px; font-weight: 700; color: white; backdrop-filter: blur(4px);">Moi</div>
           </div>
         ` : ''}
 
@@ -5814,35 +5897,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
       <!-- Bottom Control Bar -->
       <div style="position: relative; z-index: 3; display: flex; flex-direction: column; align-items: center; width: 100%;">
-        <div style="display: flex; align-items: center; gap: 16px; background: rgba(255,255,255,0.08); padding: 12px 24px; border-radius: 40px; backdrop-filter: blur(25px); border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 20px 45px rgba(0,0,0,0.45); margin-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 12px; background: rgba(15,23,42,0.65); padding: 8px 16px; border-radius: 30px; backdrop-filter: blur(25px); border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 15px 35px rgba(0,0,0,0.45); margin-bottom: 10px;">
           <!-- Microphone Button -->
-          <button id="call-toggle-mic-btn" style="width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.12); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;" title="Couper le micro">
-            <i id="call-mic-icon" data-lucide="mic" style="width: 20px; height: 20px; color: white;"></i>
+          <button id="call-toggle-mic-btn" style="width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,0.12); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;" title="Couper le micro">
+            <i id="call-mic-icon" data-lucide="mic" style="width: 16px; height: 16px; color: white;"></i>
           </button>
           
           <!-- Camera Toggle (Only Video calls) -->
           ${isVideo ? `
-            <button id="call-toggle-video-btn" style="width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.12); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;" title="Désactiver caméra">
-              <i id="call-video-icon" data-lucide="video" style="width: 20px; height: 20px; color: white;"></i>
+            <button id="call-toggle-video-btn" style="width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,0.12); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;" title="Désactiver caméra">
+              <i id="call-video-icon" data-lucide="video" style="width: 16px; height: 16px; color: white;"></i>
             </button>
           ` : ''}
 
           <!-- Speaker Toggle Button -->
-          <button id="call-toggle-speaker-btn" style="width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.12); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;" title="Haut-parleur">
-            <i id="call-speaker-icon" data-lucide="volume-2" style="width: 20px; height: 20px; color: white;"></i>
+          <button id="call-toggle-speaker-btn" style="width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,0.12); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;" title="Haut-parleur">
+            <i id="call-speaker-icon" data-lucide="volume-2" style="width: 16px; height: 16px; color: white;"></i>
           </button>
 
           <!-- Add Participant Button -->
-          <button id="call-add-user-btn" style="width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.12); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;" title="Inviter un participant">
-            <i data-lucide="user-plus" style="width: 20px; height: 20px; color: white;"></i>
+          <button id="call-add-user-btn" style="width: 38px; height: 38px; border-radius: 50%; background: rgba(255,255,255,0.12); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease;" title="Inviter un participant">
+            <i data-lucide="user-plus" style="width: 16px; height: 16px; color: white;"></i>
           </button>
 
           <!-- Divider -->
-          <div style="width: 1px; height: 28px; background: rgba(255,255,255,0.2); margin: 0 4px;"></div>
+          <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.2); margin: 0 4px;"></div>
 
           <!-- Hang up Button -->
-          <button id="hang-up-btn" style="width: 56px; height: 56px; border-radius: 50%; background: #ef4444; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4);" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" title="Raccrocher">
-            <i data-lucide="phone-off" style="width: 24px; height: 24px; color: white;"></i>
+          <button id="hang-up-btn" style="width: 44px; height: 44px; border-radius: 50%; background: #ef4444; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 6px 15px rgba(239, 68, 68, 0.4);" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'" title="Raccrocher">
+            <i data-lucide="phone-off" style="width: 18px; height: 18px; color: white;"></i>
           </button>
         </div>
       </div>
@@ -5851,26 +5934,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(overlay);
     if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [overlay] });
 
-    // Debug Console Toggle Handlers
-    const debugToggleBtn = document.getElementById('call-debug-toggle-btn');
-    if (debugToggleBtn) {
-      debugToggleBtn.addEventListener('click', () => {
-        const panel = document.getElementById('call-debug-panel');
-        if (panel) {
-          panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
-          addCallDebugLog("Console de debug basculée.");
-        }
-      });
-    }
-
-    const debugCloseBtn = document.getElementById('call-debug-close-btn');
-    if (debugCloseBtn) {
-      debugCloseBtn.addEventListener('click', () => {
-        const panel = document.getElementById('call-debug-panel');
-        if (panel) panel.style.display = 'none';
-      });
-    }
-
     // Toggle Handlers
     const toggleMicBtn = document.getElementById('call-toggle-mic-btn');
     if (toggleMicBtn) {
@@ -5878,14 +5941,14 @@ document.addEventListener('DOMContentLoaded', () => {
         isMicMuted = !isMicMuted;
         if (isMicMuted) {
           toggleMicBtn.style.background = '#ffffff';
-          toggleMicBtn.innerHTML = `<i id="call-mic-icon" data-lucide="mic-off" style="width: 20px; height: 20px; color: #000000;"></i>`;
+          toggleMicBtn.innerHTML = `<i id="call-mic-icon" data-lucide="mic-off" style="width: 16px; height: 16px; color: #000000;"></i>`;
           if (mediaStream) {
             mediaStream.getAudioTracks().forEach(track => track.enabled = false);
           }
           showToast('Micro coupé');
         } else {
           toggleMicBtn.style.background = 'rgba(255,255,255,0.12)';
-          toggleMicBtn.innerHTML = `<i id="call-mic-icon" data-lucide="mic" style="width: 20px; height: 20px; color: #ffffff;"></i>`;
+          toggleMicBtn.innerHTML = `<i id="call-mic-icon" data-lucide="mic" style="width: 16px; height: 16px; color: #ffffff;"></i>`;
           if (mediaStream) {
             mediaStream.getAudioTracks().forEach(track => track.enabled = true);
           }
@@ -5903,7 +5966,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isVideoOff = !isVideoOff;
         if (isVideoOff) {
           toggleVideoBtn.style.background = '#ffffff';
-          toggleVideoBtn.innerHTML = `<i id="call-video-icon" data-lucide="video-off" style="width: 20px; height: 20px; color: #000000;"></i>`;
+          toggleVideoBtn.innerHTML = `<i id="call-video-icon" data-lucide="video-off" style="width: 16px; height: 16px; color: #000000;"></i>`;
           if (localVideo) localVideo.style.display = 'none';
           if (localVideoPlaceholder) localVideoPlaceholder.style.display = 'flex';
           if (mediaStream) {
@@ -5912,7 +5975,7 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast('Caméra désactivée');
         } else {
           toggleVideoBtn.style.background = 'rgba(255,255,255,0.12)';
-          toggleVideoBtn.innerHTML = `<i id="call-video-icon" data-lucide="video" style="width: 20px; height: 20px; color: #ffffff;"></i>`;
+          toggleVideoBtn.innerHTML = `<i id="call-video-icon" data-lucide="video" style="width: 16px; height: 16px; color: #ffffff;"></i>`;
           if (localVideo) localVideo.style.display = 'block';
           if (localVideoPlaceholder) localVideoPlaceholder.style.display = 'none';
           if (mediaStream) {
@@ -5932,13 +5995,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const remoteVideo = document.getElementById('mock-remote-video');
         if (isSpeakerMuted) {
           toggleSpeakerBtn.style.background = '#ffffff';
-          toggleSpeakerBtn.innerHTML = `<i id="call-speaker-icon" data-lucide="volume-x" style="width: 20px; height: 20px; color: #000000;"></i>`;
+          toggleSpeakerBtn.innerHTML = `<i id="call-speaker-icon" data-lucide="volume-x" style="width: 16px; height: 16px; color: #000000;"></i>`;
           if (remoteAudio) remoteAudio.volume = 0;
           if (remoteVideo) remoteVideo.volume = 0;
           showToast('Haut-parleur coupé');
         } else {
           toggleSpeakerBtn.style.background = 'rgba(255,255,255,0.12)';
-          toggleSpeakerBtn.innerHTML = `<i id="call-speaker-icon" data-lucide="volume-2" style="width: 20px; height: 20px; color: #ffffff;"></i>`;
+          toggleSpeakerBtn.innerHTML = `<i id="call-speaker-icon" data-lucide="volume-2" style="width: 16px; height: 16px; color: #ffffff;"></i>`;
           if (remoteAudio) remoteAudio.volume = 1;
           if (remoteVideo) remoteVideo.volume = 1;
           showToast('Haut-parleur activé');
