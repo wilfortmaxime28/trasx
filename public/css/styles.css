@@ -6703,6 +6703,7 @@ body[data-theme="dark"] .birthday-feed-card-shell::before {
 
 #liveChatInput {
   color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
 }
 
 .shorts-search-overlay {

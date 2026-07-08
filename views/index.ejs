@@ -4728,7 +4728,7 @@ function getYouTubeId(url) {
         </div>
 
         <div class="modal-overlay gift-modal-overlay" id="giftPostModal"
-          style="display: none; z-index: 3250; backdrop-filter: blur(10px);" aria-hidden="true">
+          style="display: none; z-index: 20000; backdrop-filter: blur(10px);" aria-hidden="true">
           <div class="modal-content gift-modal-content">
             <button type="button" class="gift-modal-close" id="closeGiftPostModalBtn" aria-label="Fermer">
               <i data-lucide="x"></i>
@@ -4835,6 +4835,24 @@ function getYouTubeId(url) {
             <div class="gift-modal-actions">
               <button type="button" class="gift-modal-cancel" id="cancelGiftPostModalBtn">Annuler</button>
               <button type="button" class="gift-modal-confirm" id="confirmGiftPostModalBtn"><%= tText("Envoyer le cadeau") %></button>
+            </div>
+        </div>
+
+        <!-- Live Exit Confirmation Modal -->
+        <div class="modal-overlay" id="liveEndConfirmModal" style="display: none; z-index: 20010; backdrop-filter: blur(10px);" aria-hidden="true">
+          <div class="modal-content" style="background: var(--bg-card); max-width: 400px; text-align: center; border-radius: 16px; padding: 24px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center;">
+            <div style="background: rgba(239,68,68,0.1); width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+              <i data-lucide="alert-triangle" style="color: #ef4444; width: 28px; height: 28px;"></i>
+            </div>
+            <h3 id="liveEndConfirmTitle" style="font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">Quitter le direct ?</h3>
+            <p id="liveEndConfirmText" style="font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5;">Êtes-vous sûr de vouloir quitter ce direct ?</p>
+            <div style="display: flex; gap: 12px; justify-content: center; width: 100%;">
+              <button id="liveCancelEndBtn" style="flex: 1; background: rgba(255,255,255,0.1); color: var(--text-primary); border: none; border-radius: 12px; padding: 12px 16px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                Annuler
+              </button>
+              <button id="liveConfirmEndBtn" style="flex: 1; background: #ef4444; color: white; border: none; border-radius: 12px; padding: 12px 16px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                Quitter
+              </button>
             </div>
           </div>
         </div>
@@ -5619,8 +5637,8 @@ function getYouTubeId(url) {
               
               <!-- Chat Input minimal à gauche -->
               <div style="flex: 1; max-width: 240px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.15); border-radius: 20px; padding: 6px 12px; border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
-                <input type="text" id="liveChatInput" placeholder="Commenter..." style="flex: 1; background: transparent; border: none; color: #ffffff !important; outline: none; font-size: 13px; font-family: 'Inter', sans-serif;">
-                <button id="sendLiveChatBtn" style="background: none; border: none; color: #ef4444; cursor: pointer; display: flex; align-items: center;"><i data-lucide="send" style="width: 14px; height: 14px;"></i></button>
+                <input type="text" id="liveChatInput" placeholder="Commenter..." style="flex: 1; background: transparent; border: none; color: #ffffff !important; -webkit-text-fill-color: #ffffff !important; outline: none; font-size: 13px; font-family: 'Inter', sans-serif;">
+                <button id="sendLiveChatBtn" style="background: none; border: none; color: #3b82f6; cursor: pointer; display: flex; align-items: center;"><i data-lucide="send" style="width: 14px; height: 14px;"></i></button>
               </div>
 
               <!-- Boutons de Contrôles & Cadeaux à droite -->
@@ -5629,10 +5647,10 @@ function getYouTubeId(url) {
                 <button id="liveCamToggleBtn" style="display: none; background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; border-radius: 50%; color: white; cursor: pointer; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);"><i data-lucide="video" style="width: 16px; height: 16px;"></i></button>
                 
                 <button id="liveSpeakRequestBtn" style="display: none; background: #3b82f6; border: none; padding: 8px 14px; border-radius: 20px; color: white; font-weight: 700; font-size: 11px; cursor: pointer; align-items: center; gap: 4px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);"><i data-lucide="mic" style="width: 12px; height: 12px;"></i> Parler</button>
-                <button id="liveRemoveSpeakerBtn" style="display: none; background: #ef4444; border: none; padding: 8px 14px; border-radius: 20px; color: white; font-weight: 700; font-size: 11px; cursor: pointer; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">Spectateur</button>
+                <button id="liveRemoveSpeakerBtn" style="display: none; background: #3b82f6; border: none; padding: 8px 14px; border-radius: 20px; color: white; font-weight: 700; font-size: 11px; cursor: pointer; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">Spectateur</button>
 
                 <!-- Bouton Cadeau (Visuel style TikTok) -->
-                <button id="liveGiftBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Envoyer un Cadeau"><i data-lucide="gift" style="color: #ff2d55; width: 18px; height: 18px;"></i></button>
+                <button id="liveGiftBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Envoyer un Cadeau"><i data-lucide="gift" style="color: #3b82f6; width: 18px; height: 18px;"></i></button>
               </div>
             </div>
           </div>

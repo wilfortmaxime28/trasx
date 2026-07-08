@@ -551,14 +551,54 @@ document.addEventListener('DOMContentLoaded', () => {
   if (leaveLiveBtn) {
     leaveLiveBtn.addEventListener('click', () => {
       if (currentRoomId) {
-        if (isHost) {
-          if (confirm("Arrêter la diffusion et fermer le live ?")) {
+        const confirmModal = document.getElementById('liveEndConfirmModal');
+        const titleEl = document.getElementById('liveEndConfirmTitle');
+        const textEl = document.getElementById('liveEndConfirmText');
+        const confirmBtn = document.getElementById('liveConfirmEndBtn');
+        const cancelBtn = document.getElementById('liveCancelEndBtn');
+
+        if (confirmModal) {
+          if (isHost) {
+            if (titleEl) titleEl.textContent = "Arrêter la diffusion ?";
+            if (textEl) textEl.textContent = "Êtes-vous sûr de vouloir mettre fin à ce direct et fermer la diffusion pour tous les spectateurs ?";
+            if (confirmBtn) {
+              confirmBtn.textContent = "Mettre fin";
+              confirmBtn.style.background = "#ef4444";
+            }
+          } else {
+            if (titleEl) titleEl.textContent = "Quitter le direct ?";
+            if (textEl) textEl.textContent = "Êtes-vous sûr de vouloir quitter cette diffusion ?";
+            if (confirmBtn) {
+              confirmBtn.textContent = "Quitter";
+              confirmBtn.style.background = "#3b82f6"; // platform blue
+            }
+          }
+
+          confirmModal.style.display = 'flex';
+          confirmModal.setAttribute('aria-hidden', 'false');
+
+          const onCancel = () => {
+            confirmModal.style.display = 'none';
+            confirmModal.setAttribute('aria-hidden', 'true');
+            cleanupListeners();
+          };
+
+          const onConfirm = () => {
+            confirmModal.style.display = 'none';
+            confirmModal.setAttribute('aria-hidden', 'true');
+            cleanupListeners();
+
             socket.emit('live:leave', { roomId: currentRoomId, peerId: window.currentUserId });
             cleanUpLive();
-          }
-        } else {
-          socket.emit('live:leave', { roomId: currentRoomId, peerId: window.currentUserId });
-          cleanUpLive();
+          };
+
+          const cleanupListeners = () => {
+            cancelBtn.removeEventListener('click', onCancel);
+            confirmBtn.removeEventListener('click', onConfirm);
+          };
+
+          cancelBtn.addEventListener('click', onCancel);
+          confirmBtn.addEventListener('click', onConfirm);
         }
       }
     });

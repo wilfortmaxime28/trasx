@@ -108,7 +108,13 @@ module.exports = function(socket, io) {
       const room = roomManager.getRoom(roomId);
       if (room) {
         room.removePeer(peerId);
-        socket.to(roomId).emit('live:viewerLeft', { peerId });
+        if (socket.isHost) {
+          socket.to(roomId).emit('live:ended');
+          roomManager.closeRoom(roomId);
+          io.emit('live:ended-global', { roomId });
+        } else {
+          socket.to(roomId).emit('live:viewerLeft', { peerId });
+        }
       }
       if (callback) callback({ success: true });
     } catch (err) {
