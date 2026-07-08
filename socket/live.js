@@ -37,7 +37,7 @@ module.exports = function(socket, io) {
   });
 
   // Rejoindre un Live existant (en tant que spectateur)
-  socket.on('live:join', async ({ roomId, peerId }, callback) => {
+  socket.on('live:join', async ({ roomId, peerId, name, avatar }, callback) => {
     try {
       socket.join(roomId);
       const room = roomManager.getRoom(roomId);
@@ -51,7 +51,7 @@ module.exports = function(socket, io) {
       socket.isHost = false;
 
       // Notifier l'hôte et les autres spectateurs
-      socket.to(roomId).emit('live:viewerJoined', { peerId });
+      socket.to(roomId).emit('live:viewerJoined', { peerId, name: name || 'Anonyme', avatar: avatar || '' });
 
       // Envoyer la liste des producteurs déjà actifs dans le live
       const activeProducers = [];

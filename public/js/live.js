@@ -124,6 +124,10 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   refreshActiveLives();
 
   const stopAllOtherPlayback = () => {
+    // Stop short video autoplay observer first
+    if (typeof window.stopShortsPlayback === 'function') {
+      window.stopShortsPlayback();
+    }
     document.querySelectorAll('video, audio').forEach(el => {
       if (el.id !== 'liveHostVideo' && el.id !== 'liveGuestVideo' && el.id !== 'localVideo' && el.id !== 'remoteVideo') {
         try {
@@ -220,7 +224,9 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       liveHostVideo.srcObject = null;
       liveHostVideo.style.transform = 'none';
       
-      socket.emit('live:join', { roomId, peerId: window.currentUserId }, async (response) => {
+      const viewerAvatar = document.querySelector('.profile-btn img')?.getAttribute('src') || '/assets/avatar_placeholder.jpg';
+      const viewerName = window.currentUserDisplayName || window.currentUsername || 'Anonyme';
+      socket.emit('live:join', { roomId, peerId: window.currentUserId, name: viewerName, avatar: viewerAvatar }, async (response) => {
         if (response.error) {
           alert(response.error);
           cleanUpLive();
@@ -667,45 +673,70 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
 
     const msgDiv = document.createElement('div');
     msgDiv.style.background = 'rgba(0,0,0,0.35)';
-    msgDiv.style.padding = '6px 12px';
     msgDiv.style.borderRadius = '12px';
     msgDiv.style.fontSize = '12px';
     msgDiv.style.lineHeight = '1.4';
-    msgDiv.style.display = 'inline-block';
+    msgDiv.style.display = 'flex';
+    msgDiv.style.alignItems = 'flex-start';
+    msgDiv.style.gap = '6px';
     msgDiv.style.alignSelf = 'flex-start';
     msgDiv.style.backdropFilter = 'blur(4px)';
     msgDiv.style.webkitBackdropFilter = 'blur(4px)';
     msgDiv.style.border = '1px solid rgba(255,255,255,0.05)';
     msgDiv.style.marginBottom = '4px';
+    msgDiv.style.padding = '5px 10px 5px 5px';
+    msgDiv.style.maxWidth = '100%';
 
     // Customize system style vs user style
-    if (peerId === 'system-follow') {
-      msgDiv.innerHTML = `
-        <span style="font-weight: 700; color: #ff2d55; margin-right: 6px;">${name}</span>
-        <span style="color: #ff85a2; font-style: italic;">${message}</span>
-      `;
+    if (peerId === 'system-join') {
+      msgDiv.style.background = 'rgba(59,130,246,0.15)';
+      msgDiv.style.border = '1px solid rgba(59,130,246,0.25)';
+      const avatarHtml = avatar
+        ? `<img src="${avatar}" style="width:20px;height:20px;border-radius:50%;object-fit:cover;flex-shrink:0;margin-top:1px;border:1.5px solid #3b82f6;" onerror="this.style.display='none'">`
+        : '';
+      msgDiv.innerHTML = `${avatarHtml}<span style="color:#93c5fd;font-size:11px;"><strong style="color:#60a5fa;">${name}</strong> a rejoint le direct 👋</span>`;
+    } else if (peerId === 'system-follow') {
+      msgDiv.innerHTML = `<span style="padding: 1px 6px;"><span style="font-weight: 700; color: #ff2d55; margin-right: 6px;">${name}</span><span style="color: #ff85a2; font-style: italic;">${message}</span></span>`;
     } else if (peerId === 'system-gift') {
-      msgDiv.innerHTML = `
-        <span style="font-weight: 700; color: #ff85a2; margin-right: 6px;">${name}</span>
-        <span style="color: #ffd166; font-weight: bold;">${message}</span>
-      `;
+      msgDiv.innerHTML = `<span style="padding: 1px 6px;"><span style="font-weight: 700; color: #ff85a2; margin-right: 6px;">${name}</span><span style="color: #ffd166; font-weight: bold;">${message}</span></span>`;
       // Extract emoji from the message if any, or fall back to 🌹
       const emojiMatch = message.match(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g);
       const giftEmoji = emojiMatch ? emojiMatch[0] : '🌹';
-      showFloatingGiftEmoji(giftEmoji);
+      showFloatingGiftAnimation(giftEmoji, name, message);
     } else {
-      // Normal chat message
+      // Normal chat message with avatar
       const isHostMsg = (peerId === currentRoomId.replace('live-', ''));
       const nameColor = isHostMsg ? '#ffd166' : '#f3f4f6';
-      const badgeHtml = isHostMsg ? '<span style="font-size: 8px; background: #ef4444; color: white; padding: 1px 4px; border-radius: 4px; font-weight: 800; margin-right: 6px; vertical-align: middle;">HÔTE</span>' : '';
-      
-      msgDiv.innerHTML = `
-        ${badgeHtml}<span style="font-weight: 700; color: ${nameColor}; margin-right: 6px; vertical-align: middle;">${name}</span>
-        <span style="color: #e5e7eb; vertical-align: middle;">${message}</span>
-      `;
+      const badgeHtml = isHostMsg ? '<span style="font-size: 8px; background: #ef4444; color: white; padding: 1px 4px; border-radius: 4px; font-weight: 800; margin-right: 4px; vertical-align: middle;">HÔTE</span>' : '';
+      const avatarHtml = avatar
+        ? `<img src="${avatar}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;flex-shrink:0;margin-top:1px;" onerror="this.style.display='none'">`
+        : `<div style="width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,0.15);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;">${name.charAt(0).toUpperCase()}</div>`;
+      msgDiv.innerHTML = `${avatarHtml}<span style="overflow-wrap:break-word;word-break:break-word;">${badgeHtml}<span style="font-weight: 700; color: ${nameColor}; margin-right: 4px; vertical-align: middle;">${name}</span><span style="color: #e5e7eb; vertical-align: middle;">${message}</span></span>`;
     }
 
     liveChatMessages.appendChild(msgDiv);
+    liveChatMessages.scrollTop = liveChatMessages.scrollHeight;
+  });
+
+  // Socket: Viewer joined notification
+  socket.on('live:viewerJoined', ({ peerId, name, avatar }) => {
+    if (!liveChatMessages) return;
+    const joinDiv = document.createElement('div');
+    joinDiv.style.background = 'rgba(59,130,246,0.15)';
+    joinDiv.style.border = '1px solid rgba(59,130,246,0.25)';
+    joinDiv.style.borderRadius = '12px';
+    joinDiv.style.fontSize = '11px';
+    joinDiv.style.display = 'flex';
+    joinDiv.style.alignItems = 'center';
+    joinDiv.style.gap = '6px';
+    joinDiv.style.alignSelf = 'flex-start';
+    joinDiv.style.padding = '4px 10px 4px 5px';
+    joinDiv.style.marginBottom = '4px';
+    const avatarHtml = avatar
+      ? `<img src="${avatar}" style="width:20px;height:20px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1.5px solid #3b82f6;" onerror="this.style.display='none'">`
+      : '';
+    joinDiv.innerHTML = `${avatarHtml}<span style="color:#93c5fd;"><strong style="color:#60a5fa;">${name || 'Quelqu\'un'}</strong> a rejoint le direct 👋</span>`;
+    liveChatMessages.appendChild(joinDiv);
     liveChatMessages.scrollTop = liveChatMessages.scrollHeight;
   });
 
@@ -730,31 +761,94 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   }
 
   // --- Gift Button / Custom Gift Click ---
-  const showFloatingGiftEmoji = (emoji = '🌹') => {
+  const showFloatingGiftAnimation = (emoji = '🌹', senderName = '', giftLabel = '') => {
     if (!liveOverlayViewer) return;
-    const item = document.createElement('div');
-    item.innerHTML = emoji;
-    item.style.position = 'absolute';
-    item.style.bottom = '120px';
-    item.style.right = (20 + Math.random() * 35) + 'px';
-    item.style.fontSize = '28px';
-    item.style.zIndex = '150';
-    item.style.pointerEvents = 'none';
-    item.style.transition = 'transform 1.5s cubic-bezier(0.25, 1, 0.50, 1), opacity 1.5s ease-out';
-    item.style.transform = 'translateY(0) scale(0.6)';
-    item.style.opacity = '1';
-    liveOverlayViewer.appendChild(item);
-    
-    // Trigger animation
+
+    // --- TikTok-style gift card overlay ---
+    const card = document.createElement('div');
+    card.style.cssText = `
+      position: absolute;
+      bottom: 130px;
+      right: 16px;
+      background: linear-gradient(135deg, rgba(15,15,30,0.92) 0%, rgba(30,20,60,0.92) 100%);
+      border: 1.5px solid rgba(255,200,100,0.45);
+      border-radius: 18px;
+      padding: 12px 18px 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 200;
+      pointer-events: none;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(255,180,50,0.18);
+      transform: translateX(120px) scale(0.8);
+      opacity: 0;
+      transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease;
+      min-width: 160px;
+      max-width: 220px;
+    `;
+
+    const emojiWrap = document.createElement('div');
+    emojiWrap.style.cssText = 'font-size:36px;line-height:1;flex-shrink:0;filter:drop-shadow(0 2px 8px rgba(255,200,50,0.5));';
+    emojiWrap.textContent = emoji;
+
+    const textWrap = document.createElement('div');
+    textWrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;overflow:hidden;';
+    const senderEl = document.createElement('div');
+    senderEl.style.cssText = 'font-size:11px;font-weight:700;color:#ffd166;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    senderEl.textContent = senderName || 'Cadeau';
+    const labelEl = document.createElement('div');
+    labelEl.style.cssText = 'font-size:10px;color:rgba(255,255,255,0.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    labelEl.textContent = giftLabel ? giftLabel.split(' a envoyé')[1] || giftLabel : '';
+    textWrap.appendChild(senderEl);
+    textWrap.appendChild(labelEl);
+    card.appendChild(emojiWrap);
+    card.appendChild(textWrap);
+    liveOverlayViewer.appendChild(card);
+
+    // Slide in
     requestAnimationFrame(() => {
-      item.style.transform = `translateY(-280px) translateX(${(Math.random() - 0.5) * 90}px) scale(1.7)`;
-      item.style.opacity = '0';
+      card.style.transform = 'translateX(0) scale(1)';
+      card.style.opacity = '1';
     });
-    
+
+    // Launch multiple floating emojis
+    const count = 5 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < count; i++) {
+      setTimeout(() => {
+        const item = document.createElement('div');
+        item.textContent = emoji;
+        item.style.cssText = `
+          position: absolute;
+          bottom: ${130 + Math.random() * 60}px;
+          right: ${12 + Math.random() * 80}px;
+          font-size: ${22 + Math.random() * 18}px;
+          z-index: 190;
+          pointer-events: none;
+          opacity: 1;
+          transition: transform 2s cubic-bezier(0.25, 1, 0.5, 1), opacity 2s ease-out;
+          transform: translateY(0) scale(0.7) rotate(0deg);
+        `;
+        liveOverlayViewer.appendChild(item);
+        requestAnimationFrame(() => {
+          item.style.transform = `translateY(-${200 + Math.random() * 150}px) translateX(${(Math.random() - 0.5) * 100}px) scale(${1.2 + Math.random() * 0.8}) rotate(${(Math.random()-0.5)*40}deg)`;
+          item.style.opacity = '0';
+        });
+        setTimeout(() => item.remove(), 2000);
+      }, i * 120);
+    }
+
+    // Slide out the card after 3 seconds
     setTimeout(() => {
-      item.remove();
-    }, 1500);
+      card.style.transform = 'translateX(120px) scale(0.8)';
+      card.style.opacity = '0';
+      setTimeout(() => card.remove(), 450);
+    }, 3000);
   };
+
+  // Backward compat alias
+  const showFloatingGiftEmoji = (emoji) => showFloatingGiftAnimation(emoji, '', '');
 
   if (liveGiftBtn) {
     liveGiftBtn.addEventListener('click', () => {
