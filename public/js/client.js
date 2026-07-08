@@ -5082,8 +5082,12 @@ document.addEventListener('DOMContentLoaded', () => {
           osc2.start();
           osc1.stop(audioCtx.currentTime + 1.8);
           osc2.stop(audioCtx.currentTime + 1.8);
-        }
-      } catch (e)     const makeElementDraggableAndClickable = (el, onClick) => {
+      } catch (e) {
+        console.warn(e);
+      }
+    };
+
+    const makeElementDraggableAndClickable = (el, onClick) => {
       let posX = 0, posY = 0, mouseX = 0, mouseY = 0;
       let hasDragged = false;
       
