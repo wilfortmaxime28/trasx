@@ -250,7 +250,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
             const borderColor = live.isPaid ? '#f59e0b' : '#ef4444';
             const badgeBg    = live.isPaid ? '#f59e0b' : '#ef4444';
             const lockBadge  = live.isPaid
-              ? `<span title="Payant — $${Number(live.price).toFixed(2)}" style="position:absolute;top:-3px;right:-3px;background:#f59e0b;color:white;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;border:2px solid #000;">🔒</span>`
+              ? `<span title="Payant — $${Number(live.price).toFixed(2)}" style="position:absolute;top:-4px;right:-4px;background:#000;color:#f59e0b;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;border:1.5px solid #f59e0b;box-shadow:0 2px 6px rgba(0,0,0,0.4);z-index:10;">🔒</span>`
               : '';
             const priceLabel = live.isPaid
               ? `<span style="font-size: 10px; font-weight: 700; color: #f59e0b; font-family: 'Outfit', sans-serif;">$${Number(live.price).toFixed(2)}</span>`
