@@ -4408,6 +4408,38 @@ document.addEventListener('DOMContentLoaded', () => {
     activeGiftBirthdayCard = null;
   };
 
+  window.openLiveGiftModal = (roomId) => {
+    const modal = getGiftPostModal();
+    if (!modal) return;
+
+    activeGiftTargetType = 'live';
+    activeGiftPostId = null;
+    activeGiftPostCard = null;
+    activeGiftBirthdayUserId = null;
+    activeGiftBirthdayCard = null;
+    window.activeGiftLiveRoomId = roomId;
+
+    const subtitle = modal.querySelector('#giftPostModalSubtitle');
+    if (subtitle) {
+      subtitle.textContent = "Choisissez un cadeau à envoyer à l'animateur du direct.";
+    }
+
+    const presetCards = modal.querySelectorAll('.gift-preset-card');
+    presetCards.forEach((card, index) => {
+      card.classList.toggle('active', index === 0);
+    });
+
+    activeGiftSelection = {
+      name: presetCards[0]?.dataset.giftName || 'Rose',
+      amount: Number(presetCards[0]?.dataset.giftAmount || 1)
+    };
+    syncGiftSelectionUi();
+
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
   const openShareSheet = (postCard, postId) => {
     const modal = getShareSheetModal();
     if (!modal || !postCard) return;
@@ -4695,6 +4727,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const confirmBtn = event.target.closest('#confirmGiftPostModalBtn');
     if (confirmBtn) {
+      if (activeGiftTargetType === 'live' && !window.activeGiftLiveRoomId) {
+        showToast('Direct introuvable pour cet envoi.');
+        closeGiftPostModal();
+        return;
+      }
+
       if (activeGiftTargetType === 'birthday' && (!activeGiftBirthdayUserId || !activeGiftBirthdayCard)) {
         showToast('Anniversaire introuvable pour cet envoi.');
         closeGiftPostModal();
@@ -4723,18 +4761,31 @@ document.addEventListener('DOMContentLoaded', () => {
       confirmButton.disabled = true;
       confirmButton.textContent = tText('Envoi en cours...');
 
-      const eventName = activeGiftTargetType === 'birthday' ? 'birthday-gift-send' : 'post-gift-send';
-      const payload = activeGiftTargetType === 'birthday'
-        ? {
+      let eventName;
+      let payload;
+
+      if (activeGiftTargetType === 'live') {
+        eventName = 'live-gift-send';
+        payload = {
+          roomId: window.activeGiftLiveRoomId,
+          giftName: activeGiftSelection.name,
+          amount: Number(activeGiftSelection.amount)
+        };
+      } else if (activeGiftTargetType === 'birthday') {
+        eventName = 'birthday-gift-send';
+        payload = {
           recipientUserId: activeGiftBirthdayUserId,
           giftName: activeGiftSelection.name,
           amount: Number(activeGiftSelection.amount)
-        }
-        : {
+        };
+      } else {
+        eventName = 'post-gift-send';
+        payload = {
           postId: activeGiftPostId,
           giftName: activeGiftSelection.name,
           amount: Number(activeGiftSelection.amount)
         };
+      }
 
       socket.emit(eventName, payload, (response) => {
         confirmButton.disabled = false;
@@ -4752,10 +4803,40 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         }
 
-        const recipientName = activeGiftTargetType === 'birthday'
-          ? (activeGiftBirthdayCard.querySelector('.birthday-feed-card-name')?.textContent?.trim() || 'cet utilisateur')
-          : (activeGiftPostCard.querySelector('.author-name')?.textContent?.trim() || 'ce createur');
-        showToast(`Cadeau envoye a ${recipientName} pour ${formatGiftAmountLabel(response.amount || activeGiftSelection.amount)}.`);
+        if (activeGiftTargetType === 'live') {
+          const userUsername = window.currentUserUsername || 'Anonyme';
+          const emojis = {
+            'Rose': '🌹',
+            'Cafe': '☕',
+            'Couronne': '👑',
+            'Fusee': '🚀',
+            'Projecteur': '🎯',
+            'Flamme': '🔥',
+            'Diamant': '💎',
+            'Trophee': '🏆',
+            'Voiture': '🏎️',
+            'Jet': '🛩️',
+            'Villa': '🏡',
+            'Yacht': '🛥️',
+            'Chateau': '🏰'
+          };
+          const emoji = emojis[activeGiftSelection.name] || '🎁';
+          socket.emit('live:chatMessage', {
+            roomId: window.activeGiftLiveRoomId,
+            peerId: 'system-gift',
+            name: userUsername,
+            avatar: '',
+            message: `a envoyé un cadeau : ${activeGiftSelection.name} ${emoji} ($${activeGiftSelection.amount}) !`
+          });
+
+          showToast(`Cadeau envoye a l'animateur du direct pour ${formatGiftAmountLabel(response.amount || activeGiftSelection.amount)}.`);
+        } else {
+          const recipientName = activeGiftTargetType === 'birthday'
+            ? (activeGiftBirthdayCard.querySelector('.birthday-feed-card-name')?.textContent?.trim() || 'cet utilisateur')
+            : (activeGiftPostCard.querySelector('.author-name')?.textContent?.trim() || 'ce createur');
+          showToast(`Cadeau envoye a ${recipientName} pour ${formatGiftAmountLabel(response.amount || activeGiftSelection.amount)}.`);
+        }
+
         closeGiftPostModal();
       });
     }
@@ -17403,6 +17484,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       refreshBirthdayFeedCards(true);
+      if (typeof window.refreshActiveLives === 'function') {
+        window.refreshActiveLives();
+      }
 
       if (scrollToTop) {
         window.scrollTo({ top: 0, behavior: 'smooth' });

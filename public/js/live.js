@@ -61,8 +61,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initial Load - Fetch Active Lives
   const refreshActiveLives = () => {
+    if (window.currentView !== 'feed') {
+      activeLivesContainer.style.display = 'none';
+      return;
+    }
+
     socket.emit('live:list-active', (lives) => {
-      if (lives && lives.length > 0) {
+      if (lives && lives.length > 0 && window.currentView === 'feed') {
         activeLivesContainer.style.display = 'flex';
         activeLivesList.innerHTML = '';
         lives.forEach(live => {
@@ -84,8 +89,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
+  window.refreshActiveLives = refreshActiveLives;
+
   // Socket: new live started notification
   socket.on('live:started', () => {
+    refreshActiveLives();
+  });
+
+  socket.on('live:ended-global', () => {
     refreshActiveLives();
   });
 
@@ -154,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
           roomId,
           hostId: window.currentUserId,
           title,
-          hostName: window.currentUserUsername || 'Animateur',
+          hostName: window.currentUserDisplayName || window.currentUsername || 'Animateur',
           hostAvatar: liveHostAvatar.src
         }, async ({ success, error }) => {
           if (error) throw new Error(error);
@@ -389,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.emit('live:requestToSpeak', {
           roomId: currentRoomId,
           peerId: window.currentUserId,
-          name: window.currentUserUsername || 'Spectateur'
+          name: window.currentUserDisplayName || window.currentUsername || 'Spectateur'
         });
         liveSpeakRequestBtn.textContent = 'Demande envoyée...';
         liveSpeakRequestBtn.disabled = true;
@@ -563,7 +574,7 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.emit('live:chatMessage', {
       roomId: currentRoomId,
       peerId: window.currentUserId,
-      name: window.currentUserUsername || 'Anonyme',
+      name: window.currentUserDisplayName || window.currentUsername || 'Anonyme',
       avatar: userAvatar,
       message: text
     });
@@ -609,8 +620,10 @@ document.addEventListener('DOMContentLoaded', () => {
         <span style="font-weight: 700; color: #ff85a2; margin-right: 6px;">${name}</span>
         <span style="color: #ffd166; font-weight: bold;">${message}</span>
       `;
-      // Trigger local floating animation
-      showFloatingRose();
+      // Extract emoji from the message if any, or fall back to 🌹
+      const emojiMatch = message.match(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g);
+      const giftEmoji = emojiMatch ? emojiMatch[0] : '🌹';
+      showFloatingGiftEmoji(giftEmoji);
     } else {
       // Normal chat message
       const isHostMsg = (peerId === currentRoomId.replace('live-', ''));
@@ -639,7 +652,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.emit('live:chatMessage', {
           roomId: currentRoomId,
           peerId: 'system-follow',
-          name: window.currentUserUsername || 'Anonyme',
+          name: window.currentUserDisplayName || window.currentUsername || 'Anonyme',
           avatar: '',
           message: "a commencé à suivre l'animateur ! 💖"
         });
@@ -647,43 +660,37 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // --- Gift Button / Rose Click ---
-  const showFloatingRose = () => {
+  // --- Gift Button / Custom Gift Click ---
+  const showFloatingGiftEmoji = (emoji = '🌹') => {
     if (!liveOverlayViewer) return;
-    const rose = document.createElement('div');
-    rose.innerHTML = '🌹';
-    rose.style.position = 'absolute';
-    rose.style.bottom = '120px';
-    rose.style.right = (20 + Math.random() * 35) + 'px';
-    rose.style.fontSize = '26px';
-    rose.style.zIndex = '150';
-    rose.style.pointerEvents = 'none';
-    rose.style.transition = 'transform 1.5s cubic-bezier(0.25, 1, 0.50, 1), opacity 1.5s ease-out';
-    rose.style.transform = 'translateY(0) scale(0.6)';
-    rose.style.opacity = '1';
-    liveOverlayViewer.appendChild(rose);
+    const item = document.createElement('div');
+    item.innerHTML = emoji;
+    item.style.position = 'absolute';
+    item.style.bottom = '120px';
+    item.style.right = (20 + Math.random() * 35) + 'px';
+    item.style.fontSize = '28px';
+    item.style.zIndex = '150';
+    item.style.pointerEvents = 'none';
+    item.style.transition = 'transform 1.5s cubic-bezier(0.25, 1, 0.50, 1), opacity 1.5s ease-out';
+    item.style.transform = 'translateY(0) scale(0.6)';
+    item.style.opacity = '1';
+    liveOverlayViewer.appendChild(item);
     
     // Trigger animation
     requestAnimationFrame(() => {
-      rose.style.transform = `translateY(-260px) translateX(${(Math.random() - 0.5) * 80}px) scale(1.6)`;
-      rose.style.opacity = '0';
+      item.style.transform = `translateY(-280px) translateX(${(Math.random() - 0.5) * 90}px) scale(1.7)`;
+      item.style.opacity = '0';
     });
     
     setTimeout(() => {
-      rose.remove();
+      item.remove();
     }, 1500);
   };
 
   if (liveGiftBtn) {
     liveGiftBtn.addEventListener('click', () => {
-      if (currentRoomId) {
-        socket.emit('live:chatMessage', {
-          roomId: currentRoomId,
-          peerId: 'system-gift',
-          name: window.currentUserUsername || 'Anonyme',
-          avatar: '',
-          message: 'a envoyé une Rose ! 🌹'
-        });
+      if (currentRoomId && typeof window.openLiveGiftModal === 'function') {
+        window.openLiveGiftModal(currentRoomId);
       }
     });
   }

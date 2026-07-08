@@ -153,6 +153,15 @@ function getYouTubeId(url) {
                   </div>
                 </div>
 
+                <!-- Active Lives Section (displayed below stories) -->
+                <div id="activeLivesContainer" style="width: 100%; display: none; flex-direction: column; gap: 8px; margin-bottom: 24px; <%= currentView !== 'feed' ? 'display: none !important;' : '' %>">
+                  <h4 style="font-size: 13px; font-weight: 800; text-transform: uppercase; color: var(--text-secondary); margin: 0 0 4px 0; display: flex; align-items: center; gap: 6px;">
+                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444; display: inline-block; animation: pulse 1.5s infinite;"></span>
+                    <%= tText("Lives en cours") %>
+                  </h4>
+                  <div id="activeLivesList" style="display: flex; gap: 12px; overflow-x: auto; padding: 6px 0; scrollbar-width: none; -ms-overflow-style: none;"></div>
+                </div>
+
                 <% if (safeStatusMessage) { %>
                   <div class="alert success">
                     <%= safeStatusMessage %>
@@ -2866,14 +2875,7 @@ function getYouTubeId(url) {
                   </div>
                 </div>
 
-                <!-- Active Lives Section -->
-                <div id="activeLivesContainer" style="width: 100%; max-width: 440px; display: none; flex-direction: column; gap: 8px; margin-bottom: 12px; margin-left: auto; margin-right: auto;">
-                  <h4 style="font-size: 13px; font-weight: 800; text-transform: uppercase; color: var(--text-secondary); margin: 0; display: flex; align-items: center; gap: 6px;">
-                    <span style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444; display: inline-block; animation: pulse 1.5s infinite;"></span>
-                    <%= tText("Lives en cours") %>
-                  </h4>
-                  <div id="activeLivesList" style="display: flex; gap: 10px; overflow-x: auto; padding: 4px 0;"></div>
-                </div>
+
 
                 <!-- Reels Vertical Feed -->
                 <div class="reels-feed"
@@ -5396,6 +5398,7 @@ function getYouTubeId(url) {
         <script>
           window.currentUserId = <%= currentUser.id %>;
           window.currentUsername = "<%= currentUser.username %>";
+          window.currentUserDisplayName = "<%= `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim() || currentUser.username %>";
           window.currentUserDepositBalance = <%= Number(currentUser.deposit_account_balance || 0) %>;
           window.currentUserWithdrawalBalance = <%= Number(currentUser.withdrawal_account_balance || 0) %>;
           window.currentUserTokenBalance = <%= Number(currentUser.token_balance || 0) %>;
@@ -5615,8 +5618,8 @@ function getYouTubeId(url) {
             <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;">
               
               <!-- Chat Input minimal à gauche -->
-              <div style="flex: 1; max-width: 240px; display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); border-radius: 20px; padding: 6px 12px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
-                <input type="text" id="liveChatInput" placeholder="Commenter..." style="flex: 1; background: transparent; border: none; color: white; outline: none; font-size: 12px;">
+              <div style="flex: 1; max-width: 240px; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.15); border-radius: 20px; padding: 6px 12px; border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+                <input type="text" id="liveChatInput" placeholder="Commenter..." style="flex: 1; background: transparent; border: none; color: #ffffff !important; outline: none; font-size: 13px; font-family: 'Inter', sans-serif;">
                 <button id="sendLiveChatBtn" style="background: none; border: none; color: #ef4444; cursor: pointer; display: flex; align-items: center;"><i data-lucide="send" style="width: 14px; height: 14px;"></i></button>
               </div>
 
@@ -5628,8 +5631,8 @@ function getYouTubeId(url) {
                 <button id="liveSpeakRequestBtn" style="display: none; background: #3b82f6; border: none; padding: 8px 14px; border-radius: 20px; color: white; font-weight: 700; font-size: 11px; cursor: pointer; align-items: center; gap: 4px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);"><i data-lucide="mic" style="width: 12px; height: 12px;"></i> Parler</button>
                 <button id="liveRemoveSpeakerBtn" style="display: none; background: #ef4444; border: none; padding: 8px 14px; border-radius: 20px; color: white; font-weight: 700; font-size: 11px; cursor: pointer; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">Spectateur</button>
 
-                <!-- Bouton Rose Cadeau (Visuel style TikTok) -->
-                <button id="liveGiftBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Envoyer une Rose"><i data-lucide="flower" style="color: #ff2d55; width: 18px; height: 18px;"></i></button>
+                <!-- Bouton Cadeau (Visuel style TikTok) -->
+                <button id="liveGiftBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Envoyer un Cadeau"><i data-lucide="gift" style="color: #ff2d55; width: 18px; height: 18px;"></i></button>
               </div>
             </div>
           </div>

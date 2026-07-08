@@ -7741,6 +7741,7 @@ io.on('connection', (socket) => {
           if (socket.isHost) {
             socket.to(socket.roomId).emit('live:ended');
             roomManager.closeRoom(socket.roomId);
+            io.emit('live:ended-global', { roomId: socket.roomId });
           }
         }
       } catch (err) {
@@ -8650,6 +8651,105 @@ io.on('connection', (socket) => {
         console.error('Error on birthday-gift-send:', err);
       }
       done({ success: false, error: err.message || 'Impossible d envoyer ce cadeau anniversaire.' });
+    }
+  });
+
+  socket.on('live-gift-send', async (data, ack) => {
+    const done = (payload) => {
+      if (typeof ack === 'function') ack(payload);
+    };
+
+    try {
+      const senderId = session.userId;
+      if (!senderId) throw new Error('Session expirée. Reconnectez-vous.');
+
+      const roomId = String(data?.roomId || '').trim();
+      const amount = Number.parseFloat(data?.amount);
+      const giftName = String(data?.giftName || 'Cadeau').trim().slice(0, 80) || 'Cadeau';
+
+      if (!roomId || !Number.isFinite(amount) || amount <= 0) {
+        throw new Error('Données du cadeau invalides.');
+      }
+
+      const roomManager = require('./mediasoup/roomManager');
+      const room = roomManager.getRoom(roomId);
+      if (!room || !room.isLive || !room.hostId) {
+        throw new Error('Le direct est inactif ou introuvable.');
+      }
+
+      const recipientUserId = Number(room.hostId);
+      if (recipientUserId === Number(senderId)) {
+        throw new Error('Vous ne pouvez pas vous envoyer un cadeau a vous-meme.');
+      }
+
+      const connection = await db.getConnection();
+      try {
+        await connection.beginTransaction();
+
+        const [senderRows] = await connection.query(
+          'SELECT id, username, first_name, last_name, avatar, deposit_account_balance, withdrawal_account_balance, bonus_account_balance, token_balance FROM users WHERE id = ? FOR UPDATE',
+          [senderId]
+        );
+        if (!senderRows.length) throw new Error('Expéditeur introuvable.');
+        const sender = senderRows[0];
+
+        const senderBalance = Number(sender.deposit_account_balance || 0);
+        if (senderBalance < amount) {
+          throw new Error('Solde de depot insuffisant pour envoyer ce cadeau.');
+        }
+
+        const [recipientRows] = await connection.query(
+          'SELECT id, username, first_name, last_name, withdrawal_account_balance, deposit_account_balance FROM users WHERE id = ? FOR UPDATE',
+          [recipientUserId]
+        );
+        if (!recipientRows.length) throw new Error('Animateur du live introuvable.');
+        const recipient = recipientRows[0];
+
+        await connection.query(
+          'UPDATE users SET deposit_account_balance = deposit_account_balance - ? WHERE id = ?',
+          [amount, senderId]
+        );
+        await connection.query(
+          'UPDATE users SET withdrawal_account_balance = withdrawal_account_balance + ? WHERE id = ?',
+          [amount, recipientUserId]
+        );
+
+        await connection.commit();
+
+        const senderName = `${sender.first_name || ''} ${sender.last_name || ''}`.trim() || sender.username || 'Utilisateur';
+        const recipientName = `${recipient.first_name || ''} ${recipient.last_name || ''}`.trim() || recipient.username || 'Utilisateur';
+        const newSenderDepositBalance = Number((senderBalance - amount).toFixed(2));
+        const newRecipientWithdrawalBalance = Number((Number(recipient.withdrawal_account_balance || 0) + amount).toFixed(2));
+
+        await emitNotificationForUser(recipientUserId, {
+          recipientId: recipientUserId,
+          actorId: senderId,
+          type: 'gift',
+          message: `${senderName} vous a envoye le cadeau ${giftName} de $${amount.toFixed(2)} durant votre direct.`
+        });
+
+        io.to(`user:${senderId}`).emit('balance-updated', {
+          userId: Number(senderId),
+          depositBalance: newSenderDepositBalance,
+          withdrawalBalance: Number(sender.withdrawal_account_balance || 0)
+        });
+
+        io.to(`user:${recipientUserId}`).emit('balance-updated', {
+          userId: Number(recipientUserId),
+          depositBalance: Number(recipient.deposit_account_balance || 0),
+          withdrawalBalance: newRecipientWithdrawalBalance
+        });
+
+        done({ success: true, depositBalance: newSenderDepositBalance });
+      } catch (err) {
+        await connection.rollback();
+        throw err;
+      } finally {
+        connection.release();
+      }
+    } catch (err) {
+      console.error('Error on live-gift-send:', err);
+      done({ success: false, error: err.message || 'Impossible d envoyer ce cadeau.' });
     }
   });
 
