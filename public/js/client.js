@@ -5082,6 +5082,7 @@ document.addEventListener('DOMContentLoaded', () => {
           osc2.start();
           osc1.stop(audioCtx.currentTime + 1.8);
           osc2.stop(audioCtx.currentTime + 1.8);
+        }
       } catch (e) {
         console.warn(e);
       }
