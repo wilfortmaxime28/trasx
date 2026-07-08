@@ -6662,8 +6662,13 @@ body[data-theme="dark"] .birthday-feed-card-shell::before {
   display: none;
 }
 
+body.viewing-shorts .shorts-mobile-search-btn,
+body.viewing-shorts .shorts-mobile-live-btn {
+  display: inline-flex !important;
+}
+
 .shorts-mobile-live-btn {
-  position: fixed;
+  position: absolute;
   top: 14px;
   right: 70px;
   z-index: 120;
@@ -6681,7 +6686,7 @@ body[data-theme="dark"] .birthday-feed-card-shell::before {
 }
 
 .shorts-mobile-search-btn {
-  position: fixed;
+  position: absolute;
   top: 14px;
   right: 14px;
   z-index: 120;
@@ -6958,14 +6963,6 @@ body[data-theme="dark"] .birthday-feed-card-shell::before {
 
   body.viewing-shorts .mobile-nav-item.active {
     color: var(--shorts-bottom-bar-icon-active) !important;
-  }
-
-  body.viewing-shorts .shorts-mobile-search-btn {
-    display: inline-flex !important;
-  }
-
-  body.viewing-shorts .shorts-mobile-live-btn {
-    display: inline-flex !important;
   }
 
   /* Hide the desktop-style shorts header on mobile and keep only the search button */
@@ -13280,6 +13277,7 @@ body[data-theme="dark"] .compose-contact-chip {
     overflow: hidden;
     margin: 0;
     padding: 0;
+    position: relative;
   }
 
   body.viewing-shorts .reels-feed {
