@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialisation du client Socket.io
   const socket = io();
+  window.socket = socket;
   let depositStatusRefreshTimer = null;
   window.activePaymentsProvider = window.activePaymentsProvider || 'bsc';
   window.currentDepositPaymentId = window.currentDepositPaymentId || null;
