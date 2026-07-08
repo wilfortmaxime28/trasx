@@ -1,7 +1,12 @@
 // TRASX Native Live Client integration (mediasoup + Socket.IO)
 
-document.addEventListener('DOMContentLoaded', () => {
-  const socket = window.socket || io();
+(function initLive() {
+  if (typeof io === 'undefined') {
+    // Fallback: socket.io not yet loaded, wait for it
+    document.addEventListener('DOMContentLoaded', initLive);
+    return;
+  }
+  const socket = io();
   
   // DOM Elements
   const openLiveCreateModalBtn = document.getElementById('openLiveCreateModalBtn');
@@ -739,7 +744,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   socket.on('live:ended', () => {
-    alert("La diffusion s'est terminée.");
     cleanUpLive();
   });
-});
+})();
