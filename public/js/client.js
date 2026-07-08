@@ -5140,6 +5140,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let ringInterval = null;
     let callTimerInterval = null;
+    let callDurationSeconds = 0;
+    let currentCallState = null;
     let stateTimeout = null;
     let audioCtx = null;
     const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
