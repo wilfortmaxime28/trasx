@@ -56,7 +56,8 @@ module.exports = function(socket, io) {
           return callback({
             error: 'PAYMENT_REQUIRED',
             price: room.price,
-            hostName: room.hostName
+            hostName: room.hostName,
+            title: room.title || 'Direct'
           });
         }
       }
