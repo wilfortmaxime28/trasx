@@ -252,13 +252,17 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
             const lockBadge  = live.isPaid
               ? `<span title="Payant — $${Number(live.price).toFixed(2)}" style="position:absolute;top:-3px;right:-3px;background:#f59e0b;color:white;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;border:2px solid #000;">🔒</span>`
               : '';
+            const priceLabel = live.isPaid
+              ? `<span style="font-size: 10px; font-weight: 700; color: #f59e0b; font-family: 'Outfit', sans-serif;">$${Number(live.price).toFixed(2)}</span>`
+              : '';
             item.innerHTML = `
               <div style="position: relative; width: 44px; height: 44px; border-radius: 50%; border: 2px solid ${borderColor}; padding: 2px;">
                 <img src="${live.hostAvatar || '/assets/avatar_placeholder.jpg'}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
                 <span style="position: absolute; bottom: -3px; left: 50%; transform: translateX(-50%); background: ${badgeBg}; color: white; font-size: 7px; font-weight: 800; padding: 1px 4px; border-radius: 4px; text-transform: uppercase; font-family: 'Outfit', sans-serif;">LIVE</span>
                 ${lockBadge}
               </div>
-              <span class="story-username" style="font-family: 'Outfit', sans-serif; font-size: 11px; font-weight: 500; color: var(--text-secondary); text-align: center; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${live.hostName}</span>
+              <span class="story-username" style="font-family: 'Outfit', sans-serif; font-size: 11px; font-weight: 500; color: var(--text-secondary); text-align: center; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 1px;">${live.hostName}</span>
+              ${priceLabel}
             `;
             item.addEventListener('click', () => joinLive(live.roomId));
           activeLivesList.appendChild(item);
@@ -395,11 +399,15 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         if (response.error === 'PAYMENT_REQUIRED') {
           // Show payment confirmation modal
           const payModal = document.getElementById('livePaymentConfirmModal');
+          const payPriceDisplay = document.getElementById('livePaymentConfirmPriceDisplay');
           const payText  = document.getElementById('livePaymentConfirmText');
           const payCancel = document.getElementById('livePaymentCancelBtn');
           const payAccept = document.getElementById('livePaymentAcceptBtn');
           if (payModal && payText) {
-            payText.textContent = `Ce direct de ${response.hostName} nécessite des frais d'accès de $${Number(response.price).toFixed(2)}. Le montant sera débité de votre solde de dépôt.`;
+            if (payPriceDisplay) {
+              payPriceDisplay.textContent = `$${Number(response.price).toFixed(2)}`;
+            }
+            payText.textContent = `Ce direct de ${response.hostName} nécessite des frais d'accès. Le montant sera débité de votre solde de dépôt.`;
             payModal.style.display = 'flex';
             payModal.setAttribute('aria-hidden', 'false');
             if (typeof lucide !== 'undefined') lucide.createIcons();
