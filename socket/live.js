@@ -102,13 +102,16 @@ module.exports = function(socket, io) {
         });
       });
 
-      console.log(`[Live] Spectateur ${peerId} a rejoint le live ${roomId}`);
+      const wasAcceptedSpeaker = !!(room.acceptedSpeakers && room.acceptedSpeakers.has(Number(peerId)));
+
+      console.log(`[Live] Spectateur ${peerId} a rejoint le live ${roomId} (wasAcceptedSpeaker: ${wasAcceptedSpeaker})`);
       callback({
         success: true,
         activeProducers,
         title: room.title,
         hostName: room.hostName,
-        hostAvatar: room.hostAvatar
+        hostAvatar: room.hostAvatar,
+        wasAcceptedSpeaker
       });
     } catch (err) {
       console.error('live:join error:', err);
@@ -233,6 +236,9 @@ module.exports = function(socket, io) {
       const room = roomManager.getRoom(roomId);
       if (room) {
         room.removePeer(peerId);
+        if (room.acceptedSpeakers) {
+          room.acceptedSpeakers.delete(Number(peerId));
+        }
         if (socket.isHost) {
           socket.to(roomId).emit('live:ended');
           roomManager.closeRoom(roomId);
@@ -269,6 +275,11 @@ module.exports = function(socket, io) {
 
   // L'hôte accepte la demande
   socket.on('live:acceptSpeaker', ({ roomId, peerId }) => {
+    const room = roomManager.getRoom(roomId);
+    if (room) {
+      if (!room.acceptedSpeakers) room.acceptedSpeakers = new Set();
+      room.acceptedSpeakers.add(Number(peerId));
+    }
     socket.to(roomId).emit('live:acceptSpeaker', { peerId });
   });
 
@@ -279,6 +290,10 @@ module.exports = function(socket, io) {
 
   // L'hôte retire la parole
   socket.on('live:removeSpeaker', ({ roomId, peerId }) => {
+    const room = roomManager.getRoom(roomId);
+    if (room && room.acceptedSpeakers) {
+      room.acceptedSpeakers.delete(Number(peerId));
+    }
     io.to(roomId).emit('live:removeSpeaker', { peerId });
   });
 

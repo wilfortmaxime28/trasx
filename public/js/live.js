@@ -62,6 +62,42 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   // Expose globally so openLiveGiftModal in client.js can populate recipient list
   window.currentLiveParticipants = activeParticipants;
 
+  let selfRemovedSpeaker = false;
+
+  const autoJoinSpeaker = async () => {
+    isSpeaker = true;
+    selfRemovedSpeaker = false;
+    if (liveSpeakRequestBtn) {
+      liveSpeakRequestBtn.style.display = 'inline-flex';
+      liveSpeakRequestBtn.disabled = false;
+      liveSpeakRequestBtn.style.background = '#ef4444';
+      liveSpeakRequestBtn.style.opacity = '1';
+      liveSpeakRequestBtn.title = 'Quitter la présentation';
+      if (liveSpeakRequestBadge) liveSpeakRequestBadge.style.display = 'none';
+      if (liveSpeakRequestIcon) {
+        liveSpeakRequestIcon.setAttribute('data-lucide', 'mic-off');
+        if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [liveSpeakRequestBtn] });
+      }
+    }
+    
+    if (liveMicToggleBtn) liveMicToggleBtn.style.display = 'inline-flex';
+    if (liveCamToggleBtn) liveCamToggleBtn.style.display = 'inline-flex';
+    
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      activeParticipants.set(String(window.currentUserId), {
+        peerId: String(window.currentUserId),
+        stream: localStream,
+        name: window.currentUserDisplayName || window.currentUsername || 'Moi',
+        isHost: false
+      });
+      updateVideoGrid();
+      await publishStream();
+    } catch (err) {
+      console.error('Auto speaker remount failed:', err);
+    }
+  };
+
   const liveHostNotification = document.getElementById('liveHostNotification');
   const liveHostNotificationText = document.getElementById('liveHostNotificationText');
   const liveAcceptSpeakBtn = document.getElementById('liveAcceptSpeakBtn');
@@ -450,6 +486,10 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
             await consumeProducer(prod.producerId, prod.kind, prod.peerId, prod.name);
           }
         }
+
+        if (response.wasAcceptedSpeaker) {
+          await autoJoinSpeaker();
+        }
       });
     } catch (err) {
       console.error(err);
@@ -641,6 +681,11 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   if (liveSpeakRequestBtn) {
     liveSpeakRequestBtn.addEventListener('click', () => {
       if (currentRoomId) {
+        if (isSpeaker) {
+          selfRemovedSpeaker = true;
+          socket.emit('live:removeSpeaker', { roomId: currentRoomId, peerId: window.currentUserId });
+          return;
+        }
         socket.emit('live:requestToSpeak', {
           roomId: currentRoomId,
           peerId: window.currentUserId,
@@ -663,7 +708,20 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   socket.on('live:acceptSpeaker', async ({ peerId }) => {
     if (peerId === window.currentUserId) {
       isSpeaker = true;
-      liveSpeakRequestBtn.style.display = 'none';
+      selfRemovedSpeaker = false;
+      
+      if (liveSpeakRequestBtn) {
+        liveSpeakRequestBtn.style.display = 'inline-flex';
+        liveSpeakRequestBtn.disabled = false;
+        liveSpeakRequestBtn.style.background = '#ef4444';
+        liveSpeakRequestBtn.style.opacity = '1';
+        liveSpeakRequestBtn.title = 'Quitter la présentation';
+        if (liveSpeakRequestBadge) liveSpeakRequestBadge.style.display = 'none';
+        if (liveSpeakRequestIcon) {
+          liveSpeakRequestIcon.setAttribute('data-lucide', 'mic-off');
+          if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [liveSpeakRequestBtn] });
+        }
+      }
       
       // Enable speaker mic/cam buttons
       liveMicToggleBtn.style.display = 'inline-flex';
@@ -708,7 +766,10 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
 
   socket.on('live:removeSpeaker', ({ peerId }) => {
     if (String(peerId) === String(window.currentUserId)) {
-      alert("L'hôte vous a replacé en simple spectateur.");
+      if (!selfRemovedSpeaker) {
+        alert("L'hôte vous a replacé en simple spectateur.");
+      }
+      selfRemovedSpeaker = false;
       isSpeaker = false;
       
       // Remove media stream
