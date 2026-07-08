@@ -507,7 +507,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         localStream.getAudioTracks().forEach(track => track.enabled = micEnabled);
       }
       liveMicToggleBtn.innerHTML = micEnabled ? '<i data-lucide="mic"></i>' : '<i data-lucide="mic-off"></i>';
-      liveMicToggleBtn.style.background = micEnabled ? 'rgba(255,255,255,0.15)' : '#ef4444';
+      liveMicToggleBtn.style.background = micEnabled ? 'rgba(255,255,255,0.15)' : '#3b82f6';
       if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [liveMicToggleBtn] });
     });
   }
@@ -519,7 +519,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         localStream.getVideoTracks().forEach(track => track.enabled = camEnabled);
       }
       liveCamToggleBtn.innerHTML = camEnabled ? '<i data-lucide="video"></i>' : '<i data-lucide="video-off"></i>';
-      liveCamToggleBtn.style.background = camEnabled ? 'rgba(255,255,255,0.15)' : '#ef4444';
+      liveCamToggleBtn.style.background = camEnabled ? 'rgba(255,255,255,0.15)' : '#3b82f6';
       if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [liveCamToggleBtn] });
     });
   }
@@ -608,8 +608,17 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
             confirmModal.setAttribute('aria-hidden', 'true');
             cleanupListeners();
 
-            socket.emit('live:leave', { roomId: currentRoomId, peerId: window.currentUserId });
-            cleanUpLive();
+            let cleanupCalled = false;
+            const doCleanup = () => {
+              if (cleanupCalled) return;
+              cleanupCalled = true;
+              cleanUpLive();
+            };
+            const timeout = setTimeout(doCleanup, 1000);
+            socket.emit('live:leave', { roomId: currentRoomId, peerId: window.currentUserId }, () => {
+              clearTimeout(timeout);
+              doCleanup();
+            });
           };
 
           const cleanupListeners = () => {
