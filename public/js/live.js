@@ -260,7 +260,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
 
   // ── Paid/Free toggle in liveCreateModal ──────────────────────────────────
   const liveAccessTypeSelect = document.getElementById('liveAccessType');
-  const livePriceContainer   = document.getElementById('livePriceContainer');
+  const livePriceContainer   = document.getElementById('mediasoupLivePriceContainer');
   if (liveAccessTypeSelect && livePriceContainer) {
     liveAccessTypeSelect.addEventListener('change', () => {
       livePriceContainer.style.display = liveAccessTypeSelect.value === 'paid' ? 'flex' : 'none';
@@ -354,7 +354,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         const title = liveTitleInput.value.trim() || 'Live TRASX';
         const roomId = `live-${window.currentUserId}`;
         const isPaid = liveAccessTypeSelect?.value === 'paid';
-        const price  = isPaid ? Number(document.getElementById('livePriceInput')?.value || 1) : 0;
+        const price  = isPaid ? Number(document.getElementById('mediasoupLivePriceInput')?.value || 1) : 0;
         
         try {
         stopAllOtherPlayback();
