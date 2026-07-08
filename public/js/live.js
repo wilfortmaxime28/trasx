@@ -76,9 +76,9 @@ document.addEventListener('DOMContentLoaded', () => {
           item.innerHTML = `
             <div style="position: relative; width: 44px; height: 44px; border-radius: 50%; border: 2px solid #ef4444; padding: 2px;">
               <img src="${live.hostAvatar || '/assets/avatar_placeholder.jpg'}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
-              <span style="position: absolute; bottom: -3px; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; font-size: 7px; font-weight: 800; padding: 1px 4px; border-radius: 4px; text-transform: uppercase;">LIVE</span>
+              <span style="position: absolute; bottom: -3px; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; font-size: 7px; font-weight: 800; padding: 1px 4px; border-radius: 4px; text-transform: uppercase; font-family: 'Outfit', sans-serif;">LIVE</span>
             </div>
-            <span style="font-size: 9px; font-weight: 700; color: var(--text-primary); text-align: center; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${live.hostName}</span>
+            <span class="story-username" style="font-family: 'Outfit', sans-serif; font-size: 11px; font-weight: 500; color: var(--text-secondary); text-align: center; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${live.hostName}</span>
           `;
           item.addEventListener('click', () => joinLive(live.roomId));
           activeLivesList.appendChild(item);
