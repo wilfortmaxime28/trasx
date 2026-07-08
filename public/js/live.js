@@ -106,6 +106,18 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     const count = list.length;
     if (count === 0) return;
 
+    // Apply layout height constraints based on number of participants
+    if (count === 1) {
+      liveVideoGrid.style.top = '0';
+      liveVideoGrid.style.transform = 'none';
+      liveVideoGrid.style.height = '100%';
+    } else {
+      // 1/3 of screen height, centered vertically
+      liveVideoGrid.style.top = '50%';
+      liveVideoGrid.style.transform = 'translateY(-50%)';
+      liveVideoGrid.style.height = '33.33%';
+    }
+
     // Host always first
     list.sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0));
 
@@ -1114,12 +1126,8 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     liveViewerCountBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       updateSpectatorsModalUI();
-      if (spectatorsListModal) {
-        spectatorsListModal.style.display = 'block';
-        spectatorsListModal.style.zIndex = '30000';
-      }
       if (spectatorsListModalOverlay) {
-        spectatorsListModalOverlay.style.display = 'block';
+        spectatorsListModalOverlay.style.display = 'flex';
         spectatorsListModalOverlay.style.zIndex = '29999';
       }
     });
@@ -1127,15 +1135,15 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
 
   if (closeSpectatorsListModal) {
     closeSpectatorsListModal.addEventListener('click', () => {
-      if (spectatorsListModal) spectatorsListModal.style.display = 'none';
       if (spectatorsListModalOverlay) spectatorsListModalOverlay.style.display = 'none';
     });
   }
 
   if (spectatorsListModalOverlay) {
-    spectatorsListModalOverlay.addEventListener('click', () => {
-      if (spectatorsListModal) spectatorsListModal.style.display = 'none';
-      if (spectatorsListModalOverlay) spectatorsListModalOverlay.style.display = 'none';
+    spectatorsListModalOverlay.addEventListener('click', (e) => {
+      if (e.target === spectatorsListModalOverlay) {
+        spectatorsListModalOverlay.style.display = 'none';
+      }
     });
   }
 })();

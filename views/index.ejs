@@ -3567,19 +3567,20 @@ function getYouTubeId(url) {
 
 
 
-              <!-- Spectators List Popover / Modal (Modern design) -->
-              <div class="hashtag-popover spectators-list-modal" id="spectatorsListModal" style="display: none;">
-                <div class="modal-header-gradient bg-spectators">
-                  <button id="closeSpectatorsListModal" class="modal-close-btn" aria-label="Fermer"><i data-lucide="x"></i></button>
-                  <i data-lucide="users" class="modal-header-icon"></i>
-                  <h3>Spectateurs</h3>
-                  <p><%= tText("Liste des personnes regardant le live") %></p>
-                </div>
-                <div id="spectatorsListContainer" class="spectators-list-container">
-                  <div class="spectators-empty"><%= tText("Aucun spectateur pour le moment.") %></div>
+              <!-- Spectators List Modal Wrapper (Centers modal and avoids blur bugs) -->
+              <div id="spectatorsListModalOverlay" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); z-index: 29999; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
+                <div class="hashtag-popover spectators-list-modal" id="spectatorsListModal" style="display: flex; position: relative !important; top: auto !important; left: auto !important; transform: none !important; margin: 0; width: 90%; max-width: 360px; z-index: 30000; border-radius: 24px; border: 1px solid rgba(255,255,255,0.12); background: rgba(20, 20, 30, 0.96); box-shadow: 0 20px 50px rgba(0,0,0,0.5); overflow: hidden; flex-direction: column;">
+                  <div class="modal-header-gradient bg-spectators" style="background: linear-gradient(135deg, #1e293b, #0f172a); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 20px; position: relative; text-align: center;">
+                    <button id="closeSpectatorsListModal" class="modal-close-btn" aria-label="Fermer" style="position: absolute; right: 16px; top: 16px; background: none; border: none; color: rgba(255,255,255,0.6); cursor: pointer; padding: 4px;"><i data-lucide="x" style="width: 18px; height: 18px;"></i></button>
+                    <i data-lucide="users" class="modal-header-icon" style="font-size: 24px; color: #3b82f6; margin-bottom: 8px; display: inline-block;"></i>
+                    <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: white;">Spectateurs</h3>
+                    <p style="margin: 4px 0 0; font-size: 12px; color: rgba(255,255,255,0.6);"><%= tText("Liste des personnes regardant le live") %></p>
+                  </div>
+                  <div id="spectatorsListContainer" class="spectators-list-container" style="padding: 20px; max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;">
+                    <div class="spectators-empty"><%= tText("Aucun spectateur pour le moment.") %></div>
+                  </div>
                 </div>
               </div>
-              <div id="spectatorsListModalOverlay" class="modal-overlay-blur" style="display: none;"></div>
 
               <!-- Messages Column View (Hidden by default, for mobile/tablet page view) -->
               <div class="mobile-messages-section" id="mobileMessagesSection"
