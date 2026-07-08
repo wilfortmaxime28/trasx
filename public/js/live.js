@@ -46,10 +46,22 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   
   let currentSpectators = [];
 
+  // Move spectator modal to body to avoid backdrop-filter blur from parent containers
+  if (spectatorsListModal && spectatorsListModal.parentElement !== document.body) {
+    document.body.appendChild(spectatorsListModal);
+  }
+  if (spectatorsListModalOverlay && spectatorsListModalOverlay.parentElement !== document.body) {
+    document.body.appendChild(spectatorsListModalOverlay);
+  }
+
+  const liveVideoGrid = document.getElementById('liveVideoGrid');
   const liveHostVideo = document.getElementById('liveHostVideo');
   const liveGuestCard = document.getElementById('liveGuestCard');
   const liveGuestVideo = document.getElementById('liveGuestVideo');
   const liveGuestName = document.getElementById('liveGuestName');
+
+  // Map of active video participants: peerId -> { peerId, stream, name, isHost }
+  let activeParticipants = new Map();
 
   const liveHostNotification = document.getElementById('liveHostNotification');
   const liveHostNotificationText = document.getElementById('liveHostNotificationText');
@@ -81,9 +93,90 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   let camEnabled = true;
   
   let currentProducers = new Map(); // kind -> Producer
-  let currentConsumers = new Map(); // producerId -> Consumer
+  let currentConsumers = new Map(); // consumerId -> Consumer
   
   let pendingSpeakerRequestId = null;
+
+  // ── TikTok-style dynamic video grid ───────────────────────────────────────
+  const updateVideoGrid = () => {
+    if (!liveVideoGrid) return;
+    liveVideoGrid.innerHTML = '';
+
+    const list = Array.from(activeParticipants.values());
+    const count = list.length;
+    if (count === 0) return;
+
+    // Host always first
+    list.sort((a, b) => (b.isHost ? 1 : 0) - (a.isHost ? 1 : 0));
+
+    list.forEach((p, idx) => {
+      const wrap = document.createElement('div');
+      wrap.dataset.peerId = p.peerId;
+      wrap.style.cssText = 'position:relative;overflow:hidden;background:#111;box-sizing:border-box;';
+
+      if (count === 1) {
+        wrap.style.width  = '100%';
+        wrap.style.height = '100%';
+      } else if (count === 2) {
+        wrap.style.width  = '50%';
+        wrap.style.height = '100%';
+      } else if (count === 3) {
+        // Host top full-width, two guests share bottom half
+        wrap.style.width  = idx === 0 ? '100%' : '50%';
+        wrap.style.height = '50%';
+      } else {
+        // 4: 2x2 grid
+        wrap.style.width  = '50%';
+        wrap.style.height = '50%';
+      }
+
+      const vid = document.createElement('video');
+      vid.autoplay   = true;
+      vid.playsInline = true;
+      vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+      if (p.peerId === String(window.currentUserId)) vid.style.transform = 'scaleX(-1)';
+      vid.srcObject = p.stream;
+
+      const label = document.createElement('div');
+      label.style.cssText = 'position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.6);padding:3px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;backdrop-filter:blur(4px);z-index:5;';
+      label.textContent = p.isHost ? `${p.name} ★` : p.name;
+
+      // "Descendre" button – only shown to the host, on non-host tiles
+      if (isHost && !p.isHost) {
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = 'Descendre';
+        removeBtn.style.cssText = 'position:absolute;top:8px;right:8px;background:#ef4444;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:10px;font-weight:700;cursor:pointer;z-index:10;box-shadow:0 2px 8px rgba(239,68,68,.4);';
+        removeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          socket.emit('live:removeSpeaker', { roomId: currentRoomId, peerId: p.peerId });
+        });
+        wrap.appendChild(removeBtn);
+      }
+
+      wrap.appendChild(vid);
+      wrap.appendChild(label);
+      liveVideoGrid.appendChild(wrap);
+    });
+  };
+
+  // ── Suppress all other media while live is active ─────────────────────────
+  const suppressOtherMedia = () => {
+    document.querySelectorAll('video, audio').forEach(el => {
+      // Skip anything inside the live overlay (our own live streams)
+      if (el.closest && el.closest('#liveOverlayViewer')) return;
+      if (['liveHostVideo','liveGuestVideo','localVideo','remoteVideo'].includes(el.id)) return;
+      try { if (!el.paused) el.pause(); el.muted = true; } catch(e){}
+    });
+  };
+  let _suppressInterval = null;
+  const startSuppressInterval = () => {
+    if (_suppressInterval) return;
+    _suppressInterval = setInterval(() => { if (currentRoomId) suppressOtherMedia(); }, 1500);
+  };
+  const stopSuppressInterval = () => {
+    clearInterval(_suppressInterval);
+    _suppressInterval = null;
+  };
 
   // Initial Load - Fetch Active Lives
   const refreshActiveLives = () => {
@@ -137,15 +230,8 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     if (typeof window.stopShortsPlayback === 'function') {
       window.stopShortsPlayback();
     }
-    document.querySelectorAll('video, audio').forEach(el => {
-      if (el.id !== 'liveHostVideo' && el.id !== 'liveGuestVideo' && el.id !== 'localVideo' && el.id !== 'remoteVideo') {
-        try {
-          el.pause();
-        } catch (e) {
-          console.warn(e);
-        }
-      }
-    });
+    suppressOtherMedia();
+    startSuppressInterval();
   };
 
   // Modals management
@@ -182,12 +268,19 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         // Show overlay
         liveOverlayViewer.style.display = 'flex';
         if (liveFollowBtn) liveFollowBtn.style.display = 'none';
-        liveHostVideo.srcObject = localStream;
-        liveHostVideo.style.transform = 'scaleX(-1)'; // Mirror for host self preview
         liveHostName.textContent = 'Moi (Animateur)';
         liveTitleText.textContent = title;
         liveHostAvatar.src = document.querySelector('.profile-btn img')?.getAttribute('src') || '/assets/avatar_placeholder.jpg';
         if (liveBlurBg) liveBlurBg.style.backgroundImage = `url(${liveHostAvatar.src})`;
+
+        // Add host to video grid
+        activeParticipants.set(String(window.currentUserId), {
+          peerId: String(window.currentUserId),
+          stream: localStream,
+          name: window.currentUserDisplayName || window.currentUsername || 'Animateur',
+          isHost: true
+        });
+        updateVideoGrid();
         
         // Setup speaker controls
         liveMicToggleBtn.style.display = 'inline-flex';
@@ -230,8 +323,8 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         liveFollowBtn.style.background = '#ef4444';
         liveFollowBtn.disabled = false;
       }
-      liveHostVideo.srcObject = null;
-      liveHostVideo.style.transform = 'none';
+      activeParticipants.clear();
+      if (liveVideoGrid) liveVideoGrid.innerHTML = '';
       
       const viewerAvatar = document.querySelector('.profile-btn img')?.getAttribute('src') || '/assets/avatar_placeholder.jpg';
       const viewerName = window.currentUserDisplayName || window.currentUsername || 'Anonyme';
@@ -256,7 +349,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         // Consume all active producers (Host streams)
         if (response.activeProducers) {
           for (const prod of response.activeProducers) {
-            await consumeProducer(prod.producerId, prod.kind, prod.peerId);
+            await consumeProducer(prod.producerId, prod.kind, prod.peerId, prod.name);
           }
         }
       });
@@ -337,7 +430,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   }
 
   // Consume a producer
-  async function consumeProducer(producerId, kind, producerPeerId) {
+  async function consumeProducer(producerId, kind, producerPeerId, producerName) {
     if (!recvTransport) return;
     
     socket.emit('mediasoup:consume', {
@@ -355,33 +448,52 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       socket.emit('mediasoup:resumeConsumer', { roomId: currentRoomId, peerId: window.currentUserId, consumerId: consumer.id });
       
       const stream = new MediaStream([consumer.track]);
-      
-      const hostCleanId = currentRoomId.replace('live-', '');
-      if (Number(producerPeerId) === Number(hostCleanId)) {
-        // Host video stream
-        if (kind === 'video') {
-          liveHostVideo.srcObject = stream;
+      const peerIdStr = String(producerPeerId);
+      const hostCleanId = String(currentRoomId.replace('live-', ''));
+      const isHostPeer = peerIdStr === hostCleanId;
+
+      if (kind === 'audio') {
+        // Play audio via hidden <audio> element (not blocked by video track restrictions)
+        const audioEl = document.createElement('audio');
+        audioEl.autoplay = true;
+        audioEl.srcObject = stream;
+        audioEl.style.display = 'none';
+        document.body.appendChild(audioEl);
+        consumer.audioElement = audioEl;
+      } else if (kind === 'video') {
+        // Add or update participant in video grid
+        const existing = activeParticipants.get(peerIdStr);
+        const name = producerName || (isHostPeer ? 'Animateur' : 'Intervenant');
+        if (existing) {
+          existing.stream = stream;
+        } else {
+          activeParticipants.set(peerIdStr, {
+            peerId: peerIdStr,
+            stream,
+            name,
+            isHost: isHostPeer
+          });
         }
-      } else {
-        // Guest/Speaker video stream
-        if (kind === 'video') {
-          liveGuestCard.style.display = 'block';
-          liveGuestVideo.srcObject = stream;
-        }
+        updateVideoGrid();
       }
     });
   }
 
   // Socket incoming signaling
-  socket.on('live:newProducer', async ({ producerId, peerId, kind }) => {
-    if (peerId !== window.currentUserId) {
-      await consumeProducer(producerId, kind, peerId);
+  socket.on('live:newProducer', async ({ producerId, peerId, kind, name }) => {
+    if (String(peerId) !== String(window.currentUserId)) {
+      await consumeProducer(producerId, kind, peerId, name);
     }
   });
 
   socket.on('live:producerClosed', ({ producerId }) => {
     currentConsumers.forEach((consumer, consumerId) => {
       if (consumer.producerId === producerId) {
+        // Clean up hidden audio element if present
+        if (consumer.audioElement) {
+          consumer.audioElement.pause();
+          consumer.audioElement.remove();
+        }
         consumer.close();
         currentConsumers.delete(consumerId);
       }
@@ -467,10 +579,14 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         // Capture camera/mic stream
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         
-        // Show overlay preview local mini card
-        liveGuestCard.style.display = 'block';
-        liveGuestVideo.srcObject = localStream;
-        liveGuestName.textContent = 'Moi';
+        // Add to video grid as a speaker tile
+        activeParticipants.set(String(window.currentUserId), {
+          peerId: String(window.currentUserId),
+          stream: localStream,
+          name: window.currentUserDisplayName || window.currentUsername || 'Moi',
+          isHost: false
+        });
+        updateVideoGrid();
         
         await publishStream();
         alert('Votre demande a été acceptée ! Vous êtes en direct.');
@@ -497,7 +613,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   });
 
   socket.on('live:removeSpeaker', ({ peerId }) => {
-    if (peerId === window.currentUserId) {
+    if (String(peerId) === String(window.currentUserId)) {
       alert("L'hôte vous a replacé en simple spectateur.");
       isSpeaker = false;
       
@@ -514,8 +630,11 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       });
       currentProducers.clear();
       
-      // Hide camera card and buttons
-      liveGuestCard.style.display = 'none';
+      // Remove from video grid
+      activeParticipants.delete(String(window.currentUserId));
+      updateVideoGrid();
+
+      // Hide speaker controls
       liveMicToggleBtn.style.display = 'none';
       liveCamToggleBtn.style.display = 'none';
       
@@ -531,9 +650,9 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         if (typeof lucide !== 'undefined') lucide.createIcons({ nodes: [liveSpeakRequestBtn] });
       }
     } else {
-      // Hide guest card for other viewers
-      liveGuestCard.style.display = 'none';
-      liveGuestVideo.srcObject = null;
+      // Remove this participant from the grid for all other viewers
+      activeParticipants.delete(String(peerId));
+      updateVideoGrid();
     }
   });
 
@@ -577,8 +696,21 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     
     if (sendTransport) { sendTransport.close(); sendTransport = null; }
     if (recvTransport) { recvTransport.close(); recvTransport = null; }
-       liveOverlayViewer.style.display = 'none';
-    liveGuestCard.style.display = 'none';
+
+    // Stop media suppression interval
+    stopSuppressInterval();
+
+    // Clean up hidden audio elements
+    currentConsumers.forEach(c => {
+      if (c.audioElement) { c.audioElement.pause(); c.audioElement.remove(); }
+    });
+    currentConsumers.clear();
+
+    // Clear video grid
+    activeParticipants.clear();
+    if (liveVideoGrid) liveVideoGrid.innerHTML = '';
+
+    liveOverlayViewer.style.display = 'none';
     liveMicToggleBtn.style.display = 'none';
     liveCamToggleBtn.style.display = 'none';
     liveSpeakRequestBtn.style.display = 'none';

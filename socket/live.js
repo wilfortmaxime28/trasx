@@ -79,7 +79,8 @@ module.exports = function(socket, io) {
           activeProducers.push({
             producerId: prod.id,
             peerId: p.id,
-            kind: prod.kind
+            kind: prod.kind,
+            name: p.name || 'Spectateur'
           });
         });
       });
@@ -174,7 +175,7 @@ module.exports = function(socket, io) {
 
   // L'hôte retire la parole
   socket.on('live:removeSpeaker', ({ roomId, peerId }) => {
-    socket.to(roomId).emit('live:removeSpeaker', { peerId });
+    io.to(roomId).emit('live:removeSpeaker', { peerId });
   });
 
   // Message de chat en direct

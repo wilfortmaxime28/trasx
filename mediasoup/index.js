@@ -82,7 +82,8 @@ function handleSocket(socket, io) {
       socket.to(roomId).emit('live:newProducer', {
         producerId: producer.id,
         peerId: peer.id,
-        kind: producer.kind
+        kind: producer.kind,
+        name: peer.name || 'Spectateur'
       });
 
       callback({ id: producer.id });
