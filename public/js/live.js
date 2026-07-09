@@ -440,6 +440,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   openLiveBtns.forEach(btn => {
     if (btn) {
       btn.addEventListener('click', () => {
+        stopAllOtherPlayback();
         liveCreateModal.style.display = 'flex';
       });
     }
