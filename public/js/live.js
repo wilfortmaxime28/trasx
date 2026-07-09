@@ -212,6 +212,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     document.querySelectorAll('video, audio').forEach(el => {
       // Skip anything inside the live overlay (our own live streams)
       if (el.closest && el.closest('#liveOverlayViewer')) return;
+      if (el.classList.contains('live-audio-element')) return;
       if (['liveHostVideo','liveGuestVideo','localVideo','remoteVideo'].includes(el.id)) return;
       try { if (!el.paused) el.pause(); el.muted = true; } catch(e){}
     });
@@ -595,11 +596,18 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       if (kind === 'audio') {
         // Play audio via hidden <audio> element (not blocked by video track restrictions)
         const audioEl = document.createElement('audio');
+        audioEl.className = 'live-audio-element';
         audioEl.autoplay = true;
         audioEl.srcObject = stream;
         audioEl.style.display = 'none';
-        document.body.appendChild(audioEl);
+        
+        const container = document.getElementById('liveOverlayViewer') || document.body;
+        container.appendChild(audioEl);
+        
         consumer.audioElement = audioEl;
+        
+        // Explicit play to bypass autoplay restrictions on mobile/Safari
+        audioEl.play().catch(e => console.warn('[Live] Play audio failed:', e));
       } else if (kind === 'video') {
         const existing = activeParticipants.get(peerIdStr);
         const name = producerName || (isHostPeer ? 'Animateur' : 'Intervenant');
