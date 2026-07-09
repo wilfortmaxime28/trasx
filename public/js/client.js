@@ -4431,13 +4431,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const participants     = window.currentLiveParticipants;
     if (recipientSection && recipientSelect && participants && participants.size > 0) {
       recipientSelect.innerHTML = '';
+      let eligibleCount = 0;
       participants.forEach((p) => {
+        if (String(p.peerId) === String(window.currentUserId)) return; // Filter out self
         const opt = document.createElement('option');
         opt.value = p.peerId;
-        opt.textContent = p.name + (p.isHost ? ' \uD83C\uDF99\uFE0F' : '');
+        opt.textContent = p.name + (p.isHost ? ' 🎙️' : '');
         recipientSelect.appendChild(opt);
+        eligibleCount++;
       });
-      recipientSection.style.display = participants.size > 1 ? 'flex' : 'none';
+      recipientSection.style.display = eligibleCount > 1 ? 'flex' : 'none';
     } else if (recipientSection) {
       recipientSection.style.display = 'none';
     }
@@ -4850,7 +4853,9 @@ document.addEventListener('DOMContentLoaded', () => {
             message: `a envoyé un cadeau : ${activeGiftSelection.name} ${emoji} ($${activeGiftSelection.amount}) !`
           });
 
-          showToast(`Cadeau envoye a l'animateur du direct pour ${formatGiftAmountLabel(response.amount || activeGiftSelection.amount)}.`);
+          const selectedOption = recipientSelect?.options[recipientSelect.selectedIndex];
+          const recipientName = selectedOption ? selectedOption.textContent.replace(' 🎙️', '') : "l'animateur";
+          showToast(`Cadeau envoye a ${recipientName} pour ${formatGiftAmountLabel(response.amount || activeGiftSelection.amount)}.`);
         } else {
           const recipientName = activeGiftTargetType === 'birthday'
             ? (activeGiftBirthdayCard.querySelector('.birthday-feed-card-name')?.textContent?.trim() || 'cet utilisateur')

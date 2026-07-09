@@ -12,6 +12,20 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   const socket = io();
   console.log('[live.js] socket created:', !!socket);
   
+  // Inject mobile snappiness styles (remove 300ms click delay)
+  const touchStyle = document.createElement('style');
+  touchStyle.textContent = `
+    #liveOverlayViewer button,
+    #liveOverlayViewer .c-btn,
+    #liveOverlayViewer .live-control-btn,
+    #liveOverlayViewer .icon-btn,
+    .gift-preset-card,
+    #confirmGiftPostModalBtn {
+      touch-action: manipulation !important;
+    }
+  `;
+  document.head.appendChild(touchStyle);
+
   // DOM Elements
   const openLiveCreateModalBtn = document.getElementById('openLiveCreateModalBtn');
   const shortsMobileLiveBtn = document.getElementById('shortsMobileLiveBtn');

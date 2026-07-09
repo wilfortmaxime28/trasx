@@ -8696,7 +8696,7 @@ io.on('connection', (socket) => {
       }
 
       const recipientUserId = Number(data?.recipientUserId || room.hostId);
-      if (!room.peers.has(String(recipientUserId))) {
+      if (!room.peers.has(String(recipientUserId)) && !room.peers.has(Number(recipientUserId))) {
         throw new Error("Le destinataire spécifié n'est pas ou plus connecté à ce direct.");
       }
       if (recipientUserId === Number(senderId)) {
@@ -8723,7 +8723,7 @@ io.on('connection', (socket) => {
           'SELECT id, username, first_name, last_name, withdrawal_account_balance, deposit_account_balance FROM users WHERE id = ? FOR UPDATE',
           [recipientUserId]
         );
-        if (!recipientRows.length) throw new Error('Animateur du live introuvable.');
+        if (!recipientRows.length) throw new Error('Destinataire introuvable.');
         const recipient = recipientRows[0];
 
         await connection.query(
