@@ -397,7 +397,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         if (liveFollowBtn) liveFollowBtn.style.display = 'none';
         liveHostName.textContent = 'Moi (Animateur)';
         liveTitleText.textContent = title;
-        liveHostAvatar.src = document.querySelector('.profile-btn img')?.getAttribute('src') || '/assets/avatar_placeholder.jpg';
+        liveHostAvatar.src = window.currentUserAvatar || '/assets/avatar_placeholder.jpg';
         if (liveBlurBg) liveBlurBg.style.backgroundImage = `url(${liveHostAvatar.src})`;
 
         // Add host to video grid
@@ -455,7 +455,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       activeParticipants.clear();
       if (liveVideoGrid) liveVideoGrid.innerHTML = '';
       
-      const viewerAvatar = document.querySelector('.profile-btn img')?.getAttribute('src') || '/assets/avatar_placeholder.jpg';
+      const viewerAvatar = window.currentUserAvatar || '/assets/avatar_placeholder.jpg';
       const viewerName = window.currentUserDisplayName || window.currentUsername || 'Anonyme';
       socket.emit('live:join', { roomId, peerId: window.currentUserId, name: viewerName, avatar: viewerAvatar }, async (response) => {
         if (response.error === 'PAYMENT_REQUIRED') {
@@ -1009,7 +1009,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     const text = liveChatInput.value.trim();
     if (!text) return;
 
-    const userAvatar = document.querySelector('.profile-btn img')?.getAttribute('src') || '/assets/avatar_placeholder.jpg';
+    const userAvatar = window.currentUserAvatar || '/assets/avatar_placeholder.jpg';
     socket.emit('live:chatMessage', {
       roomId: currentRoomId,
       peerId: window.currentUserId,
