@@ -61,6 +61,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   const liveViewerCountBtn = document.getElementById('liveViewerCount');
   const liveLikeBtn = document.getElementById('liveLikeBtn');
   const liveLikeCountVal = document.getElementById('liveLikeCountVal');
+  const liveShareBtn = document.getElementById('liveShareBtn');
 
   const formatLikeCount = (count) => {
     const num = Number(count) || 0;
@@ -1203,20 +1204,23 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   socket.on('live:viewerJoined', ({ peerId, name, avatar }) => {
     if (!liveChatMessages) return;
     const joinDiv = document.createElement('div');
-    joinDiv.style.background = 'rgba(59,130,246,0.15)';
-    joinDiv.style.border = '1px solid rgba(59,130,246,0.25)';
+    joinDiv.style.background = 'rgba(0,0,0,0.2)';
     joinDiv.style.borderRadius = '12px';
-    joinDiv.style.fontSize = '11px';
+    joinDiv.style.fontSize = '12px';
+    joinDiv.style.lineHeight = '1.4';
     joinDiv.style.display = 'flex';
     joinDiv.style.alignItems = 'center';
     joinDiv.style.gap = '6px';
     joinDiv.style.alignSelf = 'flex-start';
-    joinDiv.style.padding = '4px 10px 4px 5px';
+    joinDiv.style.backdropFilter = 'blur(4px)';
+    joinDiv.style.webkitBackdropFilter = 'blur(4px)';
+    joinDiv.style.border = '1px solid rgba(255,255,255,0.05)';
     joinDiv.style.marginBottom = '4px';
-    const avatarHtml = avatar
-      ? `<img src="${avatar}" style="width:20px;height:20px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1.5px solid #3b82f6;" onerror="this.style.display='none'">`
-      : '';
-    joinDiv.innerHTML = `${avatarHtml}<span style="color:#93c5fd;"><strong style="color:#60a5fa;">${name || 'Quelqu\'un'}</strong> a rejoint le direct 👋</span>`;
+    joinDiv.style.padding = '4px 10px';
+    joinDiv.style.maxWidth = '100%';
+
+    const iconHtml = `<span style="font-size: 14px; margin-right: 4px; display: flex; align-items: center;">👋</span>`;
+    joinDiv.innerHTML = `${iconHtml}<span style="color:#e5e7eb; font-weight:600;"><span style="color:#ffd166; font-weight:700; margin-right: 4px;">${name || 'Quelqu\'un'}</span> a rejoint</span>`;
     liveChatMessages.appendChild(joinDiv);
     liveChatMessages.scrollTop = liveChatMessages.scrollHeight;
   });
@@ -1550,6 +1554,26 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       if (currentRoomId) {
         spawnFloatingHeart();
         socket.emit('live:like', { roomId: currentRoomId });
+      }
+    });
+  }
+
+  if (liveShareBtn) {
+    liveShareBtn.addEventListener('click', () => {
+      if (currentRoomId) {
+        const liveUrl = `${window.location.origin}/live/${currentRoomId}`;
+        navigator.clipboard.writeText(liveUrl).then(() => {
+          if (typeof showToast === 'function') {
+            showToast('Lien du direct copié dans le presse-papiers ! 🚀');
+          } else {
+            alert('Lien du direct copié !');
+          }
+        }).catch(err => {
+          console.error('Failed to copy link:', err);
+          if (typeof showToast === 'function') {
+            showToast('Impossible de copier le lien.');
+          }
+        });
       }
     });
   }
