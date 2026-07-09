@@ -5644,6 +5644,9 @@ function getYouTubeId(url) {
             </div>
             
             <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="liveLikeCountBadge" style="font-size: 11px; background: rgba(0,0,0,0.45); padding: 6px 12px; border-radius: 20px; display: flex; align-items: center; gap: 4px; border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+                <i data-lucide="heart" style="width: 12px; height: 12px; color: #ef4444; fill: #ef4444;"></i> <span id="liveLikeCountVal">0</span>
+              </span>
               <span id="liveViewerCount" style="font-size: 11px; background: rgba(0,0,0,0.45); padding: 6px 12px; border-radius: 20px; display: flex; align-items: center; gap: 4px; border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
                 <i data-lucide="eye" style="width: 12px; height: 12px; color: #10b981;"></i> <span id="liveViewerCountVal">1</span>
               </span>
@@ -5759,6 +5762,11 @@ function getYouTubeId(url) {
                 <!-- Bouton Cadeau -->
                 <button id="liveGiftBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Envoyer un Cadeau">
                   <i data-lucide="gift" style="color: #3b82f6; width: 18px; height: 18px; pointer-events: none;"></i>
+                </button>
+
+                <!-- Bouton Like -->
+                <button id="liveLikeBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Aimer le direct">
+                  <i data-lucide="heart" style="color: #ef4444; width: 18px; height: 18px; pointer-events: none;"></i>
                 </button>
 
               </div>

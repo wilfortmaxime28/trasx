@@ -23,6 +23,14 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     #confirmGiftPostModalBtn {
       touch-action: manipulation !important;
     }
+    @keyframes centerGiftSpin {
+      0% { transform: translate(-50%, -50%) scale(0.3) rotate(0deg); opacity: 0; }
+      15% { transform: translate(-50%, -50%) scale(1.3) rotate(380deg); opacity: 1; }
+      40% { transform: translate(-50%, -50%) scale(1.1) rotate(345deg); opacity: 1; }
+      60% { transform: translate(-50%, -50%) scale(1.15) rotate(370deg); opacity: 1; }
+      80% { transform: translate(-50%, -50%) scale(1.1) rotate(355deg); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(1) rotate(360deg); opacity: 1; }
+    }
   `;
   document.head.appendChild(touchStyle);
 
@@ -51,6 +59,8 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   const liveBlurBg = document.getElementById('liveBlurBg');
   const liveViewerCountVal = document.getElementById('liveViewerCountVal');
   const liveViewerCountBtn = document.getElementById('liveViewerCount');
+  const liveLikeBtn = document.getElementById('liveLikeBtn');
+  const liveLikeCountVal = document.getElementById('liveLikeCountVal');
 
   // Spectator List Modal Elements
   const spectatorsListModal = document.getElementById('spectatorsListModal');
@@ -489,6 +499,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         liveTitleText.textContent = response.title;
         liveHostAvatar.src = response.hostAvatar || '/assets/avatar_placeholder.jpg';
         if (liveBlurBg) liveBlurBg.style.backgroundImage = `url(${liveHostAvatar.src})`;
+        if (liveLikeCountVal) liveLikeCountVal.textContent = response.likeCount || 0;
 
         // Show speak request button for spectator
         liveSpeakRequestBtn.style.display = 'inline-flex';
@@ -889,6 +900,10 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     activeParticipants.clear();
     if (liveVideoGrid) liveVideoGrid.innerHTML = '';
 
+    if (liveLikeCountVal) {
+      liveLikeCountVal.textContent = '0';
+    }
+
     liveOverlayViewer.style.display = 'none';
     liveMicToggleBtn.style.display = 'none';
     liveCamToggleBtn.style.display = 'none';
@@ -1154,8 +1169,90 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   }
 
   // --- Gift Button / Custom Gift Click ---
+  const showCenterGiftAnimation = (emoji, senderName, giftLabel) => {
+    if (!liveOverlayViewer) return;
+    
+    let giftName = 'Cadeau';
+    if (giftLabel) {
+      const parts = giftLabel.split(' envoyé un(e) ');
+      if (parts[1]) {
+        giftName = parts[1].split(' ')[0] || 'Cadeau';
+      } else {
+        const altParts = giftLabel.split(' cadeau : ');
+        if (altParts[1]) {
+          giftName = altParts[1].split(' ')[0] || 'Cadeau';
+        }
+      }
+    }
+    
+    const centerWrap = document.createElement('div');
+    centerWrap.style.cssText = `
+      position: absolute;
+      top: 45%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.3);
+      opacity: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      pointer-events: none;
+      transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    `;
+    
+    const emojiEl = document.createElement('div');
+    emojiEl.textContent = emoji;
+    emojiEl.style.cssText = `
+      font-size: 96px;
+      filter: drop-shadow(0 0 24px rgba(253, 224, 71, 0.95));
+      animation: centerGiftSpin 2.5s ease-in-out infinite;
+    `;
+    
+    const textEl = document.createElement('div');
+    textEl.style.cssText = `
+      margin-top: 15px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 15px;
+      font-weight: 800;
+      color: #fff;
+      text-align: center;
+      background: linear-gradient(135deg, #ffe066 0%, #f59e0b 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      padding: 6px 18px;
+      border-radius: 20px;
+      background-color: rgba(15, 30, 54, 0.85);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+      white-space: nowrap;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    `;
+    textEl.textContent = `${senderName} a envoyé ${giftName} !`;
+    
+    centerWrap.appendChild(emojiEl);
+    centerWrap.appendChild(textEl);
+    liveOverlayViewer.appendChild(centerWrap);
+    
+    // Animate in
+    requestAnimationFrame(() => {
+      centerWrap.style.transform = 'translate(-50%, -50%) scale(1.2)';
+      centerWrap.style.opacity = '1';
+    });
+    
+    // Animate out
+    setTimeout(() => {
+      centerWrap.style.transform = 'translate(-50%, -50%) scale(1.5)';
+      centerWrap.style.opacity = '0';
+      setTimeout(() => centerWrap.remove(), 600);
+    }, 2200);
+  };
+
   const showFloatingGiftAnimation = (emoji = '🌹', senderName = '', giftLabel = '') => {
     if (!liveOverlayViewer) return;
+
+    // Trigger center animation for all users
+    showCenterGiftAnimation(emoji, senderName, giftLabel);
 
     // --- TikTok-style gift card overlay ---
     const card = document.createElement('div');
@@ -1316,4 +1413,56 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       }
     });
   }
+
+  // --- Like Button & Floating Hearts (TikTok-Style) ---
+  const spawnFloatingHeart = () => {
+    if (!liveOverlayViewer) return;
+    const heart = document.createElement('div');
+    const colors = ['#ff2d55', '#ff375f', '#ff9500', '#ffcc00', '#4cd964', '#5ac8fa', '#007aff', '#5856d6'];
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    const randomScale = 0.6 + Math.random() * 0.7;
+    const randomRotate = (Math.random() - 0.5) * 40;
+    const randomXOffset = (Math.random() - 0.5) * 100;
+    
+    heart.style.cssText = `
+      position: absolute;
+      bottom: 85px;
+      right: 20px;
+      font-size: 26px;
+      color: ${randomColor};
+      pointer-events: none;
+      z-index: 150;
+      opacity: 1;
+      transform: translateX(0) scale(${randomScale}) rotate(${randomRotate}deg);
+      transition: transform 2s cubic-bezier(0.08, 0.82, 0.17, 1), opacity 2s ease-out;
+    `;
+    
+    const heartSymbols = ['❤️', '💖', '💝', '💕', '💗', '💓', '💜', '💙', '💚', '💛'];
+    heart.textContent = heartSymbols[Math.floor(Math.random() * heartSymbols.length)];
+    
+    liveOverlayViewer.appendChild(heart);
+    
+    requestAnimationFrame(() => {
+      heart.style.transform = `translateY(-${280 + Math.random() * 180}px) translateX(${randomXOffset}px) scale(${randomScale * 1.25}) rotate(${randomRotate * 1.5}deg)`;
+      heart.style.opacity = '0';
+    });
+    
+    setTimeout(() => heart.remove(), 2000);
+  };
+
+  if (liveLikeBtn) {
+    liveLikeBtn.addEventListener('click', () => {
+      if (currentRoomId) {
+        spawnFloatingHeart();
+        socket.emit('live:like', { roomId: currentRoomId });
+      }
+    });
+  }
+
+  socket.on('live:liked', ({ likeCount }) => {
+    if (liveLikeCountVal) {
+      liveLikeCountVal.textContent = likeCount;
+    }
+    spawnFloatingHeart();
+  });
 })();

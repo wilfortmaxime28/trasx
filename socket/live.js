@@ -16,6 +16,7 @@ module.exports = function(socket, io) {
       room.isPaid = !!isPaid;
       room.price = Number(price || 0);
       room.paidUsers = new Set(); // Track who has already paid
+      room.likeCount = 0;
 
       const peer = room.addPeer(hostId, socket.id);
       peer.name = hostName || 'Animateur';
@@ -114,11 +115,25 @@ module.exports = function(socket, io) {
         title: room.title,
         hostName: room.hostName,
         hostAvatar: room.hostAvatar,
-        wasAcceptedSpeaker
+        wasAcceptedSpeaker,
+        likeCount: room.likeCount || 0
       });
     } catch (err) {
       console.error('live:join error:', err);
       callback({ error: err.message });
+    }
+  });
+
+  // Aimer le direct
+  socket.on('live:like', ({ roomId }) => {
+    try {
+      const room = roomManager.getRoom(roomId);
+      if (room) {
+        room.likeCount = (room.likeCount || 0) + 1;
+        io.to(roomId).emit('live:liked', { likeCount: room.likeCount });
+      }
+    } catch (err) {
+      console.error('live:like error:', err);
     }
   });
 
