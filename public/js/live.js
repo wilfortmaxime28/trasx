@@ -179,6 +179,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
 
       const vid = document.createElement('video');
       vid.autoplay   = true;
+      vid.muted      = true;
       vid.playsInline = true;
       vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
       if (p.peerId === String(window.currentUserId)) vid.style.transform = 'scaleX(-1)';
@@ -583,6 +584,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       const consumer = await recvTransport.consume(params);
       currentConsumers.set(consumer.id, consumer);
       
+      try { await consumer.resume(); } catch(e) { console.warn('[Live] consumer.resume() failed:', e); }
       socket.emit('mediasoup:resumeConsumer', { roomId: currentRoomId, peerId: window.currentUserId, consumerId: consumer.id });
       
       const stream = new MediaStream([consumer.track]);
