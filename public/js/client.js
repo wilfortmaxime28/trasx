@@ -3567,6 +3567,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return true;
     }
     const modalSelectors = [
+      '#liveOverlayViewer',
       '.modal',
       '[id*="modal"]',
       '[id*="Modal"]',

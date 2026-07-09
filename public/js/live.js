@@ -1577,6 +1577,8 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   // Tap screen anywhere on the video grid area to Like
   if (liveVideoGrid) {
     liveVideoGrid.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent clicks on the live grid from bubbling up and toggling background video play/pause
+      
       // Exclude clicking on interactive buttons, inputs, dropdowns
       if (e.target.closest('button, input, select, a, #liveChatInput, #liveEmojiPicker, #liveLikeBtn, #liveGiftBtn, #leaveLiveBtn, #liveViewerCount')) return;
       
@@ -1584,6 +1586,12 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         spawnFloatingHeart();
         socket.emit('live:like', { roomId: currentRoomId });
       }
+    });
+  }
+
+  if (liveOverlayViewer) {
+    liveOverlayViewer.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent clicks anywhere in the live overlay from bubbling up to document and triggering playback
     });
   }
 
