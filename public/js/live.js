@@ -170,8 +170,13 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       liveVideoGrid.style.top = '0';
       liveVideoGrid.style.transform = 'none';
       liveVideoGrid.style.height = '100%';
+    } else if (count === 2) {
+      // Double the height of the 2-speaker layout (2/3 of screen height, centered vertically)
+      liveVideoGrid.style.top = '50%';
+      liveVideoGrid.style.transform = 'translateY(-50%)';
+      liveVideoGrid.style.height = '66.66%';
     } else {
-      // 1/3 of screen height, centered vertically
+      // 1/3 of screen height, centered vertically for 3+ speakers
       liveVideoGrid.style.top = '50%';
       liveVideoGrid.style.transform = 'translateY(-50%)';
       liveVideoGrid.style.height = '33.33%';
