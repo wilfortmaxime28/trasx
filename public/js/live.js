@@ -399,6 +399,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         
         // Show overlay
         liveOverlayViewer.style.display = 'flex';
+        liveOverlayViewer.style.height = window.innerHeight + 'px';
         if (liveFollowBtn) liveFollowBtn.style.display = 'none';
         liveHostName.textContent = 'Moi (Animateur)';
         liveTitleText.textContent = title;
@@ -451,6 +452,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       currentRoomId = roomId;
       
       liveOverlayViewer.style.display = 'flex';
+      liveOverlayViewer.style.height = window.innerHeight + 'px';
       if (liveFollowBtn) {
         liveFollowBtn.style.display = 'inline-block';
         liveFollowBtn.textContent = 'Suivre';
@@ -910,6 +912,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     }
 
     liveOverlayViewer.style.display = 'none';
+    liveOverlayViewer.style.height = '';
     liveMicToggleBtn.style.display = 'none';
     liveCamToggleBtn.style.display = 'none';
     liveSpeakRequestBtn.style.display = 'none';
@@ -1059,7 +1062,6 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
           const newPos = pos + span.textContent.length;
           liveChatInput.setSelectionRange(newPos, newPos);
         }
-        liveEmojiPicker.style.display = 'none';
       });
     });
 
