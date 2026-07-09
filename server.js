@@ -5305,7 +5305,7 @@ io.on('connection', (socket) => {
 
   // Register Mediasoup and Live/Call socket handlers
   handleMediasoupSocket(socket, io);
-  handleLiveSocket(socket, io);
+  handleLiveSocket(socket, io, emitNotificationForUser);
   handleVideoCallSocket(socket, io);
 
   socket.on('feed-posts-watch', (data) => {
@@ -5331,7 +5331,7 @@ io.on('connection', (socket) => {
     socket.data.watchedPostRooms = nextRooms;
   });
 
-  const emitNotificationForUser = async (recipientId, notificationData) => {
+  async function emitNotificationForUser(recipientId, notificationData) {
     if (!recipientId) return null;
     const notificationId = await Notification.create(notificationData);
     const actor = await User.getById(notificationData.actorId);
@@ -7737,13 +7737,15 @@ io.on('connection', (socket) => {
         const roomManager = require('./mediasoup/roomManager');
         const room = roomManager.getRoom(socket.roomId);
         if (room) {
+          const peer = room.peers.get(String(socket.peerId)) || room.peers.get(Number(socket.peerId));
+          const peerName = peer ? (peer.name || 'Anonyme') : 'Quelqu\'un';
           room.removePeer(socket.peerId);
           if (socket.isHost) {
             socket.to(socket.roomId).emit('live:ended');
             roomManager.closeRoom(socket.roomId);
             io.emit('live:ended-global', { roomId: socket.roomId });
           } else {
-            socket.to(socket.roomId).emit('live:viewerLeft', { peerId: socket.peerId });
+            socket.to(socket.roomId).emit('live:viewerLeft', { peerId: socket.peerId, name: peerName });
 
             // Envoyer la liste des spectateurs mise à jour (sans l'animateur/créateur)
             const spectators = [];

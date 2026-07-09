@@ -1233,12 +1233,34 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   });
 
   // Socket: Viewer left notification
-  socket.on('live:viewerLeft', ({ peerId }) => {
+  socket.on('live:viewerLeft', ({ peerId, name }) => {
     const peerIdStr = String(peerId);
     if (activeParticipants.has(peerIdStr)) {
       activeParticipants.delete(peerIdStr);
       updateVideoGrid();
     }
+
+    if (!liveChatMessages) return;
+    const leaveDiv = document.createElement('div');
+    leaveDiv.style.background = 'rgba(0,0,0,0.2)';
+    leaveDiv.style.borderRadius = '12px';
+    leaveDiv.style.fontSize = '12px';
+    leaveDiv.style.lineHeight = '1.4';
+    leaveDiv.style.display = 'flex';
+    leaveDiv.style.alignItems = 'center';
+    leaveDiv.style.gap = '6px';
+    leaveDiv.style.alignSelf = 'flex-start';
+    leaveDiv.style.backdropFilter = 'blur(4px)';
+    leaveDiv.style.webkitBackdropFilter = 'blur(4px)';
+    leaveDiv.style.border = '1px solid rgba(255,255,255,0.05)';
+    leaveDiv.style.marginBottom = '4px';
+    leaveDiv.style.padding = '4px 10px';
+    leaveDiv.style.maxWidth = '100%';
+
+    const iconHtml = `<span style="font-size: 14px; margin-right: 4px; display: flex; align-items: center;">🚪</span>`;
+    leaveDiv.innerHTML = `${iconHtml}<span style="color:#e5e7eb; font-weight:600;"><span style="color:#a1a1aa; font-weight:700; margin-right: 4px;">${name || 'Quelqu\'un'}</span> a quitté</span>`;
+    liveChatMessages.appendChild(leaveDiv);
+    liveChatMessages.scrollTop = liveChatMessages.scrollHeight;
   });
 
   // --- Follow Button Actions ---

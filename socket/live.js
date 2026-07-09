@@ -1,7 +1,8 @@
 const roomManager = require('../mediasoup/roomManager');
 const db = require('../config/db');
+const User = require('../models/User');
 
-module.exports = function(socket, io) {
+module.exports = function(socket, io, emitNotificationForUser) {
 
   // Création d'un Live par l'animateur (Host)
   socket.on('live:create', async ({ roomId, hostId, title, hostName, hostAvatar, isPaid, price }, callback) => {
@@ -37,6 +38,28 @@ module.exports = function(socket, io) {
 
       console.log(`[Live] Hôte ${hostId} a créé le live ${roomId} (${room.title}) – ${room.isPaid ? `Payant $${room.price}` : 'Gratuit'}`);
       callback({ success: true });
+
+      // Send real-time notification to all followers of this host
+      try {
+        const followers = await User.getFollowersIds(hostId);
+        if (followers && followers.length > 0) {
+          const notificationData = {
+            actorId: hostId,
+            type: 'live',
+            message: `${room.hostName} a commencé un live en direct ! 🎙️`,
+            postId: null,
+          };
+          for (const followerId of followers) {
+            if (typeof emitNotificationForUser === 'function') {
+              emitNotificationForUser(Number(followerId), notificationData).catch(err => {
+                console.error(`Failed to send live notification to follower ${followerId}:`, err);
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to notify followers about live start:', err);
+      }
     } catch (err) {
       console.error('live:create error:', err);
       callback({ error: err.message });
@@ -253,6 +276,8 @@ module.exports = function(socket, io) {
       socket.leave(roomId);
       const room = roomManager.getRoom(roomId);
       if (room) {
+        const peer = room.peers.get(String(peerId)) || room.peers.get(Number(peerId));
+        const peerName = peer ? (peer.name || 'Anonyme') : 'Quelqu\'un';
         room.removePeer(peerId);
         if (room.acceptedSpeakers) {
           room.acceptedSpeakers.delete(Number(peerId));
@@ -262,7 +287,7 @@ module.exports = function(socket, io) {
           roomManager.closeRoom(roomId);
           io.emit('live:ended-global', { roomId });
         } else {
-          socket.to(roomId).emit('live:viewerLeft', { peerId });
+          socket.to(roomId).emit('live:viewerLeft', { peerId, name: peerName });
 
           const spectators = [];
           room.peers.forEach(p => {
