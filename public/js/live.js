@@ -62,6 +62,8 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   const liveLikeBtn = document.getElementById('liveLikeBtn');
   const liveLikeCountVal = document.getElementById('liveLikeCountVal');
   const liveShareBtn = document.getElementById('liveShareBtn');
+  const livePlusBtn = document.getElementById('livePlusBtn');
+  const livePlusMenu = document.getElementById('livePlusMenu');
 
   const formatLikeCount = (count) => {
     const num = Number(count) || 0;
@@ -312,19 +314,19 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       try { if (!el.paused) el.pause(); el.muted = true; } catch(e){}
     });
   };
-  let _suppressInterval = null;
   const startSuppressInterval = () => {
-    if (_suppressInterval) return;
-    _suppressInterval = setInterval(() => { if (currentRoomId) suppressOtherMedia(); }, 1500);
+    // Only run once when entering the live room to avoid periodic querying/thread blocking on iOS Safari
+    suppressOtherMedia();
   };
   const stopSuppressInterval = () => {
-    clearInterval(_suppressInterval);
-    _suppressInterval = null;
+    // Do nothing since we no longer run a periodic timer
   };
 
   // ── Speaking pulse via AudioContext ──────────────────────────────────────
   let _audioAnalysers = new Map(); // peerId -> { analyser, source, rafId }
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const startSpeakingPulse = (peerId, stream) => {
+    if (isIOS) return; // Disable WebRTC AudioContext visualizer on iOS Safari to prevent audio/video stream freezing and page crashes
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const source = ctx.createMediaStreamSource(stream);
@@ -341,7 +343,10 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
           tile.style.outlineOffset = avg > 12 ? '0px' : '0px';
           tile.style.boxShadow = avg > 12 ? '0 0 0 3px rgba(59,130,246,0.5)' : 'none';
         }
-        _audioAnalysers.get(peerId).rafId = requestAnimationFrame(check);
+        const entry = _audioAnalysers.get(peerId);
+        if (entry) {
+          entry.rafId = requestAnimationFrame(check);
+        }
       };
       _audioAnalysers.set(peerId, { analyser, source, ctx, rafId: requestAnimationFrame(check) });
     } catch(e) { /* AudioContext blocked on some browsers */ }
@@ -466,6 +471,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         // Show overlay
         liveOverlayViewer.style.display = 'flex';
         liveOverlayViewer.style.height = window.innerHeight + 'px';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
         if (liveFollowBtn) liveFollowBtn.style.display = 'none';
         liveHostName.textContent = 'Moi (Animateur)';
         liveTitleText.textContent = title;
@@ -519,6 +525,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       
       liveOverlayViewer.style.display = 'flex';
       liveOverlayViewer.style.height = window.innerHeight + 'px';
+      if (typeof lucide !== 'undefined') lucide.createIcons();
       if (liveFollowBtn) {
         liveFollowBtn.style.display = 'inline-block';
         liveFollowBtn.textContent = 'Suivre';
@@ -1574,6 +1581,22 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
             showToast('Impossible de copier le lien.');
           }
         });
+      }
+      if (livePlusMenu) livePlusMenu.style.display = 'none';
+    });
+  }
+
+  if (livePlusBtn && livePlusMenu) {
+    livePlusBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = livePlusMenu.style.display === 'flex';
+      livePlusMenu.style.display = isVisible ? 'none' : 'flex';
+    });
+
+    // Close menu when clicking outside of it
+    document.addEventListener('click', (e) => {
+      if (!livePlusMenu.contains(e.target) && e.target !== livePlusBtn) {
+        livePlusMenu.style.display = 'none';
       }
     });
   }

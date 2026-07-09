@@ -5733,9 +5733,9 @@ function getYouTubeId(url) {
                 </button>
               </div>
 
-              <!-- Boutons icônes fixes (toujours 36x36, jamais de texte) -->
-              <div style="display: flex; gap: 8px; align-items: center; flex-shrink: 0;">
-
+              <!-- Menu flottant Plus (vertical) -->
+              <div id="livePlusMenu" style="display: none; flex-direction: column; gap: 8px; position: absolute; bottom: 85px; right: 20px; background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.15); border-radius: 20px; padding: 8px; z-index: 1000; backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+                
                 <!-- Micro (Speaker mode) -->
                 <button id="liveMicToggleBtn" style="display: none; background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
                   <i data-lucide="mic" style="width: 16px; height: 16px; pointer-events: none;"></i>
@@ -5746,32 +5746,35 @@ function getYouTubeId(url) {
                   <i data-lucide="video" style="width: 16px; height: 16px; pointer-events: none;"></i>
                 </button>
 
-                <!-- Bouton Demander la parole — icône fixe uniquement -->
-                <!-- États : idle = bleu mic | pending = animé | rejected = reset -->
+                <!-- Bouton Demander la parole -->
                 <button id="liveSpeakRequestBtn" style="display: none; background: #3b82f6; border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; align-items: center; justify-content: center; position: relative; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Demander à parler">
                   <i id="liveSpeakRequestIcon" data-lucide="mic" style="width: 16px; height: 16px; pointer-events: none;"></i>
-                  <!-- Badge animé quand en attente -->
                   <span id="liveSpeakRequestBadge" style="display: none; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; background: #f59e0b; border-radius: 50%; border: 2px solid rgba(0,0,0,0.5); animation: live-badge-pulse 1s infinite;"></span>
                 </button>
 
-                <!-- Retour spectateur (Host retire la parole) -->
+                <!-- Retour spectateur -->
                 <button id="liveRemoveSpeakerBtn" style="display: none; background: #3b82f6; border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Redevenir spectateur">
                   <i data-lucide="user" style="width: 16px; height: 16px; pointer-events: none;"></i>
                 </button>
+
+                <!-- Bouton Partage -->
+                <button id="liveShareBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Partager le direct">
+                  <i data-lucide="share-2" style="color: #10b981; width: 18px; height: 18px; pointer-events: none;"></i>
+                </button>
+
+              </div>
+
+              <!-- Boutons de la bottom bar principale -->
+              <div style="display: flex; gap: 8px; align-items: center; flex-shrink: 0;">
 
                 <!-- Bouton Cadeau -->
                 <button id="liveGiftBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Envoyer un Cadeau">
                   <i data-lucide="gift" style="color: #3b82f6; width: 18px; height: 18px; pointer-events: none;"></i>
                 </button>
 
-                <!-- Bouton Like -->
-                <button id="liveLikeBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Aimer le direct">
-                  <i data-lucide="heart" style="color: #ef4444; width: 18px; height: 18px; pointer-events: none;"></i>
-                </button>
-
-                <!-- Bouton Partage -->
-                <button id="liveShareBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Partager le direct">
-                  <i data-lucide="share-2" style="color: #10b981; width: 18px; height: 18px; pointer-events: none;"></i>
+                <!-- Bouton Plus (Menu déroulant actions secondaires) -->
+                <button id="livePlusBtn" style="background: rgba(255,255,255,0.15); border: none; width: 36px; height: 36px; min-width: 36px; border-radius: 50%; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);" title="Plus d'actions">
+                  <i data-lucide="plus" style="color: #ffffff; width: 18px; height: 18px; pointer-events: none;"></i>
                 </button>
 
               </div>

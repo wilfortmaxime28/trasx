@@ -4779,23 +4779,31 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      const targetType = activeGiftTargetType;
+      const liveRecipientSelect = document.getElementById('giftLiveRecipientSelect');
+      const liveSelectedOption = liveRecipientSelect && liveRecipientSelect.selectedIndex >= 0 ? liveRecipientSelect.options[liveRecipientSelect.selectedIndex] : null;
+      const liveRecipientName = liveSelectedOption ? liveSelectedOption.textContent.replace(' 🎙️', '') : "l'animateur";
+      const liveGiftSelectionName = activeGiftSelection.name;
+      const liveGiftSelectionAmount = activeGiftSelection.amount;
+
       confirmButton.disabled = true;
       confirmButton.textContent = tText('Envoi en cours...');
 
       let eventName;
       let payload;
 
-      if (activeGiftTargetType === 'live') {
+      if (targetType === 'live') {
         eventName = 'live-gift-send';
-        const recipientSelect = document.getElementById('giftLiveRecipientSelect');
-        const recipientUserId = recipientSelect?.value ? Number(recipientSelect.value) : null;
+        const recipientUserId = liveRecipientSelect?.value ? Number(liveRecipientSelect.value) : null;
         payload = {
           roomId: window.activeGiftLiveRoomId,
-          giftName: activeGiftSelection.name,
-          amount: Number(activeGiftSelection.amount),
+          giftName: liveGiftSelectionName,
+          amount: Number(liveGiftSelectionAmount),
           ...(recipientUserId ? { recipientUserId } : {})
         };
-      } else if (activeGiftTargetType === 'birthday') {
+        // Close modal immediately so the user can see the central animation!
+        closeGiftPostModal();
+      } else if (targetType === 'birthday') {
         eventName = 'birthday-gift-send';
         payload = {
           recipientUserId: activeGiftBirthdayUserId,
@@ -4827,36 +4835,15 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         }
 
-        if (activeGiftTargetType === 'live') {
-          const userUsername = window.currentUserUsername || 'Anonyme';
-          const emojis = {
-            'Rose': '🌹',
-            'Cafe': '☕',
-            'Couronne': '👑',
-            'Fusee': '🚀',
-            'Projecteur': '🎯',
-            'Flamme': '🔥',
-            'Diamant': '💎',
-            'Trophee': '🏆',
-            'Voiture': '🏎️',
-            'Jet': '🛩️',
-            'Villa': '🏡',
-            'Yacht': '🛥️',
-            'Chateau': '🏰'
-          };
-          const emoji = emojis[activeGiftSelection.name] || '🎁';
-          const selectedOption = recipientSelect && recipientSelect.selectedIndex >= 0 ? recipientSelect.options[recipientSelect.selectedIndex] : null;
-          const recipientName = selectedOption ? selectedOption.textContent.replace(' 🎙️', '') : "l'animateur";
-
-          showToast(`Cadeau envoye a ${recipientName} pour ${formatGiftAmountLabel(response.amount || activeGiftSelection.amount)}.`);
+        if (targetType === 'live') {
+          showToast(`Cadeau envoye a ${liveRecipientName} pour ${formatGiftAmountLabel(response.amount || liveGiftSelectionAmount)}.`);
         } else {
-          const recipientName = activeGiftTargetType === 'birthday'
+          const recipientName = targetType === 'birthday'
             ? (activeGiftBirthdayCard.querySelector('.birthday-feed-card-name')?.textContent?.trim() || 'cet utilisateur')
             : (activeGiftPostCard.querySelector('.author-name')?.textContent?.trim() || 'ce createur');
           showToast(`Cadeau envoye a ${recipientName} pour ${formatGiftAmountLabel(response.amount || activeGiftSelection.amount)}.`);
+          closeGiftPostModal();
         }
-
-        closeGiftPostModal();
       });
     }
   });
