@@ -8761,6 +8761,30 @@ io.on('connection', (socket) => {
           withdrawalBalance: newRecipientWithdrawalBalance
         });
 
+        const emojis = {
+          'Rose': '🌹',
+          'Cafe': '☕',
+          'Couronne': '👑',
+          'Fusee': '🚀',
+          'Projecteur': '🎯',
+          'Flamme': '🔥',
+          'Diamant': '💎',
+          'Trophee': '🏆',
+          'Voiture': '🏎️',
+          'Jet': '🛩️',
+          'Villa': '🏡',
+          'Yacht': '🛥️',
+          'Chateau': '🏰'
+        };
+        const emoji = emojis[giftName] || '🎁';
+
+        io.to(roomId).emit('live:chatMessage', {
+          peerId: 'system-gift',
+          name: senderName,
+          avatar: sender.avatar || '',
+          message: `a envoyé un(e) ${giftName} ${emoji} à ${recipientName} !`
+        });
+
         done({ success: true, depositBalance: newSenderDepositBalance });
       } catch (err) {
         await connection.rollback();

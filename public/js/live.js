@@ -62,6 +62,17 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
   const liveLikeBtn = document.getElementById('liveLikeBtn');
   const liveLikeCountVal = document.getElementById('liveLikeCountVal');
 
+  const formatLikeCount = (count) => {
+    const num = Number(count) || 0;
+    if (num >= 1000000) {
+      return (num / 1000000).toFixed(1).replace('.0', '') + 'M';
+    }
+    if (num >= 1000) {
+      return (num / 1000).toFixed(1).replace('.0', '') + 'k';
+    }
+    return num;
+  };
+
   // Spectator List Modal Elements
   const spectatorsListModal = document.getElementById('spectatorsListModal');
   const spectatorsListModalOverlay = document.getElementById('spectatorsListModalOverlay');
@@ -165,16 +176,27 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     const count = list.length;
     if (count === 0) return;
 
+    // Toggle blur background: only show if exactly 1 presenter (host) is active
+    if (liveBlurBg) {
+      if (count > 1) {
+        liveBlurBg.style.display = 'none';
+      } else {
+        liveBlurBg.style.display = 'block';
+      }
+    }
+
     // Apply layout height and display constraints based on number of participants
     if (count === 1) {
       liveVideoGrid.style.top = '0';
       liveVideoGrid.style.transform = 'none';
       liveVideoGrid.style.height = '100%';
       liveVideoGrid.style.display = 'block';
+      liveVideoGrid.style.gap = '0';
+      liveVideoGrid.style.padding = '0';
     } else {
       liveVideoGrid.style.top = '50%';
       liveVideoGrid.style.transform = 'translateY(-50%)';
-      liveVideoGrid.style.height = '66.66%'; // 2/3 of screen height for multi-user layouts (like TikTok)
+      liveVideoGrid.style.height = '50%'; // Compact 50% height for multiple presenters
       liveVideoGrid.style.display = 'grid';
       liveVideoGrid.style.gap = '6px';
       liveVideoGrid.style.padding = '6px';
@@ -197,7 +219,13 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     list.forEach((p, idx) => {
       const wrap = document.createElement('div');
       wrap.dataset.peerId = p.peerId;
-      wrap.style.cssText = 'position:relative;overflow:hidden;background:#111;box-sizing:border-box;border-radius:12px;border:1px solid rgba(255,255,255,0.12);';
+      
+      // If single speaker, full-screen without borders or rounded corners
+      if (count === 1) {
+        wrap.style.cssText = 'position:relative;overflow:hidden;background:#000;box-sizing:border-box;border-radius:0;border:none;';
+      } else {
+        wrap.style.cssText = 'position:relative;overflow:hidden;background:#111;box-sizing:border-box;border-radius:12px;border:1px solid rgba(255,255,255,0.12);';
+      }
 
       if (count === 1) {
         wrap.style.width  = '100%';
@@ -231,7 +259,11 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       vid.autoplay   = true;
       vid.muted      = true;
       vid.playsInline = true;
-      vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;border-radius:12px;';
+      if (count === 1) {
+        vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;border-radius:0;';
+      } else {
+        vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;border-radius:12px;';
+      }
       if (p.peerId === String(window.currentUserId)) vid.style.transform = 'scaleX(-1)';
       vid.srcObject = p.stream;
 
@@ -269,7 +301,6 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
       liveVideoGrid.appendChild(wrap);
     });
   };
-
   // ── Suppress all other media while live is active ─────────────────────────
   const suppressOtherMedia = () => {
     document.querySelectorAll('video, audio').forEach(el => {
@@ -540,7 +571,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         liveTitleText.textContent = response.title;
         liveHostAvatar.src = response.hostAvatar || '/assets/avatar_placeholder.jpg';
         if (liveBlurBg) liveBlurBg.style.backgroundImage = `url(${liveHostAvatar.src})`;
-        if (liveLikeCountVal) liveLikeCountVal.textContent = response.likeCount || 0;
+        if (liveLikeCountVal) liveLikeCountVal.textContent = formatLikeCount(response.likeCount || 0);
 
         // Show speak request button for spectator
         liveSpeakRequestBtn.style.display = 'inline-flex';
@@ -1510,9 +1541,22 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     });
   }
 
+  // Tap screen anywhere on the video grid area to Like
+  if (liveVideoGrid) {
+    liveVideoGrid.addEventListener('click', (e) => {
+      // Exclude clicking on interactive buttons, inputs, dropdowns
+      if (e.target.closest('button, input, select, a, #liveChatInput, #liveEmojiPicker, #liveLikeBtn, #liveGiftBtn, #leaveLiveBtn, #liveViewerCount')) return;
+      
+      if (currentRoomId) {
+        spawnFloatingHeart();
+        socket.emit('live:like', { roomId: currentRoomId });
+      }
+    });
+  }
+
   socket.on('live:liked', ({ likeCount }) => {
     if (liveLikeCountVal) {
-      liveLikeCountVal.textContent = likeCount;
+      liveLikeCountVal.textContent = formatLikeCount(likeCount);
     }
     spawnFloatingHeart();
   });

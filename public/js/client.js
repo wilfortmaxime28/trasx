@@ -4845,16 +4845,8 @@ document.addEventListener('DOMContentLoaded', () => {
             'Chateau': '🏰'
           };
           const emoji = emojis[activeGiftSelection.name] || '🎁';
-          const selectedOption = recipientSelect?.options[recipientSelect.selectedIndex];
+          const selectedOption = recipientSelect && recipientSelect.selectedIndex >= 0 ? recipientSelect.options[recipientSelect.selectedIndex] : null;
           const recipientName = selectedOption ? selectedOption.textContent.replace(' 🎙️', '') : "l'animateur";
-
-          socket.emit('live:chatMessage', {
-            roomId: window.activeGiftLiveRoomId,
-            peerId: 'system-gift',
-            name: userUsername,
-            avatar: '',
-            message: `a envoyé un(e) ${activeGiftSelection.name} ${emoji} à ${recipientName} !`
-          });
 
           showToast(`Cadeau envoye a ${recipientName} pour ${formatGiftAmountLabel(response.amount || activeGiftSelection.amount)}.`);
         } else {
