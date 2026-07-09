@@ -466,10 +466,7 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         currentRoomId = roomId;
         liveCreateModal.style.display = 'none';
 
-        // Request local stream
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        
-        // Show overlay
+        // Show overlay immediately to keep background playback paused and show loading state
         liveOverlayViewer.style.display = 'flex';
         liveOverlayViewer.style.height = window.innerHeight + 'px';
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -478,6 +475,9 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
         liveTitleText.textContent = title;
         liveHostAvatar.src = window.currentUserAvatar || '/assets/avatar_placeholder.jpg';
         if (liveBlurBg) liveBlurBg.style.backgroundImage = `url(${liveHostAvatar.src})`;
+
+        // Request local stream
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
 
         // Add host to video grid
         activeParticipants.set(String(window.currentUserId), {
