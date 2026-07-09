@@ -165,21 +165,30 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     const count = list.length;
     if (count === 0) return;
 
-    // Apply layout height constraints based on number of participants
+    // Apply layout height and display constraints based on number of participants
     if (count === 1) {
       liveVideoGrid.style.top = '0';
       liveVideoGrid.style.transform = 'none';
       liveVideoGrid.style.height = '100%';
-    } else if (count === 2) {
-      // Double the height of the 2-speaker layout (2/3 of screen height, centered vertically)
-      liveVideoGrid.style.top = '50%';
-      liveVideoGrid.style.transform = 'translateY(-50%)';
-      liveVideoGrid.style.height = '66.66%';
+      liveVideoGrid.style.display = 'block';
     } else {
-      // 1/3 of screen height, centered vertically for 3+ speakers
       liveVideoGrid.style.top = '50%';
       liveVideoGrid.style.transform = 'translateY(-50%)';
-      liveVideoGrid.style.height = '33.33%';
+      liveVideoGrid.style.height = '66.66%'; // 2/3 of screen height for multi-user layouts (like TikTok)
+      liveVideoGrid.style.display = 'grid';
+      liveVideoGrid.style.gap = '6px';
+      liveVideoGrid.style.padding = '6px';
+      
+      if (count === 2) {
+        liveVideoGrid.style.gridTemplateColumns = '1fr 1fr';
+        liveVideoGrid.style.gridTemplateRows = '1fr';
+      } else if (count === 3) {
+        liveVideoGrid.style.gridTemplateColumns = '1fr 1fr';
+        liveVideoGrid.style.gridTemplateRows = '1fr 1fr';
+      } else {
+        liveVideoGrid.style.gridTemplateColumns = '1fr 1fr';
+        liveVideoGrid.style.gridTemplateRows = '1fr 1fr';
+      }
     }
 
     // Host always first
@@ -188,35 +197,60 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
     list.forEach((p, idx) => {
       const wrap = document.createElement('div');
       wrap.dataset.peerId = p.peerId;
-      wrap.style.cssText = 'position:relative;overflow:hidden;background:#111;box-sizing:border-box;';
+      wrap.style.cssText = 'position:relative;overflow:hidden;background:#111;box-sizing:border-box;border-radius:12px;border:1px solid rgba(255,255,255,0.12);';
 
       if (count === 1) {
         wrap.style.width  = '100%';
         wrap.style.height = '100%';
       } else if (count === 2) {
-        wrap.style.width  = '50%';
+        wrap.style.width  = '100%';
         wrap.style.height = '100%';
       } else if (count === 3) {
-        // Host top full-width, two guests share bottom half
-        wrap.style.width  = idx === 0 ? '100%' : '50%';
-        wrap.style.height = '50%';
+        wrap.style.width  = '100%';
+        wrap.style.height = '100%';
+        if (idx === 0) {
+          // Large vertical tile on the left (TikTok style)
+          wrap.style.gridColumn = '1';
+          wrap.style.gridRow = '1 / span 2';
+        } else if (idx === 1) {
+          // Top right horizontal tile
+          wrap.style.gridColumn = '2';
+          wrap.style.gridRow = '1';
+        } else {
+          // Bottom right horizontal tile
+          wrap.style.gridColumn = '2';
+          wrap.style.gridRow = '2';
+        }
       } else {
         // 4: 2x2 grid
-        wrap.style.width  = '50%';
-        wrap.style.height = '50%';
+        wrap.style.width  = '100%';
+        wrap.style.height = '100%';
       }
 
       const vid = document.createElement('video');
       vid.autoplay   = true;
       vid.muted      = true;
       vid.playsInline = true;
-      vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+      vid.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;border-radius:12px;';
       if (p.peerId === String(window.currentUserId)) vid.style.transform = 'scaleX(-1)';
       vid.srcObject = p.stream;
 
+      // Status Badge top-left (Host / Guest Index)
+      const statusBadge = document.createElement('div');
+      statusBadge.style.cssText = 'position:absolute;top:8px;left:8px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;color:#fff;z-index:5;display:flex;align-items:center;gap:3px;';
+      if (p.isHost) {
+        statusBadge.style.background = 'rgba(0,0,0,0.6)';
+        statusBadge.textContent = 'Hôte';
+      } else {
+        statusBadge.style.background = 'rgba(30,144,255,0.65)';
+        statusBadge.innerHTML = '👤 ' + idx;
+      }
+      wrap.appendChild(statusBadge);
+
+      // Name Label bottom-left capsule
       const label = document.createElement('div');
-      label.style.cssText = 'position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.6);padding:3px 8px;border-radius:8px;font-size:11px;font-weight:700;color:#fff;backdrop-filter:blur(4px);z-index:5;';
-      label.textContent = p.isHost ? `${p.name} ★` : p.name;
+      label.style.cssText = 'position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.45);padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;color:#fff;z-index:5;max-width:85%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      label.textContent = p.name;
 
       // "Descendre" button – only shown to the host, on non-host tiles
       if (isHost && !p.isHost) {
@@ -905,7 +939,17 @@ console.log('[live.js] Script loaded, io available:', typeof io !== 'undefined')
 
     // Clear video grid
     activeParticipants.clear();
-    if (liveVideoGrid) liveVideoGrid.innerHTML = '';
+    if (liveVideoGrid) {
+      liveVideoGrid.innerHTML = '';
+      liveVideoGrid.style.display = '';
+      liveVideoGrid.style.gridTemplateColumns = '';
+      liveVideoGrid.style.gridTemplateRows = '';
+      liveVideoGrid.style.gap = '';
+      liveVideoGrid.style.padding = '';
+      liveVideoGrid.style.height = '';
+      liveVideoGrid.style.top = '';
+      liveVideoGrid.style.transform = '';
+    }
 
     if (liveLikeCountVal) {
       liveLikeCountVal.textContent = '0';
