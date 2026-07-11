@@ -7250,7 +7250,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     return SafeArea(
       top: false,
       child: Container(
-      height: MediaQuery.of(context).size.height * 0.58,
+      height: MediaQuery.of(context).size.height * 0.61,
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF121212) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -7360,10 +7360,10 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         physics: const BouncingScrollPhysics(),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                          childAspectRatio: 0.9,
+                          crossAxisCount: 4,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 14,
+                          childAspectRatio: 0.78,
                         ),
                         itemCount: _filteredContacts.length,
                         itemBuilder: (context, index) {
@@ -7439,21 +7439,21 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
           const Divider(height: 1),
           // Horizontal scrolling row of Action Buttons (Instagram-style)
           Container(
-            height: 94,
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            height: 105,
+            padding: const EdgeInsets.symmetric(vertical: 10),
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               physics: const BouncingScrollPhysics(),
               children: [
                 _buildActionButton(
-                  icon: CupertinoIcons.phone_fill, // Using Phone fill or similar or custom Whatsapp icon
+                  icon: Icons.whatsapp,
                   label: 'WhatsApp',
                   color: const Color(0xFF25D366),
                   onTap: _shareToWhatsApp,
                 ),
                 _buildActionButton(
-                  icon: CupertinoIcons.arrow_2_circlepath,
+                  icon: Icons.whatsapp,
                   label: 'Statut',
                   color: const Color(0xFF128C7E),
                   onTap: _shareToWhatsAppStatus,
@@ -7484,7 +7484,11 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
 }
 
 Widget buildPremiumAvatar(String? avatarUrl, String displayName, {double radius = 20, double fontSize = 14}) {
-  final bool hasAvatar = avatarUrl != null && avatarUrl.isNotEmpty;
+  final bool hasAvatar = avatarUrl != null &&
+                         avatarUrl.isNotEmpty &&
+                         !avatarUrl.contains('default.png') &&
+                         !avatarUrl.contains('placeholder') &&
+                         !avatarUrl.contains('default');
   final String cleanName = displayName.trim();
 
   String initials = '?';
