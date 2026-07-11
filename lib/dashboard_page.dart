@@ -96,6 +96,8 @@ class _DashboardPageState extends State<DashboardPage> {
   int _profileLikesCount = 0;
   List<dynamic> _profilePosts = [];
   List<dynamic> _profileReels = [];
+  List<Post> _bookmarkedPosts = [];
+  bool _isLoadingBookmarks = false;
 
   // Navigation State
   int _activeViewIndex = 0; 
@@ -465,6 +467,30 @@ class _DashboardPageState extends State<DashboardPage> {
     setState(() {
       final idx = _feedPosts.indexWhere((p) => p.id == updated.id);
       if (idx != -1) _feedPosts[idx] = updated;
+
+      // Update bookmarks list in real-time
+      final bIdx = _bookmarkedPosts.indexWhere((p) => p.id == updated.id);
+      if (updated.isBookmarked) {
+        if (bIdx == -1) {
+          _bookmarkedPosts.insert(0, updated);
+        } else {
+          _bookmarkedPosts[bIdx] = updated;
+        }
+      } else {
+        if (bIdx != -1) {
+          _bookmarkedPosts.removeAt(bIdx);
+        }
+      }
+
+      // Update profile posts list in real-time
+      final pIdx = _profilePosts.indexWhere((p) => p['id'] == updated.id);
+      if (pIdx != -1) {
+        final map = Map<String, dynamic>.from(_profilePosts[pIdx]);
+        map['is_liked'] = updated.isLiked ? 1 : 0;
+        map['likes_count'] = updated.likesCount;
+        map['is_bookmarked'] = updated.isBookmarked ? 1 : 0;
+        _profilePosts[pIdx] = map;
+      }
     });
     FeedCacheService.updatePost(updated);
   }
@@ -681,6 +707,39 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> _fetchBookmarkedPosts() async {
+    if (_userId <= 0) return;
+    setState(() {
+      _isLoadingBookmarks = true;
+    });
+
+    try {
+      final response = await http.get(
+        Uri.parse('https://trasx.com/api/posts/bookmarks'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '$_userId',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['posts'] != null) {
+          final List<dynamic> postsJson = data['posts'];
+          final List<Post> parsed = postsJson.map((e) => Post.fromJson(e as Map<String, dynamic>)).toList();
+          setState(() {
+            _bookmarkedPosts = parsed;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching bookmarked posts: $e');
+    }
+
+    setState(() {
+      _isLoadingBookmarks = false;
+    });
+  }
+
   bool _isHashtagPaid(String tag) {
     final cleanTag = tag.replaceAll('#', '').trim().toLowerCase();
     if (_hashtagPaidStatus.containsKey(cleanTag)) {
@@ -881,6 +940,8 @@ class _DashboardPageState extends State<DashboardPage> {
       _profileViewUserId = null; // Always reset when switching views via tabs/drawer
       if (index == 3) {
         _fetchUserProfileAndPosts(); // Load our own profile
+      } else if (index == 5) {
+        _fetchBookmarkedPosts(); // Load bookmarked posts
       }
     });
     // Close drawer if open
@@ -2909,34 +2970,60 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // 6. BOOKMARKS VIEW
   Widget _buildBookmarksView(Color cardColor, Color textPrimaryColor, Color textSecondaryColor, Color borderColor) {
-    // Use a sample static Post for the bookmark demo card
-    const samplePost = Post(
-      id: 888,
-      authorId: 888,
-      authorUsername: 'Grand_Maitre',
-      authorDisplayName: 'Grand Maitre',
-      content: "Règles officielles du tournoi d'échecs payant du weekend prochain. Lisez attentivement ! ♟️👑",
-      isTrade: false,
-      likesCount: 290,
-      commentsCount: 89,
-      sharesCount: 0,
-      isLiked: false,
-      isBookmarked: true,
-      isAuthorFollowing: true,
-    );
-    return ListView(
+    if (_isLoadingBookmarks && _bookmarkedPosts.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFC13584)),
+      );
+    }
+
+    if (_bookmarkedPosts.isEmpty) {
+      return ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          _buildSectionHeader("Vos Signets", textPrimaryColor),
+          const SizedBox(height: 40),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.bookmark_border_rounded, size: 64, color: textSecondaryColor.withValues(alpha: 0.4)),
+                const SizedBox(height: 16),
+                Text(
+                  "Aucun signet enregistré",
+                  style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Les publications que vous enregistrez apparaîtront ici.",
+                  style: TextStyle(color: textSecondaryColor, fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return ListView.builder(
       padding: const EdgeInsets.all(16.0),
-      children: [
-        _buildSectionHeader("Vos Signets", textPrimaryColor),
-        const SizedBox(height: 12),
-        _buildFeedCard(
-          post: samplePost,
+      itemCount: _bookmarkedPosts.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12.0),
+            child: _buildSectionHeader("Vos Signets", textPrimaryColor),
+          );
+        }
+        final post = _bookmarkedPosts[index - 1];
+        return _buildFeedCard(
+          post: post,
           cardColor: cardColor,
           textPrimaryColor: textPrimaryColor,
           textSecondaryColor: textSecondaryColor,
           borderColor: borderColor,
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -3894,6 +3981,63 @@ class _FeedCardState extends State<FeedCard> {
     );
   }
 
+  void _showShareBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: widget.isDarkMode ? Colors.black : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final shareUrl = 'https://trasx.com/posts/${widget.postId}';
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: widget.textSecondaryColor.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                "Partager la publication",
+                style: TextStyle(
+                  color: widget.textPrimaryColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Icon(Icons.link_rounded, color: widget.textPrimaryColor),
+                title: Text("Copier le lien", style: TextStyle(color: widget.textPrimaryColor)),
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: shareUrl));
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text("Lien copié dans le presse-papiers !"),
+                        backgroundColor: widget.isDarkMode ? const Color(0xFF262626) : const Color(0xFFEFEFEF),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   List<InlineSpan> _buildTextSpansWithHashtags(String text, BuildContext context) {
     final List<InlineSpan> spans = [];
     final RegExp regex = RegExp(r'(#\w+)');
@@ -4134,11 +4278,10 @@ class _FeedCardState extends State<FeedCard> {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    
-                    Icon(widget.isDarkMode ? Icons.repeat_rounded : Icons.repeat, color: widget.textPrimaryColor, size: 24),
-                    const SizedBox(width: 16),
-                    
-                    Icon(CupertinoIcons.paperplane, color: widget.textPrimaryColor, size: 22),
+                    GestureDetector(
+                      onTap: () => _showShareBottomSheet(context),
+                      child: Icon(CupertinoIcons.paperplane, color: widget.textPrimaryColor, size: 22),
+                    ),
                     
                     const Spacer(),
                     GestureDetector(
