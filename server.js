@@ -1964,6 +1964,59 @@ app.get('/api/posts/:postId/comments', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const postId = Number(req.params.postId);
+    const { content } = req.body;
+    if (!Number.isFinite(currentUserId) || currentUserId <= 0 || !Number.isFinite(postId) || postId <= 0 || !content || !content.trim()) {
+      return res.status(400).json({ success: false, error: 'Parametres invalides.' });
+    }
+
+    const Comment = require('./models/Comment');
+    const User = require('./models/User');
+
+    const commentId = await Comment.create(postId, currentUserId, content.trim());
+    await cache.del(`post:comments:${postId}`);
+
+    const user = await User.getById(currentUserId);
+    const newComment = {
+      id: commentId,
+      post_id: postId,
+      user_id: currentUserId,
+      content: content.trim(),
+      created_at: new Date().toISOString(),
+      user_username: user.username,
+      user_name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'Utilisateur',
+      user_avatar: user.avatar || '',
+      user_certification_type: user.certification_type || 'None'
+    };
+
+    // Emit live updates to Socket.io clients if they are connected
+    if (global.io) {
+      global.io.to(`post:${postId}`).emit('comment-created', {
+        id: commentId,
+        postId,
+        user_id: currentUserId,
+        user_name: newComment.user_name,
+        user_avatar: newComment.user_avatar,
+        user_username: newComment.user_username,
+        certification_type: newComment.user_certification_type,
+        content: newComment.content,
+        created_at: newComment.created_at
+      });
+    }
+
+    return res.json({
+      success: true,
+      comment: newComment
+    });
+  } catch (error) {
+    console.error('Error posting comment:', error);
+    return res.status(500).json({ success: false, error: 'Impossible d\'ajouter le commentaire.' });
+  }
+});
+
 app.post('/api/challenges/:postId/participate', requireAuth, async (req, res) => {
   try {
     const currentUserId = Number(req.session.userId);
