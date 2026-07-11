@@ -7008,6 +7008,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
   List<dynamic> _filteredContacts = [];
   bool _isLoading = true;
   String _searchQuery = '';
+  String? _errorMsg;
   final Set<int> _sentUserIds = {};
   final TextEditingController _searchController = TextEditingController();
 
@@ -7025,33 +7026,51 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
 
   Future<void> _fetchContacts() async {
     try {
+      final uri = Uri.parse('https://trasx.com/api/users/contacts');
+      debugPrint('[ShareSheet] Fetching contacts from $uri with x-user-id=${widget.currentUserId}');
       final response = await http.get(
-        Uri.parse('https://trasx.com/api/users/contacts'),
+        uri,
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': '${widget.currentUserId}',
         },
       );
+      debugPrint('[ShareSheet] Response status: ${response.statusCode}');
+      debugPrint('[ShareSheet] Response body: ${response.body.substring(0, response.body.length.clamp(0, 300))}');
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['success'] == true && data['contacts'] != null) {
+        if (data['success'] == true) {
+          final raw = (data['contacts'] as List<dynamic>? ?? []);
+          // Sort: mutual first, then following, then followers
+          raw.sort((a, b) {
+            final aMutual = a['is_mutual'] == true ? 0 : (a['is_following'] == true ? 1 : 2);
+            final bMutual = b['is_mutual'] == true ? 0 : (b['is_following'] == true ? 1 : 2);
+            return aMutual.compareTo(bMutual);
+          });
           if (mounted) {
             setState(() {
-              _contacts = data['contacts'];
-              _filteredContacts = _contacts;
+              _contacts = raw;
+              _filteredContacts = raw;
               _isLoading = false;
+              _errorMsg = null;
             });
           }
           return;
+        } else {
+          final msg = data['error'] ?? data['message'] ?? 'Réponse invalide';
+          debugPrint('[ShareSheet] API error: $msg');
+          if (mounted) setState(() { _errorMsg = msg; _isLoading = false; });
+          return;
         }
+      } else {
+        final msg = 'Erreur HTTP ${response.statusCode}';
+        debugPrint('[ShareSheet] $msg — ${response.body}');
+        if (mounted) setState(() { _errorMsg = msg; _isLoading = false; });
+        return;
       }
     } catch (e) {
-      debugPrint('Error fetching contacts for share sheet: $e');
-    }
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
+      debugPrint('[ShareSheet] Exception fetching contacts: $e');
+      if (mounted) setState(() { _errorMsg = e.toString(); _isLoading = false; });
     }
   }
 
@@ -7188,9 +7207,28 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                 ? const Center(child: CircularProgressIndicator(color: Color(0xFFC13584)))
                 : _filteredContacts.isEmpty
                     ? Center(
-                        child: Text(
-                          'Aucun ami trouvé',
-                          style: TextStyle(color: textSecondary, fontFamily: 'Montserrat'),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(CupertinoIcons.person_2, color: textSecondary, size: 36),
+                            const SizedBox(height: 10),
+                            Text(
+                              _errorMsg != null
+                                  ? 'Erreur : $_errorMsg'
+                                  : 'Aucun abonné ou suivi trouvé',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: textSecondary, fontFamily: 'Montserrat', fontSize: 13),
+                            ),
+                            if (_errorMsg != null) ...
+                              [
+                                const SizedBox(height: 12),
+                                TextButton.icon(
+                                  onPressed: () { setState(() { _isLoading = true; _errorMsg = null; }); _fetchContacts(); },
+                                  icon: const Icon(Icons.refresh, size: 16),
+                                  label: const Text('Réessayer'),
+                                ),
+                              ],
+                          ],
                         ),
                       )
                     : ListView.builder(
@@ -7203,6 +7241,17 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                           final avatar = c['avatar'] as String?;
                           final name = c['name'] ?? c['username'] ?? '';
                           final username = c['username'] ?? '';
+
+                          final bool isMutual = c['is_mutual'] == true;
+                          final bool isFollowing = c['is_following'] == true;
+                          final bool isFollowedBy = c['is_followed_by'] == true;
+                          final String relationLabel = isMutual
+                              ? '🤝 Mutuel'
+                              : isFollowing
+                                  ? '➤ Vous suivez'
+                                  : isFollowedBy
+                                      ? '← Vous suit'
+                                      : '';
 
                           return ListTile(
                             leading: CircleAvatar(
@@ -7222,10 +7271,9 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                               name,
                               style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600, fontSize: 15),
                             ),
-                            subtitle: Text(
-                              '@$username',
-                              style: TextStyle(color: textSecondary, fontSize: 13),
-                            ),
+                            subtitle: relationLabel.isNotEmpty
+                                ? Text(relationLabel, style: TextStyle(color: textSecondary, fontSize: 12))
+                                : Text('@$username', style: TextStyle(color: textSecondary, fontSize: 13)),
                             trailing: SizedBox(
                               width: 90,
                               height: 32,
