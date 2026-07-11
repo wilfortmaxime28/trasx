@@ -330,7 +330,7 @@ class User {
   static async getContactsWithFollowState(userId) {
     const [rows] = await db.query(
       `
-        SELECT
+        SELECT DISTINCT
           u.id,
           u.username,
           u.first_name,
@@ -350,10 +350,15 @@ class User {
             WHERE f.follower_id = u.id AND f.following_id = ?
           ) AS is_followed_by
         FROM users u
+        INNER JOIN follows rel ON (
+          (rel.follower_id = ? AND rel.following_id = u.id)
+          OR
+          (rel.following_id = ? AND rel.follower_id = u.id)
+        )
         WHERE u.id <> ?
         ORDER BY u.first_name ASC, u.last_name ASC
       `,
-      [userId, userId, userId]
+      [userId, userId, userId, userId, userId]
     );
     return rows.map((row) => ({
       ...row,

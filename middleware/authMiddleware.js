@@ -92,6 +92,9 @@ const requireAuth = async (req, res, next) => {
     next();
   } catch (err) {
     console.error('Auth Middleware Error:', err);
+    if (isApi) {
+      return res.status(500).json({ error: 'Erreur serveur.', code: 'SERVER_ERROR' });
+    }
     res.redirect('/auth/login');
   }
 };
