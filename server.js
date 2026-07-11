@@ -1842,8 +1842,11 @@ app.get('/post/:postId', async (req, res) => {
     </div>
     
     <script>
-        // Try opening the app via custom scheme deep link automatically
-        window.location.href = "trasx://post/${postId}";
+        // Try opening the app via custom scheme deep link automatically on mobile devices only
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        if (isMobile) {
+            window.location.href = "trasx://post/${postId}";
+        }
     </script>
 </body>
 </html>`;
@@ -1857,6 +1860,17 @@ app.get('/post/:postId', async (req, res) => {
 
 // Middleware Auth global pour toutes les routes utilisateur (après /auth et admin)
 app.use(requireAuth);
+
+app.get('/api/users/contacts', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const contacts = await User.getContactsWithFollowState(currentUserId);
+    return res.json({ success: true, contacts });
+  } catch (error) {
+    console.error('Error fetching contacts:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch contacts.' });
+  }
+});
 
 // ─── FCM Token management (native mobile push) ────────────────────────────────
 const fcmService = require('./services/fcmService');
