@@ -4051,17 +4051,24 @@ class _FeedCardState extends State<FeedCard> {
     );
   }
 
-  Future<void> _sharePost() async {
-    final shareUrl = 'https://www.trasx.com/post/${widget.postId}';
-    try {
-      // ignore: deprecated_member_use
-      await Share.share(
-        shareUrl,
-        subject: 'Regardez cette publication de @${widget.username} sur TRASX !',
-      );
-    } catch (e) {
-      debugPrint('Error sharing post: $e');
-    }
+  void _sharePost() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
+      builder: (context) {
+        return ShareBottomSheet(
+          postId: widget.postId,
+          currentUserId: widget.currentUserId,
+          socket: widget.socket,
+          isDarkMode: widget.isDarkMode,
+          postAuthorUsername: widget.username,
+          textPrimaryColor: widget.textPrimaryColor,
+          textSecondaryColor: widget.textSecondaryColor,
+        );
+      },
+    );
   }
 
   List<InlineSpan> _buildTextSpansWithHashtags(String text, BuildContext context) {
@@ -6888,6 +6895,310 @@ class PostDetailPage extends StatelessWidget {
       debugPrint('Error fetching single post: $e');
     }
     return null;
+  }
+}
+
+class ShareBottomSheet extends StatefulWidget {
+  final int postId;
+  final int currentUserId;
+  final IO.Socket? socket;
+  final bool isDarkMode;
+  final String postAuthorUsername;
+  final Color textPrimaryColor;
+  final Color textSecondaryColor;
+
+  const ShareBottomSheet({
+    super.key,
+    required this.postId,
+    required this.currentUserId,
+    this.socket,
+    required this.isDarkMode,
+    required this.postAuthorUsername,
+    required this.textPrimaryColor,
+    required this.textSecondaryColor,
+  });
+
+  @override
+  State<ShareBottomSheet> createState() => _ShareBottomSheetState();
+}
+
+class _ShareBottomSheetState extends State<ShareBottomSheet> {
+  List<dynamic> _contacts = [];
+  List<dynamic> _filteredContacts = [];
+  bool _isLoading = true;
+  String _searchQuery = '';
+  final Set<int> _sentUserIds = {};
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchContacts();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchContacts() async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://trasx.com/api/users/contacts'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.currentUserId}',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['contacts'] != null) {
+          if (mounted) {
+            setState(() {
+              _contacts = data['contacts'];
+              _filteredContacts = _contacts;
+              _isLoading = false;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching contacts for share sheet: $e');
+    }
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _filterContacts(String query) {
+    setState(() {
+      _searchQuery = query;
+      if (query.trim().isEmpty) {
+        _filteredContacts = _contacts;
+      } else {
+        _filteredContacts = _contacts.where((c) {
+          final name = (c['name'] ?? '').toString().toLowerCase();
+          final username = (c['username'] ?? '').toString().toLowerCase();
+          return name.contains(query.toLowerCase()) || username.contains(query.toLowerCase());
+        }).toList();
+      }
+    });
+  }
+
+  void _sendPostToContact(dynamic contact) {
+    final contactId = contact['id'] as int;
+    if (_sentUserIds.contains(contactId)) return;
+
+    final shareUrl = 'https://www.trasx.com/post/${widget.postId}';
+    final messageContent = 'Regardez cette publication sur TRASX ! $shareUrl';
+
+    if (widget.socket != null && widget.socket!.connected) {
+      widget.socket!.emit('chat-message', {
+        'receiverId': contactId,
+        'content': messageContent,
+      });
+    } else {
+      // Fallback HTTP request if socket is disconnected
+      http.post(
+        Uri.parse('https://trasx.com/api/messages/send-fallback'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.currentUserId}',
+        },
+        body: jsonEncode({
+          'receiverId': contactId,
+          'content': messageContent,
+        }),
+      ).catchError((err) {
+        debugPrint('HTTP message fallback error: $err');
+        return http.Response('error', 500);
+      });
+    }
+
+    setState(() {
+      _sentUserIds.add(contactId);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Partagé avec @${contact['username']} !'),
+        duration: const Duration(seconds: 1),
+        backgroundColor: const Color(0xFFC13584),
+      ),
+    );
+  }
+
+  Future<void> _shareExternally() async {
+    final shareUrl = 'https://www.trasx.com/post/${widget.postId}';
+    await Share.share(
+      shareUrl,
+      subject: 'Regardez cette publication de @${widget.postAuthorUsername} sur TRASX !',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = widget.isDarkMode;
+    final textPrimary = widget.textPrimaryColor;
+    final textSecondary = widget.textSecondaryColor;
+    final cardBg = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.7,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF121212) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Drag Handle
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white24 : Colors.black26,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Text(
+              'Partager',
+              style: TextStyle(
+                color: textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Montserrat',
+              ),
+            ),
+          ),
+          // Search Box
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _filterContacts,
+              style: TextStyle(color: textPrimary),
+              decoration: InputDecoration(
+                hintText: 'Rechercher des amis...',
+                hintStyle: TextStyle(color: textSecondary, fontSize: 14),
+                prefixIcon: Icon(CupertinoIcons.search, color: textSecondary, size: 20),
+                fillColor: cardBg,
+                filled: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          // Contacts List
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFFC13584)))
+                : _filteredContacts.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Aucun ami trouvé',
+                          style: TextStyle(color: textSecondary, fontFamily: 'Montserrat'),
+                        ),
+                      )
+                    : ListView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: _filteredContacts.length,
+                        itemBuilder: (context, index) {
+                          final c = _filteredContacts[index];
+                          final int cid = c['id'];
+                          final bool isSent = _sentUserIds.contains(cid);
+                          final avatar = c['avatar'] as String?;
+                          final name = c['name'] ?? c['username'] ?? '';
+                          final username = c['username'] ?? '';
+
+                          return ListTile(
+                            leading: CircleAvatar(
+                              radius: 20,
+                              backgroundColor: isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE2E2E2),
+                              backgroundImage: (avatar != null && avatar.isNotEmpty)
+                                  ? NetworkImage(avatar.startsWith('http') ? avatar : 'https://trasx.com$avatar')
+                                  : null,
+                              child: (avatar == null || avatar.isEmpty)
+                                  ? Text(
+                                      username.isNotEmpty ? username[0].toUpperCase() : 'U',
+                                      style: TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
+                                    )
+                                  : null,
+                            ),
+                            title: Text(
+                              name,
+                              style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600, fontSize: 15),
+                            ),
+                            subtitle: Text(
+                              '@$username',
+                              style: TextStyle(color: textSecondary, fontSize: 13),
+                            ),
+                            trailing: SizedBox(
+                              width: 90,
+                              height: 32,
+                              child: ElevatedButton(
+                                onPressed: isSent ? null : () => _sendPostToContact(c),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isSent
+                                      ? (isDark ? Colors.white10 : Colors.black12)
+                                      : const Color(0xFFC13584),
+                                  foregroundColor: isSent ? textSecondary : Colors.white,
+                                  elevation: 0,
+                                  padding: EdgeInsets.zero,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                                child: Text(
+                                  isSent ? 'Envoyé' : 'Envoyer',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+          const Divider(height: 1),
+          // External Share Button
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _shareExternally,
+                    icon: const Icon(CupertinoIcons.share, size: 20),
+                    label: const Text(
+                      "Partager via d'autres applications",
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE2E2E2),
+                      foregroundColor: textPrimary,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
