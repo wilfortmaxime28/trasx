@@ -1424,11 +1424,30 @@ io.use((socket, next) => {
     }
   }
 
-  sessionMiddleware(socket.request, {}, (err) => {
+  sessionMiddleware(socket.request, {}, async (err) => {
     if (err) {
       console.error('[Socket Auth] Session middleware error:', err);
       return next(err);
     }
+    
+    if (!socket.request.session.userId) {
+      const fallbackUserId = socket.handshake.auth?.userId || socket.handshake.query?.userId;
+      if (fallbackUserId) {
+        socket.request.session.userId = Number(fallbackUserId);
+        console.log('[Socket Auth] Fallback User ID set from handshake/query:', socket.request.session.userId);
+        try {
+          await new Promise((resolve, reject) => {
+            socket.request.session.save((saveErr) => {
+              if (saveErr) reject(saveErr);
+              else resolve();
+            });
+          });
+        } catch (saveErr) {
+          console.error('[Socket Auth] Error saving session with fallback userId:', saveErr);
+        }
+      }
+    }
+    
     console.log('[Socket Auth] Loaded session:', JSON.stringify(socket.request.session));
     console.log('[Socket Auth] User ID:', socket.request.session?.userId);
     next();
