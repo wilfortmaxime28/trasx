@@ -168,6 +168,8 @@ self.addEventListener('fetch', (event) => {
             });
           }
           return networkResponse;
+        }).catch(() => {
+          return cached || new Response('Offline', { status: 503, statusText: 'Offline' });
         });
         return cached || fetchPromise;
       })
