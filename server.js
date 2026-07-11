@@ -1531,6 +1531,54 @@ app.get('/api/users/:id/reels', async (req, res) => {
   }
 });
 
+// Mobile update display name and avatar APIs
+const avatarStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, path.join(__dirname, 'public/assets/uploads/'));
+  },
+  filename: function (req, file, cb) {
+    cb(null, 'avatar_' + Date.now() + path.extname(file.originalname));
+  }
+});
+const avatarUpload = multer({ storage: avatarStorage });
+
+app.post('/api/user/update-avatar', requireAuth, avatarUpload.single('avatarFile'), async (req, res) => {
+  try {
+    const currentUserId = req.session.userId;
+    let avatarUrl = req.body.avatarUrl;
+    
+    if (req.file) {
+      avatarUrl = '/assets/uploads/' + req.file.filename;
+    }
+    
+    if (!avatarUrl) {
+      return res.status(400).json({ error: 'Veuillez sélectionner ou uploader un avatar.' });
+    }
+
+    await User.updateAvatar(currentUserId, avatarUrl);
+    
+    res.json({ success: true, avatarUrl });
+  } catch (err) {
+    console.error('Error updating avatar:', err);
+    res.status(500).json({ error: 'Erreur serveur.' });
+  }
+});
+
+app.post('/api/user/update-display-name', requireAuth, async (req, res) => {
+  try {
+    const { display_name } = req.body;
+    if (!display_name || !display_name.trim()) {
+      return res.status(400).json({ error: 'Le nom affiché ne peut pas être vide.' });
+    }
+    const cleanName = await User.updateDisplayName(req.session.userId, display_name);
+    
+    res.json({ success: true, displayName: cleanName });
+  } catch (err) {
+    console.error('Error updating display name:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Routes Auth Administrateur (doit être avant requireAuth global)
 const adminRoutes = require('./routes/adminRoutes');
 const adminAuthRoutes = require('./routes/adminAuthRoutes');
