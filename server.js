@@ -28,6 +28,7 @@ const Challenge = require('./models/Challenge');
 const P2PMarket = require('./models/P2PMarket');
 const PlatformRevenue = require('./models/PlatformRevenue');
 const db = require('./config/db');
+const { requireAuth } = require('./middleware/authMiddleware');
 const ActivityLog = require('./models/ActivityLog');
 const installController = require('./controllers/installController');
 const presence = require('./utils/presence');
@@ -1682,7 +1683,6 @@ app.get('/events/tickets/:code', async (req, res) => {
 });
 
 // Middleware Auth global pour toutes les routes utilisateur (après /auth et admin)
-const { requireAuth } = require('./middleware/authMiddleware');
 app.use(requireAuth);
 
 // ─── FCM Token management (native mobile push) ────────────────────────────────
