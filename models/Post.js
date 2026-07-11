@@ -768,6 +768,73 @@ class Post {
   static async deleteByAdmin(postId) {
     await db.query('DELETE FROM posts WHERE id = ?', [postId]);
   }
+
+  static async getBookmarkedPosts(userId) {
+    await ensurePostSchema();
+    const query = `
+      SELECT 
+        p.id,
+        p.user_id,
+        p.content,
+        p.image_url,
+        p.image_url_2,
+        p.image_url_3,
+        p.image_url_4,
+        p.media_type,
+        p.bg_image_url,
+        p.text_color,
+        p.text_alignment,
+        p.text_position,
+        p.text_font,
+        p.text_size,
+        p.is_trade,
+        p.trade_price,
+        p.last_possession_user_id,
+        p.next_trade_payout_admin,
+        p.promo_daily_target,
+        p.promo_paid_hashtag_count,
+        p.promo_paid_background_price,
+        p.challenge_type,
+        p.challenge_title,
+        p.challenge_entry_mode,
+        p.challenge_vote_mode,
+        p.challenge_vote_price,
+        p.challenge_invited_user_id,
+        p.challenge_creator_share_percent,
+        p.challenge_participant_share_percent,
+        p.challenge_end_date,
+        p.allow_download,
+        p.is_live,
+        p.live_url,
+        p.live_price,
+        p.live_status,
+        (
+          SELECT COUNT(*)
+          FROM post_shares ps
+          WHERE ps.post_id = p.id AND ps.clicked_at IS NOT NULL
+        ) AS shares_count,
+        (SELECT COUNT(*) FROM post_daily_unique_views WHERE post_id = p.id) AS views_count,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) AS likes_count,
+        (SELECT COUNT(*) FROM comments WHERE post_id = p.id) AS comments_count,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) AS is_liked,
+        1 AS is_bookmarked,
+        (SELECT COUNT(*) FROM live_unlocks WHERE post_id = p.id AND user_id = ?) AS is_live_unlocked,
+        EXISTS(
+          SELECT 1
+          FROM follows f
+          WHERE f.follower_id = ? AND f.following_id = p.user_id
+        ) AS is_author_following,
+        u.username AS author_username,
+        COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS author_display_name,
+        u.avatar AS author_avatar
+      FROM posts p
+      JOIN bookmarks b ON b.post_id = p.id AND b.user_id = ?
+      JOIN users u ON p.user_id = u.id
+      ORDER BY b.created_at DESC
+    `;
+    const [rows] = await db.query(query, [userId, userId, userId, userId]);
+    return rows;
+  }
 }
 
 module.exports = Post;

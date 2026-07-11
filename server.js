@@ -1787,6 +1787,44 @@ app.get('/api/feed/posts', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/posts/bookmarks', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const posts = await Post.getBookmarkedPosts(currentUserId);
+    return res.json({
+      success: true,
+      posts
+    });
+  } catch (error) {
+    console.error('Error fetching bookmarked posts:', error);
+    return res.status(500).json({ success: false, error: 'Impossible de charger vos signets.' });
+  }
+});
+
+app.post('/api/posts/:postId/bookmark', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const postId = Number(req.params.postId);
+    if (!Number.isFinite(currentUserId) || currentUserId <= 0 || !Number.isFinite(postId) || postId <= 0) {
+      return res.status(400).json({ success: false, error: 'Parametres invalides.' });
+    }
+
+    const post = await Post.getById(postId, currentUserId);
+    if (!post) {
+      return res.status(404).json({ success: false, error: 'Publication introuvable.' });
+    }
+
+    const result = await Post.toggleBookmark(currentUserId, postId);
+    return res.json({
+      success: true,
+      bookmarked: result.bookmarked
+    });
+  } catch (error) {
+    console.error('Error toggling post bookmark:', error);
+    return res.status(500).json({ success: false, error: 'Impossible de modifier le signet de la publication.' });
+  }
+});
+
 // ─── API Statuses (Stories) ───────────────────────────────────────────────────
 // GET /api/feed/statuses - Fetch feed statuses grouped by user
 const Status = require('./models/Status');
