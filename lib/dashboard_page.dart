@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -83,6 +84,18 @@ class _DashboardPageState extends State<DashboardPage> {
   int _followersCount = 0;
   int _followingCount = 0;
   int _likesCount = 0;
+
+  // Hashtag & Profile view states
+  Map<String, bool> _hashtagPaidStatus = {};
+  int? _profileViewUserId;
+  String _profileAvatarUrl = '';
+  String _profileUsername = '';
+  String _profileDisplayName = '';
+  int _profileFollowersCount = 0;
+  int _profileFollowingCount = 0;
+  int _profileLikesCount = 0;
+  List<dynamic> _profilePosts = [];
+  List<dynamic> _profileReels = [];
 
   // Navigation State
   int _activeViewIndex = 0; 
@@ -173,6 +186,7 @@ class _DashboardPageState extends State<DashboardPage> {
       _fetchUserProfileAndPosts();
       _fetchHomeFeed();
       _fetchStatuses();
+      _fetchHashtagsInfo();
       _initSocket();
     }
   }
@@ -636,10 +650,66 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  Future<void> _fetchUserProfileAndPosts() async {
+  Future<void> _fetchHashtagsInfo() async {
     if (_userId <= 0) return;
+    try {
+      final response = await http.get(
+        Uri.parse('https://trasx.com/api/hashtags'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '$_userId',
+        },
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> tags = jsonDecode(response.body);
+        final Map<String, bool> temp = {};
+        for (var t in tags) {
+          if (t['name'] != null) {
+            final name = (t['name'] as String).toLowerCase();
+            final isPaid = t['is_paid'] == 1 || t['is_paid'] == true || t['is_paid'] == 'true';
+            temp[name] = isPaid;
+          }
+        }
+        if (mounted) {
+          setState(() {
+            _hashtagPaidStatus = temp;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching hashtags info: $e');
+    }
+  }
 
-    if (!_profileCached) {
+  bool _isHashtagPaid(String tag) {
+    final cleanTag = tag.replaceAll('#', '').trim().toLowerCase();
+    if (_hashtagPaidStatus.containsKey(cleanTag)) {
+      return _hashtagPaidStatus[cleanTag]!;
+    }
+    // Fallback heuristic: contains 'trade' or 'p2p'
+    return cleanTag.contains('trade') || cleanTag.contains('p2p');
+  }
+
+  void _navigateToUserProfile(int targetUserId) {
+    if (targetUserId <= 0) return;
+    setState(() {
+      _profileViewUserId = targetUserId;
+      _activeViewIndex = 3; // Switch to profile page
+    });
+    _fetchUserProfileAndPosts(targetUserId: targetUserId);
+  }
+
+  Future<void> _fetchUserProfileAndPosts({int? targetUserId}) async {
+    final int fetchId = targetUserId ?? _userId;
+    if (fetchId <= 0) return;
+
+    final bool isOwn = fetchId == _userId;
+
+    if (isOwn && !_profileCached) {
+      setState(() {
+        _isLoadingProfile = true;
+      });
+    } else if (!isOwn) {
       setState(() {
         _isLoadingProfile = true;
       });
@@ -653,53 +723,69 @@ class _DashboardPageState extends State<DashboardPage> {
 
       // 1. Fetch user details (Avatar/Profile photo/Display Name/Stats)
       final userResponse = await http.get(
-        Uri.parse('https://trasx.com/api/users/$_userId'),
+        Uri.parse('https://trasx.com/api/users/$fetchId'),
         headers: headers,
       );
       if (userResponse.statusCode == 200) {
         final userData = jsonDecode(userResponse.body);
-        setState(() {
-          _avatarUrl = userData['avatar'] ?? '';
-          _userEmail = userData['email'] ?? _userEmail;
-          _username = userData['username'] ?? _username;
-          _displayName = userData['display_name'] ?? '';
-          _followersCount = userData['followersCount'] ?? 0;
-          _followingCount = userData['followingCount'] ?? 0;
-          _likesCount = userData['likesCount'] ?? 0;
-        });
+        if (mounted) {
+          setState(() {
+            _profileAvatarUrl = userData['avatar'] ?? '';
+            _profileUsername = userData['username'] ?? '';
+            _profileDisplayName = userData['display_name'] ?? '';
+            _profileFollowersCount = userData['followersCount'] ?? 0;
+            _profileFollowingCount = userData['followingCount'] ?? 0;
+            _profileLikesCount = userData['likesCount'] ?? 0;
+
+            if (isOwn) {
+              _avatarUrl = _profileAvatarUrl;
+              _userEmail = userData['email'] ?? _userEmail;
+              _username = _profileUsername;
+              _displayName = _profileDisplayName;
+              _followersCount = _profileFollowersCount;
+              _followingCount = _profileFollowingCount;
+              _likesCount = _profileLikesCount;
+              _profileCached = true;
+            }
+          });
+        }
       }
 
       // 2. Fetch User Feed Posts
       final postsResponse = await http.get(
-        Uri.parse('https://trasx.com/api/users/$_userId/posts'),
+        Uri.parse('https://trasx.com/api/users/$fetchId/posts'),
         headers: headers,
       );
       if (postsResponse.statusCode == 200) {
         final postsData = jsonDecode(postsResponse.body);
-        if (postsData['success'] == true) {
+        if (postsData['success'] == true && mounted) {
           setState(() {
-            _userPosts = postsData['posts'] ?? [];
+            _profilePosts = postsData['posts'] ?? [];
+            if (isOwn) {
+              _userPosts = _profilePosts;
+            }
           });
         }
       }
 
       // 3. Fetch User Shorts/Reels
       final reelsResponse = await http.get(
-        Uri.parse('https://trasx.com/api/users/$_userId/reels'),
+        Uri.parse('https://trasx.com/api/users/$fetchId/reels'),
         headers: headers,
       );
       if (reelsResponse.statusCode == 200) {
         final reelsData = jsonDecode(reelsResponse.body);
-        if (reelsData['success'] == true) {
+        if (reelsData['success'] == true && mounted) {
           setState(() {
-            _userReels = reelsData['reels'] ?? [];
+            _profileReels = reelsData['reels'] ?? [];
+            if (isOwn) {
+              _userReels = _profileReels;
+            }
           });
         }
       }
-
-      _profileCached = true;
     } catch (e) {
-      debugPrint('Error fetching user data from API: $e');
+      debugPrint('Error fetching user profile and posts: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -792,6 +878,10 @@ class _DashboardPageState extends State<DashboardPage> {
   void _switchView(int index) {
     setState(() {
       _activeViewIndex = index;
+      _profileViewUserId = null; // Always reset when switching views via tabs/drawer
+      if (index == 3) {
+        _fetchUserProfileAndPosts(); // Load our own profile
+      }
     });
     // Close drawer if open
     if (_scaffoldKey.currentState?.isEndDrawerOpen ?? false) {
@@ -1009,20 +1099,30 @@ class _DashboardPageState extends State<DashboardPage> {
       appBar: AppBar(
         backgroundColor: bgColor.withValues(alpha: 0.8),
         elevation: 0,
-        leadingWidth: 40,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 12.0),
-          child: Image.asset(
-            'assets/logo.png',
-            color: textPrimaryColor,
-            colorBlendMode: BlendMode.srcIn,
-            errorBuilder: (context, error, stackTrace) => Icon(
-              Icons.bolt_rounded,
-              color: textPrimaryColor,
-              size: 26,
-            ),
-          ),
-        ),
+        leadingWidth: (_activeViewIndex == 3 && _profileViewUserId != null && _profileViewUserId != _userId) ? 48 : 40,
+        leading: (_activeViewIndex == 3 && _profileViewUserId != null && _profileViewUserId != _userId)
+            ? IconButton(
+                icon: Icon(Icons.arrow_back_rounded, color: textPrimaryColor),
+                onPressed: () {
+                  setState(() {
+                    _profileViewUserId = null;
+                    _activeViewIndex = 0; // return to feed
+                  });
+                },
+              )
+            : Padding(
+                padding: const EdgeInsets.only(left: 12.0),
+                child: Image.asset(
+                  'assets/logo.png',
+                  color: textPrimaryColor,
+                  colorBlendMode: BlendMode.srcIn,
+                  errorBuilder: (context, error, stackTrace) => Icon(
+                    Icons.bolt_rounded,
+                    color: textPrimaryColor,
+                    size: 26,
+                  ),
+                ),
+              ),
         titleSpacing: 8.0,
         title: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1256,7 +1356,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildBottomTab(int index, IconData activeIcon, IconData inactiveIcon, String label, Color textPrimaryColor) {
     final bool isSelected = _activeViewIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _activeViewIndex = index),
+      onTap: () => _switchView(index),
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: 60,
@@ -1332,7 +1432,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     return GestureDetector(
-      onTap: () => setState(() => _activeViewIndex = index),
+      onTap: () => _switchView(index),
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: 60,
@@ -2473,6 +2573,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // 4. NESTED SCROLLING PROFILE VIEW (TikTok Style)
   Widget _buildProfileView(Color bgColor, Color cardColor, Color textPrimaryColor, Color textSecondaryColor, Color borderColor) {
+    final bool isOwnProfile = _profileViewUserId == null || _profileViewUserId == _userId;
+
     return DefaultTabController(
       length: 2,
       child: NestedScrollView(
@@ -2484,58 +2586,62 @@ class _DashboardPageState extends State<DashboardPage> {
                   Center(
                     child: Column(
                       children: [
-                        // Avatar profile picture with Camera edit icon
-                        GestureDetector(
-                          onTap: () => _showAvatarPicker(textPrimaryColor, cardColor),
-                          child: Stack(
-                            children: [
-                              _buildUserAvatar(radius: 42),
-                              Positioned(
-                                bottom: 0,
-                                right: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(5),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFC13584),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.camera_alt_rounded,
-                                    color: Colors.white,
-                                    size: 14,
-                                  ),
+                        // Avatar profile picture with Camera edit icon if own profile
+                        isOwnProfile
+                            ? GestureDetector(
+                                onTap: () => _showAvatarPicker(textPrimaryColor, cardColor),
+                                child: Stack(
+                                  children: [
+                                    _buildUserAvatar(radius: 42, customUrl: _profileAvatarUrl),
+                                    Positioned(
+                                      bottom: 0,
+                                      right: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(5),
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFFC13584),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.camera_alt_rounded,
+                                          color: Colors.white,
+                                          size: 14,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
+                              )
+                            : _buildUserAvatar(radius: 42, customUrl: _profileAvatarUrl),
                         const SizedBox(height: 12),
                         
-                        // Username row with edit pencil icon
+                        // Username row with edit pencil icon if own profile
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              _displayName.isNotEmpty ? _displayName : _username,
+                              _profileDisplayName.isNotEmpty ? _profileDisplayName : _profileUsername,
                               style: TextStyle(color: textPrimaryColor, fontSize: 18, fontWeight: FontWeight.bold),
                             ),
-                            const SizedBox(width: 6),
-                            GestureDetector(
-                              onTap: () => _showEditDisplayNameDialog(textPrimaryColor, cardColor),
-                              child: Icon(
-                                Icons.edit_rounded,
-                                color: textSecondaryColor.withValues(alpha: 0.8),
-                                size: 16,
+                            if (isOwnProfile) ...[
+                              const SizedBox(width: 6),
+                              GestureDetector(
+                                onTap: () => _showEditDisplayNameDialog(textPrimaryColor, cardColor),
+                                child: Icon(
+                                  Icons.edit_rounded,
+                                  color: textSecondaryColor.withValues(alpha: 0.8),
+                                  size: 16,
+                                ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                         
                         // Small username handle below
-                        if (_displayName.isNotEmpty) ...[
+                        if (_profileDisplayName.isNotEmpty) ...[
                           const SizedBox(height: 2),
                           Text(
-                            '@$_username',
+                            '@$_profileUsername',
                             style: TextStyle(color: textSecondaryColor, fontSize: 12),
                           ),
                         ],
@@ -2546,9 +2652,9 @@ class _DashboardPageState extends State<DashboardPage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            _buildProfileStat("Abonnés", "$_followersCount", textPrimaryColor, textSecondaryColor),
-                            _buildProfileStat("Suivi", "$_followingCount", textPrimaryColor, textSecondaryColor),
-                            _buildProfileStat("J'aime", "$_likesCount", textPrimaryColor, textSecondaryColor),
+                            _buildProfileStat("Abonnés", "$_profileFollowersCount", textPrimaryColor, textSecondaryColor),
+                            _buildProfileStat("Suivi", "$_profileFollowingCount", textPrimaryColor, textSecondaryColor),
+                            _buildProfileStat("J'aime", "$_profileLikesCount", textPrimaryColor, textSecondaryColor),
                           ],
                         ),
                       ],
@@ -2587,12 +2693,12 @@ class _DashboardPageState extends State<DashboardPage> {
                   // Tab 1: Feed Publications List with Pull-To-Refresh
                   RefreshIndicator(
                     onRefresh: () async {
-                      await _fetchUserProfileAndPosts();
+                      await _fetchUserProfileAndPosts(targetUserId: _profileViewUserId);
                       await _fetchHomeFeed();
                     },
                     color: const Color(0xFFC13584),
                     backgroundColor: cardColor,
-                    child: _userPosts.isEmpty
+                    child: _profilePosts.isEmpty
                         ? SingleChildScrollView(
                             physics: const AlwaysScrollableScrollPhysics(),
                             child: Container(
@@ -2607,35 +2713,35 @@ class _DashboardPageState extends State<DashboardPage> {
                         : ListView.builder(
                             physics: const AlwaysScrollableScrollPhysics(),
                             padding: const EdgeInsets.only(top: 8, bottom: 80),
-                            itemCount: _userPosts.length,
+                            itemCount: _profilePosts.length,
                             itemBuilder: (context, index) {
-                                                             final postMap = _userPosts[index];
-                               final postObj = Post(
-                                 id: postMap['id'] ?? 0,
-                                 authorId: _userId,
-                                 authorUsername: _username,
-                                 authorDisplayName: _displayName.isNotEmpty ? _displayName : _username,
-                                 authorAvatar: _avatarUrl,
-                                 content: postMap['content'] ?? '',
-                                 imageUrl: postMap['imageUrl'] ?? postMap['image_url'],
-                                 thumbnailUrl: postMap['thumbnailUrl'] ?? postMap['thumbnail_url'],
-                                 isTrade: postMap['is_trade'] == 1 || postMap['is_trade'] == true,
-                                 likesCount: postMap['likes_count'] ?? 0,
-                                 commentsCount: postMap['comments_count'] ?? 0,
-                                 sharesCount: postMap['shares_count'] ?? 0,
-                                 isLiked: postMap['is_liked'] == 1 || postMap['is_liked'] == true,
-                                 isBookmarked: postMap['is_bookmarked'] == 1 || postMap['is_bookmarked'] == true,
-                                 isAuthorFollowing: true,
-                                 createdAt: postMap['created_at'],
-                               );
-                               return _buildFeedCard(
-                                 key: ValueKey(postObj.id),
-                                 post: postObj,
-                                 cardColor: cardColor,
-                                 textPrimaryColor: textPrimaryColor,
-                                 textSecondaryColor: textSecondaryColor,
-                                 borderColor: borderColor,
-                               );
+                              final postMap = _profilePosts[index];
+                              final postObj = Post(
+                                id: postMap['id'] ?? 0,
+                                authorId: _profileViewUserId ?? _userId,
+                                authorUsername: _profileUsername,
+                                authorDisplayName: _profileDisplayName.isNotEmpty ? _profileDisplayName : _profileUsername,
+                                authorAvatar: _profileAvatarUrl,
+                                content: postMap['content'] ?? '',
+                                imageUrl: postMap['imageUrl'] ?? postMap['image_url'],
+                                thumbnailUrl: postMap['thumbnailUrl'] ?? postMap['thumbnail_url'],
+                                isTrade: postMap['is_trade'] == 1 || postMap['is_trade'] == true,
+                                likesCount: postMap['likes_count'] ?? 0,
+                                commentsCount: postMap['comments_count'] ?? 0,
+                                sharesCount: postMap['shares_count'] ?? 0,
+                                isLiked: postMap['is_liked'] == 1 || postMap['is_liked'] == true,
+                                isBookmarked: postMap['is_bookmarked'] == 1 || postMap['is_bookmarked'] == true,
+                                isAuthorFollowing: isOwnProfile ? true : (_profileViewUserId != null), // Mock as following or similar
+                                createdAt: postMap['created_at'],
+                              );
+                              return _buildFeedCard(
+                                key: ValueKey(postObj.id),
+                                post: postObj,
+                                cardColor: cardColor,
+                                textPrimaryColor: textPrimaryColor,
+                                textSecondaryColor: textSecondaryColor,
+                                borderColor: borderColor,
+                              );
                             },
                           ),
                   ),
@@ -2643,12 +2749,12 @@ class _DashboardPageState extends State<DashboardPage> {
                   // Tab 2: Shorts/Reels Grid View with Pull-To-Refresh
                   RefreshIndicator(
                     onRefresh: () async {
-                      await _fetchUserProfileAndPosts();
+                      await _fetchUserProfileAndPosts(targetUserId: _profileViewUserId);
                       await _fetchHomeFeed();
                     },
                     color: const Color(0xFFC13584),
                     backgroundColor: cardColor,
-                    child: _userReels.isEmpty
+                    child: _profileReels.isEmpty
                         ? SingleChildScrollView(
                             physics: const AlwaysScrollableScrollPhysics(),
                             child: Container(
@@ -2669,9 +2775,9 @@ class _DashboardPageState extends State<DashboardPage> {
                               mainAxisSpacing: 8,
                               childAspectRatio: 0.75,
                             ),
-                            itemCount: _userReels.length,
+                            itemCount: _profileReels.length,
                             itemBuilder: (context, index) {
-                              final reel = _userReels[index];
+                              final reel = _profileReels[index];
                               return _buildReelThumbnailCard(reel, cardColor, textPrimaryColor, textSecondaryColor, borderColor);
                             },
                           ),
@@ -2926,8 +3032,11 @@ class _DashboardPageState extends State<DashboardPage> {
       borderColor: borderColor,
       isDarkMode: _isDarkMode,
       onAvatarTap: () {
-        _switchView(3); // Switch to Profile page
+        _navigateToUserProfile(post.authorId);
       },
+      isHashtagPaid: _isHashtagPaid,
+      onHashtagTap: _showHashtagModal,
+      onUserProfileTap: _navigateToUserProfile,
       onPostUpdated: (updated) => _updateLocalPost(updated),
       createdAt: post.createdAt,
     );
@@ -3160,6 +3269,30 @@ class _DashboardPageState extends State<DashboardPage> {
         ],
         child,
       ],
+    );
+  }
+
+  void _showHashtagModal(String hashtag) {
+    final textPrimaryColor = _isDarkMode ? Colors.white : Colors.black;
+    final textSecondaryColor = _isDarkMode ? Colors.white70 : Colors.black87;
+    final cardColor = _isDarkMode ? const Color(0xFF0F0F0F) : const Color(0xFFF9F9F9);
+    final borderColor = _isDarkMode ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return HashtagModalDialog(
+          hashtag: hashtag,
+          socket: _socket,
+          currentUserId: _userId,
+          onUserProfileTap: _navigateToUserProfile,
+          isDarkMode: _isDarkMode,
+          textPrimaryColor: textPrimaryColor,
+          textSecondaryColor: textSecondaryColor,
+          cardColor: cardColor,
+          borderColor: borderColor,
+        );
+      },
     );
   }
 }
@@ -3489,6 +3622,10 @@ class FeedCard extends StatefulWidget {
   // Callback when a post is updated (like/bookmark) to propagate to parent
   final void Function(Post updated)? onPostUpdated;
 
+  final bool Function(String tag) isHashtagPaid;
+  final void Function(String tag) onHashtagTap;
+  final void Function(int userId) onUserProfileTap;
+
   const FeedCard({
     super.key,
     required this.postId,
@@ -3515,6 +3652,9 @@ class FeedCard extends StatefulWidget {
     required this.borderColor,
     required this.isDarkMode,
     required this.onAvatarTap,
+    required this.isHashtagPaid,
+    required this.onHashtagTap,
+    required this.onUserProfileTap,
     this.initialIsLiked = false,
     this.initialIsBookmarked = false,
     this.createdAt,
@@ -3742,6 +3882,7 @@ class _FeedCardState extends State<FeedCard> {
           textPrimaryColor: widget.textPrimaryColor,
           textSecondaryColor: widget.textSecondaryColor,
           isDarkMode: widget.isDarkMode,
+          onUserProfileTap: widget.onUserProfileTap,
           onCommentAdded: () {
             setState(() {
               _localCommentCount++;
@@ -3750,6 +3891,45 @@ class _FeedCardState extends State<FeedCard> {
         );
       },
     );
+  }
+
+  List<InlineSpan> _buildTextSpansWithHashtags(String text, BuildContext context) {
+    final List<InlineSpan> spans = [];
+    final RegExp regex = RegExp(r'(#\w+)');
+    final Iterable<RegExpMatch> matches = regex.allMatches(text);
+    
+    int start = 0;
+    for (final match in matches) {
+      if (match.start > start) {
+        spans.add(TextSpan(text: text.substring(start, match.start)));
+      }
+      
+      final hashtag = match.group(0)!;
+      final isPaid = widget.isHashtagPaid(hashtag);
+      final hashtagColor = isPaid ? const Color(0xFFFF2A54) : const Color(0xFF00B0FF);
+      
+      spans.add(
+        TextSpan(
+          text: hashtag,
+          style: TextStyle(
+            color: hashtagColor,
+            fontStyle: FontStyle.italic,
+            fontWeight: FontWeight.bold,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () {
+              widget.onHashtagTap(hashtag);
+            },
+        ),
+      );
+      start = match.end;
+    }
+    
+    if (start < text.length) {
+      spans.add(TextSpan(text: text.substring(start)));
+    }
+    
+    return spans;
   }
 
   @override
@@ -3993,12 +4173,10 @@ class _FeedCardState extends State<FeedCard> {
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                       if (displayUrl != null && displayUrl.isNotEmpty || isVideo)
-                        TextSpan(text: displayText),
+                        ..._buildTextSpansWithHashtags(displayText, context),
                       if (widget.hashtag.isNotEmpty) ...[
-                        TextSpan(
-                          text: " ${widget.hashtag}",
-                          style: const TextStyle(color: Color(0xFFFCAF45), fontWeight: FontWeight.bold),
-                        ),
+                        const TextSpan(text: " "),
+                        ..._buildTextSpansWithHashtags(widget.hashtag, context),
                       ],
                     ],
                   ),
@@ -4173,6 +4351,7 @@ class CommentsBottomSheet extends StatefulWidget {
   final Color textSecondaryColor;
   final bool isDarkMode;
   final VoidCallback onCommentAdded;
+  final void Function(int userId) onUserProfileTap;
 
   const CommentsBottomSheet({
     super.key,
@@ -4185,6 +4364,7 @@ class CommentsBottomSheet extends StatefulWidget {
     required this.textSecondaryColor,
     required this.isDarkMode,
     required this.onCommentAdded,
+    required this.onUserProfileTap,
   });
 
   @override
@@ -4434,7 +4614,16 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                               ReplyThreadLine(color: widget.isDarkMode ? Colors.white12 : Colors.black12),
                               const SizedBox(width: 4),
                             ],
-                            _buildCommentAvatar(authorName, avatarUrl, size: isReply ? 24 : 32),
+                            GestureDetector(
+                              onTap: () {
+                                final commUserId = int.tryParse('${comment['user_id']}') ?? 0;
+                                if (commUserId > 0) {
+                                  Navigator.pop(context); // close bottom sheet
+                                  widget.onUserProfileTap(commUserId);
+                                }
+                              },
+                              child: _buildCommentAvatar(authorName, avatarUrl, size: isReply ? 24 : 32),
+                            ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Column(
@@ -4587,7 +4776,13 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
                 children: [
-                  _buildCommentAvatar(widget.currentUsername, widget.currentUserAvatar, size: 32),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pop(context); // close bottom sheet
+                      widget.onUserProfileTap(widget.currentUserId);
+                    },
+                    child: _buildCommentAvatar(widget.currentUsername, widget.currentUserAvatar, size: 32),
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
@@ -5869,6 +6064,418 @@ class _AudioWaveformsWidgetState extends State<_AudioWaveformsWidget> with Singl
           }),
         );
       },
+    );
+  }
+}
+
+class HashtagModalDialog extends StatefulWidget {
+  final String hashtag;
+  final IO.Socket? socket;
+  final int currentUserId;
+  final void Function(int userId) onUserProfileTap;
+  final bool isDarkMode;
+  final Color textPrimaryColor;
+  final Color textSecondaryColor;
+  final Color cardColor;
+  final Color borderColor;
+
+  const HashtagModalDialog({
+    super.key,
+    required this.hashtag,
+    this.socket,
+    required this.currentUserId,
+    required this.onUserProfileTap,
+    required this.isDarkMode,
+    required this.textPrimaryColor,
+    required this.textSecondaryColor,
+    required this.cardColor,
+    required this.borderColor,
+  });
+
+  @override
+  State<HashtagModalDialog> createState() => _HashtagModalDialogState();
+}
+
+class _HashtagModalDialogState extends State<HashtagModalDialog> {
+  bool _isLoading = true;
+  String? _errorMessage;
+  
+  // Hashtag Info
+  String _name = '';
+  int _creatorId = 0;
+  bool _isPaid = false;
+  double _price = 0.0;
+  int _usageCount = 0;
+  String _creatorUsername = '';
+  String _creatorDisplayName = '';
+  String _creatorAvatar = '';
+  List<dynamic> _usedBy = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _name = widget.hashtag.replaceAll('#', '');
+    _fetchHashtagDetails();
+    _setupSocketListener();
+  }
+
+  @override
+  void dispose() {
+    _cleanupSocketListener();
+    super.dispose();
+  }
+
+  void _setupSocketListener() {
+    if (widget.socket != null) {
+      widget.socket!.on('post-created', _onPostCreated);
+    }
+  }
+
+  void _cleanupSocketListener() {
+    if (widget.socket != null) {
+      widget.socket!.off('post-created', _onPostCreated);
+    }
+  }
+
+  void _onPostCreated(dynamic data) {
+    if (data == null || data['content'] == null) return;
+    final String content = data['content'] as String;
+    final String hashtagLower = _name.toLowerCase();
+
+    // Regex to match hashtag usage
+    final RegExp regex = RegExp('(^|[^a-z0-9_])#$hashtagLower([^a-z0-9_]|\$)', caseSensitive: false);
+    if (regex.hasMatch(content)) {
+      if (mounted) {
+        setState(() {
+          _usageCount += 1;
+          
+          final authorId = data['author_id'] ?? data['user_id'];
+          if (authorId != null) {
+            final authorUsername = data['author_username'] ?? data['username'] ?? 'User';
+            final authorDisplayName = data['author_display_name'] ?? data['display_name'] ?? authorUsername;
+            final authorAvatar = data['author_avatar'] ?? data['avatar'] ?? '';
+            
+            final userObj = {
+              'id': authorId,
+              'username': authorUsername,
+              'first_name': authorDisplayName,
+              'last_name': '',
+              'avatar': authorAvatar,
+            };
+
+            // Check if user already in list
+            bool exists = false;
+            for (var u in _usedBy) {
+              if (u['id'] == authorId) {
+                exists = true;
+                break;
+              }
+            }
+            if (!exists) {
+              _usedBy.insert(0, userObj);
+            }
+          }
+        });
+      }
+    }
+  }
+
+  Future<void> _fetchHashtagDetails() async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://trasx.com/api/hashtags/check?name=${Uri.encodeComponent(_name)}'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.currentUserId}',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _isPaid = data['is_paid'] == 1 || data['is_paid'] == true || data['is_paid'] == 'true';
+            _price = double.tryParse('${data['price']}') ?? 0.0;
+            _usageCount = int.tryParse('${data['usage_count']}') ?? 0;
+            _creatorId = int.tryParse('${data['creator_id']}') ?? 0;
+            _creatorUsername = data['username'] ?? 'admin';
+            _creatorDisplayName = data['first_name'] != null 
+                ? '${data['first_name']} ${data['last_name'] ?? ""}'.trim()
+                : _creatorUsername;
+            _creatorAvatar = data['avatar'] ?? '';
+            _usedBy = data['used_by'] ?? [];
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Impossible de charger les infos du hashtag';
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Erreur réseau : $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildAvatar(String? url, String name, double size) {
+    final String initial = name.isNotEmpty ? name[0].toUpperCase() : 'U';
+    Widget avatarContent;
+    if (url != null && url.isNotEmpty) {
+      final fullUrl = url.startsWith('http') ? url : 'https://trasx.com$url';
+      avatarContent = CachedNetworkImage(
+        imageUrl: fullUrl,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => Container(color: Colors.white10),
+        errorWidget: (_, __, ___) => Container(
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)]),
+          ),
+          child: Center(
+            child: Text(
+              initial,
+              style: TextStyle(color: Colors.white, fontSize: size * 0.38, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ),
+      );
+    } else {
+      avatarContent = Container(
+        width: size,
+        height: size,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)]),
+        ),
+        child: Center(
+          child: Text(
+            initial,
+            style: TextStyle(color: Colors.white, fontSize: size * 0.38, fontWeight: FontWeight.bold),
+          ),
+        ),
+      );
+    }
+    return ClipOval(child: avatarContent);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = TextStyle(color: widget.textPrimaryColor);
+    final secondaryTextStyle = TextStyle(color: widget.textSecondaryColor);
+
+    return Dialog(
+      backgroundColor: widget.cardColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 500),
+        child: _isLoading
+            ? const SizedBox(
+                height: 200,
+                child: Center(child: CircularProgressIndicator(color: Color(0xFFC13584))),
+              )
+            : _errorMessage != null
+                ? Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 40),
+                        const SizedBox(height: 16),
+                        Text(_errorMessage!, style: textStyle, textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC13584)),
+                          child: const Text('Fermer', style: TextStyle(color: Colors.white)),
+                        )
+                      ],
+                    ),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header: Title with hashtag status badge
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '#$_name',
+                                style: TextStyle(
+                                  color: _isPaid ? const Color(0xFFFF2A54) : const Color(0xFF00B0FF),
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _isPaid 
+                                    ? const Color(0xFFFF2A54).withOpacity(0.15) 
+                                    : const Color(0xFF00B0FF).withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: _isPaid ? const Color(0xFFFF2A54) : const Color(0xFF00B0FF),
+                                  width: 0.5,
+                                ),
+                              ),
+                              child: Text(
+                                _isPaid ? 'PAYANT' : 'GRATUIT',
+                                style: TextStyle(
+                                  color: _isPaid ? const Color(0xFFFF2A54) : const Color(0xFF00B0FF),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: Icon(Icons.close, color: widget.textSecondaryColor, size: 20),
+                            ),
+                          ],
+                        ),
+                        if (_isPaid) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Tarif de mention : ${_price.toStringAsFixed(2)}\$',
+                            style: const TextStyle(color: Color(0xFFFFB300), fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+                        Divider(height: 0.5, thickness: 0.5, color: widget.borderColor),
+                        const SizedBox(height: 16),
+                        
+                        // Creator Details
+                        Text(
+                          'Créateur :',
+                          style: TextStyle(color: widget.textSecondaryColor, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onUserProfileTap(_creatorId);
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Row(
+                            children: [
+                              _buildAvatar(_creatorAvatar, _creatorUsername, 38),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _creatorDisplayName,
+                                      style: textStyle.copyWith(fontWeight: FontWeight.bold, fontSize: 14),
+                                    ),
+                                    Text('@$_creatorUsername', style: secondaryTextStyle.copyWith(fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.arrow_forward_ios_rounded, color: widget.textSecondaryColor.withOpacity(0.5), size: 14),
+                            ],
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 20),
+                        
+                        // Usage stats
+                        Row(
+                          children: [
+                            Text('Utilisé ', style: textStyle),
+                            Text(
+                              '$_usageCount fois',
+                              style: TextStyle(
+                                color: widget.textPrimaryColor, 
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (_isPaid) ...[
+                              const SizedBox(width: 6),
+                              const Text('en temps réel ⚡', style: TextStyle(color: Color(0xFFFF2A54), fontSize: 11, fontWeight: FontWeight.bold)),
+                            ],
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        Text(
+                          'Utilisé par :',
+                          style: TextStyle(color: widget.textSecondaryColor, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        
+                        // Users list
+                        Expanded(
+                          child: _usedBy.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    'Aucune utilisation enregistrée.',
+                                    style: secondaryTextStyle.copyWith(fontSize: 12),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  itemCount: _usedBy.length,
+                                  itemBuilder: (context, index) {
+                                    final user = _usedBy[index];
+                                    final uId = int.tryParse('${user['id']}') ?? 0;
+                                    final username = user['username'] ?? 'user';
+                                    final displayName = user['first_name'] != null 
+                                        ? '${user['first_name']} ${user['last_name'] ?? ""}'.trim()
+                                        : username;
+                                    final avatar = user['avatar'] ?? '';
+
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 6.0),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          Navigator.pop(context);
+                                          widget.onUserProfileTap(uId);
+                                        },
+                                        behavior: HitTestBehavior.opaque,
+                                        child: Row(
+                                          children: [
+                                            _buildAvatar(avatar, username, 30),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    displayName,
+                                                    style: textStyle.copyWith(fontWeight: FontWeight.bold, fontSize: 12.5),
+                                                  ),
+                                                  Text('@$username', style: secondaryTextStyle.copyWith(fontSize: 11)),
+                                                ],
+                                              ),
+                                            ),
+                                            Icon(Icons.arrow_forward_ios_rounded, color: widget.textSecondaryColor.withOpacity(0.3), size: 12),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+      ),
     );
   }
 }
