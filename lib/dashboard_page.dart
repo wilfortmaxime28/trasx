@@ -5611,7 +5611,8 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
             ),
             const SizedBox(height: 35),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              height: 54, // Stricte hauteur fixe pour éviter le jiggling de toute la page
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               decoration: BoxDecoration(
                 color: Colors.black26,
                 borderRadius: BorderRadius.circular(30),
@@ -5619,21 +5620,30 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const Icon(Icons.mic_rounded, color: Color(0xFFC13584), size: 20),
                   const SizedBox(width: 12),
-                  _AudioWaveformsWidget(isPlaying: isPlaying),
+                  SizedBox(
+                    height: 30, // Hauteur fixe pour le conteneur interne de waves
+                    child: _AudioWaveformsWidget(isPlaying: isPlaying),
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: 15),
-            Text(
-              '${formatDuration(currentPos)} / ${formatDuration(totalDuration)}',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.2,
+            SizedBox(
+              height: 20, // Hauteur fixe pour le conteneur du texte de la durée
+              child: Center(
+                child: Text(
+                  '${formatDuration(currentPos)} / ${formatDuration(totalDuration)}',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 30),
