@@ -3883,6 +3883,7 @@ class _FeedCardState extends State<FeedCard> {
           textSecondaryColor: widget.textSecondaryColor,
           isDarkMode: widget.isDarkMode,
           onUserProfileTap: widget.onUserProfileTap,
+          socket: widget.socket,
           onCommentAdded: () {
             setState(() {
               _localCommentCount++;
@@ -4352,6 +4353,7 @@ class CommentsBottomSheet extends StatefulWidget {
   final bool isDarkMode;
   final VoidCallback onCommentAdded;
   final void Function(int userId) onUserProfileTap;
+  final IO.Socket? socket;
 
   const CommentsBottomSheet({
     super.key,
@@ -4365,6 +4367,7 @@ class CommentsBottomSheet extends StatefulWidget {
     required this.isDarkMode,
     required this.onCommentAdded,
     required this.onUserProfileTap,
+    this.socket,
   });
 
   @override
@@ -4387,13 +4390,61 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
     _commentsPollingTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
       _pollComments();
     });
+
+    if (widget.socket != null && widget.socket!.connected) {
+      widget.socket!.emit('feed-posts-watch', {
+        'postIds': [widget.postId]
+      });
+      widget.socket!.on('comment-liked', _onCommentLikedReceived);
+      widget.socket!.on('comment-created', _onCommentCreatedReceived);
+    }
   }
 
   @override
   void dispose() {
+    if (widget.socket != null) {
+      widget.socket!.off('comment-liked', _onCommentLikedReceived);
+      widget.socket!.off('comment-created', _onCommentCreatedReceived);
+      widget.socket!.emit('feed-posts-watch', {
+        'postIds': []
+      });
+    }
     _commentsPollingTimer?.cancel();
     _commentController.dispose();
     super.dispose();
+  }
+
+  void _onCommentLikedReceived(dynamic data) {
+    debugPrint('Socket: received comment-liked: $data');
+    if (data == null || data['commentId'] == null || data['likes_count'] == null) return;
+    final int? cId = int.tryParse('${data['commentId']}');
+    final int? count = int.tryParse('${data['likes_count']}');
+    if (cId != null && count != null) {
+      if (mounted) {
+        setState(() {
+          final index = _commentsList.indexWhere((c) => c['id'] == cId);
+          if (index != -1) {
+            _commentsList[index]['likes_count'] = count;
+          }
+        });
+      }
+    }
+  }
+
+  void _onCommentCreatedReceived(dynamic data) {
+    debugPrint('Socket: received comment-created: $data');
+    if (data == null || data['id'] == null) return;
+    final int? commentId = int.tryParse('${data['id']}');
+    if (commentId == null) return;
+    
+    final bool exists = _commentsList.any((c) => c['id'] == commentId);
+    if (exists) return;
+
+    if (mounted) {
+      setState(() {
+        _commentsList.add(data);
+      });
+    }
   }
 
   String _formatCommentDate(String? createdAt) {
