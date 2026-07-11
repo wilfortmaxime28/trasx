@@ -11,6 +11,30 @@ const requireAuth = async (req, res, next) => {
   console.log('[Auth Middleware] Session ID:', req.sessionID);
   console.log('[Auth Middleware] Session User ID:', req.session?.userId);
 
+  let userId = req.session?.userId;
+
+  // Fallback for mobile clients (API requests)
+  if (!userId && isApi) {
+    userId = req.headers['x-user-id'] || req.query.user_id || req.body.user_id;
+    if (!userId) {
+      const pathParts = req.path.split('/');
+      for (const part of pathParts) {
+        if (part && /^\d+$/.test(part)) {
+          userId = parseInt(part, 10);
+          break;
+        }
+      }
+    }
+  }
+
+  if (userId) {
+    if (req.session) {
+      req.session.userId = userId;
+    } else {
+      req.session = { userId: userId };
+    }
+  }
+
   if (!req.session || !req.session.userId) {
     console.warn('[Auth Middleware] Unauthenticated request to:', req.originalUrl);
     if (isApi) {
