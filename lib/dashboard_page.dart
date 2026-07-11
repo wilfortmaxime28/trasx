@@ -4522,10 +4522,12 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
       'content': text,
       'parent_id': parentId,
       'created_at': DateTime.now().toIso8601String(),
+      'likes_count': 0,
+      'is_liked': 0,
     };
 
     setState(() {
-      _commentsList.insert(0, newComment);
+      _commentsList.add(newComment);
     });
     widget.onCommentAdded();
 
@@ -4543,6 +4545,73 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
       );
     } catch (e) {
       debugPrint('Error posting comment: $e');
+    }
+  }
+
+  Widget _buildCommentLikeButton(Map<String, dynamic> comment) {
+    final bool isLiked = comment['is_liked'] == 1 || comment['is_liked'] == true || comment['is_liked'] == 'true';
+    final int likesCount = int.tryParse('${comment['likes_count']}') ?? 0;
+    
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        GestureDetector(
+          onTap: () => _toggleCommentLike(comment),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+            child: Icon(
+              isLiked ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
+              size: 14,
+              color: isLiked ? const Color(0xFFFF2A54) : widget.textSecondaryColor,
+            ),
+          ),
+        ),
+        if (likesCount > 0)
+          Text(
+            '$likesCount',
+            style: TextStyle(
+              color: widget.textSecondaryColor,
+              fontSize: 9,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _toggleCommentLike(Map<String, dynamic> comment) async {
+    if (widget.currentUserId <= 0) return;
+    
+    final int commentId = comment['id'];
+    final bool wasLiked = comment['is_liked'] == 1 || comment['is_liked'] == true || comment['is_liked'] == 'true';
+    final int oldLikesCount = int.tryParse('${comment['likes_count']}') ?? 0;
+    
+    setState(() {
+      comment['is_liked'] = wasLiked ? 0 : 1;
+      comment['likes_count'] = wasLiked ? oldLikesCount - 1 : oldLikesCount + 1;
+      if (comment['likes_count'] < 0) comment['likes_count'] = 0;
+    });
+    
+    try {
+      final response = await http.post(
+        Uri.parse('https://trasx.com/api/comments/$commentId/like'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.currentUserId}',
+        },
+      );
+      if (response.statusCode != 200) {
+        setState(() {
+          comment['is_liked'] = wasLiked ? 1 : 0;
+          comment['likes_count'] = oldLikesCount;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error liking comment: $e');
+      setState(() {
+        comment['is_liked'] = wasLiked ? 1 : 0;
+        comment['likes_count'] = oldLikesCount;
+      });
     }
   }
 
@@ -4706,6 +4775,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                                 ],
                               ),
                             ),
+                            _buildCommentLikeButton(comment),
                           ],
                         ),
                       );
