@@ -564,6 +564,8 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       _socket = IO.io('https://trasx.com', IO.OptionBuilder()
         .setTransports(['websocket'])
+        .setAuth({'userId': _userId})
+        .setQuery({'userId': _userId})
         .enableAutoConnect()
         .build());
 
