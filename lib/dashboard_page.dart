@@ -7025,53 +7025,72 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
   }
 
   Future<void> _fetchContacts() async {
-    try {
-      final uri = Uri.parse('https://trasx.com/api/users/contacts');
-      debugPrint('[ShareSheet] Fetching contacts from $uri with x-user-id=${widget.currentUserId}');
-      final response = await http.get(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '${widget.currentUserId}',
-        },
-      );
-      debugPrint('[ShareSheet] Response status: ${response.statusCode}');
-      debugPrint('[ShareSheet] Response body: ${response.body.substring(0, response.body.length.clamp(0, 300))}');
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          final raw = (data['contacts'] as List<dynamic>? ?? []);
-          // Sort: mutual first, then following, then followers
-          raw.sort((a, b) {
-            final aMutual = a['is_mutual'] == true ? 0 : (a['is_following'] == true ? 1 : 2);
-            final bMutual = b['is_mutual'] == true ? 0 : (b['is_following'] == true ? 1 : 2);
-            return aMutual.compareTo(bMutual);
-          });
-          if (mounted) {
-            setState(() {
-              _contacts = raw;
-              _filteredContacts = raw;
-              _isLoading = false;
-              _errorMsg = null;
+    // Try the short alias first, fall back to the full path
+    final endpoints = [
+      'https://trasx.com/api/contacts',
+      'https://trasx.com/api/users/contacts',
+    ];
+
+    for (final url in endpoints) {
+      try {
+        final uri = Uri.parse(url);
+        debugPrint('[ShareSheet] Trying $uri with x-user-id=${widget.currentUserId}');
+        final response = await http.get(
+          uri,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': '${widget.currentUserId}',
+          },
+        ).timeout(const Duration(seconds: 10));
+
+        debugPrint('[ShareSheet] Status: ${response.statusCode}');
+        debugPrint('[ShareSheet] Body: ${response.body.substring(0, response.body.length.clamp(0, 300))}');
+
+        if (response.statusCode == 404) {
+          debugPrint('[ShareSheet] 404 on $url, trying next...');
+          continue;
+        }
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data['success'] == true) {
+            final raw = (data['contacts'] as List<dynamic>? ?? []);
+            // Sort: mutual first, then following, then followers
+            raw.sort((a, b) {
+              final aMutual = a['is_mutual'] == true ? 0 : (a['is_following'] == true ? 1 : 2);
+              final bMutual = b['is_mutual'] == true ? 0 : (b['is_following'] == true ? 1 : 2);
+              return aMutual.compareTo(bMutual);
             });
+            if (mounted) {
+              setState(() {
+                _contacts = raw;
+                _filteredContacts = raw;
+                _isLoading = false;
+                _errorMsg = null;
+              });
+            }
+            return;
+          } else {
+            final msg = data['error'] ?? data['message'] ?? 'Réponse invalide';
+            debugPrint('[ShareSheet] API error: $msg');
+            if (mounted) setState(() { _errorMsg = msg; _isLoading = false; });
+            return;
           }
-          return;
         } else {
-          final msg = data['error'] ?? data['message'] ?? 'Réponse invalide';
-          debugPrint('[ShareSheet] API error: $msg');
+          final msg = 'Erreur HTTP ${response.statusCode}';
+          debugPrint('[ShareSheet] $msg — ${response.body}');
           if (mounted) setState(() { _errorMsg = msg; _isLoading = false; });
           return;
         }
-      } else {
-        final msg = 'Erreur HTTP ${response.statusCode}';
-        debugPrint('[ShareSheet] $msg — ${response.body}');
-        if (mounted) setState(() { _errorMsg = msg; _isLoading = false; });
+      } catch (e) {
+        debugPrint('[ShareSheet] Exception on $url: $e');
+        if (mounted) setState(() { _errorMsg = e.toString(); _isLoading = false; });
         return;
       }
-    } catch (e) {
-      debugPrint('[ShareSheet] Exception fetching contacts: $e');
-      if (mounted) setState(() { _errorMsg = e.toString(); _isLoading = false; });
     }
+
+    // All endpoints failed
+    if (mounted) setState(() { _errorMsg = 'Endpoint introuvable (404)'; _isLoading = false; });
   }
 
   void _filterContacts(String query) {
