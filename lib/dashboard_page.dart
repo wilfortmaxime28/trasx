@@ -455,6 +455,66 @@ class _DashboardPageState extends State<DashboardPage> {
     FeedCacheService.updatePost(updated);
   }
 
+  void _updatePostLikeState(int postId, bool isLiked, int count) {
+    if (!mounted) return;
+    setState(() {
+      final idx = _feedPosts.indexWhere((p) => p.id == postId);
+      if (idx != -1) {
+        final current = _feedPosts[idx];
+        final updated = Post(
+          id: current.id,
+          authorId: current.authorId,
+          authorUsername: current.authorUsername,
+          authorDisplayName: current.authorDisplayName,
+          authorAvatar: current.authorAvatar,
+          content: current.content,
+          imageUrl: current.imageUrl,
+          thumbnailUrl: current.thumbnailUrl,
+          isTrade: current.isTrade,
+          likesCount: count,
+          commentsCount: current.commentsCount,
+          sharesCount: current.sharesCount,
+          isLiked: isLiked,
+          isBookmarked: current.isBookmarked,
+          isAuthorFollowing: current.isAuthorFollowing,
+          createdAt: current.createdAt,
+        );
+        _feedPosts[idx] = updated;
+        FeedCacheService.updatePost(updated);
+      }
+    });
+  }
+
+  void _updatePostLikesCount(int postId, int count) {
+    if (!mounted) return;
+    setState(() {
+      final idx = _feedPosts.indexWhere((p) => p.id == postId);
+      if (idx != -1) {
+        final current = _feedPosts[idx];
+        final updated = Post(
+          id: current.id,
+          authorId: current.authorId,
+          authorUsername: current.authorUsername,
+          authorDisplayName: current.authorDisplayName,
+          authorAvatar: current.authorAvatar,
+          content: current.content,
+          imageUrl: current.imageUrl,
+          thumbnailUrl: current.thumbnailUrl,
+          isTrade: current.isTrade,
+          likesCount: count,
+          commentsCount: current.commentsCount,
+          sharesCount: current.sharesCount,
+          isLiked: current.isLiked,
+          isBookmarked: current.isBookmarked,
+          isAuthorFollowing: current.isAuthorFollowing,
+          createdAt: current.createdAt,
+        );
+        _feedPosts[idx] = updated;
+        FeedCacheService.updatePost(updated);
+      }
+    });
+  }
+
   // ── Real-time Socket.IO Connection ──────────────────────────────────────────
   void _initSocket() {
     if (_userId <= 0) return;
@@ -477,6 +537,29 @@ class _DashboardPageState extends State<DashboardPage> {
       _socket!.on('status-created', (data) {
         debugPrint('Socket.IO: Received status-created: $data');
         _handleRealtimeStatusCreated(data);
+      });
+
+      _socket!.on('post-liked', (data) {
+        debugPrint('Socket.IO: Received post-liked: $data');
+        if (data != null && data['postId'] != null && data['likes_count'] != null) {
+          final int? pId = int.tryParse('${data['postId']}');
+          final int? count = int.tryParse('${data['likes_count']}');
+          if (pId != null && count != null) {
+            _updatePostLikesCount(pId, count);
+          }
+        }
+      });
+
+      _socket!.on('like-response', (data) {
+        debugPrint('Socket.IO: Received like-response: $data');
+        if (data != null && data['postId'] != null && data['liked'] != null && data['count'] != null) {
+          final int? pId = int.tryParse('${data['postId']}');
+          final bool liked = data['liked'] == true;
+          final int? count = int.tryParse('${data['count']}');
+          if (pId != null && count != null) {
+            _updatePostLikeState(pId, liked, count);
+          }
+        }
       });
 
       _socket!.onDisconnect((_) {
@@ -2819,6 +2902,7 @@ class _DashboardPageState extends State<DashboardPage> {
       key: key,
       postId: post.id,
       authorId: post.authorId,
+      socket: _socket,
       isFollowing: post.isAuthorFollowing,
       showFollowButton: showFollowButton,
       currentUserId: _userId,
@@ -3376,6 +3460,7 @@ class _PostVideoPlayerState extends State<PostVideoPlayer> {
 class FeedCard extends StatefulWidget {
   final int postId;
   final int authorId;
+  final IO.Socket? socket;
   final bool isFollowing;
   final bool showFollowButton;
   final int currentUserId;
@@ -3408,6 +3493,7 @@ class FeedCard extends StatefulWidget {
     super.key,
     required this.postId,
     required this.authorId,
+    this.socket,
     required this.isFollowing,
     required this.showFollowButton,
     required this.currentUserId,
@@ -3508,7 +3594,6 @@ class _FeedCardState extends State<FeedCard> {
     _isLikeInFlight = true;
 
     // 1. Optimistic UI update immediately
-    final wasLiked = _isLiked;
     setState(() {
       _isLiked = !_isLiked;
       _localLikesCount += _isLiked ? 1 : -1;
@@ -3537,44 +3622,17 @@ class _FeedCardState extends State<FeedCard> {
       ),
     );
 
-    // 3. Send to server
+    // 3. Emit like event via Socket.IO
     try {
-      final route = _isLiked
-          ? 'https://trasx.com/api/posts/${widget.postId}/like'
-          : 'https://trasx.com/api/posts/${widget.postId}/unlike';
-      final response = await http.post(
-        Uri.parse(route),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '${widget.currentUserId}',
-        },
-      ).timeout(const Duration(seconds: 8));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        // Sync count from server if available
-        final serverCount = data['likes_count'] ?? data['count'];
-        if (serverCount != null && mounted) {
-          setState(() => _localLikesCount = int.tryParse('$serverCount') ?? _localLikesCount);
-        }
-      } else {
-        // Rollback on server error
-        if (mounted) {
-          setState(() {
-            _isLiked = wasLiked;
-            _localLikesCount += wasLiked ? 1 : -1;
-          });
-        }
-      }
-    } catch (_) {
-      // Rollback on network error
-      if (mounted) {
-        setState(() {
-          _isLiked = wasLiked;
-          _localLikesCount += wasLiked ? 1 : -1;
-          if (_localLikesCount < 0) _localLikesCount = 0;
+      if (widget.socket != null && widget.socket!.connected) {
+        widget.socket!.emit('post-like', {
+          'postId': widget.postId,
         });
+      } else {
+        debugPrint('Socket.IO offline, cannot sync like in real-time');
       }
+    } catch (e) {
+      debugPrint('Error emitting post-like: $e');
     } finally {
       _isLikeInFlight = false;
     }
