@@ -1701,6 +1701,160 @@ app.get('/events/tickets/:code', async (req, res) => {
   }
 });
 
+app.get('/post/:postId', async (req, res) => {
+  try {
+    const postId = Number(req.params.postId);
+    if (!Number.isFinite(postId) || postId <= 0) {
+      return res.status(400).send('Identifiant de publication invalide.');
+    }
+
+    const post = await Post.getById(postId, null);
+    if (!post) {
+      return res.status(404).send('Publication introuvable.');
+    }
+
+    // Auto-generate thumbnail for videos if missing and image_url (video path) exists
+    if (post.media_type === 'video' && !post.thumbnail_url && post.image_url) {
+      const relativeVideoPath = post.image_url;
+      const absoluteVideoPath = path.join(__dirname, 'public', relativeVideoPath);
+      
+      if (fs.existsSync(absoluteVideoPath)) {
+        const uniqueSuffix = Date.now();
+        const thumbFilename = `thumb-auto-${postId}-${uniqueSuffix}.webp`;
+        const relativeThumbPath = `/uploads/posts/${thumbFilename}`;
+        const absoluteThumbPath = path.join(__dirname, 'public/uploads/posts', thumbFilename);
+
+        try {
+          const mediaOptimizer = require('./utils/mediaOptimizer');
+          await mediaOptimizer.generateVideoThumbnail(absoluteVideoPath, absoluteThumbPath);
+          
+          // Save in database
+          await db.query('UPDATE posts SET thumbnail_url = ? WHERE id = ?', [relativeThumbPath, postId]);
+          post.thumbnail_url = relativeThumbPath;
+          console.log(`Automatically generated thumbnail for video post ${postId}: ${relativeThumbPath}`);
+        } catch (thumbErr) {
+          console.error('Error generating automatic thumbnail for video:', thumbErr);
+        }
+      }
+    }
+
+    const authorName = post.author_display_name || post.author_username || 'Utilisateur TRASX';
+    const postContent = post.content || 'Regardez cette publication sur TRASX !';
+    
+    // Choose og:image
+    let imageUrl = '';
+    if (post.media_type === 'video') {
+      imageUrl = post.thumbnail_url || '';
+    } else {
+      imageUrl = post.image_url || '';
+    }
+
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      imageUrl = `https://www.trasx.com${imageUrl}`;
+    } else if (!imageUrl) {
+      imageUrl = 'https://www.trasx.com/assets/logo.png';
+    }
+
+    const pageUrl = `https://www.trasx.com/post/${postId}`;
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Publication de ${authorName} sur TRASX</title>
+    
+    <!-- Open Graph Tags -->
+    <meta property="og:title" content="Publication de ${authorName}" />
+    <meta property="og:description" content="${postContent.replace(/"/g, '&quot;').substring(0, 150)}" />
+    <meta property="og:image" content="${imageUrl}" />
+    <meta property="og:url" content="${pageUrl}" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="TRASX" />
+
+    <!-- Twitter Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Publication de ${authorName}" />
+    <meta name="twitter:description" content="${postContent.replace(/"/g, '&quot;').substring(0, 150)}" />
+    <meta name="twitter:image" content="${imageUrl}" />
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #000000;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            max-width: 500px;
+            padding: 32px;
+            border: 1px solid #2e2e2e;
+            border-radius: 16px;
+            background-color: #121212;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+        .logo {
+            font-size: 36px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            color: #E1306C;
+            margin-bottom: 20px;
+        }
+        .author {
+            color: #a0a0a0;
+            font-size: 14px;
+            margin-bottom: 16px;
+            font-weight: bold;
+        }
+        .content {
+            font-size: 16px;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            color: #e0e0e0;
+        }
+        .btn {
+            display: inline-block;
+            background: linear-gradient(45deg, #833AB4, #C13584, #E1306C);
+            color: #ffffff;
+            padding: 14px 28px;
+            text-decoration: none;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 15px;
+            transition: transform 0.2s;
+        }
+        .btn:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">TRASX</div>
+        <div class="author">Publication de @${post.author_username || 'utilisateur'}</div>
+        <div class="content">${postContent}</div>
+        <a href="trasx://post/${postId}" class="btn">Ouvrir dans l'application</a>
+    </div>
+    
+    <script>
+        // Try opening the app via custom scheme deep link automatically
+        window.location.href = "trasx://post/${postId}";
+    </script>
+</body>
+</html>`;
+
+    return res.send(html);
+  } catch (error) {
+    console.error('Error rendering public post page:', error);
+    return res.status(500).send('Erreur lors du chargement de la publication.');
+  }
+});
+
 // Middleware Auth global pour toutes les routes utilisateur (après /auth et admin)
 app.use(requireAuth);
 
@@ -2059,160 +2213,6 @@ app.use('/statuses', statusRoutes);
 app.get('/api/hashtags', requireAuth, HashtagController.getAll);
 app.get('/api/hashtags/check', requireAuth, HashtagController.check);
 app.post('/api/hashtags/create', requireAuth, HashtagController.create);
-
-app.get('/post/:postId', async (req, res) => {
-  try {
-    const postId = Number(req.params.postId);
-    if (!Number.isFinite(postId) || postId <= 0) {
-      return res.status(400).send('Identifiant de publication invalide.');
-    }
-
-    const post = await Post.getById(postId, null);
-    if (!post) {
-      return res.status(404).send('Publication introuvable.');
-    }
-
-    // Auto-generate thumbnail for videos if missing and image_url (video path) exists
-    if (post.media_type === 'video' && !post.thumbnail_url && post.image_url) {
-      const relativeVideoPath = post.image_url;
-      const absoluteVideoPath = path.join(__dirname, 'public', relativeVideoPath);
-      
-      if (fs.existsSync(absoluteVideoPath)) {
-        const uniqueSuffix = Date.now();
-        const thumbFilename = `thumb-auto-${postId}-${uniqueSuffix}.webp`;
-        const relativeThumbPath = `/uploads/posts/${thumbFilename}`;
-        const absoluteThumbPath = path.join(__dirname, 'public/uploads/posts', thumbFilename);
-
-        try {
-          const mediaOptimizer = require('./utils/mediaOptimizer');
-          await mediaOptimizer.generateVideoThumbnail(absoluteVideoPath, absoluteThumbPath);
-          
-          // Save in database
-          await db.query('UPDATE posts SET thumbnail_url = ? WHERE id = ?', [relativeThumbPath, postId]);
-          post.thumbnail_url = relativeThumbPath;
-          console.log(`Automatically generated thumbnail for video post ${postId}: ${relativeThumbPath}`);
-        } catch (thumbErr) {
-          console.error('Error generating automatic thumbnail for video:', thumbErr);
-        }
-      }
-    }
-
-    const authorName = post.author_display_name || post.author_username || 'Utilisateur TRASX';
-    const postContent = post.content || 'Regardez cette publication sur TRASX !';
-    
-    // Choose og:image
-    let imageUrl = '';
-    if (post.media_type === 'video') {
-      imageUrl = post.thumbnail_url || '';
-    } else {
-      imageUrl = post.image_url || '';
-    }
-
-    if (imageUrl && !imageUrl.startsWith('http')) {
-      imageUrl = `https://www.trasx.com${imageUrl}`;
-    } else if (!imageUrl) {
-      imageUrl = 'https://www.trasx.com/assets/logo.png';
-    }
-
-    const pageUrl = `https://www.trasx.com/post/${postId}`;
-
-    const html = `<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Publication de ${authorName} sur TRASX</title>
-    
-    <!-- Open Graph Tags -->
-    <meta property="og:title" content="Publication de ${authorName}" />
-    <meta property="og:description" content="${postContent.replace(/"/g, '&quot;').substring(0, 150)}" />
-    <meta property="og:image" content="${imageUrl}" />
-    <meta property="og:url" content="${pageUrl}" />
-    <meta property="og:type" content="article" />
-    <meta property="og:site_name" content="TRASX" />
-
-    <!-- Twitter Tags -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Publication de ${authorName}" />
-    <meta name="twitter:description" content="${postContent.replace(/"/g, '&quot;').substring(0, 150)}" />
-    <meta name="twitter:image" content="${imageUrl}" />
-
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #000000;
-            color: #ffffff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .container {
-            text-align: center;
-            max-width: 500px;
-            padding: 32px;
-            border: 1px solid #2e2e2e;
-            border-radius: 16px;
-            background-color: #121212;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-        }
-        .logo {
-            font-size: 36px;
-            font-weight: 900;
-            letter-spacing: 2px;
-            color: #E1306C;
-            margin-bottom: 20px;
-        }
-        .author {
-            color: #a0a0a0;
-            font-size: 14px;
-            margin-bottom: 16px;
-            font-weight: bold;
-        }
-        .content {
-            font-size: 16px;
-            margin-bottom: 30px;
-            line-height: 1.6;
-            color: #e0e0e0;
-        }
-        .btn {
-            display: inline-block;
-            background: linear-gradient(45deg, #833AB4, #C13584, #E1306C);
-            color: #ffffff;
-            padding: 14px 28px;
-            text-decoration: none;
-            border-radius: 30px;
-            font-weight: bold;
-            font-size: 15px;
-            transition: transform 0.2s;
-        }
-        .btn:hover {
-            transform: scale(1.05);
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="logo">TRASX</div>
-        <div class="author">Publication de @${post.author_username || 'utilisateur'}</div>
-        <div class="content">${postContent}</div>
-        <a href="trasx://post/${postId}" class="btn">Ouvrir dans l'application</a>
-    </div>
-    
-    <script>
-        // Try opening the app via custom scheme deep link automatically
-        window.location.href = "trasx://post/${postId}";
-    </script>
-</body>
-</html>`;
-
-    return res.send(html);
-  } catch (error) {
-    console.error('Error rendering public post page:', error);
-    return res.status(500).send('Erreur lors du chargement de la publication.');
-  }
-});
 
 app.get('/api/posts/:postId', requireAuth, async (req, res) => {
   try {
