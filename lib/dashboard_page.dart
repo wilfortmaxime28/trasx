@@ -226,8 +226,12 @@ class _DashboardPageState extends State<DashboardPage> {
       }
 
       if (mediaPath != null && mediaPath.isNotEmpty) {
+        String cleanPath = mediaPath;
+        if (cleanPath.startsWith('file://')) {
+          cleanPath = cleanPath.replaceFirst('file://', '');
+        }
         String mimeType = 'image/jpeg';
-        final ext = mediaPath.split('.').last.toLowerCase();
+        final ext = cleanPath.split('.').last.toLowerCase();
 
         if (statusType == 'video') {
           mimeType = 'video/mp4';
@@ -249,7 +253,7 @@ class _DashboardPageState extends State<DashboardPage> {
         request.files.add(
           await http.MultipartFile.fromPath(
             'status_media',
-            mediaPath,
+            cleanPath,
             contentType: MediaType(parts[0], parts[1]),
           ),
         );
@@ -1870,6 +1874,7 @@ class _DashboardPageState extends State<DashboardPage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
       builder: (ctx) {
         return StatefulBuilder(builder: (ctx, setBS) {
           final double bottomPadding = MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).padding.bottom;
@@ -1906,7 +1911,7 @@ class _DashboardPageState extends State<DashboardPage> {
             }
           }
 
-          // Helper for recording voice notes
+          // Helper for recording voice notes (tap to start / tap to stop)
           Future<void> _toggleVoiceRecording() async {
             try {
               if (_isRecording) {
@@ -1926,271 +1931,362 @@ class _DashboardPageState extends State<DashboardPage> {
                   final tempDir = await getTemporaryDirectory();
                   final filePath = '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
 
+                  setBS(() {
+                    _currentType = 'voice';
+                    _isRecording = true;
+                    _mediaPath = null;
+                    _recordDuration = 0;
+                  });
+
                   await _audioRecorder.start(
                     const RecordConfig(encoder: AudioEncoder.aacLc),
                     path: filePath,
                   );
 
-                  _recordDuration = 0;
                   _recordTimer = Timer.periodic(const Duration(seconds: 1), (t) {
                     setBS(() => _recordDuration++);
-                  });
-
-                  setBS(() {
-                    _isRecording = true;
-                    _mediaPath = null;
                   });
                 }
               }
             } catch (e) {
               debugPrint('Error with voice recorder: $e');
+              setBS(() {
+                _isRecording = false;
+              });
             }
           }
 
-          return Container(
-            height: MediaQuery.of(ctx).size.height * 0.85,
-            decoration: BoxDecoration(
-              color: _isDarkMode ? const Color(0xFF111111) : Colors.white,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            padding: EdgeInsets.only(bottom: bottomPadding + 16),
-            child: Column(
-              children: [
-                // Handle
-                Container(
-                  width: 36, height: 3,
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+          return ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+              child: Container(
+                height: MediaQuery.of(ctx).size.height * 0.82,
+                decoration: BoxDecoration(
+                  color: _isDarkMode ? const Color(0xED121212) : Colors.white.withAlpha(240),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  border: Border.all(color: _isDarkMode ? Colors.white12 : Colors.black12, width: 0.5),
                 ),
-                // Title & Publish
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Créer un statut',
-                        style: TextStyle(
-                          color: _isDarkMode ? Colors.white : Colors.black,
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                        ),
+                padding: EdgeInsets.only(bottom: bottomPadding + 16),
+                child: Column(
+                  children: [
+                    // Premium Handle
+                    Container(
+                      width: 40, height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: _isDarkMode ? Colors.white24 : Colors.black26,
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () async {
-                          if (_currentType == 'text' && _textCtrl.text.trim().isEmpty) return;
-                          
-                          Navigator.pop(ctx);
-                          await _postMediaStatus(
-                            statusType: _currentType,
-                            text: _textCtrl.text.isNotEmpty ? _textCtrl.text : null,
-                            bgColor: _currentType == 'text' ? _selectedBg : null,
-                            mediaPath: _mediaPath,
-                          );
-                          
-                          // Dispose recorder
-                          _audioRecorder.dispose();
-                        },
-                        child: const Text(
-                          'Publier',
-                          style: TextStyle(color: Color(0xFFC13584), fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                
-                // Preview Area
-                Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: _currentType == 'text'
-                          ? LinearGradient(
-                              colors: [Color(int.parse(_selectedBg.replaceFirst('#', '0xFF'))), Color(int.parse(_selectedBg.replaceFirst('#', '0xFF'))).withAlpha(180)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            )
-                          : null,
-                      color: _currentType != 'text' ? Colors.black26 : null,
                     ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Builder(builder: (c) {
-                          if (_isRecording) {
-                            return Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.mic, color: Colors.redAccent, size: 48),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Enregistrement : ${_recordDuration}s',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            );
-                          }
-
-                          if (_currentType == 'image' && _mediaPath != null) {
-                            return Image.file(File(_mediaPath!), fit: BoxFit.cover);
-                          }
-
-                          if (_currentType == 'video' && _mediaPath != null) {
-                            return Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.video_library, color: Colors.white, size: 48),
-                                SizedBox(height: 12),
-                                Text(
-                                  'Vidéo sélectionnée',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            );
-                          }
-
-                          if (_currentType == 'voice' && _mediaPath != null) {
-                            return Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.audiotrack, color: Color(0xFFC13584), size: 48),
-                                SizedBox(height: 12),
-                                Text(
-                                  'Note vocale enregistrée',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            );
-                          }
-
-                          return Text(
-                            _textCtrl.text.isEmpty ? 'Votre texte ici...' : _textCtrl.text,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
+                    // Title & Publish Header
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                      child: Row(
+                        children: [
+                          Text(
+                            'Nouveau statut',
+                            style: TextStyle(
+                              color: _isDarkMode ? Colors.white : Colors.black,
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              shadows: [Shadow(blurRadius: 8, color: Colors.black45)],
-                            ),
-                          );
-                        }),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Media Action bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      // Text Status Option
-                      IconButton(
-                        icon: Icon(Icons.text_fields_rounded, color: _currentType == 'text' ? const Color(0xFFC13584) : Colors.grey),
-                        onPressed: () {
-                          setBS(() {
-                            _currentType = 'text';
-                            _mediaPath = null;
-                          });
-                        },
-                      ),
-                      // Gallery Image Option
-                      IconButton(
-                        icon: Icon(Icons.image_rounded, color: _currentType == 'image' ? const Color(0xFFC13584) : Colors.grey),
-                        onPressed: _pickImage,
-                      ),
-                      // Video Option
-                      IconButton(
-                        icon: Icon(Icons.videocam_rounded, color: _currentType == 'video' ? const Color(0xFFC13584) : Colors.grey),
-                        onPressed: _pickVideo,
-                      ),
-                      // Voice Recording Option
-                      GestureDetector(
-                        onLongPressStart: (_) => _toggleVoiceRecording(),
-                        onLongPressEnd: (_) => _toggleVoiceRecording(),
-                        child: IconButton(
-                          icon: Icon(
-                            _isRecording ? Icons.fiber_manual_record : Icons.mic_rounded,
-                            color: _isRecording ? Colors.red : (_currentType == 'voice' ? const Color(0xFFC13584) : Colors.grey),
-                          ),
-                          onPressed: _toggleVoiceRecording,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Color selector (visible only for text statuses)
-                if (_currentType == 'text')
-                  SizedBox(
-                    height: 48,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _bgOptions.length,
-                      itemBuilder: (_, i) {
-                        final hex = _bgOptions[i];
-                        final selected = hex == _selectedBg;
-                        return GestureDetector(
-                          onTap: () => setBS(() => _selectedBg = hex),
-                          child: Container(
-                            width: 34, height: 34,
-                            margin: const EdgeInsets.only(right: 10),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Color(int.parse(hex.replaceFirst('#', '0xFF'))),
-                              border: selected
-                                  ? Border.all(color: Colors.white, width: 2.5)
-                                  : null,
-                              boxShadow: selected
-                                  ? [BoxShadow(color: Colors.white.withAlpha(80), blurRadius: 8)]
-                                  : null,
+                              letterSpacing: 0.2,
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ),
-                
-                const SizedBox(height: 10),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () async {
+                              if (_currentType == 'text' && _textCtrl.text.trim().isEmpty) return;
 
-                // Text field (Optional caption for media, Required for text)
-                if (_currentType != 'voice')
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: TextField(
-                      controller: _textCtrl,
-                      maxLines: 2,
-                      onChanged: (_) => setBS(() {}),
-                      style: TextStyle(
-                        color: _isDarkMode ? Colors.white : Colors.black,
-                        fontSize: 15,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: _currentType == 'text' ? 'Écrivez votre statut...' : 'Ajouter une légende...',
-                        hintStyle: TextStyle(color: _isDarkMode ? Colors.white38 : Colors.black38),
-                        filled: true,
-                        fillColor: _isDarkMode ? Colors.white10 : Colors.black.withAlpha(8),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              Navigator.pop(ctx);
+                              await _postMediaStatus(
+                                statusType: _currentType,
+                                text: _textCtrl.text.isNotEmpty ? _textCtrl.text : null,
+                                bgColor: _currentType == 'text' ? _selectedBg : null,
+                                mediaPath: _mediaPath,
+                              );
+
+                              _audioRecorder.dispose();
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFC13584),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Publier',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-              ],
+                    const SizedBox(height: 12),
+
+                    // Preview Area Card
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          gradient: _currentType == 'text'
+                              ? LinearGradient(
+                                  colors: [
+                                    Color(int.parse(_selectedBg.replaceFirst('#', '0xFF'))),
+                                    Color(int.parse(_selectedBg.replaceFirst('#', '0xFF'))).withAlpha(180)
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                )
+                              : null,
+                          color: _currentType != 'text' ? Colors.black38 : null,
+                          border: Border.all(color: _isDarkMode ? Colors.white10 : Colors.black.withAlpha(12), width: 0.8),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Builder(builder: (c) {
+                              if (_isRecording) {
+                                return Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    // Animated pulsing red record dot
+                                    Container(
+                                      width: 60,
+                                      height: 60,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.redAccent,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.mic, color: Colors.white, size: 32),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Enregistrement : ${_recordDuration}s',
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'Réappuyez sur le micro pour arrêter',
+                                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                                    ),
+                                  ],
+                                );
+                              }
+
+                              if (_currentType == 'image' && _mediaPath != null) {
+                                return Image.file(File(_mediaPath!), fit: BoxFit.contain);
+                              }
+
+                              if (_currentType == 'video' && _mediaPath != null) {
+                                return Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withAlpha(20),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.video_library_rounded, color: Colors.white, size: 36),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      'Vidéo sélectionnée',
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                                    ),
+                                  ],
+                                );
+                              }
+
+                              if (_currentType == 'voice' && _mediaPath != null) {
+                                return Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFC13584).withAlpha(30),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.audiotrack_rounded, color: Color(0xFFC13584), size: 40),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      'Note vocale prête',
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    const Text(
+                                      'Tapez sur "Publier" pour l\'envoyer',
+                                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                                    ),
+                                  ],
+                                );
+                              }
+
+                              return Text(
+                                _textCtrl.text.isEmpty ? 'Écrivez votre message...' : _textCtrl.text,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  shadows: [Shadow(blurRadius: 10, color: Colors.black45, offset: Offset(0, 2))],
+                                ),
+                              );
+                            }),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Media Action selector bar
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _isDarkMode ? Colors.white.withAlpha(8) : Colors.black.withAlpha(6),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          // Text option button
+                          _buildMediaButton(
+                            icon: Icons.text_fields_rounded,
+                            isActive: _currentType == 'text',
+                            onTap: () => setBS(() {
+                              _currentType = 'text';
+                              _mediaPath = null;
+                            }),
+                          ),
+                          // Gallery Image Option
+                          _buildMediaButton(
+                            icon: Icons.image_rounded,
+                            isActive: _currentType == 'image',
+                            onTap: _pickImage,
+                          ),
+                          // Video Option
+                          _buildMediaButton(
+                            icon: Icons.videocam_rounded,
+                            isActive: _currentType == 'video',
+                            onTap: _pickVideo,
+                          ),
+                          // Voice Recording Option (Click once to start/stop, no gesture conflicts)
+                          _buildMediaButton(
+                            icon: _isRecording ? Icons.stop_circle_rounded : Icons.mic_rounded,
+                            isActive: _currentType == 'voice',
+                            iconColor: _isRecording ? Colors.redAccent : null,
+                            onTap: () {
+                              setBS(() {
+                                _currentType = 'voice';
+                              });
+                              _toggleVoiceRecording();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Color selector (visible only for text statuses)
+                    if (_currentType == 'text')
+                      SizedBox(
+                        height: 40,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: _bgOptions.length,
+                          itemBuilder: (_, i) {
+                            final hex = _bgOptions[i];
+                            final selected = hex == _selectedBg;
+                            return GestureDetector(
+                              onTap: () => setBS(() => _selectedBg = hex),
+                              child: Container(
+                                width: 30, height: 30,
+                                margin: const EdgeInsets.only(right: 10),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(int.parse(hex.replaceFirst('#', '0xFF'))),
+                                  border: selected
+                                      ? Border.all(color: Colors.white, width: 2.5)
+                                      : null,
+                                  boxShadow: selected
+                                      ? [BoxShadow(color: Colors.white.withAlpha(80), blurRadius: 8)]
+                                      : null,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+
+                    // Caption text field (Conditional: hides on voice, visible for text/image/video)
+                    if (_currentType != 'voice')
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: TextField(
+                          controller: _textCtrl,
+                          maxLines: 2,
+                          onChanged: (_) => setBS(() {}),
+                          style: TextStyle(
+                            color: _isDarkMode ? Colors.white : Colors.black,
+                            fontSize: 14,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: _currentType == 'text' ? 'Écrivez votre statut...' : 'Ajouter une légende...',
+                            hintStyle: TextStyle(color: _isDarkMode ? Colors.white38 : Colors.black38, fontSize: 13),
+                            filled: true,
+                            fillColor: _isDarkMode ? Colors.white.withAlpha(12) : Colors.black.withAlpha(8),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           );
         });
       },
+    );
+  }
+
+  // Helper builder for media action buttons
+  Widget _buildMediaButton({
+    required IconData icon,
+    required bool isActive,
+    required VoidCallback onTap,
+    Color? iconColor,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: isActive ? const Color(0xFFC13584) : Colors.transparent,
+        ),
+        child: Icon(
+          icon,
+          color: iconColor ?? (isActive ? Colors.white : (_isDarkMode ? Colors.white54 : Colors.black45)),
+          size: 20,
+        ),
+      ),
     );
   }
 
