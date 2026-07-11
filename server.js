@@ -1861,17 +1861,25 @@ app.get('/post/:postId', async (req, res) => {
 // Middleware Auth global pour toutes les routes utilisateur (après /auth et admin)
 app.use(requireAuth);
 
-app.get('/api/users/contacts', requireAuth, async (req, res) => {
+// ─── Contacts API (friends/followers for share sheet) ─────────────────────────
+async function handleContactsRequest(req, res) {
   try {
-    const currentUserId = Number(req.session.userId || req.headers['x-user-id'] || 0);
-    if (!currentUserId) return res.status(401).json({ success: false, error: 'Non authentifié.' });
+    const currentUserId = Number(
+      req.session?.userId || req.headers['x-user-id'] || 0
+    );
+    if (!currentUserId) {
+      return res.status(401).json({ success: false, error: 'Non authentifié.' });
+    }
     const contacts = await User.getContactsWithFollowState(currentUserId);
     return res.json({ success: true, contacts });
   } catch (error) {
     console.error('Error fetching contacts:', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch contacts.' });
   }
-});
+}
+app.get('/api/users/contacts', handleContactsRequest);
+app.get('/api/contacts', handleContactsRequest);  // short alias for mobile
+
 
 // ─── FCM Token management (native mobile push) ────────────────────────────────
 const fcmService = require('./services/fcmService');
