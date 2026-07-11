@@ -4720,6 +4720,7 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
   late AnimationController _progressController;
   VideoPlayerController? _videoController;
   final TextEditingController _commentController = TextEditingController();
+  bool _isPopped = false;
 
   static const Duration _storyDuration = Duration(seconds: 5);
 
@@ -4734,6 +4735,7 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
     _currentGroupIndex = widget.initialGroupIndex;
     _currentStatuses = widget.allGroups[_currentGroupIndex]['statuses'] ?? [];
     _progressController = AnimationController(vsync: this, duration: _storyDuration);
+    _progressController.addStatusListener(_onProgressComplete);
     _initCurrentStatus();
   }
 
@@ -4767,13 +4769,11 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
             _videoController!.play();
             _progressController.duration = _videoController!.value.duration;
             _progressController.forward();
-            _progressController.addStatusListener(_onProgressComplete);
           }
         });
     } else {
       _progressController.duration = _storyDuration;
       _progressController.forward();
-      _progressController.addStatusListener(_onProgressComplete);
     }
 
     // Record view
@@ -4838,7 +4838,10 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
       });
       _initCurrentStatus();
     } else {
-      Navigator.pop(context);
+      if (!_isPopped && mounted) {
+        _isPopped = true;
+        Navigator.pop(context);
+      }
     }
   }
 
@@ -5419,7 +5422,12 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                 ),
               ),
               GestureDetector(
-                onTap: () => Navigator.pop(context),
+                onTap: () {
+                  if (!_isPopped && mounted) {
+                    _isPopped = true;
+                    Navigator.pop(context);
+                  }
+                },
                 child: const Icon(Icons.close, color: Colors.white, size: 22),
               ),
             ],
