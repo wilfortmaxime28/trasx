@@ -93,9 +93,19 @@ function normalizeStatusRow(row, currentUserId = null) {
     is_own: currentUserId !== null ? Number(row.user_id) === Number(currentUserId) : false,
     expires_at: expiresAt,
     remaining_seconds: remainingSeconds,
-    remaining_text: remainingSeconds >= 60
-      ? `${Math.ceil(remainingSeconds / 60)}m`
-      : `${remainingSeconds}s`,
+    remaining_text: (() => {
+      if (remainingSeconds >= 3600) {
+        const hours = Math.floor(remainingSeconds / 3600);
+        const mins = Math.floor((remainingSeconds % 3600) / 60);
+        return `${hours}h ${mins}m`;
+      } else if (remainingSeconds >= 60) {
+        const mins = Math.floor(remainingSeconds / 60);
+        const secs = remainingSeconds % 60;
+        return `${mins}m ${secs}s`;
+      } else {
+        return `${remainingSeconds}s`;
+      }
+    })(),
     trim_start: row.trim_start !== null && row.trim_start !== undefined ? Number(row.trim_start) : null,
     trim_end: row.trim_end !== null && row.trim_end !== undefined ? Number(row.trim_end) : null,
     bg_color: row.bg_color || null,
