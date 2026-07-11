@@ -7198,7 +7198,8 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
   }
 
   Widget _buildActionButton({
-    required IconData icon,
+    IconData? icon,
+    Widget? customIcon,
     required String label,
     required Color color,
     required VoidCallback onTap,
@@ -7219,7 +7220,9 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                 shape: BoxShape.circle,
                 color: color,
               ),
-              child: Icon(icon, color: iconColor, size: 24),
+              child: Center(
+                child: customIcon ?? Icon(icon, color: iconColor, size: 24),
+              ),
             ),
             const SizedBox(height: 6),
             Text(
@@ -7447,13 +7450,25 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
               physics: const BouncingScrollPhysics(),
               children: [
                 _buildActionButton(
-                  icon: Icons.whatsapp,
+                  customIcon: Stack(
+                    alignment: Alignment.center,
+                    children: const [
+                      Icon(Icons.chat_bubble, color: Colors.white, size: 24),
+                      Icon(Icons.phone, color: Color(0xFF25D366), size: 12),
+                    ],
+                  ),
                   label: 'WhatsApp',
                   color: const Color(0xFF25D366),
                   onTap: _shareToWhatsApp,
                 ),
                 _buildActionButton(
-                  icon: Icons.whatsapp,
+                  customIcon: Stack(
+                    alignment: Alignment.center,
+                    children: const [
+                      Icon(Icons.chat_bubble, color: Colors.white, size: 24),
+                      Icon(Icons.phone, color: Color(0xFF128C7E), size: 12),
+                    ],
+                  ),
                   label: 'Statut',
                   color: const Color(0xFF128C7E),
                   onTap: _shareToWhatsAppStatus,
