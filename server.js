@@ -2037,9 +2037,43 @@ app.get('/api/posts/:postId/comments', requireAuth, async (req, res) => {
       return Comment.getByPostId(postId);
     });
 
+    const db = require('./config/db');
+    const commentIds = Array.isArray(comments) ? comments.map(c => c.id).filter(id => id !== undefined && id !== null) : [];
+    let userLikedCommentIds = new Set();
+    let likesCountMap = {};
+
+    if (commentIds.length > 0) {
+      // Get likes count for all comments
+      const [countRows] = await db.query(`
+        SELECT comment_id, COUNT(*) AS count 
+        FROM comment_likes 
+        WHERE comment_id IN (${commentIds.map(() => '?').join(', ')})
+        GROUP BY comment_id
+      `, commentIds);
+      countRows.forEach(row => {
+        likesCountMap[row.comment_id] = row.count;
+      });
+
+      // Get comments liked by current user
+      const [userLikedRows] = await db.query(`
+        SELECT comment_id 
+        FROM comment_likes 
+        WHERE user_id = ? AND comment_id IN (${commentIds.map(() => '?').join(', ')})
+      `, [currentUserId, ...commentIds]);
+      userLikedRows.forEach(row => {
+        userLikedCommentIds.add(row.comment_id);
+      });
+    }
+
+    const commentsWithLikes = Array.isArray(comments) ? comments.map(c => ({
+      ...c,
+      likes_count: likesCountMap[c.id] || 0,
+      is_liked: userLikedCommentIds.has(c.id) ? 1 : 0
+    })) : [];
+
     return res.json({
       success: true,
-      comments: Array.isArray(comments) ? comments : []
+      comments: commentsWithLikes
     });
   } catch (error) {
     console.error('Error fetching post comments:', error);
@@ -2053,45 +2087,47 @@ app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
     const postId = Number(req.params.postId);
     const { content, parentId, parent_id } = req.body;
     if (!Number.isFinite(currentUserId) || currentUserId <= 0 || !Number.isFinite(postId) || postId <= 0 || !content || !content.trim()) {
-      return res.status(400).json({ success: false, error: 'Parametres invalides.' });
+      return res.status(400).json({ success: false, error: 'Contenu vide.' });
     }
 
     const Comment = require('./models/Comment');
-    const User = require('./models/User');
-
-    const finalParentId = parentId !== undefined && parentId !== null ? Number(parentId) : (parent_id !== undefined && parent_id !== null ? Number(parent_id) : null);
+    const finalParentId = Number(parentId || parent_id) || null;
 
     const commentId = await Comment.create(postId, currentUserId, content.trim(), finalParentId);
     await cache.del(`post:comments:${postId}`);
 
-    const user = await User.getById(currentUserId);
     const newComment = {
       id: commentId,
       post_id: postId,
       user_id: currentUserId,
+      user_name: req.session.displayName || req.session.username || 'Anonyme',
+      user_avatar: req.session.avatar || '',
+      user_username: req.session.username || '',
+      user_certification_type: req.session.certificationType || 'none',
       content: content.trim(),
       parent_id: finalParentId,
       created_at: new Date().toISOString(),
-      user_username: user.username,
-      user_name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'Utilisateur',
-      user_avatar: user.avatar || '',
-      user_certification_type: user.certification_type || 'None'
+      likes_count: 0,
+      is_liked: 0
     };
 
-    // Emit live updates to Socket.io clients if they are connected
-    if (global.io) {
+    try {
       global.io.to(`post:${postId}`).emit('comment-created', {
         id: commentId,
-        postId,
+        post_id: postId,
         user_id: currentUserId,
         user_name: newComment.user_name,
         user_avatar: newComment.user_avatar,
         user_username: newComment.user_username,
         certification_type: newComment.user_certification_type,
         content: newComment.content,
-        parent_id: finalParentId,
-        created_at: newComment.created_at
+        parent_id: newComment.parent_id,
+        created_at: newComment.created_at,
+        likes_count: 0,
+        is_liked: 0
       });
+    } catch (e) {
+      console.error('Socket notification for comment failed:', e);
     }
 
     return res.json({
@@ -2101,6 +2137,43 @@ app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Error posting comment:', error);
     return res.status(500).json({ success: false, error: 'Impossible d\'ajouter le commentaire.' });
+  }
+});
+
+app.post('/api/comments/:commentId/like', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const commentId = Number(req.params.commentId);
+    if (!Number.isFinite(currentUserId) || currentUserId <= 0 || !Number.isFinite(commentId) || commentId <= 0) {
+      return res.status(400).json({ success: false, error: 'Parametres invalides.' });
+    }
+
+    const Comment = require('./models/Comment');
+    const comment = await Comment.getById(commentId);
+    if (!comment) {
+      return res.status(404).json({ success: false, error: 'Commentaire introuvable.' });
+    }
+
+    const result = await Comment.toggleLike(currentUserId, commentId);
+    await cache.del(`post:comments:${comment.post_id}`);
+
+    try {
+      global.io.to(`post:${comment.post_id}`).emit('comment-liked', {
+        commentId,
+        likes_count: result.count
+      });
+    } catch (e) {
+      console.error('Socket notification for comment like failed:', e);
+    }
+
+    return res.json({
+      success: true,
+      liked: result.liked,
+      likesCount: result.count
+    });
+  } catch (error) {
+    console.error('Error toggling comment like:', error);
+    return res.status(500).json({ success: false, error: 'Impossible de modifier le mention du commentaire.' });
   }
 });
 

@@ -23,6 +23,18 @@ class Comment {
       await db.query('ALTER TABLE comments ADD COLUMN voice_duration_seconds INT DEFAULT NULL');
     }
 
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS comment_likes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        comment_id INT NOT NULL,
+        user_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_comment_user (comment_id, user_id),
+        FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
     Comment._schemaReady = true;
   }
 
@@ -152,6 +164,20 @@ class Comment {
     `;
     const [rows] = await db.query(query);
     return rows;
+  }
+
+  static async toggleLike(userId, commentId) {
+    await Comment.ensureCommentSchema();
+    const [existing] = await db.query('SELECT * FROM comment_likes WHERE user_id = ? AND comment_id = ?', [userId, commentId]);
+    let liked = false;
+    if (existing.length > 0) {
+      await db.query('DELETE FROM comment_likes WHERE user_id = ? AND comment_id = ?', [userId, commentId]);
+    } else {
+      await db.query('INSERT INTO comment_likes (user_id, comment_id) VALUES (?, ?)', [userId, commentId]);
+      liked = true;
+    }
+    const [countRow] = await db.query('SELECT COUNT(*) AS count FROM comment_likes WHERE comment_id = ?', [commentId]);
+    return { liked, count: countRow[0].count };
   }
 }
 
