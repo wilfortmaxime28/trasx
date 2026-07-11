@@ -5555,11 +5555,7 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                                 final avatar = v['avatar'] as String?;
                                 return ListTile(
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-                                  leading: CircleAvatar(
-                                    radius: 20,
-                                    backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(_resolveUrl(avatar)) : null,
-                                    child: (avatar == null || avatar.isEmpty) ? Text(name[0].toUpperCase()) : null,
-                                  ),
+                                  leading: buildPremiumAvatar(avatar, name, radius: 20, fontSize: 13),
                                   title: Text(
                                     name,
                                     style: TextStyle(
@@ -5661,11 +5657,7 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                                   child: Row(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      CircleAvatar(
-                                        radius: 16,
-                                        backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(_resolveUrl(avatar)) : null,
-                                        child: (avatar == null || avatar.isEmpty) ? Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 10)) : null,
-                                      ),
+                                      buildPremiumAvatar(avatar, name, radius: 16, fontSize: 11),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Container(
@@ -7265,7 +7257,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                           final bool isFollowing = c['is_following'] == true;
                           final bool isFollowedBy = c['is_followed_by'] == true;
                           final String relationLabel = isMutual
-                              ? '🤝 Mutuel'
+                              ? '🤝 Ami'
                               : isFollowing
                                   ? '➤ Vous suivez'
                                   : isFollowedBy
@@ -7273,19 +7265,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                                       : '';
 
                           return ListTile(
-                            leading: CircleAvatar(
-                              radius: 20,
-                              backgroundColor: isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE2E2E2),
-                              backgroundImage: (avatar != null && avatar.isNotEmpty)
-                                  ? NetworkImage(avatar.startsWith('http') ? avatar : 'https://trasx.com$avatar')
-                                  : null,
-                              child: (avatar == null || avatar.isEmpty)
-                                  ? Text(
-                                      username.isNotEmpty ? username[0].toUpperCase() : 'U',
-                                      style: TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
-                                    )
-                                  : null,
-                            ),
+                            leading: buildPremiumAvatar(avatar, name.isNotEmpty ? name : username, radius: 20, fontSize: 13),
                             title: Text(
                               name,
                               style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600, fontSize: 15),
@@ -7354,4 +7334,52 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     );
   }
 }
+
+Widget buildPremiumAvatar(String? avatarUrl, String displayName, {double radius = 20, double fontSize = 14}) {
+  final bool hasAvatar = avatarUrl != null && avatarUrl.isNotEmpty;
+  final String cleanName = displayName.trim();
+
+  String initials = '?';
+  if (cleanName.isNotEmpty) {
+    final parts = cleanName.split(RegExp(r'\s+'));
+    if (parts.length >= 2) {
+      initials = '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    } else {
+      initials = cleanName.length >= 2 ? cleanName.substring(0, 2).toUpperCase() : cleanName.toUpperCase();
+    }
+  }
+
+  if (hasAvatar) {
+    final String resolved = avatarUrl.startsWith('http') ? avatarUrl : 'https://trasx.com$avatarUrl';
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Colors.transparent,
+      backgroundImage: NetworkImage(resolved),
+    );
+  }
+
+  // Gradient fallback
+  return Container(
+    width: radius * 2,
+    height: radius * 2,
+    decoration: const BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: LinearGradient(
+        colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+    ),
+    alignment: Alignment.center,
+    child: Text(
+      initials,
+      style: TextStyle(
+        color: Colors.white,
+        fontWeight: FontWeight.bold,
+        fontSize: fontSize,
+      ),
+    ),
+  );
+}
+
 
