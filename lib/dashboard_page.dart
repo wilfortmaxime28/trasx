@@ -1628,7 +1628,7 @@ class _DashboardPageState extends State<DashboardPage> {
     ];
 
     return Container(
-      height: 106,
+      height: 118,
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
