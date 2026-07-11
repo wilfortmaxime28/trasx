@@ -1787,6 +1787,89 @@ app.get('/api/feed/posts', requireAuth, async (req, res) => {
   }
 });
 
+// ─── API Statuses (Stories) ───────────────────────────────────────────────────
+// GET /api/feed/statuses - Fetch feed statuses grouped by user
+const Status = require('./models/Status');
+const statusMulterStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    const dir = path.join(__dirname, 'public/uploads/statuses');
+    const fs = require('fs');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename(req, file, cb) {
+    const suffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = (file.originalname.split('.').pop() || file.mimetype.split('/')[1] || 'bin').toLowerCase().trim();
+    cb(null, `status-${suffix}.${ext}`);
+  }
+});
+const uploadStatusMedia = multer({ storage: statusMulterStorage, limits: { fileSize: 100 * 1024 * 1024 } });
+
+app.get('/api/feed/statuses', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 30));
+    const groups = await Status.getFeedStatuses(currentUserId, limit);
+    return res.json({ success: true, groups });
+  } catch (err) {
+    console.error('[/api/feed/statuses]', err);
+    return res.status(500).json({ success: false, error: 'Erreur lors du chargement des statuts.' });
+  }
+});
+
+// POST /api/feed/statuses/create - Create a new status (text or media)
+app.post('/api/feed/statuses/create', requireAuth, uploadStatusMedia.single('status_media'), async (req, res) => {
+  try {
+    const currentUserId = Number(req.session.userId);
+    const currentUser = await User.getById(currentUserId);
+    if (!currentUser) return res.status(401).json({ success: false, error: 'Non authentifié.' });
+
+    const statusType = String(req.body?.status_type || 'media').toLowerCase();
+    const caption = String(req.body?.caption || '').trim();
+    const bgColor = String(req.body?.bg_color || '').trim() || null;
+
+    let mediaUrl = '';
+    let mediaType = '';
+    let mediaName = null;
+    let mediaSize = null;
+
+    if (statusType === 'text') {
+      if (!caption) return res.status(400).json({ success: false, error: 'Le texte est requis pour un statut texte.' });
+      mediaUrl = 'text';
+      mediaType = 'text';
+    } else {
+      const mediaFile = req.file || null;
+      if (!mediaFile) return res.status(400).json({ success: false, error: 'Un fichier media est requis.' });
+      mediaType = String(mediaFile.mimetype || '').toLowerCase();
+      if (!mediaType.startsWith('image/') && !mediaType.startsWith('video/') && !mediaType.startsWith('audio/')) {
+        return res.status(400).json({ success: false, error: 'Type de fichier non supporté.' });
+      }
+      mediaUrl = `/uploads/statuses/${mediaFile.filename}`;
+      mediaName = mediaFile.originalname || mediaFile.filename;
+      mediaSize = mediaFile.size || null;
+    }
+
+    const statusId = await Status.create(currentUserId, { mediaUrl, mediaType, mediaName, mediaSize, caption: caption || null, bgColor });
+    const newStatus = await Status.getById(statusId);
+
+    // Emit real-time event via Socket.IO
+    if (req.app?.get('io') && newStatus) {
+      req.app.get('io').emit('status-created', {
+        user_id: currentUserId,
+        user_name: currentUser.display_name || `${currentUser.first_name} ${currentUser.last_name}`,
+        username: currentUser.username,
+        avatar: currentUser.avatar || '/uploads/avatars/default.png',
+        status: newStatus
+      });
+    }
+
+    return res.json({ success: true, statusId, status: newStatus });
+  } catch (err) {
+    console.error('[/api/feed/statuses/create]', err);
+    return res.status(500).json({ success: false, error: 'Impossible de publier le statut.' });
+  }
+});
+
 // GET /api/feed/reels?cursor=...&limit=6
 // Retourne le prochain lot de shorts avec le meme algorithme SQL que la page initiale.
 app.get('/api/feed/reels', requireAuth, async (req, res) => {
