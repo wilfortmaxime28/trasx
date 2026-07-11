@@ -5359,6 +5359,30 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
         // ── Background / Media ────────────────────────────────────────
         _buildMediaBackground(mediaType, mediaUrl, bgColor, caption),
 
+        // ── Tap zones (déclarées à l'arrière-plan du header/clavier) ──
+        Positioned.fill(
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: _prev,
+                  onLongPress: _pauseStory,
+                  onLongPressUp: _resumeStory,
+                  behavior: HitTestBehavior.translucent,
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: _next,
+                  onLongPress: _pauseStory,
+                  onLongPressUp: _resumeStory,
+                  behavior: HitTestBehavior.translucent,
+                ),
+              ),
+            ],
+          ),
+        ),
+
         // ── Progress bar ──────────────────────────────────────────────
         Positioned(
           top: 24, // pushed down slightly for fullscreen look
@@ -5441,28 +5465,6 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
               ),
             ],
           ),
-        ),
-
-        // ── Tap zones: left = prev, right = next ──────────────────────
-        Row(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                onTap: _prev,
-                onLongPress: _pauseStory,
-                onLongPressUp: _resumeStory,
-                behavior: HitTestBehavior.translucent,
-              ),
-            ),
-            Expanded(
-              child: GestureDetector(
-                onTap: _next,
-                onLongPress: _pauseStory,
-                onLongPressUp: _resumeStory,
-                behavior: HitTestBehavior.translucent,
-              ),
-            ),
-          ],
         ),
 
             // ── Caption overlay (if media) ─────────────────────────────────
