@@ -1482,12 +1482,27 @@ app.post('/api/verify', authController.postVerifyApi);
 // Mobile profile & posts APIs
 app.get('/api/users/:id', async (req, res) => {
   try {
-    const user = await User.getById(req.params.id);
+    const userId = req.params.id;
+    const user = await User.getById(userId);
     if (!user) {
       return res.status(404).json({ error: 'Utilisateur introuvable.' });
     }
+
+    const [followersCount, followingCount, postLikes, reelLikes] = await Promise.all([
+      User.getFollowersCount(userId),
+      User.getFollowingCount(userId),
+      Post.getTotalLikesForUser(userId),
+      Reel.getTotalLikesForUser(userId)
+    ]);
+
     delete user.password_hash;
-    res.json(user);
+
+    res.json({
+      ...user,
+      followersCount: Number(followersCount || 0),
+      followingCount: Number(followingCount || 0),
+      likesCount: Number(postLikes || 0) + Number(reelLikes || 0)
+    });
   } catch (err) {
     console.error('API get user error:', err);
     res.status(500).json({ error: 'Erreur serveur.' });
