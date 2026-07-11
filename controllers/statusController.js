@@ -291,6 +291,20 @@ class StatusController {
       return res.status(500).json({ error: 'Failed to retrieve status.' });
     }
   }
+
+  static async getComments(req, res) {
+    try {
+      const statusId = parseInt(req.params.id, 10);
+      if (!statusId) {
+        return res.status(400).json({ error: 'Status ID is required.' });
+      }
+      const comments = await Status.getComments(statusId);
+      return res.json({ success: true, comments });
+    } catch (err) {
+      console.error('getComments error:', err);
+      return res.status(500).json({ error: 'Failed to retrieve comments.' });
+    }
+  }
 }
 
 module.exports = StatusController;

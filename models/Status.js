@@ -68,7 +68,10 @@ async function ensureStatusTable() {
         await db.query(`ALTER TABLE statuses ADD COLUMN source VARCHAR(30) NOT NULL DEFAULT 'user'`);
       } catch (e) {}
       try {
-        await db.query(`ALTER TABLE statuses ADD INDEX idx_statuses_source_created (source, created_at)`);
+        await db.query(`ALTER TABLE statuses ADD COLUMN is_boosted TINYINT(1) DEFAULT 0`);
+      } catch (e) {}
+      try {
+        await db.query(`ALTER TABLE statuses ADD INDEX idx_statuses_is_boosted (is_boosted)`);
       } catch (e) {}
     })().catch((error) => {
       statusSchemaPromise = null;
@@ -96,7 +99,8 @@ function normalizeStatusRow(row, currentUserId = null) {
     trim_start: row.trim_start !== null && row.trim_start !== undefined ? Number(row.trim_start) : null,
     trim_end: row.trim_end !== null && row.trim_end !== undefined ? Number(row.trim_end) : null,
     bg_color: row.bg_color || null,
-    media_fit: row.media_fit === 'contain' ? 'contain' : 'cover'
+    media_fit: row.media_fit === 'contain' ? 'contain' : 'cover',
+    is_boosted: row.is_boosted === 1 || row.is_boosted === true || row.is_boosted === '1'
   };
 }
 
@@ -192,6 +196,7 @@ class Status {
           s.trim_start,
           s.trim_end,
           s.bg_color,
+          s.is_boosted,
           COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS user_name,
           u.username,
           u.avatar,
@@ -208,6 +213,7 @@ class Status {
         WHERE s.expires_at > NOW()
           AND (
             s.user_id = ?
+            OR s.is_boosted = 1
             OR EXISTS(
               SELECT 1
               FROM follows f
@@ -231,19 +237,28 @@ class Status {
           avatar: normalized.avatar,
           is_following: normalized.is_following,
           is_followed_by: normalized.is_followed_by,
+          is_boosted: false,
           statuses: []
         };
+      }
+      if (normalized.is_boosted) {
+        userGroups[normalized.user_id].is_boosted = true;
       }
       userGroups[normalized.user_id].statuses.push(normalized);
     }
 
-    // Convert to array and sort: current user's statuses first, then others by newest status
+    // Convert to array and sort: current user's statuses first, then boosted, then others by newest status
     const groups = Object.values(userGroups);
     groups.sort((a, b) => {
       const aIsOwn = Number(a.user_id) === Number(userId);
       const bIsOwn = Number(b.user_id) === Number(userId);
       if (aIsOwn) return -1;
       if (bIsOwn) return 1;
+
+      // Boosted groups appear next
+      if (a.is_boosted && !b.is_boosted) return -1;
+      if (!a.is_boosted && b.is_boosted) return 1;
+
       const aLatest = Math.max(...a.statuses.map(s => new Date(s.created_at).getTime()));
       const bLatest = Math.max(...b.statuses.map(s => new Date(s.created_at).getTime()));
       return bLatest - aLatest;
@@ -295,6 +310,21 @@ class Status {
       [Number(statusId), Number(userId), content]
     );
     return result.insertId;
+  }
+
+  static async getComments(statusId) {
+    await ensureStatusTable();
+    const [rows] = await db.query(
+      `SELECT sc.id, sc.status_id, sc.user_id, sc.content, sc.created_at,
+              COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS user_name,
+              u.username, u.avatar
+       FROM status_comments sc
+       JOIN users u ON sc.user_id = u.id
+       WHERE sc.status_id = ?
+       ORDER BY sc.created_at ASC`,
+      [Number(statusId)]
+    );
+    return rows;
   }
 }
 
