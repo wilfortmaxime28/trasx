@@ -2635,7 +2635,7 @@ app.post('/api/challenges/:postId/vote', requireAuth, async (req, res) => {
 
 app.post('/api/posts/:postId/shares', requireAuth, async (req, res) => {
   try {
-    const currentUserId = req.session.userId;
+    const currentUserId = req.session.userId || req.headers['x-user-id'];
     const postId = parseInt(req.params.postId, 10);
     const { channel = 'social', platform = null, recipientUserId = null } = req.body || {};
 
@@ -2659,7 +2659,95 @@ app.post('/api/posts/:postId/shares', requireAuth, async (req, res) => {
     const currentUser = await User.getById(currentUserId);
     const shareUrl = `${req.protocol}://${req.get('host')}/share/${share.shareToken}?from=${encodeURIComponent(currentUser.username)}&name=${encodeURIComponent(`${currentUser.first_name} ${currentUser.last_name}`)}&by=${currentUser.id}&post=${postId}&channel=${encodeURIComponent(channel)}${platform ? `&platform=${encodeURIComponent(platform)}` : ''}`;
 
+    // If there is a specific recipient, send a chat message and notification in real-time
+    if (recipientUserId) {
+      const numericReceiverId = parseInt(recipientUserId, 10);
+      const recipientUser = await User.getById(numericReceiverId);
+      
+      if (recipientUser) {
+        const messageContent = `Regardez cette publication sur TRASX ! ${shareUrl}`;
+        
+        // 1. Create chat message in database
+        const messageId = await Message.create(currentUserId, numericReceiverId, messageContent, {
+          attachmentUrl: null,
+          attachmentType: null,
+          attachmentName: null,
+          attachmentSize: null,
+          voiceDurationSeconds: null
+        });
+
+        // 2. Emit chat message real-time events via Socket.io
+        const previewText = messageContent;
+        const receiverIsOnline = presence.isUserOnline(numericReceiverId);
+        const deliveredAt = receiverIsOnline ? new Date().toISOString() : null;
+
+        const senderPayload = {
+          senderId: currentUserId,
+          receiverId: numericReceiverId,
+          sender_name: `${currentUser.first_name} ${currentUser.last_name}`,
+          sender_avatar: currentUser?.avatar || '/assets/avatar_placeholder.jpg',
+          content: messageContent,
+          messageId,
+          delivered_at: deliveredAt,
+          read_at: null,
+          messageStatus: 'sent',
+          created_at: new Date().toISOString(),
+          conversation: {
+            preview: previewText
+          }
+        };
+
+        const receiverPayload = {
+          senderId: currentUserId,
+          receiverId: numericReceiverId,
+          sender_name: `${currentUser.first_name} ${currentUser.last_name}`,
+          sender_avatar: currentUser?.avatar || '/assets/avatar_placeholder.jpg',
+          content: messageContent,
+          messageId,
+          delivered_at: deliveredAt,
+          read_at: null,
+          messageStatus: 'incoming',
+          created_at: new Date().toISOString(),
+          conversation: {
+            preview: previewText
+          }
+        };
+
+        io.to(`user:${currentUserId}`).emit('chat-message-received', senderPayload);
+        io.to(`user:${numericReceiverId}`).emit('chat-message-received', receiverPayload);
+        if (deliveredAt) {
+          await Message.markDelivered(messageId);
+        }
+
+        // 3. Create a real-time Notification in database (triggers FCM push/sound/badge)
+        const notificationId = await Notification.create({
+          recipientId: numericReceiverId,
+          actorId: currentUserId,
+          type: 'share',
+          message: `${currentUser.first_name} ${currentUser.last_name} a partagé une publication avec vous.`,
+          postId: postId
+        });
+
+        // 4. Emit notification created and unread count via socket
+        const unreadCount = await Notification.getUnreadCount(numericReceiverId);
+        io.to(`user:${numericReceiverId}`).emit('notification-created', {
+          id: notificationId,
+          recipient_id: numericReceiverId,
+          actor_id: currentUserId,
+          actor_name: `${currentUser.first_name} ${currentUser.last_name}`,
+          actor_avatar: currentUser?.avatar || '/assets/avatar_placeholder.jpg',
+          actor_username: currentUser?.username || '',
+          type: 'share',
+          message: `${currentUser.first_name} ${currentUser.last_name} a partagé une publication avec vous.`,
+          post_id: postId,
+          created_at: new Date()
+        });
+        io.to(`user:${numericReceiverId}`).emit('notification-count-updated', { unreadCount });
+      }
+    }
+
     res.json({
+      success: true,
       shareUrl,
       shareToken: share.shareToken
     });
