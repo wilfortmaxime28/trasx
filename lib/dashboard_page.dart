@@ -2632,6 +2632,7 @@ class _DashboardPageState extends State<DashboardPage> {
             initialGroupIndex: safeIndex,
             isDarkMode: _isDarkMode,
             currentUserId: _userId,
+            socket: _socket,
           ),
         ),
       ),
@@ -3961,13 +3962,16 @@ class _FeedCardState extends State<FeedCard> {
     );
 
     try {
-      await http.post(
+      final response = await http.post(
         Uri.parse('https://trasx.com/api/posts/${widget.postId}/bookmark'),
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': '${widget.currentUserId}',
         },
       ).timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        if (mounted) setState(() => _isBookmarked = wasBookmarked);
+      }
     } catch (_) {
       if (mounted) setState(() => _isBookmarked = wasBookmarked);
     }
@@ -5193,12 +5197,14 @@ class _StatusViewerSheet extends StatefulWidget {
   final int initialGroupIndex;
   final bool isDarkMode;
   final int currentUserId;
+  final IO.Socket? socket;
 
   const _StatusViewerSheet({
     required this.allGroups,
     required this.initialGroupIndex,
     required this.isDarkMode,
     required this.currentUserId,
+    this.socket,
   });
 
   @override
@@ -5213,6 +5219,7 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
   VideoPlayerController? _videoController;
   final TextEditingController _commentController = TextEditingController();
   bool _isPopped = false;
+  int? _previousStatusId;
 
   static const Duration _storyDuration = Duration(seconds: 5);
 
@@ -5228,15 +5235,61 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
     _currentStatuses = widget.allGroups[_currentGroupIndex]['statuses'] ?? [];
     _progressController = AnimationController(vsync: this, duration: _storyDuration);
     _progressController.addStatusListener(_onProgressComplete);
+    
+    if (widget.socket != null && widget.socket!.connected) {
+      widget.socket!.on('status-viewed', _onStatusViewedReceived);
+      widget.socket!.on('status-comment-created', _onStatusCommentCreatedReceived);
+      widget.socket!.on('status-comment-created-owner', _onStatusCommentCreatedReceived);
+    }
+    
     _initCurrentStatus();
   }
 
   @override
   void dispose() {
+    if (widget.socket != null) {
+      widget.socket!.off('status-viewed', _onStatusViewedReceived);
+      widget.socket!.off('status-comment-created', _onStatusCommentCreatedReceived);
+      widget.socket!.off('status-comment-created-owner', _onStatusCommentCreatedReceived);
+      if (_previousStatusId != null) {
+        widget.socket!.emit('leave', 'status:$_previousStatusId');
+      }
+    }
     _progressController.dispose();
     _videoController?.dispose();
     _commentController.dispose();
     super.dispose();
+  }
+
+  void _onStatusViewedReceived(dynamic data) {
+    if (data == null) return;
+    final int? viewStatusId = int.tryParse('${data['statusId']}');
+    if (viewStatusId == null) return;
+
+    if (_currentStatuses.isNotEmpty && _currentIndex < _currentStatuses.length) {
+      final currentStatus = _currentStatuses[_currentIndex];
+      if (currentStatus['id'] == viewStatusId) {
+        _loadStatusStats();
+      }
+    }
+  }
+
+  void _onStatusCommentCreatedReceived(dynamic data) {
+    if (data == null) return;
+    int? commentStatusId;
+    if (data['statusId'] != null) {
+      commentStatusId = int.tryParse('${data['statusId']}');
+    } else if (data['status_id'] != null) {
+      commentStatusId = int.tryParse('${data['status_id']}');
+    }
+    if (commentStatusId == null) return;
+
+    if (_currentStatuses.isNotEmpty && _currentIndex < _currentStatuses.length) {
+      final currentStatus = _currentStatuses[_currentIndex];
+      if (currentStatus['id'] == commentStatusId) {
+        _loadStatusStats();
+      }
+    }
   }
 
   void _initCurrentStatus() {
@@ -5251,6 +5304,15 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
 
     final status = _currentStatuses[_currentIndex];
     final mediaType = status['media_type'] ?? '';
+
+    // Join status room
+    if (widget.socket != null && widget.socket!.connected) {
+      if (_previousStatusId != null) {
+        widget.socket!.emit('leave', 'status:$_previousStatusId');
+      }
+      widget.socket!.emit('join', 'status:${status['id']}');
+      _previousStatusId = status['id'];
+    }
 
     if (mediaType.startsWith('video/') || mediaType.startsWith('audio/')) {
       final url = _resolveUrl(status['media_url'] ?? '');
