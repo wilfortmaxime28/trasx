@@ -1968,7 +1968,7 @@ app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
   try {
     const currentUserId = Number(req.session.userId);
     const postId = Number(req.params.postId);
-    const { content } = req.body;
+    const { content, parentId, parent_id } = req.body;
     if (!Number.isFinite(currentUserId) || currentUserId <= 0 || !Number.isFinite(postId) || postId <= 0 || !content || !content.trim()) {
       return res.status(400).json({ success: false, error: 'Parametres invalides.' });
     }
@@ -1976,7 +1976,9 @@ app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
     const Comment = require('./models/Comment');
     const User = require('./models/User');
 
-    const commentId = await Comment.create(postId, currentUserId, content.trim());
+    const finalParentId = parentId !== undefined && parentId !== null ? Number(parentId) : (parent_id !== undefined && parent_id !== null ? Number(parent_id) : null);
+
+    const commentId = await Comment.create(postId, currentUserId, content.trim(), finalParentId);
     await cache.del(`post:comments:${postId}`);
 
     const user = await User.getById(currentUserId);
@@ -1985,6 +1987,7 @@ app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
       post_id: postId,
       user_id: currentUserId,
       content: content.trim(),
+      parent_id: finalParentId,
       created_at: new Date().toISOString(),
       user_username: user.username,
       user_name: `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'Utilisateur',
@@ -2003,6 +2006,7 @@ app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
         user_username: newComment.user_username,
         certification_type: newComment.user_certification_type,
         content: newComment.content,
+        parent_id: finalParentId,
         created_at: newComment.created_at
       });
     }
