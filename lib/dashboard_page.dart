@@ -7090,42 +7090,44 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     final contactId = contact['id'] as int;
     if (_sentUserIds.contains(contactId)) return;
 
-    final shareUrl = 'https://www.trasx.com/post/${widget.postId}';
-    final messageContent = 'Regardez cette publication sur TRASX ! $shareUrl';
-
-    if (widget.socket != null && widget.socket!.connected) {
-      widget.socket!.emit('chat-message', {
-        'receiverId': contactId,
-        'content': messageContent,
-      });
-    } else {
-      http.post(
-        Uri.parse('https://trasx.com/api/messages/send-fallback'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '${widget.currentUserId}',
-        },
-        body: jsonEncode({
-          'receiverId': contactId,
-          'content': messageContent,
-        }),
-      ).catchError((err) {
-        debugPrint('HTTP message fallback error: $err');
-        return http.Response('error', 500);
-      });
-    }
-
     setState(() {
       _sentUserIds.add(contactId);
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Partagé avec @${contact['username']} !'),
-        duration: const Duration(seconds: 1),
-        backgroundColor: const Color(0xFFC13584),
-      ),
-    );
+    http.post(
+      Uri.parse('https://trasx.com/api/posts/${widget.postId}/shares'),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': '${widget.currentUserId}',
+      },
+      body: jsonEncode({
+        'recipientUserId': contactId,
+        'channel': 'social',
+      }),
+    ).then((response) {
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Partagé avec @${contact['username']} !'),
+              duration: const Duration(seconds: 1),
+              backgroundColor: const Color(0xFFC13584),
+            ),
+          );
+          SystemSound.play(SystemSoundType.click);
+          return;
+        }
+      }
+      setState(() {
+        _sentUserIds.remove(contactId);
+      });
+    }).catchError((err) {
+      debugPrint('Share API error: $err');
+      setState(() {
+        _sentUserIds.remove(contactId);
+      });
+    });
   }
 
   void _filterContacts(String query) {
@@ -7423,7 +7425,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                                   padding: const EdgeInsets.symmetric(horizontal: 2.0),
                                   child: Text(
                                     name,
-                                    maxLines: 2,
+                                    maxLines: 1,
                                     textAlign: TextAlign.center,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
@@ -7431,6 +7433,15 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                                       fontSize: 11,
                                       fontWeight: FontWeight.w500,
                                     ),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  isSent ? 'Envoyé' : 'Envoyer',
+                                  style: TextStyle(
+                                    color: isSent ? Colors.green : const Color(0xFFC13584),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ],
