@@ -85,6 +85,16 @@ async function ensurePostSchema() {
         await db.query("ALTER TABLE post_daily_unique_views ADD UNIQUE KEY uniq_post_viewer (post_id, viewer_user_id)");
       }
       await db.query(`
+        CREATE TABLE IF NOT EXISTS bookmarks (
+          user_id INT NOT NULL,
+          post_id INT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (user_id, post_id),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+        )
+      `);
+      await db.query(`
         CREATE TABLE IF NOT EXISTS live_unlocks (
           user_id INT NOT NULL,
           post_id INT NOT NULL,

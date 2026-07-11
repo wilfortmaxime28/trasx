@@ -118,7 +118,6 @@ class StatusController {
       return res.redirect(`/` + `?error=${encodeURIComponent(message)}`);
     }
   }
-
   static async recordView(req, res) {
     try {
       const currentUserId = req.session.userId;
@@ -129,6 +128,26 @@ class StatusController {
 
       await Status.recordView(statusId, currentUserId);
       const viewsCount = await Status.getViewCount(statusId);
+      
+      const status = await Status.getById(statusId);
+      if (status) {
+        const viewerUser = await User.getById(currentUserId);
+        const io = req.app.get('io');
+        if (io) {
+          io.to(`user:${status.user_id}`).emit('status-viewed', {
+            statusId,
+            viewer: {
+              id: currentUserId,
+              username: viewerUser?.username || '',
+              name: viewerUser ? `${viewerUser.first_name} ${viewerUser.last_name}` : 'Quelqu\'un',
+              avatar: viewerUser?.avatar || '/uploads/avatars/default.png',
+              viewed_at: new Date()
+            },
+            viewsCount
+          });
+        }
+      }
+
       return res.json({ success: true, viewsCount });
     } catch (err) {
       console.error('recordView error:', err);
@@ -152,12 +171,31 @@ class StatusController {
       }
 
       const commentId = await Status.addComment(statusId, currentUserId, content);
+      const currentUser = await User.getById(currentUserId);
+      const senderName = currentUser ? `${currentUser.first_name} ${currentUser.last_name}` : 'Quelqu\'un';
+
+      const commentPayload = {
+        id: commentId,
+        status_id: statusId,
+        user_id: currentUserId,
+        content: content,
+        created_at: new Date(),
+        user_name: senderName,
+        username: currentUser?.username || '',
+        avatar: currentUser?.avatar || '/uploads/avatars/default.png'
+      };
+
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`status:${statusId}`).emit('status-comment-created', commentPayload);
+        io.to(`user:${status.user_id}`).emit('status-comment-created-owner', {
+          statusId,
+          comment: commentPayload
+        });
+      }
 
       // Notify the status creator if it's not their own status
       if (Number(status.user_id) !== Number(currentUserId)) {
-        const currentUser = await User.getById(currentUserId);
-        const senderName = currentUser ? `${currentUser.first_name} ${currentUser.last_name}` : 'Quelqu\'un';
-
         const excerpt = content.slice(0, 50);
         const notificationMessage = `${senderName} a commenté votre statut : "${excerpt}${content.length > 50 ? '...' : ''}"`;
         const notificationId = await Notification.create({
@@ -170,7 +208,6 @@ class StatusController {
         });
 
         // Emit real-time notification via socket
-        const io = req.app.get('io');
         if (io) {
           io.to(`user:${status.user_id}`).emit('notification-created', {
             id: notificationId,
@@ -200,7 +237,6 @@ class StatusController {
       return res.status(500).json({ error: 'Failed to post comment.' });
     }
   }
-
   static async recordShare(req, res) {
     try {
       const currentUserId = req.session.userId;

@@ -2741,6 +2741,15 @@ document.addEventListener('DOMContentLoaded', () => {
     currentStatusIndex = index;
     pauseAllOtherMedia();
 
+    const statusObj = currentGroupStatuses[index];
+    if (statusObj && statusObj.id) {
+      if (window.activeStatusRoomId) {
+        socket.emit('leave', 'status:' + window.activeStatusRoomId);
+      }
+      socket.emit('join', 'status:' + statusObj.id);
+      window.activeStatusRoomId = statusObj.id;
+    }
+
     // Clear previous timers & players
     if (storyProgressTimer) {
       clearInterval(storyProgressTimer);
@@ -3071,6 +3080,10 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const closeStatusViewer = () => {
+    if (window.activeStatusRoomId) {
+      socket.emit('leave', 'status:' + window.activeStatusRoomId);
+      window.activeStatusRoomId = null;
+    }
     if (storyProgressTimer) {
       clearInterval(storyProgressTimer);
       storyProgressTimer = null;
@@ -9614,6 +9627,29 @@ document.addEventListener('DOMContentLoaded', () => {
   socket.on('notifications-marked-read', () => {
     setNotificationItemsRead();
     setNotificationBadgeCount(0);
+  });
+
+  socket.on('status-viewed', (data) => {
+    if (!data || !data.statusId) return;
+    const statusId = Number(data.statusId);
+    
+    const statusViewerModal = document.getElementById('statusViewerModal');
+    if (statusViewerModal && statusViewerModal.style.display === 'flex') {
+      const activeStatusId = Number(statusViewerModal.dataset.statusId);
+      if (activeStatusId === statusId) {
+        const ownerViewsSpan = document.getElementById('statusViewerOwnerViewsCount');
+        if (ownerViewsSpan) {
+          ownerViewsSpan.textContent = data.viewsCount || 0;
+        }
+        
+        const drawer = document.getElementById('statusViewersDrawer');
+        if (drawer && drawer.style.transform === 'translateY(0%)' || (drawer && drawer.style.transform === 'translateY(0px)')) {
+          if (typeof loadStatusViewers === 'function') {
+            loadStatusViewers(statusId);
+          }
+        }
+      }
+    }
   });
 
   socket.on('follow-state-updated', (payload) => {
