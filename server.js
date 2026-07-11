@@ -1473,6 +1473,12 @@ app.post('/sec-login-9x2k-token/:token', adminAuthController.postVerifyToken);
 const authRoutes = require('./routes/authRoutes');
 app.use('/auth', authRoutes);
 
+// API endpoints exposed for mobile client (no change to existing code)
+const authController = require('./controllers/authController');
+app.post('/api/login', authController.postLoginApi);
+app.post('/api/register', authController.postRegisterApi);
+app.post('/api/verify', authController.postVerifyApi);
+
 // Routes Auth Administrateur (doit être avant requireAuth global)
 const adminRoutes = require('./routes/adminRoutes');
 const adminAuthRoutes = require('./routes/adminAuthRoutes');
