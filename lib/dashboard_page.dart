@@ -5602,8 +5602,10 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                height: MediaQuery.of(ctx).size.height * 0.65,
+              child: SafeArea(
+                top: false,
+                child: Container(
+                height: MediaQuery.of(ctx).size.height * 0.55,
                 decoration: BoxDecoration(
                   color: widget.isDarkMode ? const Color(0xE6121212) : Colors.white.withAlpha(235),
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -5742,11 +5744,27 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                               final text = _commentController.text.trim();
                               if (text.isEmpty) return;
 
+                              // Optimistic update – insert locally immediately
+                              final optimistic = {
+                                'user_name': 'Vous',
+                                'username': '',
+                                'content': text,
+                                'avatar': null,
+                              };
+                              setCommentState(() {
+                                _statusComments = [optimistic, ..._statusComments];
+                              });
+                              _commentController.clear();
+
                               final success = await _submitCommentToAPI(text);
                               if (success) {
-                                _commentController.clear();
                                 await _loadStatusStats();
                                 setCommentState(() {});
+                              } else {
+                                // Rollback on failure
+                                setCommentState(() {
+                                  _statusComments = _statusComments.where((c) => c != optimistic).toList();
+                                });
                               }
                             },
                             child: Container(
@@ -5766,6 +5784,7 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                 ),
               ),
             ),
+          ),
           );
         });
       },
@@ -7109,8 +7128,11 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     final textSecondary = widget.textSecondaryColor;
     final cardBg = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    return SafeArea(
+      top: false,
+      child: Container(
+      height: MediaQuery.of(context).size.height * 0.52,
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF121212) : Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -7258,8 +7280,10 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
               ],
             ),
           ),
+          SizedBox(height: bottomInset),
         ],
       ),
+    ),
     );
   }
 }
