@@ -7450,27 +7450,37 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
               physics: const BouncingScrollPhysics(),
               children: [
                 _buildActionButton(
-                  customIcon: Stack(
-                    alignment: Alignment.center,
-                    children: const [
-                      Icon(Icons.chat_bubble, color: Colors.white, size: 24),
-                      Icon(Icons.phone, color: Color(0xFF25D366), size: 12),
-                    ],
+                  customIcon: Image.network(
+                    'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/WhatsApp.svg/120px-WhatsApp.svg.png',
+                    width: 52,
+                    height: 52,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.chat_bubble, color: Colors.white),
                   ),
                   label: 'WhatsApp',
-                  color: const Color(0xFF25D366),
+                  color: Colors.transparent,
                   onTap: _shareToWhatsApp,
                 ),
                 _buildActionButton(
-                  customIcon: Stack(
-                    alignment: Alignment.center,
-                    children: const [
-                      Icon(Icons.chat_bubble, color: Colors.white, size: 24),
-                      Icon(Icons.phone, color: Color(0xFF128C7E), size: 12),
-                    ],
+                  customIcon: ClipRRect(
+                    borderRadius: BorderRadius.circular(26),
+                    child: Container(
+                      width: 52,
+                      height: 52,
+                      color: const Color(0xFF128C7E),
+                      alignment: Alignment.center,
+                      child: Image.network(
+                        'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/WhatsApp.svg/120px-WhatsApp.svg.png',
+                        width: 32,
+                        height: 32,
+                        fit: BoxFit.contain,
+                        color: Colors.white,
+                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.chat_bubble_outline, color: Colors.white),
+                      ),
+                    ),
                   ),
                   label: 'Statut',
-                  color: const Color(0xFF128C7E),
+                  color: Colors.transparent,
                   onTap: _shareToWhatsAppStatus,
                 ),
                 _buildActionButton(
