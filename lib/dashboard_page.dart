@@ -18,6 +18,8 @@ import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:app_links/app_links.dart';
 import 'models/post_model.dart';
 import 'services/feed_cache_service.dart';
 import 'widgets/feed_skeleton.dart';
@@ -98,6 +100,8 @@ class _DashboardPageState extends State<DashboardPage> {
   List<dynamic> _profileReels = [];
   List<Post> _bookmarkedPosts = [];
   bool _isLoadingBookmarks = false;
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
 
   // Navigation State
   int _activeViewIndex = 0; 
@@ -130,6 +134,7 @@ class _DashboardPageState extends State<DashboardPage> {
     super.initState();
     _loadUserData();
     _feedScrollController.addListener(_onFeedScroll);
+    _initDeepLinks();
     // Poll statuses every 30 seconds
     _statusPollingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (_userId > 0) _fetchStatuses();
@@ -162,6 +167,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   void dispose() {
+    _linkSubscription?.cancel();
     _statusPollingTimer?.cancel();
     _feedScrollController.dispose();
     _connectivitySub?.cancel();
@@ -740,6 +746,68 @@ class _DashboardPageState extends State<DashboardPage> {
     setState(() {
       _isLoadingBookmarks = false;
     });
+  }
+
+  void _initDeepLinks() {
+    _appLinks = AppLinks();
+
+    // Listen to incoming links (when app is in background or foreground)
+    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    }, onError: (err) {
+      debugPrint('Deep Link error: $err');
+    });
+
+    // Check initial link (when app is cold started)
+    _appLinks.getInitialLink().then((uri) {
+      if (uri != null) {
+        _handleDeepLink(uri);
+      }
+    }).catchError((err) {
+      debugPrint('Initial Deep Link error: $err');
+    });
+  }
+
+  void _handleDeepLink(Uri uri) {
+    debugPrint('Received Deep Link: $uri');
+    final path = uri.path;
+
+    int? postId;
+    if (path.startsWith('/post/')) {
+      final segments = uri.pathSegments;
+      if (segments.length >= 2) {
+        postId = int.tryParse(segments[1]);
+      }
+    } else if (uri.host == 'post') {
+      final segments = uri.pathSegments;
+      if (segments.isNotEmpty) {
+        postId = int.tryParse(segments[0]);
+      } else {
+        postId = int.tryParse(uri.queryParameters['id'] ?? '');
+      }
+    }
+
+    if (postId != null && postId > 0) {
+      _openPostDetailPage(postId);
+    }
+  }
+
+  void _openPostDetailPage(int postId) {
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => PostDetailPage(
+          postId: postId,
+          currentUserId: _userId,
+          currentUsername: _username,
+          currentDisplayName: _displayName,
+          currentUserAvatar: _avatarUrl,
+          socket: _socket,
+          isDarkMode: _isDarkMode,
+          onUserProfileTap: _navigateToUserProfile,
+        ),
+      ),
+    );
   }
 
   bool _isHashtagPaid(String tag) {
@@ -3983,61 +4051,17 @@ class _FeedCardState extends State<FeedCard> {
     );
   }
 
-  void _showShareBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: widget.isDarkMode ? Colors.black : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        final shareUrl = 'https://trasx.com/posts/${widget.postId}';
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: widget.textSecondaryColor.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                "Partager la publication",
-                style: TextStyle(
-                  color: widget.textPrimaryColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: Icon(Icons.link_rounded, color: widget.textPrimaryColor),
-                title: Text("Copier le lien", style: TextStyle(color: widget.textPrimaryColor)),
-                onTap: () async {
-                  await Clipboard.setData(ClipboardData(text: shareUrl));
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text("Lien copié dans le presse-papiers !"),
-                        backgroundColor: widget.isDarkMode ? const Color(0xFF262626) : const Color(0xFFEFEFEF),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  }
-                },
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        );
-      },
-    );
+  Future<void> _sharePost() async {
+    final shareUrl = 'https://www.trasx.com/post/${widget.postId}';
+    try {
+      // ignore: deprecated_member_use
+      await Share.share(
+        shareUrl,
+        subject: 'Regardez cette publication de @${widget.username} sur TRASX !',
+      );
+    } catch (e) {
+      debugPrint('Error sharing post: $e');
+    }
   }
 
   List<InlineSpan> _buildTextSpansWithHashtags(String text, BuildContext context) {
@@ -4281,7 +4305,7 @@ class _FeedCardState extends State<FeedCard> {
                     ),
                     const SizedBox(width: 16),
                     GestureDetector(
-                      onTap: () => _showShareBottomSheet(context),
+                      onTap: _sharePost,
                       child: Icon(CupertinoIcons.paperplane, color: widget.textPrimaryColor, size: 22),
                     ),
                     
@@ -6743,6 +6767,127 @@ class _HashtagModalDialogState extends State<HashtagModalDialog> {
                   ),
       ),
     );
+  }
+}
+
+class PostDetailPage extends StatelessWidget {
+  final int postId;
+  final int currentUserId;
+  final String currentUsername;
+  final String currentDisplayName;
+  final String currentUserAvatar;
+  final IO.Socket? socket;
+  final bool isDarkMode;
+  final void Function(int userId) onUserProfileTap;
+
+  const PostDetailPage({
+    super.key,
+    required this.postId,
+    required this.currentUserId,
+    required this.currentUsername,
+    required this.currentDisplayName,
+    required this.currentUserAvatar,
+    this.socket,
+    required this.isDarkMode,
+    required this.onUserProfileTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cardColor = isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
+    final textPrimaryColor = isDarkMode ? Colors.white : Colors.black;
+    final textSecondaryColor = isDarkMode ? Colors.white70 : Colors.black87;
+    final borderColor = isDarkMode ? const Color(0xFF2E2E2E) : const Color(0xFFE2E2E2);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Publication", style: TextStyle(fontFamily: 'Montserrat', fontWeight: FontWeight.bold)),
+        backgroundColor: isDarkMode ? Colors.black : Colors.white,
+        foregroundColor: textPrimaryColor,
+        elevation: 0,
+      ),
+      backgroundColor: isDarkMode ? Colors.black : Colors.white,
+      body: FutureBuilder<Post?>(
+        future: _fetchSinglePost(postId, currentUserId),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Color(0xFFC13584)));
+          }
+          if (snapshot.hasError || snapshot.data == null) {
+            return Center(
+              child: Text(
+                "Publication introuvable",
+                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontFamily: 'Montserrat'),
+              ),
+            );
+          }
+          final post = snapshot.data!;
+          return SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: FeedCard(
+                postId: post.id,
+                authorId: post.authorId,
+                socket: socket,
+                isFollowing: post.isAuthorFollowing,
+                showFollowButton: !post.isAuthorFollowing && post.authorId != currentUserId,
+                currentUserId: currentUserId,
+                currentUsername: currentUsername,
+                currentDisplayName: currentDisplayName,
+                currentUserAvatar: currentUserAvatar,
+                username: post.authorDisplayName,
+                avatarInitial: post.authorUsername.isNotEmpty ? post.authorUsername[0].toUpperCase() : 'A',
+                authorAvatarUrl: post.authorAvatar,
+                postText: post.content,
+                imageUrl: post.imageUrl,
+                thumbnailUrl: post.thumbnailUrl,
+                hashtag: post.isTrade ? '#TradingP2P' : '#TrasX',
+                likes: post.likesCount,
+                comments: post.commentsCount,
+                initialIsLiked: post.isLiked,
+                initialIsBookmarked: post.isBookmarked,
+                cardColor: cardColor,
+                textPrimaryColor: textPrimaryColor,
+                textSecondaryColor: textSecondaryColor,
+                borderColor: borderColor,
+                isDarkMode: isDarkMode,
+                onAvatarTap: () => onUserProfileTap(post.authorId),
+                onPostUpdated: (updated) {
+                  // Post updated callback
+                },
+                isHashtagPaid: (tag) => tag.toLowerCase().contains('trade'),
+                onHashtagTap: (tag) {
+                  // Hashtag tap
+                },
+                onUserProfileTap: onUserProfileTap,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<Post?> _fetchSinglePost(int postId, int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('https://trasx.com/api/posts/$postId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '$userId',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['post'] != null) {
+          return Post.fromJson(data['post']);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching single post: $e');
+    }
+    return null;
   }
 }
 
