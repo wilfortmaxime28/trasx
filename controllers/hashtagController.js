@@ -74,12 +74,58 @@ class HashtagController {
       if (!name) return res.status(400).json({ error: 'Name required' });
       if (name.startsWith('#')) name = name.substring(1);
 
-      const hashtag = await Hashtag.getDetailsByName(name);
-      if (hashtag) {
-        res.json(hashtag);
-      } else {
-        res.json({ exists: false });
+      const db = require('../config/db');
+      let hashtag = await Hashtag.getDetailsByName(name);
+      if (!hashtag) {
+        // Find usage stats dynamically from posts if not officially created
+        const [countRows] = await db.execute(`
+          SELECT COUNT(*) as usage_count FROM posts p
+          WHERE LOWER(COALESCE(p.content, '')) REGEXP CONCAT('(^|[^a-z0-9_])#', LOWER(?), '([^a-z0-9_]|$)')
+        `, [name]);
+        const usageCount = countRows[0]?.usage_count || 0;
+
+        // Try to find the first user who posted this hashtag as the logical creator
+        const [firstUserRows] = await db.execute(`
+          SELECT u.id, u.username, u.first_name, u.last_name, u.avatar
+          FROM posts p
+          JOIN users u ON p.user_id = u.id
+          WHERE LOWER(COALESCE(p.content, '')) REGEXP CONCAT('(^|[^a-z0-9_])#', LOWER(?), '([^a-z0-9_]|$)')
+          ORDER BY p.created_at ASC LIMIT 1
+        `, [name]);
+
+        const creator = firstUserRows[0] || {
+          id: 1,
+          username: 'admin',
+          first_name: 'TrasX',
+          last_name: 'Admin',
+          avatar: ''
+        };
+
+        hashtag = {
+          name: name,
+          creator_id: creator.id,
+          is_paid: name.toLowerCase().includes('trade') || name.toLowerCase().includes('p2p') ? 1 : 0,
+          price: name.toLowerCase().includes('trade') || name.toLowerCase().includes('p2p') ? 0.10 : 0.00,
+          usage_count: usageCount,
+          first_name: creator.first_name,
+          last_name: creator.last_name,
+          username: creator.username,
+          avatar: creator.avatar
+        };
       }
+
+      // Find distinct users who used this hashtag
+      const [usersUsed] = await db.execute(`
+        SELECT DISTINCT u.id, u.username, u.first_name, u.last_name, u.avatar
+        FROM posts p
+        JOIN users u ON p.user_id = u.id
+        WHERE LOWER(COALESCE(p.content, '')) REGEXP CONCAT('(^|[^a-z0-9_])#', LOWER(?), '([^a-z0-9_]|$)')
+        LIMIT 20
+      `, [name]);
+
+      hashtag.used_by = usersUsed;
+      hashtag.exists = true;
+      res.json(hashtag);
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: 'Server error' });
