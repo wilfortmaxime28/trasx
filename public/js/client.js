@@ -38567,18 +38567,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (canRegisterPwa) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=14', { scope: '/' })
-        .then((reg) => {
-          console.log('Service Worker registered successfully:', reg.scope);
-          reg.update().catch(() => {});
-          if ('Notification' in window && Notification.permission === 'granted') {
-            subscribeUserToPush();
-          }
-        })
-        .catch((err) => {
-          console.error('Service Worker registration failed:', err);
+    // Automatically unregister any existing Service Worker to prevent cache issues
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) {
+        registration.unregister().then((success) => {
+          if (success) console.log('[PWA] Unregistered existing Service Worker successfully.');
         });
+      }
+    }).catch((err) => {
+      console.error('[PWA] Error during Service Worker unregistration:', err);
     });
   }
 
