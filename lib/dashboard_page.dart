@@ -4769,6 +4769,9 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
             _videoController!.play();
             _progressController.duration = _videoController!.value.duration;
             _progressController.forward();
+            if (mediaType.startsWith('audio/')) {
+              _videoController!.addListener(_onAudioPositionChanged);
+            }
           }
         });
     } else {
@@ -4826,6 +4829,12 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
   void _onProgressComplete(AnimationStatus status) {
     if (status == AnimationStatus.completed) {
       _next();
+    }
+  }
+
+  void _onAudioPositionChanged() {
+    if (mounted && _videoController != null) {
+      setState(() {});
     }
   }
 
@@ -5517,26 +5526,136 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
     }
 
     if (mediaType.startsWith('audio/')) {
+      final isPlaying = _videoController != null && _videoController!.value.isPlaying;
+      final currentPos = _videoController?.value.position ?? Duration.zero;
+      final totalDuration = _videoController?.value.duration ?? Duration.zero;
+
+      String formatDuration(Duration duration) {
+        String twoDigits(int n) => n.toString().padLeft(2, '0');
+        final minutes = twoDigits(duration.inMinutes.remainder(60));
+        final seconds = twoDigits(duration.inSeconds.remainder(60));
+        return '$minutes:$seconds';
+      }
+
       return Container(
-        color: const Color(0xFF1E1E2C),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+            colors: [
+              Color(0xFF0F2027),
+              Color(0xFF203A43),
+              Color(0xFF2C5364),
+            ],
+          ),
+        ),
         alignment: Alignment.center,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.mic_rounded, color: Color(0xFFC13584), size: 80),
-            const SizedBox(height: 20),
-            const Text(
-              'Note vocale',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 140,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC13584).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFFC13584).withOpacity(0.3), width: 2),
+                  ),
+                ),
+                Container(
+                  width: 110,
+                  height: 110,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC13584).withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    if (_videoController != null) {
+                      if (_videoController!.value.isPlaying) {
+                        _videoController!.pause();
+                        _progressController.stop();
+                      } else {
+                        _videoController!.play();
+                        _progressController.forward();
+                      }
+                      setState(() {});
+                    }
+                  },
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFC13584),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0xFFC13584),
+                          blurRadius: 15,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 44,
+                    ),
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 35),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: Colors.white10, width: 0.5),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.mic_rounded, color: Color(0xFFC13584), size: 20),
+                  const SizedBox(width: 12),
+                  _AudioWaveformsWidget(isPlaying: isPlaying),
+                ],
+              ),
+            ),
+            const SizedBox(height: 15),
+            Text(
+              '${formatDuration(currentPos)} / ${formatDuration(totalDuration)}',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 30),
             if (caption.isNotEmpty) ...[
-              const SizedBox(height: 12),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Text(
-                  caption,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.08), width: 0.8),
+                  ),
+                  child: Text(
+                    caption,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -5656,3 +5775,89 @@ class _StatusRingPainter extends CustomPainter {
         oldDelegate.colors != colors;
   }
 }
+
+class _AudioWaveformsWidget extends StatefulWidget {
+  final bool isPlaying;
+
+  const _AudioWaveformsWidget({required this.isPlaying});
+
+  @override
+  State<_AudioWaveformsWidget> createState() => _AudioWaveformsWidgetState();
+}
+
+class _AudioWaveformsWidgetState extends State<_AudioWaveformsWidget> with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  final List<double> _baseHeights = [
+    8, 16, 12, 22, 10, 18, 28, 16, 11, 20, 16, 12, 24, 14, 10, 20, 26, 16, 12, 18, 8, 16, 12, 22, 10
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    if (widget.isPlaying) {
+      _animationController.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _AudioWaveformsWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isPlaying != oldWidget.isPlaying) {
+      if (widget.isPlaying) {
+        _animationController.repeat();
+      } else {
+        _animationController.stop();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: List.generate(_baseHeights.length, (index) {
+            double factor = 1.0;
+            if (widget.isPlaying) {
+              final wave = sin((_animationController.value * 2 * pi) + (index * 0.8));
+              factor = 0.3 + (wave.abs() * 0.7);
+            }
+            final height = _baseHeights[index] * factor;
+            
+            // Simuler la progression de lecture sur les barres
+            final double progression = index / _baseHeights.length;
+            // Pour l'instant on garde une couleur constante ou progressive
+            final Color color = widget.isPlaying 
+                ? const Color(0xFFC13584).withOpacity(0.5 + (1 - progression) * 0.5)
+                : Colors.white38;
+
+            return Container(
+              width: 3.0,
+              height: height,
+              margin: const EdgeInsets.symmetric(horizontal: 1.2),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(1.5),
+              ),
+            );
+          }),
+        );
+      },
+    );
+  }
+}
+
