@@ -4,7 +4,14 @@ const { createTranslator, normalizeLocale, SUPPORTED_LOCALES } = require('../uti
 const { getNumberSetting } = require('../utils/appSettings');
 
 const requireAuth = async (req, res, next) => {
-  const isApi = req.path.startsWith('/api/') || req.originalUrl.startsWith('/api/') || (req.headers.accept && req.headers.accept.includes('application/json'));
+  const isApi = req.path.startsWith('/api/') 
+    || req.originalUrl.startsWith('/api/') 
+    || req.path.startsWith('/status/')
+    || req.originalUrl.startsWith('/status/')
+    || req.path.startsWith('/statuses/')
+    || req.originalUrl.startsWith('/statuses/')
+    || !!req.headers['x-user-id']
+    || (req.headers.accept && req.headers.accept.includes('application/json'));
 
   console.log('[Auth Middleware] URL:', req.originalUrl);
   console.log('[Auth Middleware] Incoming Cookies:', req.headers.cookie);

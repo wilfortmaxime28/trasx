@@ -1863,7 +1863,8 @@ app.use(requireAuth);
 
 app.get('/api/users/contacts', requireAuth, async (req, res) => {
   try {
-    const currentUserId = Number(req.session.userId);
+    const currentUserId = Number(req.session.userId || req.headers['x-user-id'] || 0);
+    if (!currentUserId) return res.status(401).json({ success: false, error: 'Non authentifié.' });
     const contacts = await User.getContactsWithFollowState(currentUserId);
     return res.json({ success: true, contacts });
   } catch (error) {

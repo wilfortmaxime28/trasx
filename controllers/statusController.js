@@ -9,12 +9,21 @@ function wantsJsonResponse(req) {
     || String(req.query?.format || '').toLowerCase() === 'json';
 }
 
+// Resolve userId from web session OR mobile x-user-id header
+function resolveUserId(req) {
+  if (req.session && req.session.userId) return Number(req.session.userId);
+  const hdr = req.headers['x-user-id'];
+  if (hdr) return Number(hdr);
+  return null;
+}
+
 class StatusController {
   static async createStatus(req, res) {
     try {
-      const currentUserId = req.session.userId;
+      const currentUserId = resolveUserId(req);
       const currentUser = await User.getById(currentUserId);
       if (!currentUser) {
+        if (wantsJsonResponse(req)) return res.status(401).json({ success: false, message: 'Non authentifié.' });
         return res.redirect('/auth/login');
       }
 
@@ -37,49 +46,32 @@ class StatusController {
       if (statusType === 'text') {
         if (!caption) {
           const message = t('status.textRequired', 'Please enter some text for your status.');
-          if (wantsJsonResponse(req)) {
-            return res.status(400).json({ success: false, message });
-          }
+          if (wantsJsonResponse(req)) return res.status(400).json({ success: false, message });
           return res.redirect(`/${req.body?.return_to || ''}?error=${encodeURIComponent(message)}`);
         }
         mediaUrl = 'text';
         mediaType = 'text';
       } else {
-        // Media (image/video) or voice note
         const mediaFile = req.file || null;
         if (!mediaFile) {
           const message = t('status.mediaRequired', 'Please choose a file or record a voice note for your status.');
-          if (wantsJsonResponse(req)) {
-            return res.status(400).json({ success: false, message });
-          }
+          if (wantsJsonResponse(req)) return res.status(400).json({ success: false, message });
           return res.redirect(`/${req.body?.return_to || ''}?error=${encodeURIComponent(message)}`);
         }
-
         mediaType = String(mediaFile.mimetype || '').toLowerCase();
-        
-        // Accept image, video, and audio (voice note) mimetypes
         if (!mediaType.startsWith('image/') && !mediaType.startsWith('video/') && !mediaType.startsWith('audio/')) {
           const message = t('status.unsupportedType', 'Statuses accept images, videos, and voice notes only.');
-          if (wantsJsonResponse(req)) {
-            return res.status(400).json({ success: false, message });
-          }
-          return res.redirect(`/` + `?error=${encodeURIComponent(message)}`);
+          if (wantsJsonResponse(req)) return res.status(400).json({ success: false, message });
+          return res.redirect(`/?error=${encodeURIComponent(message)}`);
         }
-
         mediaUrl = `/uploads/statuses/${mediaFile.filename}`;
         mediaName = mediaFile.originalname || mediaFile.filename;
         mediaSize = mediaFile.size || null;
       }
 
       const statusId = await Status.create(currentUserId, {
-        mediaUrl,
-        mediaType,
-        mediaName,
-        mediaSize,
-        caption: caption || null,
-        trimStart,
-        trimEnd,
-        bgColor,
+        mediaUrl, mediaType, mediaName, mediaSize,
+        caption: caption || null, trimStart, trimEnd, bgColor,
         mediaFit: mediaType.startsWith('video/') ? mediaFit : 'cover'
       });
 
@@ -88,7 +80,7 @@ class StatusController {
       if (req.app?.get('io') && newStatus) {
         req.app.get('io').emit('status-created', {
           user_id: currentUserId,
-          user_name: currentUser.first_name + ' ' + currentUser.last_name,
+          user_name: `${currentUser.first_name} ${currentUser.last_name}`,
           username: currentUser.username,
           avatar: currentUser.avatar || '/uploads/avatars/default.png',
           status: newStatus
@@ -96,39 +88,27 @@ class StatusController {
       }
 
       const message = t('status.postedSuccess', 'Status posted successfully!');
-
-      if (wantsJsonResponse(req)) {
-        return res.json({
-          success: true,
-          statusId,
-          status: newStatus,
-          message
-        });
-      }
-
+      if (wantsJsonResponse(req)) return res.json({ success: true, statusId, status: newStatus, message });
       return res.redirect(`/${req.body?.return_to || ''}?success=${encodeURIComponent(message)}`);
     } catch (err) {
       console.error('Create status error:', err);
       const locale = normalizeLocale(req.session?.locale || 'en');
       const t = createTranslator(locale);
       const message = t('status.createFailed', 'Unable to post your status right now.');
-      if (wantsJsonResponse(req)) {
-        return res.status(500).json({ success: false, message });
-      }
-      return res.redirect(`/` + `?error=${encodeURIComponent(message)}`);
+      if (wantsJsonResponse(req)) return res.status(500).json({ success: false, message });
+      return res.redirect(`/?error=${encodeURIComponent(message)}`);
     }
   }
+
   static async recordView(req, res) {
     try {
-      const currentUserId = req.session.userId;
+      const currentUserId = resolveUserId(req);
       const statusId = parseInt(req.params.id, 10);
-      if (!statusId) {
-        return res.status(400).json({ error: 'Status ID is required.' });
-      }
+      if (!statusId) return res.status(400).json({ error: 'Status ID is required.' });
 
       await Status.recordView(statusId, currentUserId);
       const viewsCount = await Status.getViewCount(statusId);
-      
+
       const status = await Status.getById(statusId);
       if (status) {
         const viewerUser = await User.getById(currentUserId);
@@ -157,7 +137,9 @@ class StatusController {
 
   static async createComment(req, res) {
     try {
-      const currentUserId = req.session.userId;
+      const currentUserId = resolveUserId(req);
+      if (!currentUserId) return res.status(401).json({ error: 'Non authentifié.' });
+
       const statusId = parseInt(req.params.id, 10);
       const content = String(req.body.content || '').trim();
 
@@ -166,9 +148,7 @@ class StatusController {
       }
 
       const status = await Status.getById(statusId);
-      if (!status) {
-        return res.status(404).json({ error: 'Status not found.' });
-      }
+      if (!status) return res.status(404).json({ error: 'Status not found.' });
 
       const commentId = await Status.addComment(statusId, currentUserId, content);
       const currentUser = await User.getById(currentUserId);
@@ -178,7 +158,7 @@ class StatusController {
         id: commentId,
         status_id: statusId,
         user_id: currentUserId,
-        content: content,
+        content,
         created_at: new Date(),
         user_name: senderName,
         username: currentUser?.username || '',
@@ -188,13 +168,9 @@ class StatusController {
       const io = req.app.get('io');
       if (io) {
         io.to(`status:${statusId}`).emit('status-comment-created', commentPayload);
-        io.to(`user:${status.user_id}`).emit('status-comment-created-owner', {
-          statusId,
-          comment: commentPayload
-        });
+        io.to(`user:${status.user_id}`).emit('status-comment-created-owner', { statusId, comment: commentPayload });
       }
 
-      // Notify the status creator if it's not their own status
       if (Number(status.user_id) !== Number(currentUserId)) {
         const excerpt = content.slice(0, 50);
         const notificationMessage = `${senderName} a commenté votre statut : "${excerpt}${content.length > 50 ? '...' : ''}"`;
@@ -204,10 +180,8 @@ class StatusController {
           type: 'comment',
           message: notificationMessage,
           commentId: null,
-          statusId: statusId
+          statusId
         });
-
-        // Emit real-time notification via socket
         if (io) {
           io.to(`user:${status.user_id}`).emit('notification-created', {
             id: notificationId,
@@ -225,37 +199,30 @@ class StatusController {
             status_caption: status.caption,
             status_bg_color: status.bg_color
           });
-
           const unreadCount = await Notification.getUnreadCount(status.user_id);
           io.to(`user:${status.user_id}`).emit('notification-count-updated', { unreadCount });
         }
       }
 
-      return res.json({ success: true, commentId });
+      return res.json({ success: true, commentId, comment: commentPayload });
     } catch (err) {
       console.error('createComment error:', err);
       return res.status(500).json({ error: 'Failed to post comment.' });
     }
   }
+
   static async recordShare(req, res) {
     try {
-      const currentUserId = req.session.userId;
+      const currentUserId = resolveUserId(req);
       const statusId = parseInt(req.params.id, 10);
-      
-      if (!statusId) {
-        return res.status(400).json({ error: 'Status ID is required.' });
-      }
+      if (!statusId) return res.status(400).json({ error: 'Status ID is required.' });
 
       const status = await Status.getById(statusId);
-      if (!status) {
-        return res.status(404).json({ error: 'Status not found.' });
-      }
+      if (!status) return res.status(404).json({ error: 'Status not found.' });
 
-      // Notify the status creator if it's not their own status
       if (Number(status.user_id) !== Number(currentUserId)) {
         const currentUser = await User.getById(currentUserId);
         const senderName = currentUser ? `${currentUser.first_name} ${currentUser.last_name}` : 'Quelqu\'un';
-        
         const notificationMessage = `${senderName} a partagé votre statut.`;
         const notificationId = await Notification.create({
           recipientId: status.user_id,
@@ -263,8 +230,6 @@ class StatusController {
           type: 'share',
           message: notificationMessage
         });
-
-        // Emit real-time notification via socket
         const io = req.app.get('io');
         if (io) {
           io.to(`user:${status.user_id}`).emit('notification-created', {
@@ -277,7 +242,6 @@ class StatusController {
             message: notificationMessage,
             created_at: new Date()
           });
-
           const unreadCount = await Notification.getUnreadCount(status.user_id);
           io.to(`user:${status.user_id}`).emit('notification-count-updated', { unreadCount });
         }
@@ -292,15 +256,12 @@ class StatusController {
 
   static async getViewers(req, res) {
     try {
-      const currentUserId = req.session.userId;
+      const currentUserId = resolveUserId(req);
       const statusId = parseInt(req.params.id, 10);
-      if (!statusId) {
-        return res.status(400).json({ error: 'Status ID is required.' });
-      }
+      if (!statusId) return res.status(400).json({ error: 'Status ID is required.' });
+
       const status = await Status.getById(statusId);
-      if (!status) {
-        return res.status(404).json({ error: 'Status not found.' });
-      }
+      if (!status) return res.status(404).json({ error: 'Status not found.' });
       if (Number(status.user_id) !== Number(currentUserId)) {
         return res.status(403).json({ error: 'Unauthorized to view status viewers.' });
       }
@@ -311,16 +272,13 @@ class StatusController {
       return res.status(500).json({ error: 'Failed to retrieve viewers.' });
     }
   }
+
   static async getStatusById(req, res) {
     try {
       const statusId = parseInt(req.params.id, 10);
-      if (!statusId) {
-        return res.status(400).json({ error: 'Status ID is required.' });
-      }
+      if (!statusId) return res.status(400).json({ error: 'Status ID is required.' });
       const status = await Status.getById(statusId);
-      if (!status) {
-        return res.status(404).json({ error: 'Status not found.' });
-      }
+      if (!status) return res.status(404).json({ error: 'Status not found.' });
       return res.json({ success: true, status });
     } catch (err) {
       console.error('getStatusById error:', err);
@@ -331,9 +289,7 @@ class StatusController {
   static async getComments(req, res) {
     try {
       const statusId = parseInt(req.params.id, 10);
-      if (!statusId) {
-        return res.status(400).json({ error: 'Status ID is required.' });
-      }
+      if (!statusId) return res.status(400).json({ error: 'Status ID is required.' });
       const comments = await Status.getComments(statusId);
       return res.json({ success: true, comments });
     } catch (err) {
