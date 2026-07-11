@@ -1479,6 +1479,43 @@ app.post('/api/login', authController.postLoginApi);
 app.post('/api/register', authController.postRegisterApi);
 app.post('/api/verify', authController.postVerifyApi);
 
+// Mobile profile & posts APIs
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const user = await User.getById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur introuvable.' });
+    }
+    delete user.password_hash;
+    res.json(user);
+  } catch (err) {
+    console.error('API get user error:', err);
+    res.status(500).json({ error: 'Erreur serveur.' });
+  }
+});
+
+app.get('/api/users/:id/posts', async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    const posts = await Post.getByUserId(userId, userId);
+    res.json({ success: true, posts });
+  } catch (err) {
+    console.error('API get user posts error:', err);
+    res.status(500).json({ error: 'Erreur serveur.' });
+  }
+});
+
+app.get('/api/users/:id/reels', async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    const reels = await Reel.getByUserId(userId);
+    res.json({ success: true, reels });
+  } catch (err) {
+    console.error('API get user reels error:', err);
+    res.status(500).json({ error: 'Erreur serveur.' });
+  }
+});
+
 // Routes Auth Administrateur (doit être avant requireAuth global)
 const adminRoutes = require('./routes/adminRoutes');
 const adminAuthRoutes = require('./routes/adminAuthRoutes');
