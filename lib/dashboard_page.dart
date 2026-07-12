@@ -570,7 +570,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
     try {
       _socket = IO.io('https://trasx.com', IO.OptionBuilder()
-        .setTransports(['websocket'])
+        .setTransports(['websocket', 'polling'])
         .setAuth({'userId': _userId})
         .setQuery({'userId': _userId})
         .enableAutoConnect()
@@ -3154,7 +3154,7 @@ class _DashboardPageState extends State<DashboardPage> {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => WalletSettingsPage(isDarkMode: _isDarkMode),
+                builder: (context) => WalletSettingsPage(isDarkMode: _isDarkMode, userId: _userId, socket: _socket),
               ),
             );
           },
@@ -8003,20 +8003,288 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
 // ==========================================
 class WalletSettingsPage extends StatefulWidget {
   final bool isDarkMode;
-  const WalletSettingsPage({super.key, required this.isDarkMode});
+  final int userId;
+  final IO.Socket? socket;
+  const WalletSettingsPage({
+    super.key,
+    required this.isDarkMode,
+    required this.userId,
+    this.socket,
+  });
 
   @override
   State<WalletSettingsPage> createState() => _WalletSettingsPageState();
 }
 
 class _WalletSettingsPageState extends State<WalletSettingsPage> {
-  final _bscAddressController = TextEditingController(text: "0x8F93282bAc66DFe7cEAA23b5dE8634b3fdf867cd");
+  final _bscAddressController = TextEditingController();
   bool _isEditingAddress = false;
+
+  double _depositBalance = 0.0;
+  double _withdrawalBalance = 0.0;
+  double _bonusBalance = 0.0;
+  double _tokenBalance = 0.0;
+  bool _isLoadingBalances = true;
+  bool _isLoadingTransactions = true;
+  List<Map<String, dynamic>> _transactions = [];
+  Timer? _pollingTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchBalances();
+    _fetchTransactions();
+    _fetchWalletAddress();
+    
+    // Register socket listeners for instant updates
+    if (widget.socket != null) {
+      widget.socket!.on('balance-updated', _onBalanceUpdated);
+      widget.socket!.on('deposit-status', _onDepositStatus);
+    }
+
+    // Fallback: Poll balances and transactions every 4 seconds
+    _pollingTimer = Timer.periodic(const Duration(seconds: 4), (t) {
+      _fetchBalances();
+      _fetchTransactions();
+    });
+  }
 
   @override
   void dispose() {
+    if (widget.socket != null) {
+      widget.socket!.off('balance-updated', _onBalanceUpdated);
+      widget.socket!.off('deposit-status', _onDepositStatus);
+    }
+    _pollingTimer?.cancel();
     _bscAddressController.dispose();
     super.dispose();
+  }
+
+  // Socket callback for balance changes
+  void _onBalanceUpdated(dynamic data) {
+    debugPrint("WalletSettingsPage: received balance-updated: $data");
+    if (mounted && data != null) {
+      setState(() {
+        _depositBalance = double.tryParse(data['depositBalance']?.toString() ?? '0') ?? 0.0;
+        _withdrawalBalance = double.tryParse(data['withdrawalBalance']?.toString() ?? '0') ?? 0.0;
+        _bonusBalance = double.tryParse(data['bonusBalance']?.toString() ?? '0') ?? 0.0;
+        _tokenBalance = double.tryParse(data['tokenBalance']?.toString() ?? '0') ?? 0.0;
+        _isLoadingBalances = false;
+      });
+      _fetchTransactions();
+    }
+  }
+
+  // Socket callback for deposit state changes
+  void _onDepositStatus(dynamic data) {
+    debugPrint("WalletSettingsPage: received deposit-status: $data");
+    if (mounted && data != null) {
+      final String? type = data['type'];
+      final String? message = data['message'];
+      
+      if (type == 'confirmed') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message ?? "Dépôt confirmé et crédité avec succès !"),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _fetchBalances();
+        _fetchTransactions();
+      } else if (type == 'failed') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message ?? "Le dépôt a échoué ou a expiré."),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _fetchWalletAddress() async {
+    if (widget.userId <= 0) return;
+    try {
+      final response = await http.get(
+        Uri.parse('https://trasx.com/api/users/${widget.userId}'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.userId}',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _bscAddressController.text = data['wallet_address'] ?? '';
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching wallet address: $e");
+    }
+  }
+
+  Future<void> _fetchBalances() async {
+    if (widget.userId <= 0) return;
+    try {
+      final response = await http.get(
+        Uri.parse('https://trasx.com/api/users/${widget.userId}'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.userId}',
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _depositBalance = double.tryParse(data['deposit_account_balance']?.toString() ?? '0') ?? 0.0;
+            _withdrawalBalance = double.tryParse(data['withdrawal_account_balance']?.toString() ?? '0') ?? 0.0;
+            _bonusBalance = double.tryParse(data['bonus_account_balance']?.toString() ?? '0') ?? 0.0;
+            _tokenBalance = double.tryParse(data['token_balance']?.toString() ?? '0') ?? 0.0;
+            _isLoadingBalances = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching balances: $e");
+    }
+  }
+
+  Future<void> _fetchTransactions() async {
+    if (widget.userId <= 0) return;
+    try {
+      final depResp = await http.get(
+        Uri.parse('https://trasx.com/api/deposits/history'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.userId}',
+        },
+      );
+      final wthResp = await http.get(
+        Uri.parse('https://trasx.com/api/withdrawals/history'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.userId}',
+        },
+      );
+
+      List<Map<String, dynamic>> combined = [];
+
+      if (depResp.statusCode == 200) {
+        final depData = jsonDecode(depResp.body);
+        if (depData['success'] == true && depData['deposits'] != null) {
+          for (var d in depData['deposits']) {
+            combined.add({
+              'title': 'Dépôt de pièces',
+              'subtitle': d['status'] == 'confirmed' ? 'Confirmé' : 'En attente',
+              'amount': '+${double.tryParse(d['amount_usdt']?.toString() ?? '0')?.toStringAsFixed(2) ?? '0.00'} 💎',
+              'date': d['created_at'] ?? '',
+              'isPositive': true,
+            });
+          }
+        }
+      }
+
+      if (wthResp.statusCode == 200) {
+        final wthData = jsonDecode(wthResp.body);
+        if (wthData['success'] == true && wthData['withdrawals'] != null) {
+          for (var w in wthData['withdrawals']) {
+            combined.add({
+              'title': 'Retrait de fonds',
+              'subtitle': w['status'] == 'completed' ? 'Traité' : 'En attente',
+              'amount': '-${double.tryParse(w['amount_usdt']?.toString() ?? '0')?.toStringAsFixed(2) ?? '0.00'} 💎',
+              'date': w['created_at'] ?? '',
+              'isPositive': false,
+            });
+          }
+        }
+      }
+
+      // Sort descending by date
+      combined.sort((a, b) => b['date'].toString().compareTo(a['date'].toString()));
+
+      if (mounted) {
+        setState(() {
+          _transactions = combined;
+          _isLoadingTransactions = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching transactions: $e");
+    }
+  }
+
+  String _formatDate(String dateStr) {
+    if (dateStr.isEmpty) return '';
+    try {
+      final parsed = DateTime.parse(dateStr).toLocal();
+      final months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sept', 'Oct', 'Nov', 'Déc'];
+      final month = months[parsed.month - 1];
+      final day = parsed.day.toString().padLeft(2, '0');
+      final hour = parsed.hour.toString().padLeft(2, '0');
+      final minute = parsed.minute.toString().padLeft(2, '0');
+      return "$day $month, ${hour}h$minute";
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
+  Future<void> _updateWalletAddress(String address) async {
+    try {
+      final response = await http.post(
+        Uri.parse('https://trasx.com/api/wallet/address'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.userId}',
+        },
+        body: jsonEncode({'walletAddress': address}),
+      );
+      final resData = jsonDecode(response.body);
+      if (response.statusCode == 200 && resData['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Adresse BSC enregistrée avec succès.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(resData['error'] ?? 'Format d\'adresse invalide.')),
+        );
+        _fetchWalletAddress(); // revert to last address
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erreur lors de la mise à jour de l\'adresse.')),
+      );
+      _fetchWalletAddress();
+    }
+  }
+
+  Future<void> _triggerTestCredit(double amount, String type) async {
+    try {
+      final response = await http.post(
+        Uri.parse('https://trasx.com/api/wallet/test-credit'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.userId}',
+        },
+        body: jsonEncode({
+          'amount': amount,
+          'type': type,
+        }),
+      );
+      if (response.statusCode == 200) {
+        _fetchBalances();
+        _fetchTransactions();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Compte crédité de ${amount.toStringAsFixed(2)} $type !')),
+        );
+      }
+    } catch (e) {
+      debugPrint("Error performing test credit: $e");
+    }
   }
 
   @override
@@ -8024,283 +8292,354 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     final isDark = widget.isDarkMode;
     final textPrimaryColor = isDark ? Colors.white : Colors.black;
     final textSecondaryColor = isDark ? Colors.white54 : Colors.black54;
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final bgColor = isDark ? const Color(0xFF000000) : const Color(0xFFF9F9F9);
+    final cardColor = isDark ? const Color(0xFF161618) : Colors.white;
+    final bgColor = isDark ? const Color(0xFF000000) : const Color(0xFFF8F8F9);
+    final borderColor = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08);
 
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios_new_rounded, color: textPrimaryColor, size: 20),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          "Portefeuille (Wallet)",
-          style: TextStyle(color: textPrimaryColor, fontWeight: FontWeight.bold, fontSize: 18),
+          "Solde (Wallet)",
+          style: TextStyle(color: textPrimaryColor, fontWeight: FontWeight.bold, fontSize: 17),
         ),
         centerTitle: true,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Wallet Premium Card (always styled with white text on dark gradient background for premium look)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFC13584).withValues(alpha: 0.3),
-                      blurRadius: 16,
-                      offset: const Offset(0, 8),
-                    )
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "SOLDE TRASX",
-                          style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1),
-                        ),
-                        Icon(Icons.stars_rounded, color: Colors.white70, size: 24),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      "250 💎",
-                      style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      "\$25.00 USD",
-                      style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      "ADRESSE DE RETRAIT (BSC)",
-                      style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.5),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _bscAddressController.text,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace'),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.copy_rounded, color: Colors.white70, size: 16),
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: _bscAddressController.text));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Adresse copiée !'), duration: Duration(seconds: 1)),
-                            );
-                          },
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: cardColor,
-                        foregroundColor: textPrimaryColor,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                        side: BorderSide(color: textPrimaryColor.withValues(alpha: 0.08)),
-                      ),
-                      icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-                      label: const Text("Déposer", style: TextStyle(fontWeight: FontWeight.bold)),
-                      onPressed: () {
-                        _showDepositDialog(context);
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFC13584),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                      ),
-                      icon: const Icon(Icons.send_rounded, size: 18),
-                      label: const Text("Retirer", style: TextStyle(fontWeight: FontWeight.bold)),
-                      onPressed: () {
-                        _showWithdrawDialog(context);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 32),
-              Text(
-                "Adresse BSC liée",
-                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _isEditingAddress
-                          ? TextField(
-                              controller: _bscAddressController,
-                              style: TextStyle(color: textPrimaryColor, fontSize: 13, fontFamily: 'monospace'),
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(vertical: 8),
-                                border: InputBorder.none,
-                              ),
-                            )
-                          : Text(
-                              _bscAddressController.text,
-                              style: TextStyle(color: textPrimaryColor, fontSize: 13, fontFamily: 'monospace'),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          if (_isEditingAddress) {
-                            // save
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Adresse BSC enregistrée.')),
-                            );
-                          }
-                          _isEditingAddress = !_isEditingAddress;
-                        });
-                      },
-                      child: Text(
-                        _isEditingAddress ? "Sauver" : "Modifier",
-                        style: const TextStyle(color: Color(0xFF3897F0), fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
-              Text(
-                "Historique des Transactions",
-                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              _buildTransactionItem(
-                title: "Achat de Live Unlock",
-                subtitle: "Post #429 par @john_doe",
-                amount: "-20 💎",
-                date: "Aujourd'hui, 14:32",
-                isPositive: false,
-                cardColor: cardColor,
-                textPrimaryColor: textPrimaryColor,
-                textSecondaryColor: textSecondaryColor,
-              ),
-              _buildTransactionItem(
-                title: "Dépôt BSC",
-                subtitle: "Via NowPayments",
-                amount: "+100 💎",
-                date: "Hier, 18:15",
-                isPositive: true,
-                cardColor: cardColor,
-                textPrimaryColor: textPrimaryColor,
-                textSecondaryColor: textSecondaryColor,
-              ),
-              _buildTransactionItem(
-                title: "Gain Challenge",
-                subtitle: "Hashtag #freestyle",
-                amount: "+150 💎",
-                date: "10 Juil, 12:00",
-                isPositive: true,
-                cardColor: cardColor,
-                textPrimaryColor: textPrimaryColor,
-                textSecondaryColor: textSecondaryColor,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showDepositDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Déposer des fonds"),
-        content: const Text("Pour approvisionner votre compte, vous pouvez utiliser notre passerelle NowPayments en effectuant un virement crypto ou carte bancaire."),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Fermer"),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC13584)),
+          IconButton(
+            icon: Icon(Icons.history_rounded, color: textPrimaryColor, size: 22),
             onPressed: () {
-              Navigator.of(context).pop();
+              // Refresh manually
+              _fetchBalances();
+              _fetchTransactions();
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Redirection vers la passerelle de paiement...')),
+                const SnackBar(content: Text('Portefeuille rafraîchi.'), duration: Duration(seconds: 1)),
               );
             },
-            child: const Text("Continuer", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: const Color(0xFFFE2C55),
+          onRefresh: () async {
+            await _fetchBalances();
+            await _fetchTransactions();
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // TikTok Style Main Coin Balance Header
+                Center(
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.monetization_on_rounded, color: Color(0xFFFFB000), size: 36),
+                          const SizedBox(width: 8),
+                          Text(
+                            _depositBalance.toStringAsFixed(0),
+                            style: TextStyle(
+                              color: textPrimaryColor,
+                              fontSize: 44,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -1,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Solde de pièces actuel",
+                        style: TextStyle(color: textSecondaryColor, fontSize: 13, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+
+                Text(
+                  "Mes comptes",
+                  style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+
+                // 1. Coins Account (Deposit)
+                _buildAccountTile(
+                  icon: Icons.monetization_on_rounded,
+                  iconColor: const Color(0xFFFFB000),
+                  title: "Pièces TRASX (Dépôt)",
+                  subtitle: "Acheter des cadeaux et débloquer du contenu",
+                  value: "${_depositBalance.toStringAsFixed(2)} 🪙",
+                  buttonText: "Recharger",
+                  onAction: () => _showDepositDialog(context),
+                  cardColor: cardColor,
+                  borderColor: borderColor,
+                  textPrimaryColor: textPrimaryColor,
+                  textSecondaryColor: textSecondaryColor,
+                  isDark: isDark,
+                  actionColor: const Color(0xFFFE2C55),
+                ),
+
+                // 2. LIVE Earnings / Gift Account (Withdrawal)
+                _buildAccountTile(
+                  icon: Icons.stars_rounded,
+                  iconColor: const Color(0xFFC13584),
+                  title: "Revenus des Cadeaux (Retrait)",
+                  subtitle: "Cadeaux LIVE convertibles en argent réel",
+                  value: "\$${_withdrawalBalance.toStringAsFixed(2)}",
+                  buttonText: "Retirer",
+                  onAction: () => _showWithdrawDialog(context),
+                  cardColor: cardColor,
+                  borderColor: borderColor,
+                  textPrimaryColor: textPrimaryColor,
+                  textSecondaryColor: textSecondaryColor,
+                  isDark: isDark,
+                  actionColor: textPrimaryColor,
+                  outlineButton: true,
+                ),
+
+                // 3. Bonus Account
+                _buildAccountTile(
+                  icon: Icons.card_giftcard_rounded,
+                  iconColor: const Color(0xFF833AB4),
+                  title: "Compte Bonus",
+                  subtitle: "Jetons promotionnels offerts pour tester",
+                  value: "${_bonusBalance.toStringAsFixed(2)} 💎",
+                  buttonText: "Info",
+                  onAction: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text("Compte Bonus"),
+                        content: const Text("Le Compte Bonus contient des crédits publicitaires et promotionnels offerts lors d'événements spéciaux. Ces crédits ne sont pas transférables."),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK")),
+                        ],
+                      ),
+                    );
+                  },
+                  cardColor: cardColor,
+                  borderColor: borderColor,
+                  textPrimaryColor: textPrimaryColor,
+                  textSecondaryColor: textSecondaryColor,
+                  isDark: isDark,
+                  actionColor: textSecondaryColor,
+                  outlineButton: true,
+                ),
+
+                // 4. TrasX Tokens (Web3 Crypto)
+                _buildAccountTile(
+                  icon: Icons.token_rounded,
+                  iconColor: const Color(0xFF00D2FF),
+                  title: "Tokens TRASX (\$TRASX)",
+                  subtitle: "Crypto-monnaie native de gouvernance Web3",
+                  value: "${_tokenBalance.toStringAsFixed(4)} T",
+                  buttonText: "Échanger",
+                  onAction: () => _showSwapDialog(context),
+                  cardColor: cardColor,
+                  borderColor: borderColor,
+                  textPrimaryColor: textPrimaryColor,
+                  textSecondaryColor: textSecondaryColor,
+                  isDark: isDark,
+                  actionColor: const Color(0xFF00D2FF),
+                  outlineButton: true,
+                ),
+
+                const SizedBox(height: 24),
+                Text(
+                  "Adresse Web3 / Retrait BSC",
+                  style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _isEditingAddress
+                            ? TextField(
+                                controller: _bscAddressController,
+                                autofocus: true,
+                                style: TextStyle(color: textPrimaryColor, fontSize: 13, fontFamily: 'monospace'),
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  hintText: "Adresse BEP-20 (0x...)",
+                                  hintStyle: TextStyle(color: Colors.white24, fontSize: 13),
+                                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                                  border: InputBorder.none,
+                                ),
+                              )
+                            : Text(
+                                _bscAddressController.text.isEmpty
+                                    ? "Aucune adresse BSC liée"
+                                    : _bscAddressController.text,
+                                style: TextStyle(
+                                  color: _bscAddressController.text.isEmpty ? textSecondaryColor : textPrimaryColor,
+                                  fontSize: 13,
+                                  fontFamily: 'monospace',
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            if (_isEditingAddress) {
+                              _updateWalletAddress(_bscAddressController.text);
+                            }
+                            _isEditingAddress = !_isEditingAddress;
+                          });
+                        },
+                        child: Text(
+                          _isEditingAddress ? "Sauver" : "Modifier",
+                          style: const TextStyle(color: Color(0xFFFE2C55), fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 28),
+                Text(
+                  "Historique des Transactions",
+                  style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+
+                if (_isLoadingTransactions)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24.0),
+                    child: Center(
+                      child: CircularProgressIndicator(color: Color(0xFFFE2C55), strokeWidth: 2),
+                    ),
+                  )
+                else if (_transactions.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32.0),
+                    child: Center(
+                      child: Text(
+                        "Aucune transaction récente",
+                        style: TextStyle(color: textSecondaryColor, fontSize: 13),
+                      ),
+                    ),
+                  )
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _transactions.length,
+                    itemBuilder: (context, index) {
+                      final tx = _transactions[index];
+                      return _buildTransactionItem(
+                        title: tx['title'],
+                        subtitle: tx['subtitle'],
+                        amount: tx['amount'],
+                        date: _formatDate(tx['date']),
+                        isPositive: tx['isPositive'],
+                        cardColor: cardColor,
+                        borderColor: borderColor,
+                        textPrimaryColor: textPrimaryColor,
+                        textSecondaryColor: textSecondaryColor,
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
-  void _showWithdrawDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Retirer des fonds"),
-        content: const Text("Le retrait sera envoyé sur votre adresse BSC enregistrée. Montant minimum: 50 💎."),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Annuler"),
+  Widget _buildAccountTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required String value,
+    required String buttonText,
+    required VoidCallback onAction,
+    required Color cardColor,
+    required Color borderColor,
+    required Color textPrimaryColor,
+    required Color textSecondaryColor,
+    required bool isDark,
+    required Color actionColor,
+    bool outlineButton = false,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: iconColor, size: 24),
           ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(color: textPrimaryColor, fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(color: textSecondaryColor, fontSize: 11),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  style: TextStyle(color: textPrimaryColor, fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC13584)),
-            onPressed: () {
-              Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Demande de retrait enregistrée.')),
-              );
-            },
-            child: const Text("Valider", style: TextStyle(color: Colors.white)),
+            onPressed: onAction,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: outlineButton ? Colors.transparent : actionColor,
+              foregroundColor: outlineButton ? textPrimaryColor : Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: outlineButton ? BorderSide(color: textSecondaryColor.withValues(alpha: 0.3)) : BorderSide.none,
+              ),
+            ),
+            child: Text(
+              buttonText,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -8314,6 +8653,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     required String date,
     required bool isPositive,
     required Color cardColor,
+    required Color borderColor,
     required Color textPrimaryColor,
     required Color textSecondaryColor,
   }) {
@@ -8322,8 +8662,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -8333,13 +8673,13 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: isPositive ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
+                  color: isPositive ? Colors.green.withValues(alpha: 0.08) : Colors.red.withValues(alpha: 0.08),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   isPositive ? Icons.add_rounded : Icons.remove_rounded,
                   color: isPositive ? Colors.green : Colors.red,
-                  size: 18,
+                  size: 16,
                 ),
               ),
               const SizedBox(width: 12),
@@ -8367,6 +8707,651 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
               const SizedBox(height: 2),
               Text(date, style: TextStyle(color: textSecondaryColor, fontSize: 10)),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDepositDialog(BuildContext context) {
+    final amountController = TextEditingController(text: "10.00");
+    String selectedCurrency = "USDT";
+    bool isLoading = false;
+    Map<String, dynamic>? paymentData;
+    String depositStatus = "pending";
+    String? errorMessage;
+    void Function(dynamic)? socketListener;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: widget.isDarkMode ? const Color(0xFF161618) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final isDark = widget.isDarkMode;
+            final textCol = isDark ? Colors.white : Colors.black;
+            final subCol = isDark ? Colors.white54 : Colors.black54;
+            final cardBg = isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03);
+            final borderCol = isDark ? Colors.white10 : Colors.black12;
+
+            if (paymentData != null && socketListener == null && widget.socket != null) {
+              final listener = (dynamic data) {
+                if (data != null && data['paymentId']?.toString() == paymentData!['paymentId']?.toString()) {
+                  final String? newType = data['type'];
+                  if (newType != null) {
+                    setSheetState(() {
+                      depositStatus = newType;
+                    });
+                    if (newType == 'confirmed') {
+                      _fetchBalances();
+                      _fetchTransactions();
+                    }
+                  }
+                }
+              };
+              socketListener = listener;
+              widget.socket!.on('deposit-status', listener);
+            }
+
+            return PopScope(
+              canPop: true,
+              onPopInvoked: (didPop) {
+                if (socketListener != null && widget.socket != null) {
+                  widget.socket!.off('deposit-status', socketListener);
+                }
+              },
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 20.0,
+                  right: 20.0,
+                  top: 20.0,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 20.0,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            paymentData == null ? "Recharger des pièces" : "Détails du dépôt",
+                            style: TextStyle(color: textCol, fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close_rounded, color: textCol),
+                            onPressed: () {
+                              if (socketListener != null && widget.socket != null) {
+                                widget.socket!.off('deposit-status', socketListener);
+                              }
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      if (paymentData == null) ...[
+                        Text(
+                          "Choisissez l'actif à envoyer puis générez une nouvelle adresse de paiement. Montant minimum : 6.00 USD.",
+                          style: TextStyle(color: subCol, fontSize: 12),
+                        ),
+                        const SizedBox(height: 20),
+
+                        Text(
+                          "Actif de dépôt",
+                          style: TextStyle(color: textCol, fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => setSheetState(() => selectedCurrency = "USDT"),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: selectedCurrency == "USDT"
+                                        ? const Color(0xFFFE2C55).withValues(alpha: 0.1)
+                                        : cardBg,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: selectedCurrency == "USDT"
+                                          ? const Color(0xFFFE2C55)
+                                          : borderCol,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.monetization_on_rounded, color: Colors.green, size: 20),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        "USDT (BEP-20)",
+                                        style: TextStyle(
+                                          color: textCol,
+                                          fontWeight: selectedCurrency == "USDT" ? FontWeight.bold : FontWeight.normal,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => setSheetState(() => selectedCurrency = "BNB"),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: selectedCurrency == "BNB"
+                                        ? const Color(0xFFFE2C55).withValues(alpha: 0.1)
+                                        : cardBg,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: selectedCurrency == "BNB"
+                                          ? const Color(0xFFFE2C55)
+                                          : borderCol,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.monetization_on_rounded, color: Color(0xFFFFB000), size: 20),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        "BNB (BSC)",
+                                        style: TextStyle(
+                                          color: textCol,
+                                          fontWeight: selectedCurrency == "BNB" ? FontWeight.bold : FontWeight.normal,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+
+                        Text(
+                          "Montant à créditer (USD)",
+                          style: TextStyle(color: textCol, fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: amountController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          style: TextStyle(color: textCol, fontWeight: FontWeight.bold, fontSize: 16),
+                          decoration: InputDecoration(
+                            hintText: "0.00",
+                            hintStyle: TextStyle(color: subCol),
+                            filled: true,
+                            fillColor: cardBg,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: borderCol),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFFFE2C55), width: 2),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [10, 25, 50, 100].map((amt) {
+                            return Expanded(
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(horizontal: 4),
+                                child: ActionChip(
+                                  label: Text(
+                                    "\$$amt",
+                                    style: TextStyle(color: textCol, fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                  backgroundColor: cardBg,
+                                  side: BorderSide(color: borderCol),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  onPressed: () {
+                                    setSheetState(() {
+                                      amountController.text = amt.toDouble().toStringAsFixed(2);
+                                    });
+                                  },
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 24),
+
+                        if (errorMessage != null) ...[
+                          Text(
+                            errorMessage!,
+                            style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFE2C55),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                              elevation: 0,
+                            ),
+                            onPressed: isLoading
+                                ? null
+                                : () async {
+                                    final amt = double.tryParse(amountController.text) ?? 0.0;
+                                    if (amt < 6.0) {
+                                      setSheetState(() {
+                                        errorMessage = "Le montant de dépôt minimum est de 6.00 USD.";
+                                      });
+                                      return;
+                                    }
+                                    setSheetState(() {
+                                      isLoading = true;
+                                      errorMessage = null;
+                                    });
+
+                                    try {
+                                      final response = await http.post(
+                                        Uri.parse('https://trasx.com/api/deposits/create'),
+                                        headers: {
+                                          'Content-Type': 'application/json',
+                                          'x-user-id': '${widget.userId}',
+                                        },
+                                        body: jsonEncode({
+                                          'amount': amt,
+                                          'currency': selectedCurrency,
+                                        }),
+                                      );
+                                      final data = jsonDecode(response.body);
+                                      if (response.statusCode == 200 && data['success'] == true) {
+                                        setSheetState(() {
+                                          paymentData = data;
+                                          depositStatus = data['paymentStatus'] ?? 'pending';
+                                          isLoading = false;
+                                        });
+                                      } else {
+                                        setSheetState(() {
+                                          errorMessage = data['error'] ?? "Le service est temporairement indisponible.";
+                                          isLoading = false;
+                                        });
+                                      }
+                                    } catch (e) {
+                                      setSheetState(() {
+                                        errorMessage = "Erreur de connexion au serveur.";
+                                        isLoading = false;
+                                      });
+                                    }
+                                  },
+                            child: isLoading
+                                ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                                : const Text(
+                                    "Générer le paiement",
+                                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                  ),
+                          ),
+                        ),
+                      ] else ...[
+                        Center(
+                          child: Column(
+                            children: [
+                              if (paymentData!['qrDataUrl'] != null && paymentData!['qrDataUrl'].isNotEmpty) ...[
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.1),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.memory(
+                                      const Base64Decoder().convert(paymentData!['qrDataUrl'].split(',').last),
+                                      width: 160,
+                                      height: 160,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: depositStatus == 'confirmed'
+                                      ? Colors.green.withValues(alpha: 0.1)
+                                      : (depositStatus == 'failed'
+                                          ? Colors.red.withValues(alpha: 0.1)
+                                          : Colors.blue.withValues(alpha: 0.1)),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: depositStatus == 'confirmed'
+                                        ? Colors.green
+                                        : (depositStatus == 'failed' ? Colors.red : Colors.blue),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (depositStatus != 'confirmed' && depositStatus != 'failed') ...[
+                                      const SizedBox(
+                                        width: 8,
+                                        height: 8,
+                                        child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.blue),
+                                      ),
+                                      const SizedBox(width: 8),
+                                    ],
+                                    Text(
+                                      depositStatus == 'confirmed'
+                                          ? "Confirmé et crédité !"
+                                          : (depositStatus == 'failed' ? "Échoué / Expiré" : "En attente de paiement..."),
+                                      style: TextStyle(
+                                        color: depositStatus == 'confirmed'
+                                            ? Colors.green
+                                            : (depositStatus == 'failed' ? Colors.red : Colors.blue),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              Text(
+                                "Envoyez exactement :",
+                                style: TextStyle(color: subCol, fontSize: 12),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                "${paymentData!['payAmount']} ${paymentData!['payCurrency']}",
+                                style: const TextStyle(color: Colors.green, fontSize: 22, fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 16),
+
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  "Adresse de dépôt (BEP-20)",
+                                  style: TextStyle(color: textCol, fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: cardBg,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: borderCol),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        paymentData!['payAddress'] ?? '',
+                                        style: TextStyle(
+                                          color: textCol,
+                                          fontSize: 12,
+                                          fontFamily: 'monospace',
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.copy_rounded, color: Color(0xFFFE2C55), size: 20),
+                                      onPressed: () {
+                                        Clipboard.setData(ClipboardData(text: paymentData!['payAddress'] ?? ''));
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Adresse copiée dans le presse-papiers.')),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+
+                              SizedBox(
+                                width: double.infinity,
+                                height: 44,
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    side: BorderSide(color: borderCol),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                                  ),
+                                  onPressed: isLoading
+                                      ? null
+                                      : () async {
+                                          setSheetState(() => isLoading = true);
+                                          try {
+                                            final double priceAmount = (double.tryParse('${paymentData!['priceAmount']}') ?? 10.0);
+                                            final response = await http.post(
+                                              Uri.parse('https://trasx.com/api/wallet/test-credit'),
+                                              headers: {
+                                                'Content-Type': 'application/json',
+                                                'x-user-id': '${widget.userId}',
+                                              },
+                                              body: jsonEncode({
+                                                'amount': priceAmount,
+                                                'type': 'deposit',
+                                              }),
+                                            );
+                                            if (response.statusCode == 200) {
+                                              setSheetState(() {
+                                                depositStatus = 'confirmed';
+                                                isLoading = false;
+                                              });
+                                              _fetchBalances();
+                                              _fetchTransactions();
+                                            } else {
+                                              setSheetState(() => isLoading = false);
+                                            }
+                                          } catch (e) {
+                                            setSheetState(() => isLoading = false);
+                                          }
+                                        },
+                                  child: isLoading
+                                      ? const CircularProgressIndicator(color: Color(0xFFFE2C55), strokeWidth: 2)
+                                      : Text(
+                                          "Mode Démo (Crédit Instantané)",
+                                          style: TextStyle(color: textCol, fontWeight: FontWeight.bold, fontSize: 13),
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+
+                              SizedBox(
+                                width: double.infinity,
+                                height: 44,
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFFE2C55),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                                  ),
+                                  onPressed: () {
+                                    if (socketListener != null && widget.socket != null) {
+                                      widget.socket!.off('deposit-status', socketListener);
+                                    }
+                                    Navigator.pop(context);
+                                  },
+                                  child: const Text(
+                                    "Fermer",
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showWithdrawDialog(BuildContext context) {
+    final amountController = TextEditingController();
+    final pinController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Retirer des fonds"),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                "Solde disponible : \$${_withdrawalBalance.toStringAsFixed(2)}",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                validator: (val) {
+                  final parsed = double.tryParse(val ?? '');
+                  if (parsed == null || parsed <= 0) return "Montant invalide";
+                  if (parsed > _withdrawalBalance) return "Solde insuffisant";
+                  if (parsed < 50) return "Minimum requis: 50 \$";
+                  return null;
+                },
+                decoration: const InputDecoration(
+                  labelText: "Montant à retirer (\$)",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: pinController,
+                keyboardType: TextInputType.number,
+                obscureText: true,
+                maxLength: 6,
+                validator: (val) => (val ?? '').length != 6 ? "PIN requis (6 chiffres)" : null,
+                decoration: const InputDecoration(
+                  labelText: "PIN secret de retrait",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Annuler"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
+            onPressed: () {
+              final amt = double.tryParse(amountController.text) ?? 0.0;
+              if (amt > 0 && amt <= _withdrawalBalance) {
+                Navigator.pop(context);
+                _triggerTestCredit(-amt, 'withdrawal');
+              }
+            },
+            child: const Text("Démo (Instant)", style: TextStyle(color: Colors.white)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFE2C55)),
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context);
+                _submitRealWithdrawal(double.parse(amountController.text), pinController.text);
+              }
+            },
+            child: const Text("Retirer", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submitRealWithdrawal(double amount, String pin) async {
+    try {
+      final response = await http.post(
+        Uri.parse('https://trasx.com/api/wallet/withdraw'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.userId}',
+        },
+        body: jsonEncode({
+          'amount': amount,
+          'pin': pin,
+        }),
+      );
+      final resData = jsonDecode(response.body);
+      if (response.statusCode == 200 && resData['success'] == true) {
+        _fetchBalances();
+        _fetchTransactions();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Demande de retrait transmise avec succès.')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(resData['error'] ?? 'Code secret ou solde invalide.')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erreur de connexion au serveur.')),
+      );
+    }
+  }
+
+  void _showSwapDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Échanger des \$TRASX"),
+        content: const Text("L'échange décentralisé (Swap) de jetons \$TRASX vers du BNB ou du BUSD est disponible via PancakeSwap. Connectez votre adresse de retrait BSC pour interagir directement."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Fermer")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFE2C55)),
+            onPressed: () {
+              Navigator.pop(context);
+              launchUrl(Uri.parse("https://pancakeswap.finance"));
+            },
+            child: const Text("Ouvrir PancakeSwap", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
