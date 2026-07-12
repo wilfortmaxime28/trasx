@@ -7003,7 +7003,10 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
   String _searchQuery = '';
   String? _errorMsg;
   final Set<int> _sentUserIds = {};
+  final Set<int> _selectedUserIds = {};
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _messageController = TextEditingController();
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -7014,6 +7017,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
   @override
   void dispose() {
     _searchController.dispose();
+    _messageController.dispose();
     super.dispose();
   }
 
@@ -7086,48 +7090,98 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     if (mounted) setState(() { _errorMsg = 'Endpoint introuvable (404)'; _isLoading = false; });
   }
 
-  void _sendPostToContact(dynamic contact) {
+  void _toggleContactSelection(dynamic contact) {
     final contactId = contact['id'] as int;
     if (_sentUserIds.contains(contactId)) return;
 
     setState(() {
-      _sentUserIds.add(contactId);
+      if (_selectedUserIds.contains(contactId)) {
+        _selectedUserIds.remove(contactId);
+      } else {
+        _selectedUserIds.add(contactId);
+      }
+    });
+  }
+
+  Future<void> _sendToSelectedUsers() async {
+    if (_selectedUserIds.isEmpty) return;
+
+    setState(() {
+      _isSending = true;
     });
 
-    http.post(
-      Uri.parse('https://trasx.com/api/posts/${widget.postId}/shares'),
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-id': '${widget.currentUserId}',
-      },
-      body: jsonEncode({
-        'recipientUserId': contactId,
-        'channel': 'social',
-      }),
-    ).then((response) {
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Partagé avec @${contact['username']} !'),
-              duration: const Duration(seconds: 1),
-              backgroundColor: const Color(0xFFC13584),
-            ),
-          );
-          SystemSound.play(SystemSoundType.click);
-          return;
+    final messageText = _messageController.text.trim();
+    int successCount = 0;
+    
+    // Copy the selected set to iterate
+    final selectedIds = List<int>.from(_selectedUserIds);
+
+    for (final contactId in selectedIds) {
+      try {
+        final response = await http.post(
+          Uri.parse('https://trasx.com/api/posts/${widget.postId}/shares'),
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': '${widget.currentUserId}',
+          },
+          body: jsonEncode({
+            'recipientUserId': contactId,
+            'channel': 'social',
+            'message': messageText.isNotEmpty ? messageText : null,
+          }),
+        ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data['success'] == true) {
+            successCount++;
+            setState(() {
+              _sentUserIds.add(contactId);
+              _selectedUserIds.remove(contactId);
+            });
+          }
         }
+      } catch (err) {
+        debugPrint('Error sending share to user $contactId: $err');
       }
-      setState(() {
-        _sentUserIds.remove(contactId);
-      });
-    }).catchError((err) {
-      debugPrint('Share API error: $err');
-      setState(() {
-        _sentUserIds.remove(contactId);
-      });
+    }
+
+    setState(() {
+      _isSending = false;
     });
+
+    if (successCount > 0) {
+      _messageController.clear();
+      
+      final dynamic contactMap = _contacts.firstWhere(
+        (c) => selectedIds.contains(c['id']), 
+        orElse: () => null
+      );
+      final String displayName = contactMap != null 
+          ? '@${contactMap['username']}' 
+          : '${selectedIds.length} amis';
+          
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(selectedIds.length == 1 
+              ? 'Partagé avec $displayName !' 
+              : 'Partagé avec ${selectedIds.length} amis !'),
+          duration: const Duration(seconds: 1),
+          backgroundColor: const Color(0xFFC13584),
+        ),
+      );
+      SystemSound.play(SystemSoundType.click);
+      
+      // Close the bottom sheet after sending
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Une erreur s'est produite lors du partage."),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   void _filterContacts(String query) {
@@ -7252,269 +7306,352 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     final cardBg = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
 
     final bottomInset = MediaQuery.of(context).padding.bottom;
-    return SafeArea(
-      top: false,
-      child: Container(
-      height: MediaQuery.of(context).size.height * 0.61,
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF121212) : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // Drag Handle
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white24 : Colors.black26,
-              borderRadius: BorderRadius.circular(2),
-            ),
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        top: false,
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.61,
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF121212) : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-            child: Text(
-              'Partager',
-              style: TextStyle(
-                color: textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Montserrat',
+          child: Column(
+            children: [
+              // Drag Handle
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : Colors.black26,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-          ),
-          // Search Box & Group Button
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: _filterContacts,
-                    style: TextStyle(color: textPrimary),
-                    decoration: InputDecoration(
-                      hintText: 'Rechercher',
-                      hintStyle: TextStyle(color: textSecondary, fontSize: 14),
-                      prefixIcon: Icon(CupertinoIcons.search, color: textSecondary, size: 20),
-                      fillColor: cardBg,
-                      filled: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                child: Text(
+                  'Partager',
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Montserrat',
+                  ),
+                ),
+              ),
+              // Search Box & Group Button
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: _filterContacts,
+                        style: TextStyle(color: textPrimary),
+                        decoration: InputDecoration(
+                          hintText: 'Rechercher',
+                          hintStyle: TextStyle(color: textSecondary, fontSize: 14),
+                          prefixIcon: Icon(CupertinoIcons.search, color: textSecondary, size: 20),
+                          fillColor: cardBg,
+                          filled: true,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: cardBg,
-                  ),
-                  child: IconButton(
-                    icon: Icon(Icons.group_add_outlined, color: textPrimary, size: 22),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Créer un groupe n'est pas encore disponible"),
-                          duration: Duration(seconds: 1),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Contacts List in Grid format (Instagram-style)
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFFC13584)))
-                : _filteredContacts.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(CupertinoIcons.person_2, color: textSecondary, size: 36),
-                            const SizedBox(height: 10),
-                            Text(
-                              _errorMsg != null
-                                  ? 'Erreur : $_errorMsg'
-                                  : 'Aucun abonné ou suivi trouvé',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: textSecondary, fontFamily: 'Montserrat', fontSize: 13),
-                            ),
-                            if (_errorMsg != null) ...
-                              [
-                                const SizedBox(height: 12),
-                                TextButton.icon(
-                                  onPressed: () { setState(() { _isLoading = true; _errorMsg = null; }); _fetchContacts(); },
-                                  icon: const Icon(Icons.refresh, size: 16),
-                                  label: const Text('Réessayer'),
-                                ),
-                              ],
-                          ],
-                        ),
-                      )
-                    : GridView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        physics: const BouncingScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 14,
-                          childAspectRatio: 0.78,
-                        ),
-                        itemCount: _filteredContacts.length,
-                        itemBuilder: (context, index) {
-                          final c = _filteredContacts[index];
-                          final int cid = c['id'];
-                          final bool isSent = _sentUserIds.contains(cid);
-                          final avatar = c['avatar'] as String?;
-                          final name = c['name'] ?? c['username'] ?? '';
-                          final username = c['username'] ?? '';
-
-                          return GestureDetector(
-                            onTap: isSent ? null : () => _sendPostToContact(c),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    if (c['is_mutual'] == true)
-                                      Container(
-                                        width: 62,
-                                        height: 62,
-                                        decoration: const BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          gradient: LinearGradient(
-                                            colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                          ),
-                                        ),
-                                      ),
-                                    buildPremiumAvatar(avatar, name.isNotEmpty ? name : username, radius: 27, fontSize: 15),
-                                    if (isSent)
-                                      Positioned(
-                                        right: 0,
-                                        bottom: 0,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(3),
-                                          decoration: const BoxDecoration(
-                                            color: Colors.green,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(
-                                            Icons.check,
-                                            color: Colors.white,
-                                            size: 12,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 2.0),
-                                  child: Text(
-                                    name,
-                                    maxLines: 1,
-                                    textAlign: TextAlign.center,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: textPrimary,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  isSent ? 'Envoyé' : 'Envoyer',
-                                  style: TextStyle(
-                                    color: isSent ? Colors.green : const Color(0xFFC13584),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
+                    const SizedBox(width: 10),
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: cardBg,
+                      ),
+                      child: IconButton(
+                        icon: Icon(Icons.group_add_outlined, color: textPrimary, size: 22),
+                        onPressed: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Créer un groupe n'est pas encore disponible"),
+                              duration: Duration(seconds: 1),
                             ),
                           );
                         },
                       ),
-          ),
-          const Divider(height: 1),
-          // Horizontal scrolling row of Action Buttons (Instagram-style)
-          Container(
-            height: 105,
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              physics: const BouncingScrollPhysics(),
-              children: [
-                _buildActionButton(
-                  customIcon: Image.network(
-                    'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/WhatsApp.svg/120px-WhatsApp.svg.png',
-                    width: 52,
-                    height: 52,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.chat_bubble, color: Colors.white),
-                  ),
-                  label: 'WhatsApp',
-                  color: Colors.transparent,
-                  onTap: _shareToWhatsApp,
-                ),
-                _buildActionButton(
-                  customIcon: ClipRRect(
-                    borderRadius: BorderRadius.circular(26),
-                    child: Container(
-                      width: 52,
-                      height: 52,
-                      color: const Color(0xFF128C7E),
-                      alignment: Alignment.center,
-                      child: Image.network(
-                        'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/WhatsApp.svg/120px-WhatsApp.svg.png',
-                        width: 32,
-                        height: 32,
-                        fit: BoxFit.contain,
-                        color: Colors.white,
-                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.chat_bubble_outline, color: Colors.white),
-                      ),
                     ),
+                  ],
+                ),
+              ),
+              // Contacts List in Grid format (Instagram-style)
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator(color: Color(0xFFC13584)))
+                    : _filteredContacts.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(CupertinoIcons.person_2, color: textSecondary, size: 36),
+                                const SizedBox(height: 10),
+                                Text(
+                                  _errorMsg != null
+                                      ? 'Erreur : $_errorMsg'
+                                      : 'Aucun abonné ou suivi trouvé',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: textSecondary, fontFamily: 'Montserrat', fontSize: 13),
+                                ),
+                                if (_errorMsg != null) ...
+                                  [
+                                    const SizedBox(height: 12),
+                                    TextButton.icon(
+                                      onPressed: () { setState(() { _isLoading = true; _errorMsg = null; }); _fetchContacts(); },
+                                      icon: const Icon(Icons.refresh, size: 16),
+                                      label: const Text('Réessayer'),
+                                    ),
+                                  ],
+                              ],
+                            ),
+                          )
+                        : GridView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            physics: const BouncingScrollPhysics(),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 4,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 14,
+                              childAspectRatio: 0.78,
+                            ),
+                            itemCount: _filteredContacts.length,
+                            itemBuilder: (context, index) {
+                              final c = _filteredContacts[index];
+                              final int cid = c['id'];
+                              final bool isSent = _sentUserIds.contains(cid);
+                              final bool isSelected = _selectedUserIds.contains(cid);
+                              final avatar = c['avatar'] as String?;
+                              final name = c['name'] ?? c['username'] ?? '';
+                              final username = c['username'] ?? '';
+
+                              return GestureDetector(
+                                onTap: isSent ? null : () => _toggleContactSelection(c),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        if (c['is_mutual'] == true)
+                                          Container(
+                                            width: 62,
+                                            height: 62,
+                                            decoration: const BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              gradient: LinearGradient(
+                                                colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
+                                                begin: Alignment.topLeft,
+                                                end: Alignment.bottomRight,
+                                              ),
+                                            ),
+                                          ),
+                                        buildPremiumAvatar(avatar, name.isNotEmpty ? name : username, radius: 27, fontSize: 15),
+                                        if (isSent)
+                                          Positioned(
+                                            right: 0,
+                                            bottom: 0,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(3),
+                                              decoration: const BoxDecoration(
+                                                color: Colors.green,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.check,
+                                                color: Colors.white,
+                                                size: 12,
+                                              ),
+                                            ),
+                                          ),
+                                        if (isSelected)
+                                          Positioned(
+                                            right: 0,
+                                            bottom: 0,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(3),
+                                              decoration: const BoxDecoration(
+                                                color: Colors.blue,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.check,
+                                                color: Colors.white,
+                                                size: 12,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                                      child: Text(
+                                        name,
+                                        maxLines: 1,
+                                        textAlign: TextAlign.center,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: textPrimary,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      isSent ? 'Envoyé' : (isSelected ? 'Sélectionné' : 'Envoyer'),
+                                      style: TextStyle(
+                                        color: isSent ? Colors.green : (isSelected ? Colors.blue : const Color(0xFFC13584)),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+              ),
+              const Divider(height: 1),
+              if (_selectedUserIds.isEmpty)
+                // Horizontal scrolling row of Action Buttons (Instagram-style)
+                Container(
+                  height: 105,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    physics: const BouncingScrollPhysics(),
+                    children: [
+                      _buildActionButton(
+                        customIcon: Image.network(
+                          'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/WhatsApp.svg/120px-WhatsApp.svg.png',
+                          width: 52,
+                          height: 52,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.chat_bubble, color: Colors.white),
+                        ),
+                        label: 'WhatsApp',
+                        color: Colors.transparent,
+                        onTap: _shareToWhatsApp,
+                      ),
+                      _buildActionButton(
+                        customIcon: ClipRRect(
+                          borderRadius: BorderRadius.circular(26),
+                          child: Container(
+                            width: 52,
+                            height: 52,
+                            color: const Color(0xFF128C7E),
+                            alignment: Alignment.center,
+                            child: Image.network(
+                              'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/WhatsApp.svg/120px-WhatsApp.svg.png',
+                              width: 32,
+                              height: 32,
+                              fit: BoxFit.contain,
+                              color: Colors.white,
+                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.chat_bubble_outline, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                        label: 'Statut',
+                        color: Colors.transparent,
+                        onTap: _shareToWhatsAppStatus,
+                      ),
+                      _buildActionButton(
+                        icon: CupertinoIcons.share,
+                        label: 'Partager',
+                        color: isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE2E2E2),
+                        iconColor: textPrimary,
+                        onTap: _shareExternally,
+                      ),
+                      _buildActionButton(
+                        icon: CupertinoIcons.link,
+                        label: 'Copier',
+                        color: isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE2E2E2),
+                        iconColor: textPrimary,
+                        onTap: _copyLink,
+                      ),
+                    ],
                   ),
-                  label: 'Statut',
-                  color: Colors.transparent,
-                  onTap: _shareToWhatsAppStatus,
+                )
+              else
+                // Message input & Envoyer Button Panel
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  color: isDark ? const Color(0xFF121212) : Colors.white,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Message TextField
+                      TextField(
+                        controller: _messageController,
+                        style: TextStyle(color: textPrimary),
+                        decoration: InputDecoration(
+                          hintText: 'Écrivez un message...',
+                          hintStyle: TextStyle(
+                            color: textSecondary.withOpacity(0.7),
+                            fontSize: 15,
+                            fontFamily: 'Montserrat',
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 8.0),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      // Envoyer Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton(
+                          onPressed: _isSending ? null : _sendToSelectedUsers,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF3897F0), // Instagram blue
+                            disabledBackgroundColor: const Color(0xFF3897F0).withOpacity(0.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: _isSending
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text(
+                                  'Envoyer',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'Montserrat',
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                _buildActionButton(
-                  icon: CupertinoIcons.share,
-                  label: 'Partager',
-                  color: isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE2E2E2),
-                  iconColor: textPrimary,
-                  onTap: _shareExternally,
-                ),
-                _buildActionButton(
-                  icon: CupertinoIcons.link,
-                  label: 'Copier',
-                  color: isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE2E2E2),
-                  iconColor: textPrimary,
-                  onTap: _copyLink,
-                ),
-              ],
-            ),
+              SizedBox(height: bottomInset),
+            ],
           ),
-          SizedBox(height: bottomInset),
-        ],
+        ),
       ),
-    ),
     );
   }
 }
