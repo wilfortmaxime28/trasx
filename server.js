@@ -330,6 +330,20 @@ async function ensureWithdrawalsSchema() {
         await db.query('ALTER TABLE users ADD COLUMN withdrawal_pin VARCHAR(255) NULL DEFAULT NULL AFTER wallet_address_updated_at');
       }
 
+      // Add kyc dispute columns to users table
+      const [disputeMsgCols] = await db.query('SHOW COLUMNS FROM users LIKE ?', ['kyc_dispute_message']);
+      if (!disputeMsgCols || disputeMsgCols.length === 0) {
+        await db.query('ALTER TABLE users ADD COLUMN kyc_dispute_message VARCHAR(1000) NULL DEFAULT NULL');
+      }
+      const [disputeStatusCols] = await db.query('SHOW COLUMNS FROM users LIKE ?', ['kyc_dispute_status']);
+      if (!disputeStatusCols || disputeStatusCols.length === 0) {
+        await db.query('ALTER TABLE users ADD COLUMN kyc_dispute_status VARCHAR(50) NULL DEFAULT NULL');
+      }
+      const [disputeResponseCols] = await db.query('SHOW COLUMNS FROM users LIKE ?', ['kyc_dispute_admin_response']);
+      if (!disputeResponseCols || disputeResponseCols.length === 0) {
+        await db.query('ALTER TABLE users ADD COLUMN kyc_dispute_admin_response VARCHAR(1000) NULL DEFAULT NULL');
+      }
+
       // 3. Create bsc_withdrawals table
       await db.query(`
         CREATE TABLE IF NOT EXISTS bsc_withdrawals (
@@ -3791,7 +3805,11 @@ app.get('/api/wallet/deposit-info', requireAuth, async (req, res) => {
         withdrawalConfirmationsRequired: 1,
         isFirstWithdrawal,
         hasPassedKyc,
-        kycStatus
+        kycStatus,
+        accountStatus: user?.account_status || 'Active',
+        kycDisputeStatus: user?.kyc_dispute_status || null,
+        kycDisputeMessage: user?.kyc_dispute_message || null,
+        kycDisputeAdminResponse: user?.kyc_dispute_admin_response || null
       });
     }
 
@@ -4078,21 +4096,38 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
     }
     
     if (isDuplicate && otherUserId) {
-      // Automatically block both accounts
-      await User.updateStatus(currentUserId, 'Blocked');
-      await User.updateStatus(otherUserId, 'Blocked');
+      // Automatically suspend both accounts with specific dispute access levels
+      // User A (otherUserId - original owner) -> KycBlockFirst (blocked but allowed to dispute)
+      // User B (currentUserId - current submitter) -> KycBlockSecond (blocked definitively)
+      await db.query("UPDATE users SET account_status = 'KycBlockFirst', kyc_dispute_status = NULL, kyc_dispute_message = NULL, kyc_dispute_admin_response = NULL WHERE id = ?", [otherUserId]);
+      await db.query("UPDATE users SET account_status = 'KycBlockSecond', kyc_dispute_status = NULL, kyc_dispute_message = NULL, kyc_dispute_admin_response = NULL WHERE id = ?", [currentUserId]);
       
-      // Grant dispute permission ONLY to the other (original) account
-      await db.query('UPDATE users SET allow_dispute = 1 WHERE id = ?', [otherUserId]);
-      await db.query('UPDATE users SET allow_dispute = 0 WHERE id = ?', [currentUserId]);
-      
-      // Clear session of current user
-      req.session.destroy();
-      
-      return res.json({
-        success: false,
-        duplicateBlocked: true,
-        error: "Votre compte a été bloqué pour cause de conflit de KYC avec un autre utilisateur."
+      // Save this failed KYC request
+      await db.query(
+        `INSERT INTO kyc_requests (user_id, request_type, status, verification_notes, reviewed_at) 
+         VALUES (?, 'withdrawal', 'rejected', ?, NOW())`,
+        [currentUserId, `Double KYC détecté avec le compte ID ${otherUserId}`]
+      );
+
+      // Emit real-time status update to both rooms!
+      const io = req.app.get('socketio') || global.io;
+      if (io) {
+        io.to(`user:${otherUserId}`).emit('account-status-changed', {
+          accountStatus: 'KycBlockFirst',
+          kycStatus: 'rejected',
+          message: "Double KYC détecté. Votre compte a été suspendu par sécurité."
+        });
+        io.to(`user:${currentUserId}`).emit('account-status-changed', {
+          accountStatus: 'KycBlockSecond',
+          kycStatus: 'rejected',
+          message: "Double KYC détecté. Votre compte a été bloqué définitivement."
+        });
+      }
+
+      return res.status(400).json({ 
+        success: false, 
+        error: "Double KYC détecté. Votre compte a été suspendu pour des raisons de sécurité.",
+        accountStatus: 'KycBlockSecond'
       });
     }
 
@@ -4256,6 +4291,109 @@ app.post('/api/wallet/setup-pin', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Error setting withdrawal pin:', err);
     res.status(500).json({ success: false, error: 'Erreur lors de la configuration du code secret.' });
+  }
+});
+
+app.post('/api/wallet/kyc-dispute', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    const { message } = req.body;
+    if (!message || message.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'Veuillez saisir un message explicatif.' });
+    }
+
+    const [userRows] = await db.query('SELECT account_status FROM users WHERE id = ?', [userId]);
+    const user = userRows[0];
+    if (!user || user.account_status !== 'KycBlockFirst') {
+      return res.status(403).json({ success: false, error: 'Votre compte n\'est pas éligible à la soumission d\'un litige.' });
+    }
+
+    await db.query(
+      `UPDATE users 
+       SET kyc_dispute_status = 'pending', 
+           kyc_dispute_message = ?, 
+           kyc_dispute_admin_response = NULL 
+       WHERE id = ?`,
+      [message.trim(), userId]
+    );
+
+    const io = req.app.get('socketio') || global.io;
+    if (io) {
+      io.to(`user:${userId}`).emit('kyc-dispute-updated', {
+        kycDisputeStatus: 'pending',
+        kycDisputeMessage: message.trim(),
+        kycDisputeAdminResponse: null
+      });
+      io.to(`user:${userId}`).emit('account-status-changed', {
+        accountStatus: 'KycBlockFirst',
+        kycStatus: 'rejected',
+        kycDisputeStatus: 'pending',
+        kycDisputeMessage: message.trim()
+      });
+    }
+
+    res.json({ success: true, message: 'Votre litige a été soumis avec succès.' });
+  } catch (err) {
+    console.error('Error submitting KYC dispute:', err);
+    res.status(500).json({ success: false, error: 'Erreur serveur lors de la soumission.' });
+  }
+});
+
+app.post('/api/admin/kyc-dispute/resolve', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { targetUserId, action, adminResponse } = req.body;
+    if (!targetUserId || !action || !['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ success: false, error: 'Paramètres invalides.' });
+    }
+
+    const [userRows] = await db.query('SELECT account_status FROM users WHERE id = ?', [targetUserId]);
+    const user = userRows[0];
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
+    }
+
+    const newStatus = action === 'approve' ? 'Active' : 'KycBlockFirst';
+    const newKycStatus = action === 'approve' ? 'approved' : 'rejected';
+    const disputeStatus = action === 'approve' ? 'resolved' : 'rejected';
+
+    await db.query(
+      `UPDATE users 
+       SET account_status = ?, 
+           kyc_dispute_status = ?, 
+           kyc_dispute_admin_response = ? 
+       WHERE id = ?`,
+      [newStatus, disputeStatus, adminResponse || null, targetUserId]
+    );
+
+    if (action === 'approve') {
+      await db.query(
+        "UPDATE kyc_requests SET status = 'approved', verification_notes = 'Approuvé suite à litige' WHERE user_id = ? AND request_type = 'withdrawal' ORDER BY id DESC LIMIT 1",
+        [targetUserId]
+      );
+    } else {
+      await db.query(
+        "UPDATE kyc_requests SET status = 'rejected', verification_notes = ? WHERE user_id = ? AND request_type = 'withdrawal' ORDER BY id DESC LIMIT 1",
+        [adminResponse || 'Rejeté par administration', targetUserId]
+      );
+    }
+
+    const io = req.app.get('socketio') || global.io;
+    if (io) {
+      io.to(`user:${targetUserId}`).emit('account-status-changed', {
+        accountStatus: newStatus,
+        kycStatus: newKycStatus,
+        kycDisputeStatus: disputeStatus,
+        kycDisputeAdminResponse: adminResponse || null,
+        message: action === 'approve' 
+          ? "Félicitations ! Votre litige a été accepté et votre compte a été réactivé."
+          : `Litige rejeté. Motif : ${adminResponse || ''}`
+      });
+    }
+
+    res.json({ success: true, message: `Litige traité avec succès. Résultat : ${action}.` });
+  } catch (err) {
+    console.error('Error resolving KYC dispute:', err);
+    res.status(500).json({ success: false, error: 'Erreur serveur lors de la résolution du litige.' });
   }
 });
 
