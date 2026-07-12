@@ -1,0 +1,205 @@
+<%
+  const notificationItems = (typeof notifications !== 'undefined' && Array.isArray(notifications)) ? notifications : [];
+  const unreadCount = Number(typeof unreadNotificationCount !== 'undefined' ? unreadNotificationCount : 0);
+%>
+  <!-- Responsive Mobile Topbar (Sticky on Mobile) -->
+  <header class="mobile-header">
+    <div class="mobile-logo">
+      <div class="logo-icon"></div>
+      <span>TrasX</span>
+    </div>
+    <div class="mobile-header-actions" style="display: flex; align-items: center; gap: 12px;">
+      <button class="icon-btn mobile-search-btn" id="mobileSearchBtn" aria-label="<%= tText("Search") %>" style="width: 36px; height: 36px;">
+        <i data-lucide="search" style="width: 18px; height: 18px;"></i>
+      </button>
+      <button class="icon-btn mobile-notification-btn" aria-label="<%= t('header.notifications', 'Notifications') %>" data-notification-toggle>
+        <i data-lucide="bell"></i>
+        <span class="badge red notification-badge" style="<%= unreadCount > 0 ? '' : 'display:none;' %>"><%= unreadCount > 99 ? '99+' : unreadCount %></span>
+      </button>
+      <button class="icon-btn theme-toggle-btn" aria-label="<%= tText("Toggle Dark Mode") %>" id="mobileThemeToggleBtn" style="width: 36px; height: 36px;">
+        <i data-lucide="moon" class="theme-icon-moon" style="width: 18px; height: 18px;"></i>
+        <i data-lucide="sun" class="theme-icon-sun" style="width: 18px; height: 18px;"></i>
+      </button>
+      <button class="mobile-menu-toggle" id="menuToggle" aria-label="<%= tText("Toggle Navigation") %>">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- iOS PWA Install Banner -->
+  <div id="iosPwaBanner" class="ios-pwa-banner" style="display: none;">
+    <div class="ios-pwa-banner-content">
+      <div class="ios-pwa-logo"><div class="logo-icon" style="width:36px;height:36px;"></div></div>
+      <div class="ios-pwa-text">
+        <strong>Installer TrasX</strong>
+        <span>Appuyez sur <i data-lucide="share" style="width:13px;height:13px;display:inline-block;vertical-align:middle;"></i> puis "Sur l'écran d'accueil"</span>
+      </div>
+      <button id="iosPwaBannerClose" class="ios-pwa-close" aria-label="Fermer">
+        <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile Search Overlay -->
+  <div id="mobileSearchOverlay" class="mobile-search-overlay" role="dialog" aria-label="<%= tText("Search") %>" aria-modal="true">
+    <div class="mobile-search-header">
+      <div class="mobile-search-input-wrapper">
+        <i data-lucide="search" class="mobile-search-icon"></i>
+        <input type="text" id="mobileSearchInput" class="mobile-search-input" placeholder="<%= tText("Search posts...") %>" autocomplete="off" autocorrect="off" spellcheck="false">
+        <button id="mobileSearchClear" class="mobile-search-clear" style="display:none;" aria-label="Effacer">
+          <i data-lucide="x" style="width:16px;height:16px;"></i>
+        </button>
+      </div>
+      <button id="mobileSearchCancel" class="mobile-search-cancel"><%= tText("Cancel") %></button>
+    </div>
+    <div id="mobileSearchResults" class="mobile-search-results">
+      <div class="mobile-search-placeholder">
+        <i data-lucide="search" style="width: 40px; height: 40px; opacity: 0.3;"></i>
+        <p><%= tText("Search for posts") %></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo">
+        <div class="logo-icon"></div>
+        <span>TrasX</span>
+      </div>
+      <div class="search-bar">
+        <i data-lucide="search" class="search-icon"></i>
+        <input type="text" placeholder="<%= t('header.searchPlaceholder', 'Search') %>" aria-label="<%= tText("Search posts") %>">
+        <button type="button" class="header-search-emoji-btn emoji-trigger-btn" title="<%= tText("Add emoji") %>">😊</button>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <button type="button" class="desktop-live-create-btn" id="desktopLiveCreateBtn" title="<%= tText("Go Live") %>">
+        <i data-lucide="video"></i>
+        <span><%= tText("Go Live") %></span>
+      </button>
+      <button type="button" class="desktop-short-create-btn" data-open-short-create title="<%= tText("Add Short") %>">
+        <i data-lucide="plus"></i>
+        <span><%= tText("Add Short") %></span>
+      </button>
+      <div style="position: relative;">
+        <button class="icon-btn" aria-label="<%= t('header.notifications', 'Notifications') %>" id="notificationBtn" data-notification-toggle>
+          <i data-lucide="bell"></i>
+          <span class="badge red notification-badge" id="notificationBadge" style="<%= unreadCount > 0 ? '' : 'display:none;' %>"><%= unreadCount > 99 ? '99+' : unreadCount %></span>
+        </button>
+      </div>
+      <button class="icon-btn" aria-label="<%= t('nav.bookmarks', 'Bookmarks') %>" id="bookmarkBtn">
+        <i data-lucide="bookmark"></i>
+      </button>
+      <button class="icon-btn theme-toggle-btn" aria-label="<%= tText("Toggle Dark Mode") %>" id="themeToggleBtn">
+        <i data-lucide="moon" class="theme-icon-moon"></i>
+        <i data-lucide="sun" class="theme-icon-sun"></i>
+      </button>
+      
+      <div class="profile-dropdown" id="profileDropdownBtn">
+        <div class="avatar header-avatar">
+          <img src="<%= currentUser.avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= currentUser.name %>" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+        </div>
+        <span class="profile-name"><%= currentUser.name %></span>
+        <i data-lucide="chevron-down" class="dropdown-arrow"></i>
+        
+        <!-- Dropdown menu -->
+        <div class="dropdown-menu" id="profileDropdownMenu">
+          <a href="/profile"><i data-lucide="user"></i> <%= t('header.myProfile', 'My Profile') %></a>
+          <a href="/settings"><i data-lucide="settings"></i> <%= t('header.settings', 'Settings') %></a>
+          <a href="/auth/logout"><i data-lucide="log-out"></i> <%= t('header.logOut', 'Log Out') %></a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Notifications Dropdown (Outside headers so it remains visible when toggled on mobile) -->
+  <div class="dropdown-menu notifications-dropdown-panel" id="notificationsDropdown" style="width: 320px; right: 0; padding: 12px 0; display: none; position: absolute; top: 50px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-item); box-shadow: var(--shadow-lg); z-index: 2200;">
+    <div style="padding: 0 16px 10px 16px; border-bottom: 1px solid var(--border-color); font-weight: 700; font-size: 14px; display: flex; justify-content: space-between; align-items: center;">
+      <span style="color: var(--text-primary);"><%= t('header.notifications', 'Notifications') %></span>
+      <button id="markAllReadBtn" style="font-size: 11px; color: var(--primary); font-weight: 600; cursor: pointer;"><%= t('header.markAllRead', 'Mark all as read') %></button>
+    </div>
+    <div id="notificationItemsList" style="max-height: 250px; overflow-y: auto;">
+      <% if (notificationItems.length > 0) { %>
+        <% notificationItems.forEach((notification) => { %>
+          <div class="notification-item <%= notification.is_read ? '' : 'is-unread' %>" data-notification-id="<%= notification.id %>" data-ad-url="<%= notification.ad_url || '' %>" data-post-id="<%= notification.post_id || '' %>" data-comment-id="<%= notification.comment_id || '' %>" data-post-content="<%= notification.post_content || '' %>" data-status-id="<%= notification.status_id || '' %>" data-status-media-url="<%= notification.status_media_url || '' %>" data-status-media-type="<%= notification.status_media_type || '' %>" data-status-caption="<%= notification.status_caption || '' %>" data-status-bg-color="<%= notification.status_bg_color || '' %>" data-type="<%= notification.type %>" data-actor-username="<%= notification.actor_username || '' %>" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; <%= notification.is_read ? '' : 'background: rgba(59, 130, 246, 0.06);' %>">
+            <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0; overflow: hidden;">
+              <img src="<%= notification.actor_avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= notification.actor_name %>" style="width: 100%; height: 100%; object-fit: cover;">
+            </div>
+            <div style="font-size: 12.5px; line-height: 1.35; color: var(--text-secondary); flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+              <strong style="color: var(--text-primary);"><%= notification.actor_name %></strong>
+              <span><%= notification.message %></span>
+              <% if (notification.post_id && notification.post_content) { %>
+                <div class="notification-post-quote" style="margin-top: 6px; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid var(--primary, #3b82f6); border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<%= notification.post_content %>">
+                  <strong>Statut :</strong> <span><%= notification.post_content %></span>
+                </div>
+              <% } %>
+              <% if (notification.status_id) { %>
+                <% 
+                  let sCaption = notification.status_caption || '';
+                  let sMediaType = notification.status_media_type || 'text';
+                  let sMediaUrl = notification.status_media_url || '';
+                  let sBgColor = notification.status_bg_color || 'var(--primary)';
+                  let previewStr = sMediaType !== 'text' ? (sCaption || '[Statut média]') : sCaption;
+                %>
+                <div class="notification-status-quote" style="margin-top: 6px; display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--bg-hover, rgba(0, 0, 0, 0.03)); border-left: 3px solid #10b981; border-radius: 4px; font-size: 11px; color: var(--text-secondary); max-width: 100%; box-sizing: border-box;">
+                  <div style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <strong>Statut concerné :</strong> <span><%= previewStr %></span>
+                  </div>
+                  <% if (sMediaType && sMediaType.startsWith('image/') && sMediaUrl) { %>
+                    <img src="<%= sMediaUrl %>" style="width: 24px; height: 24px; object-fit: cover; border-radius: 3px; flex-shrink: 0;" />
+                  <% } else if (sMediaType && sMediaType.startsWith('video/') && sMediaUrl) { %>
+                    <div style="position: relative; width: 24px; height: 24px; border-radius: 3px; background: #000; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                      <video src="<%= sMediaUrl %>" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.8;"></video>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="position: absolute; color: white;"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+                    </div>
+                  <% } else if (sMediaType === 'text') { %>
+                    <div style="width: 24px; height: 24px; border-radius: 3px; background: <%= sBgColor %>; color: #fff; font-size: 6px; line-height: 1.1; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 1px; text-align: center; font-weight: bold; flex-shrink: 0; word-break: break-all;">
+                      <%= sCaption.substring(0, 8) %>
+                    </div>
+                  <% } %>
+                </div>
+              <% } %>
+              <% if (notification.ad_image_url) { %>
+                <div style="margin-top: 6px; width: 100%; max-width: 180px; height: 55px; border-radius: 6px; overflow: hidden; background: #000;">
+                  <img src="<%= notification.ad_image_url %>" alt="Banner" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+              <% } %>
+              <div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;"><%= new Date(notification.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) %></div>
+            </div>
+          </div>
+        <% }) %>
+      <% } else { %>
+        <div data-notification-empty style="padding: 22px 16px; text-align: center; color: var(--text-muted); font-size: 13px;">
+          <%= t('header.noNotifications', 'No notifications yet.') %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+  
+  <script>
+    <% if (typeof currentUser !== 'undefined' && currentUser) { %>
+      window.currentUserId = <%= currentUser.id %>;
+      window.currentUsername = "<%= currentUser.username %>";
+      window.currentUserAvatar = "<%= currentUser.avatar || '/assets/avatar_placeholder.jpg' %>";
+    <% } %>
+  </script>
+
+  <script>
+    // Gestionnaire global : si une image avatar échoue, afficher le placeholder
+    document.addEventListener('error', function(e) {
+      const target = e.target;
+      if (target.tagName === 'IMG' && target.src && !target.src.includes('avatar_placeholder')) {
+        const classList = target.className || '';
+        const parentClass = (target.parentElement && target.parentElement.className) || '';
+        const isAvatar = classList.includes('avatar') || classList.includes('profile-avatar')
+          || parentClass.includes('avatar') || target.alt === 'Avatar'
+          || target.closest && target.closest('.avatar, .header-avatar, .profile-avatar-wrapper');
+        if (isAvatar) {
+          target.onerror = null;
+          target.src = '/assets/avatar_placeholder.jpg';
+        }
+      }
+    }, true);
+  </script>

@@ -1,0 +1,114 @@
+      <!-- Left Sidebar -->
+      <aside class="sidebar left-sidebar" id="leftSidebar">
+        <!-- User Profile Card -->
+        <div class="profile-card">
+          <div class="profile-card-header">
+            <div class="avatar card-avatar">
+              <img src="<%= currentUser.avatar || '/assets/avatar_placeholder.jpg' %>" alt="<%= currentUser.first_name %>" onerror="this.onerror=null;this.src='/assets/avatar_placeholder.jpg';">
+            </div>
+            <div class="profile-card-info">
+              <h2 class="profile-card-name">
+                <%= currentUser.first_name %> <%= currentUser.last_name %>
+                <span class="verified-badge" title="<%= currentUser.certification_type %>" data-type="<%= currentUser.certification_type %>">
+                  <i data-lucide="badge-check"></i>
+                </span>
+              </h2>
+              <span class="profile-card-handle">@<%= String(currentUser.username || 'unknown').trim().replace(/^@+/, '') %></span>
+            </div>
+          </div>
+          
+          <div class="profile-stats">
+            <div class="stat-item">
+              <span class="stat-value" data-follow-stat="followers"><%= typeof followersCount !== 'undefined' ? formatNumber(followersCount) : 0 %></span>
+              <span class="stat-label">Followers</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value" data-follow-stat="following"><%= typeof followingCount !== 'undefined' ? formatNumber(followingCount) : 0 %></span>
+              <span class="stat-label">Following</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-value"><%= typeof totalLikesCount !== 'undefined' ? formatNumber(totalLikesCount) : 0 %></span>
+              <span class="stat-label">Likes</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sidebar Navigation Menu -->
+        <nav class="sidebar-nav">
+          <a href="/" class="nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'feed' ? 'active' : (typeof activeTab === 'undefined' ? 'active' : '') %>" data-nav-action="feed">
+            <i data-lucide="home"></i>
+            <span><%= t('nav.feed', 'Feed') %></span>
+          </a>
+          <a href="/profile" class="nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'profile' ? 'active' : '' %>" data-nav-action="profile">
+            <i data-lucide="user"></i>
+            <span><%= t('nav.profile', 'My Profile') %></span>
+          </a>
+          <a href="/?view=shorts" class="nav-item" id="shortsSidebarBtn" data-nav-action="shorts">
+            <i data-lucide="clapperboard"></i>
+            <span><%= t('nav.shorts', 'Shorts') %></span>
+          </a>
+          <a href="/?view=market" class="nav-item" data-nav-action="market">
+            <i data-lucide="hand-coins"></i>
+            <span><%= tText("P2P Market") %></span>
+          </a>
+          <a href="/?view=bookmarks" class="nav-item" id="bookmarksSidebarBtn" data-nav-action="bookmarks">
+            <i data-lucide="bookmark"></i>
+            <span><%= t('nav.bookmarks', 'Bookmarks') %></span>
+          </a>
+          <a href="/?view=games" class="nav-item" id="gamesSidebarBtn" data-nav-action="games">
+            <i data-lucide="gamepad-2"></i>
+            <span><%= t('nav.games', 'Jeux') %></span>
+          </a>
+          <a href="/events" class="nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'events' ? 'active' : '' %>" data-nav-action="events">
+            <i data-lucide="calendar"></i>
+            <span><%= t('nav.events', 'Events') %></span>
+          </a>
+          <a href="/settings" class="nav-item <%= typeof activeTab !== 'undefined' && activeTab === 'settings' ? 'active' : '' %>" data-nav-action="settings">
+            <i data-lucide="settings"></i>
+            <span><%= t('nav.settings', 'Settings') %></span>
+          </a>
+          <a href="/auth/logout" class="nav-item" style="color: var(--danger);">
+            <i data-lucide="log-out"></i>
+            <span><%= t('nav.logout', 'Logout') %></span>
+          </a>
+        </nav>
+
+        <!-- Sidebar Ad Slot (especially visible on mobile/sidebar) -->
+        <div class="sidebar-ad-wrapper" style="padding: 0 15px; margin: 15px 0 10px;">
+          <% if (typeof activeAds !== 'undefined' && activeAds.length > 0) { %>
+            <% const sidebarAd = activeAds[0]; %>
+            <a href="<%= sidebarAd.ad_url %>" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit; display: block; background: var(--bg-card); border: 1px solid rgba(24, 119, 242, 0.2); border-radius: 12px; padding: 12px; box-shadow: var(--shadow-sm); overflow: hidden; transition: transform var(--transition-fast);">
+              <span style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 6px;">Sponsorisé</span>
+              <% if (sidebarAd.image_url) { %>
+                <div style="width: 100%; height: 90px; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 8px;">
+                  <img src="<%= sidebarAd.image_url %>" alt="<%= sidebarAd.title %>" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+              <% } %>
+              <h4 style="margin: 0; font-size: 12px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><%= sidebarAd.title %></h4>
+              <p style="margin: 2px 0 0 0; font-size: 11px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3;"><%= sidebarAd.description %></p>
+            </a>
+          <% } else { %>
+            <a href="#" class="sidebar-ad-placeholder-btn" title="<%= typeof tText === 'function' ? tText('Create Ad') : 'Create Ad' %>" aria-label="<%= typeof tText === 'function' ? tText('Create Ad') : 'Create Ad' %>" style="text-decoration: none; color: inherit; display: block; background: var(--bg-card); border: 1px dashed rgba(24, 119, 242, 0.3); border-radius: 12px; padding: 12px; box-shadow: var(--shadow-sm); overflow: hidden; transition: transform var(--transition-fast); text-align: center;">
+              <div style="width: 100%; height: 80px; border-radius: 8px; overflow: hidden; background: linear-gradient(135deg, #1877f2 0%, #38bdf8 100%); display: flex; align-items: center; justify-content: center; color: white; margin-bottom: 8px;">
+                <i data-lucide="megaphone" style="width: 22px; height: 22px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));"></i>
+              </div>
+              <h4 style="margin: 0; font-size: 12px; font-weight: 700; color: var(--text-primary);"><%= typeof tText === 'function' ? tText("Create your self-serve Ad") : "Créer votre publicité" %></h4>
+              <p style="margin: 2px 0 0 0; font-size: 10px; color: var(--text-secondary); line-height: 1.3;"><%= typeof tText === 'function' ? tText("Get visibility and direct traffic to your website.") : "Gagnez en visibilité et attirez du trafic." %></p>
+              <span style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; min-height: 34px; padding: 0 14px; border-radius: 999px; background: var(--primary); color: #fff; font-size: 11px; font-weight: 700; box-shadow: 0 10px 24px rgba(24, 119, 242, 0.18);">
+                <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
+                <span><%= typeof tText === 'function' ? tText("Create Ad") : "Create Ad" %></span>
+              </span>
+            </a>
+          <% } %>
+        </div>
+
+        <!-- Sidebar Footer -->
+        <footer class="sidebar-footer">
+          <div class="footer-links">
+            <a href="/auth/terms"><%= t('sidebar.privacyTerms', 'Privacy terms') %></a>
+            <a href="#"><%= t('sidebar.advertising', 'Advertising') %></a>
+            <a href="#"><%= t('sidebar.cookies', 'Cookies') %></a>
+          </div>
+          <p class="copyright"><%= tText("Platform &copy; 2026") %></p>
+        </footer>
+      </aside>

@@ -1,0 +1,2397 @@
+# Public Hardcoded Texts Report
+
+Generated at: 2026-06-20T17:05:07.603Z
+Scope: Public platform only (admin views/controllers excluded)
+Files with findings: 47
+Total findings: 2247
+
+## Files
+
+### public/js/client.js (836)
+
+- L126 [string-literal] 1 jour
+- L180 [string-literal] Complétez le titre, la description, le lien et la durée.
+- L190 [string-literal] Entrez une URL valide, par exemple https://votre-site.com.
+- L198 [string-literal] Ajoutez une image publicitaire avant de publier.
+- L207 [string-literal] Envoi en cours...
+- L231 [string-literal] Une erreur est survenue lors de la création de la publicité.
+- L235 [string-literal] Ad submit error:
+- L236 [string-literal] Une erreur réseau est survenue.
+- L289 [string-literal] this user
+- L294 [string-literal] Reply to 's voice note...
+- L295 [string-literal] Reply to 's text comment...
+- L349 [string-literal] application/json
+- L355 [string-literal] Impossible de mettre à jour cet abonnement.
+- L386 [string-literal] Start a conversation...
+- L399 [string-literal] message-request-action accept
+- L400 [string-literal] message-request-action decline
+- L408 [string-literal] width: 36px; height: 36px;
+- L413 [string-literal] flex: 1; min-width: 0;
+- L422 [string-literal] width: 14px; height: 14px;
+- L467 [string-literal] Start a conversation...
+- L476 [string-literal] Online now
+- L494 [string-literal] message-request-action accept
+- L495 [string-literal] message-request-action decline
+- L577 [string-literal] application/json
+- L582 [string-literal] Impossible de traiter cette demande.
+- L630 [string-literal] image/
+- L631 [string-literal] video/
+- L632 [string-literal] audio/
+- L650 [string-literal] Voice note
+- L656 [string-literal] Start a conversation...
+- L667 [string-literal] Puissance 4
+- L667 [string-literal] Football Table
+- L669 [string-literal] 🎮 Invitation :
+- L677 [string-literal] Sent an image
+- L678 [string-literal] Sent a video
+- L680 [string-literal] Voice note
+- L681 [string-literal] Sent a voice note
+- L684 [string-literal] Sent a file
+- L685 [string-literal] Sent an attachment
+- L712 [string-literal] voice-note-player chat-voice-note-player
+- L722 [string-literal] display:none;
+- L730 [string-literal] min-width: 0; flex: 1;
+- L732 [string-literal] font-size: 10px; color: var(--text-muted);
+- L749 [string-literal] chat-msg-status sent
+- L750 [string-literal] width: 11px; height: 11px;
+- L757 [string-literal] width: 11px; height: 11px;
+- L758 [string-literal] width: 11px; height: 11px;
+- L899 [string-literal] Morpion (Tic-Tac-Toe)
+- L899 [string-literal] Puissance 4
+- L899 [string-literal] Football Table
+- L902 [string-literal] Payant ( $)
+- L916 [string-literal] Partie acceptée !
+- L919 [string-literal] margin-top: 12px;
+- L925 [string-literal] Invitation refusée.
+- L927 [string-literal] Invitation expirée.
+- L929 [string-literal] En attente de réponse...
+- L948 [string-literal] chat-msg-bubble game-invite-card
+- L951 [string-literal] width: 18px; height: 18px;
+- L955 [string-literal] font-size: 12px; color: var(--text-muted);
+- L959 [string-literal] Salut ! Je te propose de faire une partie de jeu. Tu es partant ?
+- L961 [string-literal] font-size: 12.5px; color: var(--text-secondary);
+- L985 [string-literal] Invitation expirée.
+- L986 [string-literal] Invitation expirée.
+- L1034 [string-literal] audio/webm;codecs=opus
+- L1035 [string-literal] audio/webm
+- L1036 [string-literal] audio/mp4
+- L1037 [string-literal] audio/ogg;codecs=opus
+- L1038 [string-literal] audio/ogg
+- L1039 [string-literal] audio/wav
+- L1044 [string-literal] audio/webm
+- L1054 [string-literal] Video files must not exceed 100 MB.
+- L1055 [string-literal] Files must not exceed 25 MB.
+- L1069 [string-literal] Unable to upload file.
+- L1078 [string-literal] Online now
+- L1090 [string-literal] Online now
+- L1139 [string-literal] ce short
+- L1139 [string-literal] ce poste
+- L1140 [string-literal] ce prix
+- L1142 [string-literal] Est-ce que vous voulez vraiment trader au prix actuel de ? Votre solde de depot actuel est . Si le prochain prix baisse, la difference est convertie en tokens selon le prix actuel du token.
+- L1154 [string-literal] Trader ?
+- L1158 [string-literal] Trader ?
+- L1160 [string-literal] Oui, trader
+- L1211 [string-literal] Impossible de verifier votre solde pour ce trade.
+- L1243 [string-literal] Reel trade click error:
+- L1314 [string-literal] Trade Short demande 5 tokens. Solde disponible: tokens.
+- L1337 [string-literal] Solde insuffisant pour activer Trade Short.
+- L1367 [string-literal] grayscale(1)
+- L1457 [string-literal] 4px 0
+- L1462 [string-literal] Show more comments
+- L1469 [string-literal] Show more comments
+- L1491 [string-literal] Show more replies
+- L1527 [string-literal] Aucun fichier choisi
+- L1528 [string-literal] Ningún archivo seleccionado
+- L1529 [string-literal] No file chosen
+- L1586 [string-literal] Cliquez sur le micro pour démarrer
+- L1586 [string-literal] Click mic to start
+- L1719 [string-literal] audio/
+- L1742 [string-literal] fill:white; width:16px;
+- L1746 [string-literal] font-size: 10px; font-family: monospace;
+- L1798 [string-literal] video/
+- L1945 [string-literal] Sélectionnez une image ou une vidéo pour l’aperçu.
+- L1947 [string-literal] Selecciona una imagen o un video para la vista previa.
+- L1957 [string-literal] video/
+- L1966 [string-literal] font-family: monospace; font-size: 11px;
+- L2150 [string-literal] url(#statusRingGradient- )
+- L2223 [string-literal] Preparing download...
+- L2264 [string-literal] video/mp4;codecs="avc1.42E01E,mp4a.40.2"
+- L2265 [string-literal] video/mp4
+- L2266 [string-literal] video/webm;codecs=vp9,opus
+- L2267 [string-literal] video/webm;codecs=vp8,opus
+- L2268 [string-literal] video/webm
+- L2271 [string-literal] Watermarked download format not supported.
+- L2300 [string-literal] bold px 'Outfit', sans-serif
+- L2304 [string-literal] px 'Outfit', sans-serif
+- L2334 [string-literal] bold px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif
+- L2350 [string-literal] px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif
+- L2368 [string-literal] weshare-video-watermarked- .
+- L2395 [string-literal] -30% 0px -30% 0px
+- L2417 [string-literal] Play video
+- L2417 [string-literal] Pause video
+- L2539 [string-literal] ce createur
+- L2542 [string-literal] Choisissez un cadeau pour et personnalisez le montant a envoyer.
+- L2571 [string-literal] cet utilisateur
+- L2576 [string-literal] Apercu du cadeau d anniversaire pour . Vous pouvez tester l interface du modal ici.
+- L2577 [string-literal] Choisissez un cadeau d anniversaire pour et personnalisez le montant a envoyer.
+- L2628 [string-literal] Choose where to share this post.
+- L2696 [string-literal] Envoi en cours...
+- L2713 [string-literal] Envoyer le cadeau
+- L2728 [string-literal] cet utilisateur
+- L2729 [string-literal] ce createur
+- L2742 [string-literal] Cadeau personnalise
+- L2758 [string-literal] No post selected.
+- L2779 [string-literal] application/json
+- L2789 [string-literal] Unable to create the share link.
+- L2808 [string-literal] noopener,noreferrer
+- L2970 [string-literal] style="display:none;"
+- L2971 [string-literal] style="display:none;"
+- L2976 [string-literal] width: 28px; height: 28px;
+- L2977 [string-literal] width: 28px; height: 28px;
+- L2991 [string-literal] Demander de jouer
+- L2993 [string-literal] this.style.transform='scale(1.2)'
+- L2994 [string-literal] this.style.transform='scale(1)'
+- L2998 [string-literal] Online now
+- L3002 [string-literal] chat-header-btn minimize-chat
+- L3002 [string-literal] width: 14px; height: 14px;
+- L3003 [string-literal] chat-header-btn close-chat
+- L3003 [string-literal] width: 14px; height: 14px;
+- L3009 [string-literal] chat-input-wrapper input-wrapper
+- L3010 [string-literal] image/*,video/*,application/pdf,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z
+- L3010 [string-literal] display:none;
+- L3012 [string-literal] chat-icon-btn emoji-trigger-btn
+- L3012 [string-literal] Add an emoji
+- L3012 [string-literal] width: 14px; height: 14px;
+- L3013 [string-literal] chat-icon-btn attachment-trigger-btn
+- L3013 [string-literal] Attach a file
+- L3013 [string-literal] width: 14px; height: 14px;
+- L3014 [string-literal] chat-icon-btn voice-trigger-btn
+- L3014 [string-literal] Record a voice note
+- L3014 [string-literal] width: 14px; height: 14px;
+- L3015 [string-literal] width: 14px; height: 14px;
+- L3018 [string-literal] message-request-action accept chat-box-request-btn
+- L3019 [string-literal] message-request-action decline chat-box-request-btn
+- L3021 [string-literal] display:none; padding: 0 12px 8px 12px;
+- L3028 [string-literal] width: 14px; height: 14px;
+- L3029 [string-literal] Send voice note
+- L3029 [string-literal] width: 14px; height: 14px;
+- L3045 [string-literal] historique des messages depuis l
+- L3051 [string-literal] No messages yet. Send one to start the conversation.
+- L3071 [string-literal] Message load error:
+- L3072 [string-literal] Load failed.
+- L3131 [string-literal] image/
+- L3132 [string-literal] video/
+- L3133 [string-literal] audio/
+- L3134 [string-literal] application/pdf
+- L3165 [string-literal] chat-attachment-preview-remove clear-chat-attachment-btn
+- L3165 [string-literal] Remove attachment
+- L3166 [string-literal] width: 14px; height: 14px;
+- L3250 [string-literal] audio/webm
+- L3251 [string-literal] audio/webm
+- L3365 [string-literal] No messages
+- L3378 [string-literal] est pas ouverte et que c
+- L3477 [string-literal] Anniversaire du jour
+- L3485 [string-literal] fetera bientot son anniversaire.
+- L3487 [string-literal] Aujourd hui, c est votre anniversaire.
+- L3488 [string-literal] Aujourd hui, fete son anniversaire.
+- L3494 [string-literal] birthday-feed-confetti birthday-feed-confetti-left
+- L3495 [string-literal] birthday-feed-confetti birthday-feed-confetti-right
+- L3516 [string-literal] Bouton cadeau
+- L3518 [string-literal] Profitez de votre journee
+- L3519 [string-literal] Envoyer un cadeau
+- L3573 [string-literal] Birthday feed refresh failed:
+- L3590 [string-literal] Spam ou contenu repetitif
+- L3590 [string-literal] Publications trompeuses, promotion agressive ou contenu publie en boucle.
+- L3591 [string-literal] Arnaque ou fraude
+- L3591 [string-literal] Tentative d’arnaque, faux investissement, collecte d’argent suspecte ou phishing.
+- L3592 [string-literal] Fausse information
+- L3592 [string-literal] Informations manifestement fausses ou contenu cree pour tromper.
+- L3593 [string-literal] Harcèlement ou intimidation
+- L3593 [string-literal] Menaces, moqueries ciblees, humiliation ou comportement abusif.
+- L3594 [string-literal] Discours haineux
+- L3594 [string-literal] Attaque envers une personne ou un groupe sur une caracteristique protegee.
+- L3595 [string-literal] Violence choquante
+- L3595 [string-literal] Scenes violentes, blessures explicites ou glorification de la violence.
+- L3596 [string-literal] Nudité ou contenu sexuel
+- L3596 [string-literal] Nudite explicite, actes sexuels ou contenu sexuellement inapproprie.
+- L3597 [string-literal] Mise en danger des mineurs
+- L3597 [string-literal] Exploitation, sexualisation ou tout risque concernant des mineurs.
+- L3598 [string-literal] Automutilation ou suicide
+- L3598 [string-literal] Encouragement, demonstration ou risque lie a l’automutilation.
+- L3599 [string-literal] Usurpation d’identité
+- L3599 [string-literal] Compte ou post qui se fait passer pour une autre personne ou marque.
+- L3600 [string-literal] Atteinte a la vie privee
+- L3600 [string-literal] Partage d’informations personnelles, images privees ou doxxing.
+- L3601 [string-literal] Violation de droits d’auteur
+- L3601 [string-literal] Contenu copie ou republie sans autorisation du proprietaire.
+- L3602 [string-literal] Produits ou activites illegales
+- L3602 [string-literal] Vente ou promotion de drogues, armes ou autres activites interdites.
+- L3603 [string-literal] Extremisme ou terrorisme
+- L3603 [string-literal] Soutien, glorification ou recrutement lie a des organisations violentes.
+- L3604 [string-literal] Autre raison
+- L3604 [string-literal] Aucun motif ci-dessus ne correspond. Precise le probleme.
+- L3611 [string-literal] color: var(--badge-red);
+- L3633 [string-literal] dropdown-menu post-options-menu active
+- L3686 [string-literal] Ajoute un detail utile si necessaire.
+- L3687 [string-literal] Autre raison
+- L3706 [string-literal] input[name="postReportReason"]
+- L3745 [string-literal] input[name="postReportReason"]
+- L3753 [string-literal] Envoyer le signalement
+- L3763 [string-literal] transform 0.35s ease, opacity 0.35s ease
+- L3777 [string-literal] input[name="postReportReason"]:checked
+- L3777 [string-literal] input[name="postReportReason"]
+- L3788 [string-literal] input[name="postReportReason"]:checked
+- L3792 [string-literal] Choisis un motif de signalement.
+- L3797 [string-literal] Precise davantage la raison du signalement.
+- L3811 [string-literal] application/json
+- L3812 [string-literal] application/json
+- L3823 [string-literal] Impossible d’envoyer le signalement pour le moment.
+- L3831 [string-literal] Impossible d’envoyer le signalement pour le moment.
+- L3834 [string-literal] Envoyer le signalement
+- L3851 [string-literal] application/json
+- L3857 [string-literal] Impossible de masquer ce post pour le moment.
+- L3894 [string-literal] application/json
+- L3900 [string-literal] Impossible de restaurer ce post pour le moment.
+- L3906 [string-literal] transform 0.28s ease, opacity 0.28s ease
+- L4098 [string-literal] Show more replies
+- L4106 [string-literal] Hide replies
+- L4125 [string-literal] Show more comments
+- L4130 [string-literal] Hide comments
+- L4278 [string-literal] emoji-picker-popover picker-down
+- L4301 [string-literal] No results
+- L4309 [string-literal] ${q.replace(/
+- L4309 [string-literal] autocomplete=
+- L4457 [string-literal] audio/webm;codecs=opus
+- L4458 [string-literal] audio/webm
+- L4459 [string-literal] audio/mp4
+- L4460 [string-literal] audio/ogg;codecs=opus
+- L4461 [string-literal] audio/ogg
+- L4462 [string-literal] audio/wav
+- L4559 [string-literal] audio/webm
+- L4560 [string-literal] audio/webm
+- L4651 [string-literal] i, svg
+- L4925 [string-literal] display: none;
+- L4930 [string-literal] comment-action-btn reply-trigger-btn
+- L4931 [string-literal] width: 12px; height: 12px;
+- L4933 [string-literal] color: var(--text-muted);
+- L4950 [string-literal] 's voice note...` : `Reply to 's text comment...`}
+- L4952 [string-literal] comment-icon-btn voice-trigger-btn
+- L4952 [string-literal] Record a voice note
+- L4953 [string-literal] width: 12px; height: 12px;
+- L4955 [string-literal] comment-icon-btn emoji-trigger-btn
+- L4955 [string-literal] Add an emoji
+- L4956 [string-literal] width: 12px; height: 12px;
+- L4959 [string-literal] width: 12px; height: 12px;
+- L4965 [string-literal] Read more
+- L4980 [string-literal] Read more
+- L4994 [string-literal] 4px 0
+- L4999 [string-literal] Show more replies
+- L5007 [string-literal] Show more replies
+- L5046 [string-literal] display: none;
+- L5051 [string-literal] comment-action-btn reply-trigger-btn
+- L5052 [string-literal] width: 12px; height: 12px;
+- L5054 [string-literal] color: var(--text-muted);
+- L5065 [string-literal] 's voice note...` : `Reply to 's text comment...`}
+- L5067 [string-literal] comment-icon-btn voice-trigger-btn
+- L5067 [string-literal] Record a voice note
+- L5068 [string-literal] width: 12px; height: 12px;
+- L5070 [string-literal] comment-icon-btn emoji-trigger-btn
+- L5070 [string-literal] Add an emoji
+- L5071 [string-literal] width: 12px; height: 12px;
+- L5074 [string-literal] width: 12px; height: 12px;
+- L5166 [string-literal] En attente ( / )
+- L5170 [string-literal] ✓ Confirmé
+- L5171 [string-literal] Dépôt crédité avec succès !
+- L5189 [string-literal] Retrait réussi !
+- L5193 [string-literal] Votre retrait de USDT a été envoyé avec succès (Somme reçue : USDT après % de frais). Hash de transaction :
+- L5197 [string-literal] Retrait échoué
+- L5198 [string-literal] Erreur blockchain : . Votre solde a été restitué.
+- L5207 [string-literal] Quelqu un
+- L5208 [string-literal] un cadeau
+- L5215 [string-literal] Quelqu un
+- L5216 [string-literal] un cadeau
+- L5389 [string-literal] accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture
+- L5395 [string-literal] live-control-btn play-pause-btn
+- L5395 [string-literal] Play/Pause
+- L5396 [string-literal] width: 16px; height: 16px;
+- L5417 [string-literal] width: 14px; height: 14px;
+- L5425 [string-literal] padding: 0 20px 16px 20px;
+- L5440 [string-literal] return false;
+- L5443 [string-literal] Play video
+- L5448 [string-literal] video-time video-current-time
+- L5449 [string-literal] Video progress
+- L5450 [string-literal] video-time video-duration
+- L5458 [string-literal] Download video with watermark
+- L5458 [string-literal] Download with watermark
+- L5476 [string-literal] cursor: pointer;
+- L5493 [string-literal] cursor: pointer;
+- L5497 [string-literal] position: relative;
+- L5507 [string-literal] cursor: pointer;
+- L5518 [string-literal] cursor: pointer;
+- L5546 [string-literal] avatar author-avatar
+- L5556 [string-literal] width: 14px; height: 14px;
+- L5589 [string-literal] Bookmark post
+- L5602 [string-literal] Write a comment...
+- L5606 [string-literal] comment-icon-btn voice-trigger-btn
+- L5606 [string-literal] Record a voice note
+- L5607 [string-literal] width: 14px; height: 14px;
+- L5609 [string-literal] comment-icon-btn emoji-trigger-btn
+- L5609 [string-literal] Add an emoji
+- L5610 [string-literal] width: 14px; height: 14px;
+- L5613 [string-literal] width: 14px; height: 14px;
+- L5625 [string-literal] width: 14px; height: 14px;
+- L5627 [string-literal] Send voice note
+- L5628 [string-literal] width: 14px; height: 14px;
+- L5668 [string-literal] Challenge en cours
+- L5677 [string-literal] width: 10px; height: 10px;
+- L5682 [string-literal] Vote payant $
+- L5682 [string-literal] Vote gratuit
+- L5712 [string-literal] Accepter invitation
+- L5755 [string-literal] lucide lucide-help-circle
+- L5755 [string-literal] M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3
+- L5820 [string-literal] Page / ( participantes)
+- L5834 [string-literal] application/json
+- L5844 [string-literal] image/*
+- L5889 [string-literal] application/json
+- L5899 [string-literal] image/*
+- L5944 [string-literal] Voter pour ce candidat coûtera $ . Le montant sera débité de votre solde.
+- L5945 [string-literal] Voulez-vous enregistrer votre vote pour ce candidat ?
+- L5950 [string-literal] application/json
+- L6178 [string-literal] image/jpeg
+- L6191 [string-literal] video/
+- L6233 [string-literal] image/
+- L6477 [string-literal] Upload failed
+- L6514 [string-literal] Share Post
+- L6518 [string-literal] Share Post
+- L6559 [string-literal] 'Outfit', sans-serif
+- L6568 [string-literal] 'Outfit', sans-serif
+- L6608 [string-literal] Share Post
+- L6613 [string-literal] Share Post
+- L6713 [string-literal] Check out this post from WeShare
+- L6792 [string-literal] Follows you
+- L6794 [string-literal] Follow back
+- L6827 [string-literal] border-bottom: 1px solid var(--border-color);
+- L6829 [string-literal] avatar social-user-avatar
+- L6829 [string-literal] width: 36px; height: 36px;
+- L6832 [string-literal] min-width: 0;
+- L6841 [string-literal] follow-toggle-btn follow-toggle-btn--text social-user-action
+- L6919 [string-literal] 2px solid var(--primary)
+- L6970 [string-literal] notification-item is-unread
+- L6977 [string-literal] 12px 16px
+- L6978 [string-literal] 1px solid var(--border-color)
+- L6981 [string-literal] background 0.2s
+- L6988 [string-literal] color: var(--text-primary);
+- L6988 [string-literal] Quelqu\'un
+- L7029 [string-literal] color: var(--text-primary);
+- L7029 [string-literal] Quelqu\'un
+- L7055 [string-literal] Notification sync error:
+- L7634 [string-literal] Autoplay with sound blocked, playing muted:
+- L7714 [string-literal] Autoplay blocked (waiting for user click):
+- L7756 [string-literal] card =
+- L7848 [string-literal] Erreur de téléchargement
+- L7882 [string-literal] weshare-short- .
+- L7890 [string-literal] Download error:
+- L7921 [string-literal] Découvrez ce Short sur WeShare
+- L7926 [string-literal] un ami
+- L8100 [string-literal] Add comment...
+- L8109 [string-literal] this comment
+- L8114 [string-literal] Reply to ...
+- L8120 [string-literal] Replying to
+- L8248 [string-literal] (max-width: 768px)
+- L8283 [string-literal] Loading comments...
+- L8290 [string-literal] Failed to load comments
+- L8323 [string-literal] (max-width: 768px)
+- L8428 [string-literal] audio/webm
+- L8429 [string-literal] audio/webm
+- L8550 [string-literal] voice-note-player reel-voice-note-player
+- L8570 [string-literal] display: inline-flex; margin-left: px;
+- L8592 [string-literal] display: none;
+- L8626 [string-literal] width: 12px; height: 12px;
+- L8661 [string-literal] Lire moins
+- L8665 [string-literal] Lire plus
+- L8697 [string-literal] Afficher les réponses ( )
+- L8705 [string-literal] Masquer les réponses
+- L8708 [string-literal] Afficher les réponses ( )
+- L8723 [string-literal] Be the first to comment!
+- L8800 [string-literal] Just now
+- L8801 [string-literal] m ago
+- L8802 [string-literal] h ago
+- L8803 [string-literal] d ago
+- L8863 [string-literal] Masquer les réponses
+- L8871 [string-literal] Masquer les réponses
+- L8875 [string-literal] Afficher les réponses ( )
+- L8885 [string-literal] Masquer les réponses
+- L8998 [string-literal] (prefers-color-scheme: dark)
+- L9033 [string-literal] 'Outfit', sans-serif
+- L9174 [string-literal] video/
+- L9254 [string-literal] noopener noreferrer
+- L9319 [string-literal] noopener noreferrer
+- L9320 [string-literal] ad-item-link ad-slideshow-item
+- L9329 [string-literal] opacity 0.8s ease-in-out, transform 0.8s ease-in-out
+- L9348 [string-literal] min-width: 0;
+- L9371 [string-literal] video/
+- L9474 [string-literal] 2px solid white
+- L9475 [string-literal] 0 0 0 1px #ccc
+- L9478 [string-literal] 2px solid transparent
+- L9532 [string-literal] DataTransfer failed:
+- L9565 [string-literal] Enregistrement terminé
+- L9565 [string-literal] Recording finished
+- L9582 [string-literal] Enregistrement en cours...
+- L9611 [string-literal] Failed to start recording:
+- L9910 [string-literal] width: 18px;
+- L9911 [string-literal] Create for 0.5 Tokens
+- L9911 [string-literal] Create for Free
+- L9948 [string-literal] font-size:10px; color:var(--text-secondary);
+- L9950 [string-literal] removePostMedia( )
+- L9951 [string-literal] width:14px; height:14px;
+- L9981 [string-literal] 1px solid var(--primary)
+- L9982 [string-literal] 1px solid var(--border-color)
+- L9990 [string-literal] 1px solid var(--primary)
+- L9991 [string-literal] 1px solid var(--border-color)
+- L10038 [string-literal] 1px solid var(--primary)
+- L10042 [string-literal] 1px solid var(--border-color)
+- L10082 [string-literal] image/*
+- L10127 [string-literal] Photo prête
+- L10127 [string-literal] Photo requise
+- L10129 [string-literal] Ajouter photo
+- L10180 [string-literal] Ajouter un participant (chercher par username)
+- L10198 [string-literal] Ajouter les candidates du challenge miss
+- L10206 [string-literal] Rechercher un utilisateur à inviter
+- L10214 [string-literal] Rechercher un utilisateur a inviter
+- L10236 [string-literal] Créer et publier le challenge
+- L10278 [string-literal] Aucune photo choisie
+- L10314 [string-literal] Aucun utilisateur trouve
+- L10326 [string-literal] font-size:10px; color:var(--text-secondary);
+- L10354 [string-literal] Challenge invite search failed:
+- L10515 [string-literal] (Créateur)
+- L10538 [string-literal] Téléchargement...
+- L10552 [string-literal] Photo prête !
+- L10618 [string-literal] - - T :
+- L10639 [string-literal] Photo prête !
+- L10639 [string-literal] Aucune photo choisie
+- L10652 [string-literal] Enregistrer les modifications
+- L10716 [string-literal] Start typing a username...
+- L10731 [string-literal] No users found
+- L10754 [string-literal] Error searching users
+- L10908 [string-literal] font-size: 13px; color: var(--text-secondary);
+- L10918 [string-literal] Failed to load hashtags.
+- L10934 [string-literal] font-size: 12px; opacity: 0.7;
+- L10977 [string-literal] box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.12);
+- L11004 [string-literal] Hashtags Premium
+- L11004 [string-literal] Les utilisateurs paient pour les utiliser. Ils peuvent rendre vos posts beaucoup plus viraux.
+- L11005 [string-literal] Hashtags Gratuits
+- L11005 [string-literal] Disponibles sans frais.
+- L11024 [string-literal] application/json
+- L11122 [string-literal] Pay and start KYC
+- L11123 [string-literal] Pay and start KYC
+- L11135 [string-literal] Les frais ne sont pas encore configurés par les administrateurs. Le paiement ne peut pas encore être lancé.
+- L11137 [string-literal] La tarifa aún no ha sido configurada por el administrador. El pago no puede iniciarse todavía.
+- L11138 [string-literal] The admin fee has not been configured yet, so payment cannot be started right now.
+- L11140 [string-literal] Vous allez payer les frais administratifs, puis compléter la vérification KYC pour débloquer la création d’événements. Les demandes refusées ne sont pas remboursables.
+- L11142 [string-literal] Pagarás la tarifa del administrador y luego completarás la verificación KYC para desbloquear la creación de eventos. Las solicitudes rechazadas no son reembolsables.
+- L11143 [string-literal] You will pay the admin fee, then complete the KYC verification to unlock event creation. Refused requests are not refundable.
+- L11168 [string-literal] Les frais ne sont pas encore configurés par les administrateurs.
+- L11170 [string-literal] La tarifa aún no ha sido configurada por el administrador.
+- L11171 [string-literal] The admin fee has not been configured yet.
+- L11185 [string-literal] Vérification du solde et du paiement en cours...
+- L11187 [string-literal] Comprobando el saldo y procesando el pago...
+- L11188 [string-literal] Checking your balance and processing the payment...
+- L11196 [string-literal] application/json
+- L11205 [string-literal] Le serveur a refusé le paiement.
+- L11207 [string-literal] El servidor rechazó el pago.
+- L11208 [string-literal] The server rejected the payment.
+- L11218 [string-literal] Paiement reçu. Redirection vers le KYC...
+- L11220 [string-literal] Pago recibido. Redirigiendo al KYC...
+- L11221 [string-literal] Payment received. Redirecting to KYC...
+- L11227 [string-literal] Unable to process events unlock payment:
+- L11229 [string-literal] Impossible de traiter le paiement pour le moment.
+- L11231 [string-literal] No se puede procesar el pago en este momento.
+- L11232 [string-literal] Unable to process the payment right now.
+- L11502 [string-literal] The hashtag # is premium. It costs $0.10 to use. Do you accept this fee?
+- L11566 [string-literal] Failed to hydrate hashtag metadata:
+- L11620 [string-literal] beauty-candidate-card empty-slot
+- L11622 [string-literal] width: 20px; height: 20px;
+- L11625 [string-literal] font-size: 10px; color: var(--text-secondary);
+- L11630 [string-literal] beauty-candidate-card empty-slot
+- L11632 [string-literal] width: 20px; height: 20px;
+- L11655 [string-literal] display: flex;
+- L11655 [string-literal] display: none;
+- L11665 [string-literal] flex-direction: column; gap: 8px;
+- L11689 [string-literal] challenge-carousel-btn challenge-carousel-prev
+- L11689 [string-literal] Voir la participante précédente
+- L11691 [string-literal] challenge-carousel-btn challenge-carousel-next
+- L11691 [string-literal] Voir la participante suivante
+- L11709 [string-literal] width: %;
+- L11711 [string-literal] --percent: %;
+- L11735 [string-literal] Accepter invitation
+- L11755 [string-literal] width: 10px; height: 10px;
+- L11769 [string-literal] Challenge en cours
+- L11771 [string-literal] Vote payant $
+- L11771 [string-literal] Vote gratuit
+- L11780 [string-literal] display: ;
+- L11872 [string-literal] Failed to load backgrounds:
+- L11881 [string-literal] url( )
+- L11929 [string-literal] url( )
+- L11955 [string-literal] 30px 20px
+- L11957 [string-literal] inset 0 0 0 1px var(--border-color)
+- L11958 [string-literal] 0 2px 4px rgba(0,0,0,0.6)
+- L12092 [string-literal] 'Outfit', sans-serif
+- L12096 [string-literal] 'Outfit', sans-serif
+- L12126 [string-literal] form[action="/events/kyc"]
+- L12184 [string-literal] Unable to start KYC camera:
+- L12207 [string-literal] Unable to prepare face-api backend:
+- L12212 [string-literal] Unable to load face models:
+- L12288 [string-literal] Unable to compare KYC faces:
+- L12322 [string-literal] image/jpeg
+- L12377 [string-literal] button[type="submit"]
+- L12401 [string-literal] Unable to run KYC face comparison:
+- L12459 [string-literal] Lightbox image
+- L12594 [string-literal] scrollToReelIndex: .reels-feed not found
+- L12599 [string-literal] scrollToReelIndex: no cards found
+- L12604 [string-literal] scrollToReelIndex: targetIndex out of bounds
+- L12615 [string-literal] Shorts scrolling from index
+- L12615 [string-literal] targetScrollTop:
+- L12716 [string-literal] setPointerCapture not supported or failed:
+- L12764 [string-literal] Reel trade pointer detection error:
+- L12809 [string-literal] input[name="audio_duration"]:checked
+- L12863 [string-literal] short-upload-status info
+- L12870 [string-literal] width: %;
+- L12940 [string-literal] Erreur de chargement de la vidéo.
+- L12980 [string-literal] Erreur de chargement de l'audio.
+- L13013 [string-literal] Erreur de chargement du son.
+- L13065 [string-literal] Audio Context init disabled/failed:
+- L13078 [string-literal] bold px 'Outfit', sans-serif
+- L13082 [string-literal] px 'Outfit', sans-serif
+- L13167 [string-literal] px 'Outfit', sans-serif
+- L13215 [string-literal] bold 16px 'Outfit', sans-serif
+- L13275 [string-literal] bold px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif
+- L13291 [string-literal] px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif
+- L13302 [string-literal] Safety Watchdog triggered: compilation exceeded max time.
+- L13321 [string-literal] video/mp4;codecs="avc1.42E01E,mp4a.40.2"
+- L13322 [string-literal] video/mp4
+- L13323 [string-literal] video/webm;codecs=vp9,opus
+- L13324 [string-literal] video/webm;codecs=vp8,opus
+- L13325 [string-literal] video/webm
+- L13329 [string-literal] Aucun format vidéo supporté par MediaRecorder sur votre navigateur.
+- L13489 [string-literal] input[type="radio"]
+- L13505 [string-literal] Ajoutez des tokens ou desactivez Trade Short pour publier.
+- L13581 [string-literal] No file chosen
+- L13692 [string-literal] No image chosen
+- L13737 [string-literal] No audio chosen
+- L13759 [string-literal] input[name="audio_duration"]
+- L13822 [string-literal] input[name="audio_duration"]:checked
+- L13914 [string-literal] audio/webm
+- L13945 [string-literal] Voice Note
+- L13956 [string-literal] Recording... Click mic to stop
+- L13986 [string-literal] Microphone access failed
+- L13997 [string-literal] Recording saved
+- L14041 [string-literal] Please choose a video file first.
+- L14046 [string-literal] Please choose an image file first.
+- L14050 [string-literal] Please choose background audio track.
+- L14055 [string-literal] Please record a voice note first.
+- L14060 [string-literal] Please choose an audio file first.
+- L14067 [string-literal] Ajoutez des tokens ou desactivez Trade Short pour publier.
+- L14076 [string-literal] Upload Short
+- L14081 [string-literal] spin 1s linear infinite
+- L14112 [string-literal] Compilation error:
+- L14113 [string-literal] Error:
+- L14128 [string-literal] short-upload-status success
+- L14129 [string-literal] Uploading compiled Short...
+- L14135 [string-literal] Original Sound
+- L14140 [string-literal] short- .
+- L14150 [string-literal] Short uploaded successfully!
+- L14152 [string-literal] (max-width: 768px)
+- L14164 [string-literal] Trade Short demande tokens. Solde disponible: tokens.
+- L14165 [string-literal] Failed to upload short
+- L14166 [string-literal] Error:
+- L14176 [string-literal] Upload error
+- L14177 [string-literal] Network error during upload.
+- L14257 [string-literal] transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1)
+- L14278 [string-literal] transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1)
+- L14323 [string-literal] box-shadow 0.3s ease, border-color 0.3s ease
+- L14324 [string-literal] 0 0 20px 4px var(--primary)
+- L14345 [string-literal] box-shadow 0.3s ease
+- L14346 [string-literal] 0 0 25px 5px var(--primary)
+- L14398 [string-literal] box-shadow 0.3s ease, border-color 0.3s ease
+- L14399 [string-literal] 0 0 20px 4px var(--primary)
+- L14417 [string-literal] box-shadow 0.3s ease, border-color 0.3s ease
+- L14418 [string-literal] 0 0 20px 4px var(--primary)
+- L14494 [string-literal] En attente...
+- L14495 [string-literal] En attente d'un transfert sur le réseau BSC...
+- L14507 [string-literal] Adresse BEP-20 invalide (doit commencer par 0x et faire 42 caractères).
+- L14515 [string-literal] application/json
+- L14530 [string-literal] Erreur d\'enregistrement.
+- L14535 [string-literal] Erreur serveur.
+- L14557 [string-literal] Copy failed
+- L14644 [string-literal] grayscale(1)
+- L14688 [string-literal] Le code secret de retrait doit contenir exactement 6 chiffres.
+- L14696 [string-literal] application/json
+- L14712 [string-literal] Erreur d\'enregistrement.
+- L14717 [string-literal] Erreur serveur.
+- L14732 [string-literal] Montant invalide.
+- L14738 [string-literal] Solde de retrait insuffisant.
+- L14744 [string-literal] Le code secret de retrait doit contenir exactement 6 chiffres.
+- L14761 [string-literal] Traitement en cours
+- L14762 [string-literal] Votre transaction de retrait de USDT (Somme reçue : USDT après % de frais) est en cours d'envoi sur la blockchain BSC...
+- L14767 [string-literal] application/json
+- L14778 [string-literal] Retrait échoué
+- L14779 [string-literal] Erreur lors de la validation du retrait.
+- L14782 [string-literal] Demande de retrait de USDT enregistrée (Somme reçue : USDT après % de frais). Signature et envoi de la transaction sur la blockchain BSC...
+- L14792 [string-literal] Impossible de contacter le serveur.
+- L14813 [string-literal] Le montant dépasse votre solde disponible.
+- L14817 [string-literal] Le montant dépasse votre solde disponible.
+- L14897 [string-literal] En attente
+- L14900 [string-literal] Confirmé
+- L14915 [string-literal] width: 10px; height: 10px;
+- L14921 [string-literal] Aucun dépôt enregistré.
+- L14933 [string-literal] En attente
+- L14936 [string-literal] Terminé
+- L14939 [string-literal] Échoué
+- L14945 [string-literal] width: 10px; height: 10px;
+- L14973 [string-literal] Aucun retrait enregistré.
+- L14980 [string-literal] Erreur lors du chargement des dépôts.
+- L14981 [string-literal] Erreur lors du chargement des retraits.
+- L14997 [string-literal] modal-content animate-scale
+- L15000 [string-literal] width: 16px; height: 16px;
+- L15021 [string-literal] display: flex; gap: 12px;
+- L15023 [string-literal] accent-color: var(--primary);
+- L15024 [string-literal] font-size: 14px; font-weight: 500;
+- L15027 [string-literal] accent-color: var(--primary);
+- L15028 [string-literal] font-size: 14px; font-weight: 500;
+- L15050 [string-literal] width: 15px; height: 15px;
+- L15061 [string-literal] input[name="priceType"]
+- L15230 [string-literal] text/html
+- L15238 [string-literal] Error handling game-invitation-updated:
+- L15305 [string-literal] Puissance 4
+- L15307 [string-literal] Football Table
+- L15335 [string-literal] input[type="radio"]
+- L15339 [string-literal] input[name=" "]
+- L15368 [string-literal] Aucun robot disponible.
+- L15372 [string-literal] Grand Master
+- L15372 [string-literal] Vétéran
+- L15372 [string-literal] Stratège
+- L15381 [string-literal] bot-status-indicator online
+- L15409 [string-literal] input[name="setupMode"]
+- L15420 [string-literal] input[name="setupOpponent"]
+- L15438 [string-literal] input[name="setupGameLiveMode"]
+- L15470 [string-literal] Aucun joueur en ligne pour le moment.
+- L15489 [string-literal] min-width: 0;
+- L15506 [string-literal] @ • En ligne
+- L15529 [string-literal] Error loading online opponents:
+- L15565 [string-literal] Cet utilisateur existe mais il est hors ligne. Contactez-le pour qu'il vienne se connecter.
+- L15567 [string-literal] Aucun utilisateur trouvé.
+- L15570 [string-literal] Error searching players:
+- L15584 [string-literal] input[name="setupOpponent"]:checked
+- L15592 [string-literal] input[name="setupOpponent"]:checked
+- L15600 [string-literal] input[name="setupGameType"]:checked
+- L15601 [string-literal] input[name="setupOpponent"]:checked
+- L15602 [string-literal] input[name="setupMode"]:checked
+- L15626 [string-literal] input[name="setupGameLiveMode"]:checked
+- L15687 [string-literal] input[name="setupOpponent"]:checked
+- L15701 [string-literal] Aucune partie disponible pour le moment. Créez-en une pour attendre un adversaire !
+- L15762 [string-literal] Aucun live en cours. Jouez contre un robot ou un autre joueur pour lancer le direct !
+- L15772 [string-literal] game-item-vs-avatar p1
+- L15774 [string-literal] game-item-vs-avatar p2
+- L15776 [string-literal] margin-left: 4px;
+- L15788 [string-literal] resume-game-action-btn settings-primary-btn
+- L15790 [string-literal] spectate-game-action-btn settings-primary-btn
+- L15930 [string-literal] AudioContext playback failed:
+- L15940 [string-literal] AudioContext unlocked successfully via user gesture.
+- L15943 [string-literal] Failed to resume AudioContext:
+- L15971 [string-literal] Mode Gratuit
+- L15976 [string-literal] • Partie /
+- L16001 [string-literal] blur(8px)
+- L16002 [string-literal] all 0.3s ease
+- L16014 [string-literal] Victoire !
+- L16016 [string-literal] Trophée de la victoire
+- L16019 [string-literal] Défaite !
+- L16021 [string-literal] Âne de la défaite
+- L16024 [string-literal] Match Nul !
+- L16034 [string-literal] 1px solid var(--border-color, rgba(255, 255, 255, 0.1))
+- L16043 [string-literal] 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.5)
+- L16091 [string-literal] 1px solid var(--border-color, rgba(255,255,255,0.1))
+- L16097 [string-literal] all 0.2s
+- L16114 [string-literal] all 0.2s
+- L16154 [string-literal] game_scores_ _ _
+- L16182 [string-literal] game_scores_ _ _
+- L16218 [string-literal] blur(6px)
+- L16219 [string-literal] all 0.3s
+- L16223 [string-literal] 1px solid var(--border-color, rgba(255, 255, 255, 0.1))
+- L16235 [string-literal] Envoyer un cadeau à
+- L16242 [string-literal] Entrez le montant en dollars ($) à envoyer depuis votre solde.
+- L16253 [string-literal] 10px 12px
+- L16255 [string-literal] 1px solid var(--border-color)
+- L16271 [string-literal] 1px solid var(--border-color)
+- L16280 [string-literal] Envoyer 🎁
+- L16307 [string-literal] Envoyer 🎁
+- L16353 [string-literal] game_scores_ _ _
+- L16366 [string-literal] en Direct
+- L16433 [string-literal] Pions Rouges
+- L16434 [string-literal] Pions Jaunes
+- L16438 [string-literal] Pions Noirs
+- L16439 [string-literal] Pions Blancs
+- L16443 [string-literal] Attaque / Défense
+- L16444 [string-literal] Attaque / Défense
+- L16483 [string-literal] Le chat est ouvert ! Envoyez des encouragements en direct.
+- L16556 [string-literal] En attente d'un adversaire...
+- L16557 [string-literal] game-turn-status-bar waiting
+- L16566 [string-literal] dans s
+- L16567 [string-literal] Victoire validée. Prochaine partie ...
+- L16568 [string-literal] game-turn-status-bar waiting
+- L16580 [string-literal] Partie terminée : Match nul !
+- L16581 [string-literal] game-turn-status-bar finished-draw
+- L16584 [string-literal] Partie terminée : Victoire de !
+- L16585 [string-literal] game-turn-status-bar finished-win
+- L16607 [string-literal] (Rouge)
+- L16607 [string-literal] (Jaune)
+- L16610 [string-literal] (Noir)
+- L16610 [string-literal] (Blanc)
+- L16613 [string-literal] (Terrain)
+- L16621 [string-literal] C'est à votre tour de jouer !
+- L16622 [string-literal] game-turn-status-bar my-turn
+- L16624 [string-literal] Robot AI
+- L16626 [string-literal] Tour de :
+- L16627 [string-literal] game-turn-status-bar opponent-turn
+- L16850 [string-literal] Pioche :
+- L16921 [string-literal] domino-table-indicator left-indicator
+- L16924 [string-literal] Placer à gauche
+- L16965 [string-literal] La table est vide. Posez un domino pour démarrer !
+- L16976 [string-literal] domino-table-indicator right-indicator
+- L16979 [string-literal] Placer à droite
+- L17032 [string-literal] Vous observez le match en direct.
+- L17034 [string-literal] Pas de dominos dans votre main.
+- L17096 [string-literal] c4-disc player1
+- L17103 [string-literal] c4-disc player2
+- L17135 [string-literal] gomoku-stone black
+- L17140 [string-literal] gomoku-stone white
+- L17176 [string-literal] Phase d attaque
+- L17176 [string-literal] Phase de défense
+- L17180 [string-literal] Choisissez un couloir pour tirer vers le but adverse.
+- L17181 [string-literal] Choisissez un couloir pour tenter l arrêt du tir.
+- L17217 [string-literal] But pour sur le couloir .
+- L17218 [string-literal] Arrêt sur le couloir .
+- L17221 [string-literal] Vous êtes en attaque.
+- L17221 [string-literal] Vous êtes en défense.
+- L17222 [string-literal] Attendez le choix de votre adversaire.
+- L17240 [string-literal] 0 0 16px #10b981
+- L17256 [string-literal] Aucun spectateur pour le moment.
+- L17260 [string-literal] width: 32px; height: 32px;
+- L17325 [string-literal] Confirmer l'action
+- L17326 [string-literal] Voulez-vous continuer ?
+- L17365 [string-literal] Abandonner la partie ?
+- L17366 [string-literal] Voulez-vous vraiment abandonner la partie ? Cela sera comptabilise comme une defaite.
+- L17388 [string-literal] Declarer forfait ?
+- L17389 [string-literal] Voulez-vous vraiment declarer forfait ?
+- L17390 [string-literal] Declarer forfait
+- L17443 [string-literal] modal-content game-confirm-modal-content
+- L17495 [string-literal] Puissance 4
+- L17497 [string-literal] Football Table
+- L17522 [string-literal] this.src='/assets/avatar_placeholder.jpg'
+- L17546 [string-literal] grid-column: 1 / -1;
+- L17567 [string-literal] gir-btn gir-btn-decline
+- L17570 [string-literal] gir-btn gir-btn-accept
+- L17614 [string-literal] Connexion…
+- L17651 [string-literal] font-size: 3rem; margin-bottom: 12px;
+- L17655 [string-literal] color: #22c55e;
+- L17840 [string-literal] background: ; border-color: ;
+- L17841 [string-literal] color: ; font-size: 11px;
+- L17894 [string-literal] Égalité
+- L18065 [string-literal] application/json
+- L18074 [string-literal] Operation P2P impossible.
+- L18188 [string-literal] Calculé automatiquement
+- L18201 [string-literal] Prix 1 Token ( - Calculé)
+- L18202 [string-literal] Prix 1 USDT ( )
+- L18226 [string-literal] Solde de Token disponible
+- L18226 [string-literal] Compte de retrait disponible
+- L18227 [string-literal] Solde disponible
+- L18232 [string-literal] Auto rempli depuis votre solde de Token en temps reel et non modifiable.
+- L18232 [string-literal] Auto rempli depuis votre compte de retrait en temps reel et non modifiable.
+- L18233 [string-literal] Entrez la quantite que vous voulez acheter. Les vendeurs pourront vous vendre cette quantite ou moins.
+- L18238 [string-literal] les annonces sell bloquent les fonds depuis votre solde de Token , puis les credits arrivent sur le solde de Token du destinataire.
+- L18238 [string-literal] les annonces sell bloquent les fonds depuis votre compte de retrait , puis les credits arrivent sur le compte de depot .
+- L18239 [string-literal] les annonces buy servent a demander une quantite de a acheter. Aucun blocage n est fait au moment de la creation.
+- L18256 [string-literal] Failed to fetch balance in real-time:
+- L18368 [string-literal] Seller desk
+- L18368 [string-literal] Buyer desk
+- L18482 [string-literal] ce trader
+- L18483 [string-literal] Aucun paiement precise
+- L18505 [string-literal] Confirmez votre ordre avec .
+- L18513 [string-literal] Aucun paiement precise
+- L18544 [string-literal] Aucun message pour le moment.
+- L18588 [string-literal] Non precise
+- L18601 [string-literal] Ordre #
+- L18602 [string-literal] Gerez votre transaction avec .
+- L18603 [string-literal] Ordre # •
+- L18607 [string-literal] market-status-pill is-
+- L18622 [string-literal] Discussion avec
+- L18627 [string-literal] J ai paye
+- L18630 [string-literal] Liberer les fonds
+- L18639 [string-literal] Aucune image
+- L18689 [string-literal] Impossible d envoyer la preuve image.
+- L18712 [string-literal] Aucune image
+- L19089 [string-literal] Aucune image
+- L19180 [string-literal] button[type="submit"]
+- L19361 [string-literal] Terminé
+- L19374 [string-literal] Terminé
+- L19388 [string-literal] j h
+- L19390 [string-literal] h m
+- L19392 [string-literal] m s
+- L19406 [string-literal] YouTube Iframe API is ready.
+- L19438 [string-literal] Error initializing YouTube Player for post
+- L19475 [string-literal] Voulez-vous débloquer cette diffusion en direct pour $ ?
+- L19484 [string-literal] Voulez-vous vraiment terminer et supprimer cette diffusion ?
+- L19509 [string-literal] accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture
+- L19515 [string-literal] live-control-btn play-pause-btn
+- L19515 [string-literal] Play/Pause
+- L19516 [string-literal] width: 16px; height: 16px;
+- L19539 [string-literal] all 0.5s ease
+
+### server.js (467)
+
+- L89 [string-literal] WeShare Market
+- L95 [string-literal] Error emitting market notification:
+- L103 [string-literal] SHOW COLUMNS FROM post_backgrounds LIKE ?
+- L105 [string-literal] ALTER TABLE post_backgrounds ADD COLUMN creator_user_id INT NULL DEFAULT NULL AFTER price
+- L153 [string-literal] SHOW COLUMNS FROM users LIKE ?
+- L155 [string-literal] ALTER TABLE users ADD COLUMN wallet_address_updated_at TIMESTAMP NULL DEFAULT NULL AFTER wallet_address
+- L159 [string-literal] SHOW COLUMNS FROM users LIKE ?
+- L161 [string-literal] ALTER TABLE users ADD COLUMN withdrawal_pin VARCHAR(255) NULL DEFAULT NULL AFTER wallet_address_updated_at
+- L185 [string-literal] SHOW COLUMNS FROM bsc_withdrawals LIKE ?
+- L187 [string-literal] ALTER TABLE bsc_withdrawals ADD COLUMN fee_usdt DECIMAL(18,6) NOT NULL DEFAULT 0.000000 AFTER amount_usdt
+- L189 [string-literal] SHOW COLUMNS FROM bsc_withdrawals LIKE ?
+- L191 [string-literal] ALTER TABLE bsc_withdrawals ADD COLUMN net_amount_usdt DECIMAL(18,6) NOT NULL DEFAULT 0.000000 AFTER fee_usdt
+- L193 [string-literal] SHOW COLUMNS FROM bsc_withdrawals LIKE ?
+- L195 [string-literal] ALTER TABLE bsc_withdrawals ADD COLUMN gas_cost_usdt DECIMAL(18,6) NOT NULL DEFAULT 0.000000 AFTER net_amount_usdt
+- L260 [string-literal] view cache
+- L264 [string-literal] image/svg+xml
+- L265 [string-literal] public, max-age=86400
+- L277 [string-literal] image/svg+xml
+- L281 [string-literal] M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2
+- L288 [string-literal] no-store, max-age=0
+- L292 [string-literal] node_modules/@tensorflow/tfjs/dist
+- L293 [string-literal] node_modules/face-api.js/dist
+- L294 [string-literal] node_modules/tesseract.js/dist
+- L295 [string-literal] node_modules/tesseract.js-core
+- L296 [string-literal] node_modules/@tesseract.js-data/eng/4.0.0
+- L297 [string-literal] public/models/face-api
+- L357 [string-literal] Share link not found.
+- L369 [string-literal] shared your post.
+- L415 [string-literal] Share token error:
+- L416 [string-literal] Error while opening the share link.
+- L424 [string-literal] Ticket not found.
+- L436 [string-literal] Event ticket route error:
+- L437 [string-literal] Error while opening the ticket.
+- L466 [string-literal] Publication introuvable.
+- L471 [string-literal] Error fetching post:
+- L472 [string-literal] Impossible de récupérer les détails du challenge.
+- L484 [string-literal] Challenge introuvable.
+- L491 [string-literal] La participation au challenge miss est geree uniquement par le createur.
+- L496 [string-literal] Ce challenge de beauté est déjà complet (maximum 2 participants).
+- L499 [string-literal] Une photo est requise pour participer à ce challenge de beauté.
+- L506 [string-literal] Ce challenge est sur invitation uniquement.
+- L517 [string-literal] Challenge participate error:
+- L518 [string-literal] Impossible de participer au challenge.
+- L530 [string-literal] Action invalide.
+- L535 [string-literal] Challenge introuvable.
+- L539 [string-literal] Les participants du challenge miss n ont pas besoin de confirmer leur invitation.
+- L548 [string-literal] Ce challenge de beauté est déjà complet (maximum 2 participants).
+- L551 [string-literal] Une photo est requise pour accepter ce challenge de beauté.
+- L567 [string-literal] Challenge respond error:
+- L568 [string-literal] Impossible de repondre a cette invitation.
+- L581 [string-literal] Challenge introuvable.
+- L586 [string-literal] Ce challenge a expiré, les votes sont terminés.
+- L593 [string-literal] Participant introuvable.
+- L607 [string-literal] Vous avez déjà voté dans ce challenge.
+- L622 [string-literal] Solde insuffisant pour voter.
+- L693 [string-literal] Challenge vote error:
+- L694 [string-literal] Impossible de voter pour le moment.
+- L705 [string-literal] Invalid share data.
+- L729 [string-literal] Share create error:
+- L730 [string-literal] Unable to create the share link.
+- L745 [string-literal] Ce post est introuvable.
+- L751 [string-literal] Hide post error:
+- L752 [string-literal] Impossible de masquer ce post pour le moment.
+- L768 [string-literal] Unhide post error:
+- L769 [string-literal] Impossible de restaurer ce post pour le moment.
+- L803 [string-literal] Motif de signalement invalide.
+- L807 [string-literal] Veuillez preciser votre motif dans le champ de details.
+- L812 [string-literal] Ce post n’existe plus.
+- L816 [string-literal] Vous ne pouvez pas signaler votre propre post.
+- L826 [string-literal] Merci. Votre signalement a bien ete envoye.
+- L829 [string-literal] Une erreur est survenue pendant le signalement du post.
+- L846 [string-literal] Notifications API error:
+- L847 [string-literal] Unable to load notifications.
+- L857 [string-literal] P2P snapshot error:
+- L858 [string-literal] Impossible de charger le marche P2P.
+- L868 [string-literal] P2P get order messages error:
+- L869 [string-literal] Impossible de charger cette conversation P2P.
+- L896 [string-literal] Annonce P2P creee avec succes.
+- L898 [string-literal] Annonce P2P creee avec succes.
+- L901 [string-literal] P2P create offer error:
+- L902 [string-literal] Impossible de creer l annonce P2P.
+- L922 [string-literal] Un utilisateur
+- L931 [string-literal] a ouvert un ordre P2P de pour .
+- L936 [string-literal] Votre ordre P2P de pour a bien ete cree.
+- L943 [string-literal] Ordre P2P cree avec succes.
+- L946 [string-literal] P2P create order error:
+- L947 [string-literal] Impossible d ouvrir cet ordre P2P.
+- L966 [string-literal] solde de Token
+- L971 [string-literal] Annonce fermee. ont ete credites sur votre .
+- L972 [string-literal] Annonce fermee.
+- L975 [string-literal] Annonce fermee avec succes.
+- L978 [string-literal] P2P close offer error:
+- L979 [string-literal] Impossible de fermer cette annonce.
+- L1001 [string-literal] L acheteur
+- L1009 [string-literal] a marque comme paye votre ordre P2P de .
+- L1014 [string-literal] Vous avez marque comme paye votre ordre P2P de .
+- L1017 [string-literal] Paiement confirme. Attendez la liberation des fonds.
+- L1020 [string-literal] P2P pay order error:
+- L1021 [string-literal] Impossible de confirmer ce paiement.
+- L1040 [string-literal] solde de Token
+- L1040 [string-literal] compte de depot
+- L1042 [string-literal] Ordre P2P libere : + sur votre .
+- L1045 [string-literal] Le vendeur
+- L1049 [string-literal] a libere sur votre ordre P2P.
+- L1054 [string-literal] Vous avez libere sur cet ordre P2P.
+- L1057 [string-literal] Les fonds ont ete liberes avec succes.
+- L1060 [string-literal] P2P release order error:
+- L1061 [string-literal] Impossible de liberer cet ordre.
+- L1087 [string-literal] solde de Token
+- L1087 [string-literal] compte de depot
+- L1088 [string-literal] Ordre P2P annule. Les fonds bloques ont ete recredites sur votre .
+- L1092 [string-literal] Un utilisateur
+- L1097 [string-literal] a annule un ordre P2P de .
+- L1102 [string-literal] Vous avez annule un ordre P2P de .
+- L1105 [string-literal] Ordre P2P annule avec succes.
+- L1108 [string-literal] P2P cancel order error:
+- L1109 [string-literal] Impossible d annuler cet ordre.
+- L1135 [string-literal] Un utilisateur
+- L1140 [string-literal] a ouvert un litige P2P pour .
+- L1145 [string-literal] Votre litige P2P pour a ete enregistre.
+- L1148 [string-literal] Litige ouvert. Un administrateur pourra le traiter.
+- L1151 [string-literal] P2P dispute order error:
+- L1152 [string-literal] Impossible d ouvrir le litige.
+- L1183 [string-literal] Erreur on-chain
+- L1193 [string-literal] Erreur inconnue
+- L1201 [string-literal] insufficient funds
+- L1201 [string-literal] transfer amount exceeds balance
+- L1202 [string-literal] Fonds insuffisants dans le portefeuille de la plateforme (BNB ou USDT).
+- L1204 [string-literal] user rejected
+- L1205 [string-literal] La transaction a été rejetée.
+- L1207 [string-literal] gas too low
+- L1207 [string-literal] intrinsic gas too low
+- L1207 [string-literal] out of gas
+- L1208 [string-literal] Limite de gaz insuffisante (BNB insuffisant).
+- L1216 [string-literal] insufficient funds
+- L1217 [string-literal] Fonds insuffisants dans le portefeuille (BNB ou USDT).
+- L1224 [string-literal] See: https://links.ethers.org
+- L1227 [string-literal] (error=
+- L1230 [string-literal] error=
+- L1234 [string-literal] Erreur on-chain
+- L1243 [string-literal] Clé privée de la plateforme (PLATFORM_PRIVATE_KEY) non configurée dans le fichier .env.
+- L1251 [string-literal] function transfer(address to, uint256 amount) returns (bool)
+- L1307 [string-literal] Frais de retrait de 30% sur le retrait # (Brut: USDT, frais de gaz déduits : USDT)
+- L1311 [string-literal] Votre retrait de USDT (Net reçu : USDT après 30% de frais) a été envoyé avec succès. Hash:
+- L1312 [string-literal] Retrait de USDT complété !
+- L1333 [string-literal] Retrait de USDT (Reçu : USDT après frais) envoyé avec succès !
+- L1336 [string-literal] La transaction blockchain a échoué (receipt status 0).
+- L1365 [string-literal] Votre retrait de USDT a échoué et le solde a été restitué. Raison:
+- L1372 [string-literal] Retrait échoué :
+- L1383 [string-literal] Le retrait a échoué. Votre solde a été restitué.
+- L1396 [string-literal] Format d\'adresse BEP-20 invalide.
+- L1409 [string-literal] Vous ne pouvez modifier votre adresse de portefeuille qu'une fois tous les 7 jours. Réessayez dans jour(s).
+- L1424 [string-literal] Error saving wallet address:
+- L1425 [string-literal] Erreur lors de l\'enregistrement de l\'adresse.
+- L1460 [string-literal] Error getting deposit info:
+- L1461 [string-literal] Erreur lors de la récupération des détails de dépôt.
+- L1470 [string-literal] Le code secret de retrait doit contenir exactement 6 chiffres.
+- L1477 [string-literal] Code secret de retrait configuré avec succès.
+- L1479 [string-literal] Error setting withdrawal pin:
+- L1480 [string-literal] Erreur lors de la configuration du code secret.
+- L1492 [string-literal] Montant de retrait invalide.
+- L1499 [string-literal] Le montant de retrait minimum requis est de $.
+- L1503 [string-literal] Code secret de retrait invalide.
+- L1516 [string-literal] Utilisateur introuvable.
+- L1521 [string-literal] Veuillez configurer votre adresse de portefeuille avant de demander un retrait.
+- L1526 [string-literal] Veuillez configurer votre code secret de retrait avant de continuer.
+- L1533 [string-literal] Code secret de retrait incorrect.
+- L1539 [string-literal] Solde de retrait insuffisant.
+- L1560 [string-literal] Retrait en cours de traitement...
+- L1569 [string-literal] Demande de retrait enregistrée et en cours d\'envoi sur la blockchain BSC.
+- L1575 [string-literal] Withdrawal endpoint error:
+- L1576 [string-literal] Erreur lors de la tentative de retrait.
+- L1589 [string-literal] Error getting withdrawal history:
+- L1590 [string-literal] Erreur lors de la récupération de l\'historique.
+- L1603 [string-literal] Error getting deposit history:
+- L1604 [string-literal] Erreur lors de la récupération de l\'historique.
+- L1616 [string-literal] Erreur API backgrounds:
+- L1617 [string-literal] Failed to fetch backgrounds
+- L1644 [string-literal] Erreur API search users:
+- L1645 [string-literal] Failed to search users
+- L1658 [string-literal] Utilisateur introuvable.
+- L1672 [string-literal] Erreur API balance:
+- L1673 [string-literal] Impossible de recuperer le solde.
+- L1683 [string-literal] Session expirée. Reconnectez-vous.
+- L1686 [string-literal] Action impossible sur ce profil.
+- L1692 [string-literal] Utilisateur introuvable.
+- L1704 [string-literal] now follows you.
+- L1712 [string-literal] now follows you.
+- L1747 [string-literal] Follow API error:
+- L1748 [string-literal] Impossible de mettre à jour cet abonnement.
+- L1760 [string-literal] Demande de message invalide.
+- L1765 [string-literal] Demande de message introuvable.
+- L1781 [string-literal] Message request update error:
+- L1782 [string-literal] Impossible de traiter cette demande.
+- L1794 [string-literal] Erreur API messages:
+- L1795 [string-literal] Failed to fetch messages
+- L1802 [string-literal] public/uploads/messages
+- L1816 [string-literal] message- .
+- L1833 [string-literal] No file received.
+- L1841 [string-literal] image/
+- L1842 [string-literal] video/
+- L1843 [string-literal] audio/
+- L1844 [string-literal] application/pdf
+- L1857 [string-literal] Failed to cleanup oversized message file:
+- L1861 [string-literal] Video files must not exceed 100 MB.
+- L1862 [string-literal] Files must not exceed 25 MB.
+- L1878 [string-literal] Aucune image recue.
+- L1881 [string-literal] image/
+- L1885 [string-literal] Failed to cleanup invalid P2P proof image:
+- L1887 [string-literal] Seules les images de preuve sont acceptees.
+- L1894 [string-literal] Failed to cleanup oversized P2P proof image:
+- L1896 [string-literal] L image de preuve ne doit pas depasser 10 MB.
+- L1906 [string-literal] public/uploads/comments
+- L1927 [string-literal] No audio file received.
+- L1934 [string-literal] public/uploads/posts
+- L1969 [string-literal] Le fichier depasse la limite autorisee. Maximum 10 Mo pour une image et 150 Mo pour une video.
+- L1973 [string-literal] Impossible de telecharger ce media pour le moment.
+- L1981 [string-literal] No media file received.
+- L1985 [string-literal] video/
+- L1992 [string-literal] Only one video file is allowed.
+- L1999 [string-literal] video/
+- L2000 [string-literal] image/
+- L2007 [string-literal] Unsupported file type. Only images or videos are allowed.
+- L2015 [string-literal] The video exceeds the 150 MB limit.
+- L2023 [string-literal] The image exceeds the 10 MB limit.
+- L2035 [string-literal] public/uploads/ads
+- L2065 [string-literal] Tous les champs (titre, description, URL, jours) sont requis.
+- L2070 [string-literal] La durée doit être d\'au moins 1 jour.
+- L2074 [string-literal] Une image publicitaire est requise.
+- L2092 [string-literal] Failed to unlink ad file:
+- L2095 [string-literal] Solde de dépôt insuffisant pour créer cette publicité. Requis : $ , disponible : $ .
+- L2105 [string-literal] Aucun compte administrateur principal n’est disponible pour recevoir les frais publicitaires.
+- L2113 [string-literal] Ad purchase for day(s)
+- L2146 [string-literal] Nouvelle publicité : " " -
+- L2159 [string-literal] Nouvelle publicité : " " -
+- L2176 [string-literal] Failed to broadcast ad notifications:
+- L2198 [string-literal] La publicité a été créée et publiée avec succès !
+- L2200 [string-literal] Ad creation error:
+- L2206 [string-literal] Une erreur interne est survenue lors de la création de la publicité.
+- L2261 [string-literal] game:
+- L2275 [string-literal] game:
+- L2277 [string-literal] user:
+- L2280 [string-literal] user:
+- L2335 [string-literal] Error during delayed bot move after next round start:
+- L2340 [string-literal] Error while starting next game round:
+- L2348 [string-literal] Un utilisateur s\'est connecté :
+- L2348 [string-literal] User ID:
+- L2351 [string-literal] user:
+- L2360 [string-literal] Presence online error:
+- L2405 [string-literal] Session expiree. Reconnectez-vous.
+- L2410 [string-literal] Ordre P2P invalide.
+- L2432 [string-literal] Un utilisateur
+- L2435 [string-literal] vous a envoye un message dans le chat P2P :
+- L2436 [string-literal] vous a envoye une preuve image dans le chat P2P.
+- L2449 [string-literal] P2P order message send error:
+- L2451 [string-literal] Impossible d envoyer ce message P2P.
+- L2533 [string-literal] a utilise votre background premium et $ ont ete ajoutes a votre compte de retrait.
+- L2546 [string-literal] background:
+- L2547 [string-literal] Paid post background purchase
+- L2582 [string-literal] a utilise votre hashtag premium # et $ ont ete ajoutes a votre compte de retrait.
+- L2603 [string-literal] Trade post creation fee
+- L2732 [string-literal] vous participez au challenge de vote " ".
+- L2754 [string-literal] vous participez automatiquement au challenge miss " ".
+- L2786 [string-literal] vous a invite a participer au challenge " ".
+- L2801 [string-literal] Erreur post-create:
+- L2860 [string-literal] Unlock live stream by
+- L2871 [string-literal] a débloqué votre live stream pour $.
+- L2876 [string-literal] Error unlocking live stream:
+- L2912 [string-literal] Error ending live stream:
+- L3075 [string-literal] vous a invité à participer au challenge " ".
+- L3099 [string-literal] Erreur challenge-update:
+- L3176 [string-literal] Impossible de lire votre compte utilisateur pour ce trade. Rechargez la page puis reessayez.
+- L3184 [string-literal] Solde insuffisant. Ce trade coute $ et votre compte de depot contient $ .
+- L3218 [string-literal] Trade post payout captured by admin after previous price drop
+- L3272 [string-literal] a trade votre post et $ ont ete ajoutes a votre compte de retrait.
+- L3315 [string-literal] Session expiree. Rechargez la page puis reconnectez-vous.
+- L3321 [string-literal] Short introuvable pour ce trade.
+- L3341 [string-literal] This short cannot be traded.
+- L3347 [string-literal] You already own this short!
+- L3353 [string-literal] Invalid trade price for this short.
+- L3363 [string-literal] Impossible de lire votre compte utilisateur pour ce trade. Rechargez la page puis reessayez.
+- L3371 [string-literal] Solde insuffisant. Ce trade coute $ et votre compte de depot contient $ .
+- L3386 [string-literal] Reel trade preview error:
+- L3387 [string-literal] Impossible de verifier votre solde pour ce trade.
+- L3459 [string-literal] Impossible de lire votre compte utilisateur pour ce trade. Rechargez la page puis reessayez.
+- L3467 [string-literal] Solde insuffisant. Ce trade coute $ et votre compte de depot contient $ .
+- L3500 [string-literal] reel:
+- L3501 [string-literal] Trade short payout captured by admin after previous price drop
+- L3555 [string-literal] a trade votre short et $ ont ete ajoutes a votre compte de retrait.
+- L3581 [string-literal] Reel trade error:
+- L3691 [string-literal] a débloqué votre diffusion en direct pour $ .
+- L3702 [string-literal] Error unlocking live post:
+- L3736 [string-literal] Error ending live:
+- L3756 [string-literal] liked your post.
+- L3761 [string-literal] événement de mise à jour à l
+- L3787 [string-literal] Session expirée. Reconnectez-vous.
+- L3794 [string-literal] Action impossible sur ce profil.
+- L3801 [string-literal] Utilisateur introuvable.
+- L3809 [string-literal] now follows you.
+- L3810 [string-literal] no longer follows you.
+- L3839 [string-literal] Follow toggle error:
+- L3840 [string-literal] Impossible de mettre à jour cet abonnement.
+- L3872 [string-literal] You replied to your own voice note.
+- L3873 [string-literal] You replied to your own text comment.
+- L3874 [string-literal] replied to from .
+- L3876 [string-literal] You added a voice note to your post.
+- L3876 [string-literal] You commented on your post.
+- L3877 [string-literal] added a voice note to your post.
+- L3877 [string-literal] commented on your post.
+- L3903 [string-literal] Comment create error:
+- L4035 [string-literal] Chat message error:
+- L4049 [string-literal] Puissance 4
+- L4049 [string-literal] Football Table
+- L4051 [string-literal] (Gratuit)
+- L4052 [string-literal] vous invite à jouer à
+- L4061 [string-literal] Game invitation notify error:
+- L4128 [string-literal] Error creating/joining game session on invitation accept:
+- L4152 [string-literal] accepté
+- L4152 [string-literal] refusé
+- L4153 [string-literal] Puissance 4
+- L4153 [string-literal] Football Table
+- L4155 [string-literal] a votre invitation à jouer à
+- L4164 [string-literal] Game invitation action error:
+- L4188 [string-literal] Chat mark read error:
+- L4214 [string-literal] Reel like error:
+- L4221 [string-literal] reel:comments:
+- L4228 [string-literal] reel:comments:
+- L4236 [string-literal] Invalid Reel ID
+- L4244 [string-literal] Reel comments fetch error:
+- L4261 [string-literal] Invalid input
+- L4268 [string-literal] Invalid reply target
+- L4309 [string-literal] Reel comment add error:
+- L4329 [string-literal] Reel share error:
+- L4361 [string-literal] Presence offline error:
+- L4371 [string-literal] Invalid share data.
+- L4393 [string-literal] Unable to create the share link.
+- L4411 [string-literal] Notifications mark-read error:
+- L4413 [string-literal] Unable to mark notifications as read.
+- L4425 [string-literal] Error on games-list-get:
+- L4437 [string-literal] Error on bots-list-get:
+- L4447 [string-literal] Non authentifié.
+- L4450 [string-literal] Utilisateur introuvable.
+- L4460 [string-literal] game:
+- L4500 [string-literal] Error on game-create:
+- L4510 [string-literal] Non authentifié.
+- L4514 [string-literal] Invitation introuvable ou expirée.
+- L4515 [string-literal] Cette invitation n\'est plus active.
+- L4516 [string-literal] Vous n\'êtes pas le destinataire de cette invitation.
+- L4526 [string-literal] Le solde du challenger est désormais insuffisant.
+- L4532 [string-literal] Votre solde est insuffisant.
+- L4568 [string-literal] user:
+- L4570 [string-literal] game:
+- L4572 [string-literal] user:
+- L4574 [string-literal] game:
+- L4587 [string-literal] Error on game-invite-accept:
+- L4606 [string-literal] Non authentifié.
+- L4610 [string-literal] Invitation introuvable ou expirée.
+- L4611 [string-literal] Cette invitation n\'est plus active.
+- L4612 [string-literal] Non autorisé.
+- L4626 [string-literal] L'adversaire a refusé l'invitation.
+- L4633 [string-literal] Error on game-invite-decline:
+- L4643 [string-literal] Non authentifié.
+- L4647 [string-literal] Invitation introuvable.
+- L4648 [string-literal] Cette invitation n\'est plus active.
+- L4649 [string-literal] Non autorisé.
+- L4661 [string-literal] Le challenger a annulé l'invitation.
+- L4672 [string-literal] Error on game-invite-cancel:
+- L4682 [string-literal] Non authentifié.
+- L4685 [string-literal] Utilisateur introuvable.
+- L4690 [string-literal] game:
+- L4702 [string-literal] Error on game-join:
+- L4713 [string-literal] game:
+- L4716 [string-literal] Error on game-room-join:
+- L4724 [string-literal] Non authentifié.
+- L4729 [string-literal] Données invalides.
+- L4733 [string-literal] Vous ne pouvez pas envoyer de cadeau à un robot.
+- L4737 [string-literal] Vous ne pouvez pas vous envoyer un cadeau à vous-même.
+- L4746 [string-literal] Expéditeur introuvable.
+- L4751 [string-literal] Solde insuffisant pour envoyer ce cadeau.
+- L4756 [string-literal] Destinataire introuvable.
+- L4773 [string-literal] vous a envoyé un cadeau de $
+- L4784 [string-literal] Système
+- L4787 [string-literal] 🎁 a envoyé un cadeau de $ à !
+- L4803 [string-literal] Non authentifié.
+- L4804 [string-literal] Données invalides.
+- L4805 [string-literal] Vous ne pouvez pas envoyer de cadeau à un robot.
+- L4806 [string-literal] Vous ne pouvez pas vous envoyer un cadeau à vous-même.
+- L4807 [string-literal] Expéditeur introuvable.
+- L4808 [string-literal] Solde insuffisant pour envoyer ce cadeau.
+- L4809 [string-literal] Destinataire introuvable.
+- L4815 [string-literal] Error on game-send-gift:
+- L4831 [string-literal] Session expirée. Reconnectez-vous.
+- L4838 [string-literal] Données du cadeau invalides.
+- L4849 [string-literal] Expéditeur introuvable.
+- L4860 [string-literal] Publication introuvable.
+- L4865 [string-literal] Vous ne pouvez pas vous envoyer un cadeau a vous-meme.
+- L4870 [string-literal] Solde de depot insuffisant pour envoyer ce cadeau.
+- L4877 [string-literal] Createur de la publication introuvable.
+- L4889 [string-literal] a envoye le cadeau de $ sur ce post.
+- L4907 [string-literal] vous a envoye le cadeau de $ sur votre post.
+- L4939 [string-literal] vous a envoye pour $ .
+- L4964 [string-literal] Session expirée. Reconnectez-vous.
+- L4965 [string-literal] Données du cadeau invalides.
+- L4966 [string-literal] Expéditeur introuvable.
+- L4967 [string-literal] Publication introuvable.
+- L4968 [string-literal] Vous ne pouvez pas vous envoyer un cadeau a vous-meme.
+- L4969 [string-literal] Solde de depot insuffisant pour envoyer ce cadeau.
+- L4970 [string-literal] Createur de la publication introuvable.
+- L4976 [string-literal] Error on post-gift-send:
+- L4978 [string-literal] Impossible d envoyer ce cadeau.
+- L4989 [string-literal] Session expirée. Reconnectez-vous.
+- L4996 [string-literal] Données du cadeau invalides.
+- L5000 [string-literal] Vous ne pouvez pas vous envoyer un cadeau a vous-meme.
+- L5011 [string-literal] Expéditeur introuvable.
+- L5016 [string-literal] Solde de depot insuffisant pour envoyer ce cadeau.
+- L5023 [string-literal] Utilisateur anniversaire introuvable.
+- L5032 [string-literal] Cet utilisateur ne fete pas son anniversaire aujourd hui.
+- L5055 [string-literal] vous a envoye le cadeau de $ pour votre anniversaire.
+- L5072 [string-literal] vous a envoye pour $ .
+- L5098 [string-literal] Session expirée. Reconnectez-vous.
+- L5099 [string-literal] Données du cadeau invalides.
+- L5100 [string-literal] Vous ne pouvez pas vous envoyer un cadeau a vous-meme.
+- L5101 [string-literal] Expéditeur introuvable.
+- L5102 [string-literal] Solde de depot insuffisant pour envoyer ce cadeau.
+- L5103 [string-literal] Utilisateur anniversaire introuvable.
+- L5104 [string-literal] Cet utilisateur ne fete pas son anniversaire aujourd hui.
+- L5110 [string-literal] Error on birthday-gift-send:
+- L5112 [string-literal] Impossible d envoyer ce cadeau anniversaire.
+- L5119 [string-literal] Non authentifié.
+- L5178 [string-literal] Error during delayed bot move:
+- L5190 [string-literal] La partie n'est pas en cours.
+- L5191 [string-literal] Ce n'est pas votre tour.
+- L5192 [string-literal] Colonne est pleine.
+- L5193 [string-literal] Coup invalide.
+- L5194 [string-literal] Tuile invalide.
+- L5195 [string-literal] Le domino ne correspond pas à l'extrémité gauche.
+- L5196 [string-literal] Le domino ne correspond pas à l'extrémité droite.
+- L5197 [string-literal] Ce coup n est pas autorisé.
+- L5203 [string-literal] Error on game-move:
+- L5215 [string-literal] Non authentifié.
+- L5227 [string-literal] Error on game-draw:
+- L5237 [string-literal] Non authentifié.
+- L5265 [string-literal] Error during delayed bot move after pass:
+- L5275 [string-literal] Error on game-pass:
+- L5285 [string-literal] Non authentifié.
+- L5288 [string-literal] Utilisateur introuvable.
+- L5292 [string-literal] Partie introuvable ou terminée.
+- L5302 [string-literal] Solde insuffisant pour regarder ce live ( $ requis).
+- L5329 [string-literal] game:
+- L5339 [string-literal] Partie introuvable ou terminée.
+- L5342 [string-literal] Error on game-spectate-join:
+- L5363 [string-literal] game:
+- L5365 [string-literal] Error on game-spectate-leave:
+- L5387 [string-literal] Error on game-forfeit:
+- L5411 [string-literal] Error on game-chat-message:
+- L5416 [string-literal] Un utilisateur s\'est déconnecté :
+- L5427 [string-literal] Range Not Satisfiable
+- L5429 [string-literal] Unhandled Server Error:
+- L5430 [string-literal] Internal Server Error
+- L5437 [string-literal] Database bsc_deposits table check complete.
+- L5439 [string-literal] Database bsc_withdrawals table and user PIN check complete.
+- L5444 [string-literal] Database admins table and columns check complete.
+- L5452 [string-literal] Initialized default min_withdrawal_amount: 50
+- L5457 [string-literal] Initialized default withdrawal_fee_percent: 30
+- L5460 [string-literal] Failed to initialize default appSettings:
+- L5465 [string-literal] Failed to initialize deposits or schema:
+- L5467 [string-literal] Le serveur tourne sur http://localhost:
+
+### views/index.ejs (294)
+
+- L176 [attribute] Write a new post
+- L177 [text-node] What's on your mind,
+- L180 [attribute] Add emoji
+- L183 [text-node] Share Post
+- L193 [text-node] Photo/Video
+- L213 [text-node] Text Style
+- L231 [attribute] Only Me
+- L312 [text-node] Autoriser le téléchargement de la vidéo
+- L335 [text-node] Partagez un live YouTube gratuit ou payant
+- L340 [text-node] URL ou ID du Live YouTube
+- L341 [attribute] Ex: https://www.youtube.com/watch?v=...
+- L345 [text-node] Mode d'accès
+- L353 [text-node] Prix d'accès (USD)
+- L354 [attribute] Ex: 2.50
+- L395 [attribute] Ex: Miss Summer 2026
+- L406 [text-node] Participation libre
+- L408 [text-node] Inviter une personne
+- L412 [text-node] Vote gratuit
+- L414 [text-node] Vote payant
+- L417 [attribute] Montant du vote payant (USD)
+- L420 [text-node] Date et heure de fin (optionnel)
+- L424 [text-node] Participer au challenge
+- L433 [text-node] Votre photo pour le challenge
+- L435 [text-node] Choisir une photo
+- L436 [text-node] Aucune photo choisie
+- L441 [attribute] Rechercher un utilisateur a inviter
+- L479 [attribute] Search user to mention...
+- L593 [text-node] Outfit (Modern)
+- L593 [attribute] 'Outfit', sans-serif
+- L594 [text-node] Inter (Clean)
+- L594 [attribute] 'Inter', sans-serif
+- L595 [text-node] Georgia (Classic Serif)
+- L595 [attribute] 'Georgia', serif
+- L596 [text-node] Courier New (Monospace)
+- L596 [attribute] 'Courier New', monospace
+- L597 [attribute] 'Playfair Display', serif
+- L630 [text-node] Aucun favori pour le moment
+- L642 [text-node] String(value ?? '').replace(/[&
+- L671 [text-node] ${escapeFeedHtml(ad.title)}
+- L672 [text-node] ${escapeFeedHtml(ad.description)}
+- L676 [attribute] ${escapeFeedHtml(ad.title)}
+- L679 [text-node] ${escapeFeedHtml(adDisplayUrl)}
+- L733 [text-node] QUE DIEU VOUS BENISSE !
+- L738 [text-node] Envoyer un cadeau
+- L743 [text-node] Bouton cadeau
+- L746 [text-node] Profitez de votre journée
+- L891 [text-node] Invitation en attente
+- L899 [text-node] En attente d'un candidat
+- L937 [text-node] Précédent
+- L937 [attribute] Voir la participante précédente
+- L938 [text-node] Page 1 / ( participantes)
+- L939 [attribute] Voir la participante suivante
+- L970 [text-node] Accepter invitation
+- L1047 [text-node] Invitation en attente
+- L1055 [text-node] En attente d'un candidat
+- L1093 [text-node] Précédent
+- L1093 [attribute] Voir la participante précédente
+- L1094 [text-node] Page 1 / ( participantes)
+- L1095 [attribute] Voir la participante suivante
+- L1126 [text-node] Accepter invitation
+- L1151 [attribute] Play/Pause
+- L1172 [text-node] Diffusion Premium
+- L1173 [text-node] Accédez au flux vidéo en direct de
+- L1194 [attribute] Play video
+- L1204 [attribute] Video progress
+- L1225 [attribute] Download video with watermark
+- L1226 [attribute] Download with watermark
+- L1359 [text-node] Trade (
+- L1368 [attribute] Bookmark post
+- L1618 [attribute] Enregistrer une note vocale
+- L1625 [attribute] Ajouter un emoji
+- L1672 [attribute] Enregistrer une note vocale
+- L1679 [attribute] Ajouter un emoji
+- L1739 [attribute] Écrire un commentaire...
+- L1748 [attribute] Enregistrer une note vocale
+- L1755 [attribute] Ajouter un emoji
+- L1784 [attribute] Envoyer la note vocale
+- L1817 [attribute] Retour au feed
+- L1826 [attribute] Choisir la devise P2P
+- L1831 [attribute] Ouvrir le menu P2P
+- L1837 [text-node] Creer une annonce
+- L1841 [text-node] Mes ordres
+- L1845 [text-node] Mes annonces
+- L1872 [text-node] Creer une annonce
+- L1873 [text-node] Choisissez votre devise locale puis entrez vous-meme votre taux pour 1
+- L1875 [attribute] Fermer le panneau Creer une annonce
+- L1881 [text-node] Compte de retrait disponible
+- L1907 [text-node] Devise du pays
+- L1920 [text-node] Taux de change (1 USD = ?
+- L1921 [attribute] ex: 133
+- L1922 [text-node] Saisissez le taux de votre devise locale pour 1 USD.
+- L1927 [text-node] 1 Token vaudra
+- L1934 [text-node] Prix 1
+- L1940 [text-node] Auto rempli depuis votre compte de retrait en temps reel et non modifiable.
+- L1943 [text-node] Max / ordre (
+- L1945 [text-node] Le maximum reste inclus dans le total disponible. Equivalent:
+- L1951 [text-node] Min / ordre (
+- L1953 [text-node] Equivalent:
+- L1956 [text-node] Moyen de paiement
+- L1958 [text-node] Ajoutez vous-meme le mode de paiement que vous acceptez.
+- L1961 [text-node] Nom du titulaire
+- L1962 [attribute] Nom du compte de reception
+- L1963 [text-node] Nom de la personne ou du compte qui doit recevoir l argent.
+- L1969 [text-node] Numero du compte
+- L1970 [attribute] Numero du compte / wallet / telephone
+- L1971 [text-node] Numero du compte, wallet ou telephone ou vous voulez recevoir l argent.
+- L1977 [attribute] Verification du nom du payeur, preuve requise, aucun paiement tiers.
+- L1981 [text-node] Note :
+- L1981 [text-node] les annonces
+- L1981 [text-node] bloquent les fonds depuis votre
+- L1981 [text-node] compte de retrait
+- L1981 [text-node] , puis les credits arrivent sur le
+- L1981 [text-node] compte de depot
+- L1998 [text-node] Aucune annonce disponible pour le moment.
+- L2019 [text-node] Trade(s)
+- L2029 [text-node] (Taux : 1 USD = )
+- L2063 [text-node] Conditions :
+- L2076 [text-node] Confirmer l ordre P2P
+- L2077 [text-node] Choisissez le montant de votre ordre.
+- L2079 [attribute] Fermer le modal ordre P2P
+- L2104 [text-node] Montant USDT
+- L2109 [text-node] Total estime
+- L2114 [text-node] Conditions :
+- L2128 [text-node] Confirmer le paiement
+- L2129 [text-node] Ajoutez une note ou une reference avant d avertir le vendeur.
+- L2131 [attribute] Fermer le modal de paiement P2P
+- L2137 [text-node] Note de paiement
+- L2138 [attribute] Reference du transfert, heure du paiement, nom du compte expediteur...
+- L2143 [text-node] J ai paye
+- L2152 [text-node] Liberer les fonds
+- L2153 [text-node] Confirmez uniquement si vous avez bien recu le paiement du client.
+- L2155 [attribute] Fermer le modal de liberation P2P
+- L2161 [text-node] Attention :
+- L2166 [text-node] Liberer les fonds
+- L2176 [text-node] Fermer l'annonce
+- L2177 [text-node] Le solde restant en escrow vous sera restitue.
+- L2185 [text-node] Confirmation requise :
+- L2203 [text-node] Annuler l'ordre
+- L2204 [text-node] Precisez un motif si vous le souhaitez.
+- L2212 [text-node] Motif d'annulation
+- L2212 [text-node] (optionnel)
+- L2213 [attribute] Expliquez brievement pourquoi vous annulez cet ordre...
+- L2218 [text-node] Annuler l'ordre
+- L2228 [text-node] Ouvrir un litige
+- L2229 [text-node] Decrivez le probleme pour que notre equipe puisse intervenir.
+- L2237 [text-node] Description du probleme
+- L2237 [text-node] (obligatoire)
+- L2238 [attribute] Ex : le vendeur ne repond plus, le paiement n a pas ete recu apres 24h...
+- L2254 [attribute] Retour au marche P2P
+- L2258 [text-node] Mes ordres
+- L2259 [text-node] Ouvrez un ordre pour voir son chat et toutes ses actions dans une page dediee.
+- L2267 [text-node] Vous n avez encore aucun ordre P2P.
+- L2285 [text-node] Vous etes
+- L2289 [text-node] Valeur totale
+- L2300 [text-node] Reception :
+- L2309 [text-node] Note :
+- L2341 [attribute] Retour aux ordres P2P
+- L2345 [text-node] Ordre P2P
+- L2346 [text-node] Discutez avec votre contrepartie et gerez cet ordre ici.
+- L2353 [text-node] Ordre #0
+- L2354 [text-node] Avec -
+- L2361 [text-node] Vous etes
+- L2365 [text-node] Valeur totale
+- L2375 [text-node] Reception :
+- L2379 [text-node] Note :
+- L2388 [text-node] Envoyez texte ou preuve image.
+- L2391 [text-node] Aucun message pour le moment.
+- L2397 [attribute] Ecrivez votre message...
+- L2405 [text-node] Aucune image
+- L2415 [text-node] Mes annonces
+- L2416 [text-node] Fermez une annonce pour recuperer le reste de son escrow si c est une annonce sell.
+- L2418 [attribute] Fermer le panneau Mes annonces
+- L2427 [text-node] Escrow total gele :
+- L2441 [text-node] Vous n avez encore publie aucune annonce P2P.
+- L2450 [text-node] Statut :
+- L2462 [text-node] (Taux : 1 USD = )
+- L2476 [text-node] Aucun moyen precise
+- L2482 [text-node] Reception :
+- L2491 [text-node] Conditions :
+- L2496 [text-node] Fermer l annonce
+- L2519 [attribute] Add Short
+- L2523 [attribute] Back to Feed
+- L2633 [text-node] Music Track Short
+- L2764 [text-node] Comments (
+- L2778 [attribute] Annuler la reponse
+- L2779 [attribute] Annuler la reponse
+- L2782 [attribute] Add comment...
+- L2786 [attribute] Ajouter un emoji
+- L2789 [attribute] Enregistrer une note vocale
+- L2790 [attribute] Enregistrer une note vocale
+- L2801 [attribute] Envoyer la note vocale
+- L2825 [text-node] Choisir un jeu / Créer
+- L2829 [text-node] Parties en cours
+- L2852 [text-node] Puissance 4
+- L2866 [text-node] Football Table
+- L2881 [text-node] Robot AI
+- L2888 [text-node] Autre Joueur
+- L2896 [text-node] Type de Partie
+- L2902 [text-node] Partie Gratuite
+- L2909 [text-node] Pari d'argent
+- L2918 [text-node] Choisissez votre Robot Adversaire
+- L2926 [text-node] Rechercher un adversaire
+- L2928 [attribute] Saisissez un nom d'utilisateur...
+- L2938 [text-node] @username
+- L2949 [text-node] Mise des deux joueurs (Chacun) ($)
+- L2958 [text-node] Nombre de parties (impair, max 7)
+- L2960 [text-node] 1 partie (Unique)
+- L2961 [text-node] 3 parties
+- L2962 [text-node] 5 parties
+- L2963 [text-node] 7 parties
+- L2969 [text-node] Spectateurs (Live de la partie)
+- L2990 [text-node] Prix d'accès au Live ($)
+- L2998 [text-node] Créer la partie
+- L3015 [text-node] Aucune partie disponible pour le moment. Créez-en une pour attendre un adversaire !
+- L3027 [text-node] Aucun live en cours. Jouez contre un robot ou un autre joueur pour lancer le direct !
+- L3042 [attribute] Quitter la partie
+- L3046 [text-node] Partie en cours
+- L3048 [text-node] Mode Gratuit
+- L3063 [text-node] 0 Spectateur
+- L3082 [attribute] Player 1
+- L3087 [text-node] Joueur 1
+- L3088 [attribute] Envoyer un cadeau
+- L3092 [text-node] Pions Noirs (X)
+- L3102 [attribute] Player 2
+- L3107 [text-node] Robot AI
+- L3108 [attribute] Envoyer un cadeau
+- L3112 [text-node] Pions Blancs (O)
+- L3133 [text-node] Pioche : 14
+- L3135 [text-node] Piger une tuile
+- L3148 [text-node] Votre main
+- L3160 [attribute] Placer colonne
+- L3179 [text-node] Phase d'attaque
+- L3180 [text-node] Choisissez un couloir pour tirer.
+- L3200 [text-node] Confirmer l'action
+- L3218 [text-node] Chat de la partie
+- L3222 [text-node] Le chat est ouvert ! Envoyez des encouragements en direct.
+- L3226 [attribute] Tapez un message...
+- L3245 [text-node] Liste des personnes regardant le live
+- L3248 [text-node] Aucun spectateur pour le moment.
+- L3262 [attribute] Back to Feed
+- L3273 [attribute] Search messages
+- L3274 [attribute] Filter messages
+- L3532 [attribute] Close status modal
+- L3605 [attribute] Write status...
+- L3696 [text-node] Stays active for 24h
+- L3714 [attribute] Close short modal
+- L3721 [text-node] Creer un Short
+- L3757 [text-node] Affichage du media
+- L3758 [text-node] Le choix sera garde pour ce short.
+- L3760 [attribute] Affichage du media
+- L3766 [text-node] Remplit tout l'ecran
+- L3773 [text-node] Format initial
+- L3774 [text-node] Pas de recadrage
+- L3782 [text-node] Activer l'option Trade Short
+- L3786 [attribute] Activer l'option Trade Short
+- L3793 [text-node] Option Trade Short active
+- L3794 [text-node] 5 tokens
+- L3798 [text-node] Solde disponible :
+- L3801 [text-node] Cout requis :
+- L3804 [text-node] Solde insuffisant pour activer Trade Short.
+- L3816 [text-node] Choose file
+- L3817 [text-node] No file chosen
+- L3853 [attribute] Preview Trimmed Video
+- L3869 [text-node] Choose image
+- L3870 [text-node] No image chosen
+- L3885 [text-node] Choose audio
+- L3886 [text-node] No audio chosen
+- L3934 [text-node] Choose audio
+- L3935 [text-node] No audio chosen
+- L3957 [attribute] Preview Trimmed Audio
+- L3998 [text-node] Sound Track Name
+- L3999 [attribute] Original Sound
+- L4005 [text-node] Caption / Description
+- L4007 [attribute] Write something about your short...
+- L4019 [text-node] Upload Short
+- L4030 [attribute] Close status viewer
+- L4050 [attribute] Toggle Audio
+- L4132 [text-node] 5 tokens
+- L4161 [text-node] Envoyer un cadeau
+- L4162 [text-node] Choisissez un cadeau ou entrez votre montant.
+- L4235 [text-node] Montant personnalise
+- L4239 [attribute] Entrez un montant
+- L4245 [text-node] Cadeau selectionne
+- L4256 [text-node] Envoyer le cadeau
+- L4283 [attribute] Auteur de la publication
+- L4296 [text-node] Personnes suivies
+- L4320 [text-node] Aucune personne suivie pour le moment.
+- L4356 [text-node] Réseaux sociaux
+- L4413 [text-node] Partager le Short
+- L4435 [text-node] Partager avec des amis
+- L4457 [text-node] Partager sur les réseaux
+- L4523 [text-node] Enregistrer la vidéo
+- L4535 [text-node] Préparation du téléchargement
+- L4536 [text-node] Ajout du filigrane WeShare...
+
+### models/P2PMarket.js (53)
+
+- L9 [string-literal] united states
+- L24 [string-literal] dominican republic
+- L88 [string-literal] ALTER TABLE p2p_offers ADD COLUMN usd_rate DECIMAL(12,4) NULL DEFAULT NULL
+- L90 [string-literal] duplicate column
+- L90 [string-literal] already exists
+- L91 [string-literal] Failed to alter p2p_offers table:
+- L141 [string-literal] SHOW COLUMNS FROM LIKE ?
+- L143 [string-literal] ALTER TABLE ADD COLUMN
+- L147 [string-literal] payment_account_name VARCHAR(160) NULL AFTER payment_methods
+- L148 [string-literal] payment_account_number VARCHAR(120) NULL AFTER payment_account_name
+- L403 [string-literal] Le taux de change en USD est requis et doit être supérieur à 0 pour une annonce de Token.
+- L407 [string-literal] Type d annonce P2P invalide.
+- L410 [string-literal] Seuls USDT et Token sont disponibles.
+- L413 [string-literal] Devise P2P invalide.
+- L416 [string-literal] Le prix et le montant doivent etre superieurs a 0.
+- L419 [string-literal] Le montant minimum doit etre superieur a 0.
+- L422 [string-literal] Ajoutez au moins un moyen de paiement.
+- L425 [string-literal] Ajoutez le nom du titulaire du compte de reception.
+- L428 [string-literal] Ajoutez le numero du compte de reception.
+- L433 [string-literal] Le montant minimum ne peut pas etre superieur au montant maximum.
+- L443 [string-literal] Utilisateur introuvable.
+- L447 [string-literal] Solde de Token insuffisant pour placer cette annonce de vente.
+- L460 [string-literal] Utilisateur introuvable.
+- L464 [string-literal] Solde de retrait insuffisant pour placer cette annonce de vente.
+- L520 [string-literal] Commande P2P invalide.
+- L533 [string-literal] Annonce P2P introuvable.
+- L539 [string-literal] Montant de commande invalide.
+- L543 [string-literal] Vous ne pouvez pas prendre votre propre annonce.
+- L551 [string-literal] Cette annonce n est plus disponible.
+- L554 [string-literal] Le montant choisi est hors des limites de cette annonce.
+- L557 [string-literal] Le montant choisi depasse la quantite encore disponible.
+- L579 [string-literal] Vendeur introuvable.
+- L583 [string-literal] Le vendeur n a pas assez de Tokens pour fournir ce montant.
+- L596 [string-literal] Vendeur introuvable.
+- L600 [string-literal] Le vendeur n a pas assez de solde de retrait pour fournir ce montant.
+- L667 [string-literal] Ordre P2P introuvable.
+- L672 [string-literal] Seul l acheteur peut confirmer le paiement.
+- L675 [string-literal] Cet ordre ne peut plus etre marque comme paye.
+- L711 [string-literal] Ordre P2P introuvable.
+- L716 [string-literal] Seul le vendeur peut liberer les fonds.
+- L719 [string-literal] Les fonds ne peuvent etre liberes que pour un ordre marque comme paye.
+- L766 [string-literal] Ordre P2P introuvable.
+- L777 [string-literal] Vous ne pouvez pas annuler cet ordre.
+- L780 [string-literal] Seuls les ordres en attente de paiement peuvent etre annules.
+- L841 [string-literal] Ordre P2P introuvable.
+- L846 [string-literal] Vous ne pouvez pas ouvrir un litige sur cet ordre.
+- L849 [string-literal] Cet ordre ne peut plus etre passe en litige.
+- L884 [string-literal] Annonce P2P introuvable.
+- L889 [string-literal] Vous ne pouvez pas fermer cette annonce.
+- L909 [string-literal] Fermez ou resolvez d abord les ordres encore ouverts pour cette annonce.
+- L963 [string-literal] Ordre P2P introuvable.
+- L968 [string-literal] Vous ne pouvez pas acceder a cette conversation P2P.
+- L1004 [string-literal] Le message P2P est vide.
+
+### utils/mailer.js (47)
+
+- L42 [string-literal] SMTP configuration is incomplete.
+- L75 [string-literal] "WeShare"
+- L80 [string-literal] Email sent: %s
+- L82 [string-literal] Preview URL: %s
+- L86 [string-literal] Error sending email:
+- L95 [string-literal] "WeShare"
+- L97 [string-literal] Verify your WeShare Account
+- L99 [string-literal] font-family: sans-serif; padding: 20px;
+- L101 [string-literal] font-size: 24px;
+- L106 [string-literal] Email sent: %s
+- L108 [string-literal] Preview URL: %s
+- L112 [string-literal] Error sending email:
+- L130 [string-literal] Your ticket for
+- L136 [string-literal] margin: 0 0 6px; font-size: 24px;
+- L136 [string-literal] Your event ticket
+- L137 [string-literal] margin: 0; opacity: 0.9;
+- L137 [string-literal] Personalized ticket
+- L139 [string-literal] padding: 22px; background: white;
+- L140 [string-literal] margin: 0 0 12px;
+- L141 [string-literal] margin: 0 0 12px;
+- L144 [string-literal] margin-top: 6px;
+- L145 [string-literal] margin-top: 6px;
+- L146 [string-literal] margin-top: 6px;
+- L148 [string-literal] margin: 0 0 16px;
+- L148 [string-literal] color: #2563eb;
+- L149 [string-literal] margin: 0 0 18px;
+- L170 [string-literal] En attente...
+- L181 [string-literal] Client WeShare
+- L206 [string-literal] Reçu de transaction WeShare - # -
+- L213 [string-literal] padding: 30px; border-bottom: 1px solid #f1f5f9;
+- L214 [string-literal] width: 100%; border-collapse: collapse;
+- L220 [string-literal] text-align: right; vertical-align: middle;
+- L229 [string-literal] padding: 30px; border-bottom: 1px solid #f1f5f9;
+- L251 [string-literal] padding: 30px; border-bottom: 1px solid #f1f5f9;
+- L256 [string-literal] border-bottom: 2px solid #e2e8f0;
+- L262 [string-literal] border-bottom: 1px solid #f1f5f9;
+- L264 [string-literal] display: block; margin-bottom: 4px;
+- L264 [string-literal] Dépôt USDT (BEP-20)
+- L264 [string-literal] Retrait USDT (BEP-20)
+- L272 [string-literal] border-bottom: 1px solid #f1f5f9;
+- L290 [string-literal] max-width: 420px; margin: 0 auto;
+- L294 [string-literal] cid:receiptQr
+- L294 [string-literal] QR Code de Validation
+- L309 [string-literal] margin: 0; line-height: 1.4;
+- L309 [string-literal] êtes pas à l
+- L316 [string-literal] "WeShare Receipts"
+- L321 [string-literal] receipt-qr- .png
+
+### utils/p2pCurrencies.js (46)
+
+- L7 [string-literal] UNITED STATES
+- L13 [string-literal] DOMINICAN REPUBLIC
+- L68 [string-literal] COSTA RICA
+- L76 [string-literal] EL SALVADOR
+- L79 [string-literal] UNITED KINGDOM
+- L91 [string-literal] CZECH REPUBLIC
+- L119 [string-literal] SOUTH AFRICA
+- L133 [string-literal] SOUTH KOREA
+- L135 [string-literal] HONG KONG
+- L149 [string-literal] UNITED ARAB EMIRATES
+- L151 [string-literal] SAUDI ARABIA
+- L157 [string-literal] NEW ZEALAND
+- L161 [string-literal] Banque locale
+- L162 [string-literal] Banque locale
+- L163 [string-literal] Banque locale
+- L164 [string-literal] Cash App
+- L164 [string-literal] Bank transfer
+- L165 [string-literal] Cash App
+- L165 [string-literal] Bank transfer
+- L166 [string-literal] UNITED STATES
+- L166 [string-literal] Cash App
+- L166 [string-literal] Bank transfer
+- L167 [string-literal] Interac e-Transfer
+- L167 [string-literal] Bank transfer
+- L168 [string-literal] Interac e-Transfer
+- L168 [string-literal] Bank transfer
+- L169 [string-literal] Virement bancaire
+- L170 [string-literal] Virement bancaire
+- L171 [string-literal] Banco Popular
+- L172 [string-literal] DOMINICAN REPUBLIC
+- L172 [string-literal] Banco Popular
+- L173 [string-literal] Transferencia bancaria
+- L174 [string-literal] Transferencia bancaria
+- L175 [string-literal] Transferencia bancaria
+- L176 [string-literal] Transferencia bancaria
+- L177 [string-literal] Transferencia bancaria
+- L178 [string-literal] Bank transfer
+- L178 [string-literal] Remittance pickup
+- L179 [string-literal] Bank transfer
+- L179 [string-literal] Remittance pickup
+- L180 [string-literal] Bank transfer
+- L181 [string-literal] Bank transfer
+- L182 [string-literal] UNITED KINGDOM
+- L182 [string-literal] Bank transfer
+- L183 [string-literal] Virement bancaire
+- L184 [string-literal] Bank transfer
+
+### utils/gamesManager.js (44)
+
+- L52 [string-literal] Vous êtes déjà dans une partie ou avez une invitation en attente.
+- L59 [string-literal] Ce jeu n est plus disponible.
+- L64 [string-literal] Cet adversaire est déjà dans une partie ou a une invitation en attente.
+- L76 [string-literal] Votre solde est insuffisant pour miser ce montant ( $ requis).
+- L82 [string-literal] Le solde de l'adversaire est insuffisant pour miser ce montant ( $).
+- L89 [string-literal] Solde insuffisant pour créer une partie payante ( $ requis).
+- L170 [string-literal] Adversaire introuvable.
+- L240 [string-literal] Vous êtes déjà dans une partie ou avez une invitation en attente.
+- L243 [string-literal] Partie introuvable.
+- L244 [string-literal] Cette partie n\'est plus disponible.
+- L245 [string-literal] Vous ne pouvez pas jouer contre vous-même.
+- L254 [string-literal] Solde insuffisant pour rejoindre une partie payante ( $ requis).
+- L305 [string-literal] Partie introuvable.
+- L306 [string-literal] La partie n\'est pas en cours.
+- L309 [string-literal] Ce n\'est pas votre tour.
+- L325 [string-literal] Tuile invalide.
+- L342 [string-literal] Le domino ne correspond pas à l\'extrémité gauche.
+- L353 [string-literal] Le domino ne correspond pas à l\'extrémité droite.
+- L356 [string-literal] Coup invalide.
+- L385 [string-literal] Colonne invalide.
+- L394 [string-literal] La colonne est pleine.
+- L414 [string-literal] Coup invalide.
+- L434 [string-literal] État des échecs introuvable.
+- L443 [string-literal] Coup d échecs invalide.
+- L456 [string-literal] Ce coup n est pas autorisé.
+- L484 [string-literal] Question math introuvable.
+- L489 [string-literal] Réponse invalide.
+- L514 [string-literal] Match de football introuvable.
+- L516 [string-literal] Couloir invalide.
+- L521 [string-literal] C est au tour de l attaquant.
+- L535 [string-literal] Phase de jeu invalide.
+- L539 [string-literal] C est au tour du defenseur.
+- L1890 [string-literal] Partie introuvable.
+- L1891 [string-literal] La partie n\'est pas en cours.
+- L1894 [string-literal] Ce n\'est pas votre tour.
+- L1896 [string-literal] Action non supportée pour ce jeu.
+- L1901 [string-literal] Vous avez des coups possibles. Vous ne pouvez pas piger.
+- L1905 [string-literal] La pioche est vide.
+- L1919 [string-literal] Partie introuvable.
+- L1920 [string-literal] La partie n\'est pas en cours.
+- L1923 [string-literal] Ce n\'est pas votre tour.
+- L1925 [string-literal] Action non supportée pour ce jeu.
+- L1930 [string-literal] Vous avez des coups possibles. Vous ne pouvez pas passer.
+- L1934 [string-literal] La pioche n\'est pas vide. Vous devez piger.
+
+### views/profile.ejs (42)
+
+- L543 [attribute] Change Banner Theme
+- L552 [attribute] Change Avatar
+- L568 [attribute] Votre profil de joueur
+- L639 [text-node] View all
+- L688 [text-node] View all
+- L739 [text-node] Raison:
+- L743 [text-node] Detail:
+- L786 [attribute] Live YouTube
+- L894 [text-node] Private Information
+- L897 [text-node] Deposit Balance
+- L902 [text-node] Withdrawal Balance
+- L907 [text-node] Bonus Balance
+- L912 [text-node] Token Balance
+- L940 [text-node] ) est inférieur au montant minimum de retrait requis de
+- L989 [text-node] Edit Profile Info
+- L1010 [text-node] Save Changes
+- L1019 [text-node] Choose Banner Theme
+- L1040 [text-node] Apply Theme
+- L1057 [text-node] Click to upload from PC
+- L1058 [text-node] JPEG, PNG, GIF up to 5MB
+- L1074 [text-node] Save Avatar
+- L1172 [text-node] Configurer Wallet BEP-20
+- L1178 [text-node] Votre adresse BEP-20 (BSC)
+- L1183 [text-node] Enregistrer & Continuer
+- L1189 [text-node] Déposer des USDT (BEP-20)
+- L1193 [attribute] QR Code
+- L1196 [text-node] Adresse de la plateforme
+- L1211 [text-node] uniquement des USDT (BEP-20)
+- L1211 [text-node] depuis votre adresse enregistrée :
+- L1219 [text-node] Statut du dépôt en temps réel
+- L1243 [text-node] Code Secret de Retrait
+- L1249 [text-node] Définir votre PIN (6 chiffres)
+- L1254 [text-node] Enregistrer le code secret
+- L1260 [text-node] Retrait USDT (BEP-20)
+- L1265 [text-node] Solde disponible :
+- L1271 [text-node] Adresse de réception BEP-20
+- L1278 [text-node] Montant à retirer (USDT)
+- L1285 [text-node] Frais de retrait (30%) :
+- L1289 [text-node] Montant à recevoir :
+- L1297 [text-node] Code secret (6 chiffres)
+- L1303 [text-node] Confirmer le retrait
+- L1315 [text-node] Traitement en cours
+
+### models/KycRequest.js (36)
+
+- L55 [string-literal] ENUM('premium', 'events') NOT NULL DEFAULT 'premium'
+- L56 [string-literal] ENUM('draft', 'pending', 'approved', 'rejected') NOT NULL DEFAULT 'draft'
+- L57 [string-literal] ENUM('none', 'paid') NOT NULL DEFAULT 'none'
+- L58 [string-literal] DECIMAL(10,2) NOT NULL DEFAULT 0.00
+- L59 [string-literal] TINYINT(1) NOT NULL DEFAULT 0
+- L60 [string-literal] TEXT DEFAULT NULL
+- L61 [string-literal] VARCHAR(255) DEFAULT NULL
+- L62 [string-literal] VARCHAR(255) DEFAULT NULL
+- L63 [string-literal] VARCHAR(100) DEFAULT NULL
+- L64 [string-literal] INT DEFAULT NULL
+- L65 [string-literal] VARCHAR(255) DEFAULT NULL
+- L66 [string-literal] VARCHAR(255) DEFAULT NULL
+- L67 [string-literal] VARCHAR(100) DEFAULT NULL
+- L68 [string-literal] INT DEFAULT NULL
+- L69 [string-literal] VARCHAR(160) DEFAULT NULL
+- L70 [string-literal] VARCHAR(80) DEFAULT NULL
+- L71 [string-literal] VARCHAR(150) DEFAULT NULL
+- L72 [string-literal] VARCHAR(100) DEFAULT NULL
+- L73 [string-literal] DATE DEFAULT NULL
+- L74 [string-literal] INT DEFAULT NULL
+- L75 [string-literal] INT DEFAULT NULL
+- L76 [string-literal] TEXT DEFAULT NULL
+- L77 [string-literal] VARCHAR(50) DEFAULT NULL
+- L78 [string-literal] VARCHAR(80) DEFAULT NULL
+- L79 [string-literal] TEXT DEFAULT NULL
+- L80 [string-literal] LONGTEXT DEFAULT NULL
+- L81 [string-literal] VARCHAR(20) DEFAULT NULL
+- L82 [string-literal] VARCHAR(160) DEFAULT NULL
+- L83 [string-literal] TINYINT(1) NOT NULL DEFAULT 0
+- L84 [string-literal] INT DEFAULT NULL
+- L85 [string-literal] TIMESTAMP NULL DEFAULT NULL
+- L86 [string-literal] TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+- L90 [string-literal] SHOW COLUMNS FROM kyc_requests LIKE ?
+- L92 [string-literal] ALTER TABLE kyc_requests ADD COLUMN
+- L96 [string-literal] SHOW COLUMNS FROM kyc_requests LIKE "status"
+- L100 [string-literal] ALTER TABLE kyc_requests MODIFY COLUMN status ENUM('draft', 'pending', 'approved', 'rejected') NOT NULL DEFAULT 'draft'
+
+### controllers/eventsController.js (29)
+
+- L2 [string-literal] fs/promises
+- L23 [string-literal] @tesseract.js-data/eng/package.json
+- L101 [string-literal] application/json
+- L209 [string-literal] Events page error:
+- L210 [string-literal] Error while loading the events page.
+- L310 [string-literal] Free event creation fee
+- L368 [string-literal] Create event error:
+- L380 [string-literal] Invalid event id.
+- L387 [string-literal] Event not found.
+- L404 [string-literal] Uploaded ticket
+- L404 [string-literal] Generated ticket
+- L419 [string-literal] application/octet-stream
+- L428 [string-literal] image/
+- L430 [string-literal] application/pdf
+- L434 [string-literal] Your ticket for is ready. Download it from the attachment below or open it here:
+- L518 [string-literal] application/json
+- L532 [string-literal] RSVP event error:
+- L533 [string-literal] application/json
+- L534 [string-literal] Unable to update RSVP.
+- L635 [string-literal] events_kyc:
+- L636 [string-literal] Paid event access unlock fee
+- L643 [string-literal] Payment completed for event access. KYC is required before activation.
+- L667 [string-literal] Events unlock by payment error:
+- L709 [string-literal] Event KYC page error:
+- L710 [string-literal] Error while loading event KYC.
+- L732 [string-literal] data:image/
+- L783 [string-literal] Automated KYC approved by .
+- L784 [string-literal] Automated KYC rejected:
+- L865 [string-literal] Event KYC submit error:
+
+### controllers/settingsController.js (23)
+
+- L20 [string-literal] Premium badge
+- L21 [string-literal] Stand out with a premium badge on your profile and posts.
+- L27 [string-literal] Priority placement
+- L28 [string-literal] Your profile appears higher in follow and message discovery.
+- L34 [string-literal] Creator analytics
+- L35 [string-literal] Unlock a clearer view of follower growth and engagement.
+- L41 [string-literal] Profile accents
+- L42 [string-literal] Enable richer profile accents and premium layout details.
+- L48 [string-literal] Trust layer
+- L49 [string-literal] Premium accounts get a more polished trust signal.
+- L55 [string-literal] Growth boost
+- L56 [string-literal] Automatically unlock premium when you reach your growth goal.
+- L157 [string-literal] Settings page error:
+- L158 [string-literal] Error while loading the settings page.
+- L170 [string-literal] Language update error:
+- L184 [string-literal] Premium preferences update error:
+- L193 [string-literal] Event access update error:
+- L202 [string-literal] Premium activation error:
+- L215 [string-literal] Premium KYC requested from settings.
+- L218 [string-literal] KYC request error:
+- L281 [string-literal] token-swap- -
+- L282 [string-literal] Deposit to token swap ( tokens issued)
+- L298 [string-literal] Token swap error:
+
+### models/Post.js (22)
+
+- L10 [string-literal] VARCHAR(255) DEFAULT NULL AFTER image_url_2
+- L11 [string-literal] VARCHAR(255) DEFAULT NULL AFTER image_url_3
+- L12 [string-literal] TINYINT(1) NOT NULL DEFAULT 0 AFTER last_possession_user_id
+- L13 [string-literal] INT NOT NULL DEFAULT 0 AFTER next_trade_payout_admin
+- L14 [string-literal] INT NOT NULL DEFAULT 0 AFTER promo_daily_target
+- L15 [string-literal] DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER promo_paid_hashtag_count
+- L16 [string-literal] VARCHAR(40) DEFAULT NULL AFTER promo_paid_background_price
+- L17 [string-literal] VARCHAR(255) DEFAULT NULL AFTER challenge_type
+- L18 [string-literal] VARCHAR(30) DEFAULT NULL AFTER challenge_title
+- L19 [string-literal] VARCHAR(20) DEFAULT NULL AFTER challenge_entry_mode
+- L20 [string-literal] DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER challenge_vote_mode
+- L21 [string-literal] INT DEFAULT NULL AFTER challenge_vote_price
+- L22 [string-literal] INT NOT NULL DEFAULT 30 AFTER challenge_invited_user_id
+- L23 [string-literal] INT NOT NULL DEFAULT 70 AFTER challenge_creator_share_percent
+- L24 [string-literal] DATETIME DEFAULT NULL AFTER challenge_participant_share_percent
+- L25 [string-literal] TINYINT(1) NOT NULL DEFAULT 0 AFTER challenge_end_date
+- L26 [string-literal] VARCHAR(255) DEFAULT NULL AFTER is_live
+- L27 [string-literal] DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER live_url
+- L28 [string-literal] VARCHAR(20) NOT NULL DEFAULT 'active' AFTER live_price
+- L32 [string-literal] SHOW COLUMNS FROM posts LIKE ?
+- L34 [string-literal] ALTER TABLE posts ADD COLUMN
+- L205 [string-literal] (?, ?, CURDATE())
+
+### utils/eventTicketAssets.js (22)
+
+- L1 [string-literal] fs/promises
+- L47 [string-literal] Event ticket
+- L52 [string-literal] Paid ticket
+- L52 [string-literal] Free ticket
+- L69 [string-literal] url(#bg)
+- L72 [string-literal] url(#panel)
+- L75 [string-literal] Inter, Arial, sans-serif
+- L76 [string-literal] Outfit, Inter, Arial, sans-serif
+- L77 [string-literal] Inter, Arial, sans-serif
+- L78 [string-literal] Inter, Arial, sans-serif
+- L79 [string-literal] Inter, Arial, sans-serif
+- L81 [string-literal] Inter, Arial, sans-serif
+- L82 [string-literal] Inter, Arial, sans-serif
+- L84 [string-literal] Inter, Arial, sans-serif
+- L85 [string-literal] Inter, Arial, sans-serif
+- L87 [string-literal] Inter, Arial, sans-serif
+- L88 [string-literal] Inter, Arial, sans-serif
+- L90 [string-literal] Inter, Arial, sans-serif
+- L92 [string-literal] xMidYMid meet
+- L95 [string-literal] Inter, Arial, sans-serif
+- L96 [string-literal] Inter, Arial, sans-serif
+- L130 [string-literal] image/svg+xml
+
+### models/User.js (20)
+
+- L10 [string-literal] ENUM('locked', 'active') DEFAULT 'locked'
+- L11 [string-literal] INT DEFAULT 1000
+- L12 [string-literal] TIMESTAMP NULL DEFAULT NULL
+- L13 [string-literal] INT DEFAULT 1000
+- L14 [string-literal] INT DEFAULT 1000
+- L19 [string-literal] SHOW COLUMNS FROM users LIKE ?
+- L25 [string-literal] ALTER TABLE users ADD COLUMN
+- L105 [string-literal] %m-%d
+- L140 [string-literal] %m-%d
+- L143 [string-literal] %m-%d
+- L485 [string-literal] Account not found.
+- L501 [string-literal] Your account must be active.
+- L502 [string-literal] You must verify your email first.
+- L503 [string-literal] You must complete KYC certification.
+- L504 [string-literal] Reach followers to unlock premium.
+- L606 [string-literal] Account not found.
+- L622 [string-literal] Your account must be active.
+- L624 [string-literal] You must verify your account first.
+- L625 [string-literal] You must have a certified profile.
+- L626 [string-literal] Reach followers or unlock event access to create an event.
+
+### utils/kycAi.js (20)
+
+- L87 [string-literal] No valid date could be identified on the document.
+- L123 [string-literal] An ambiguous OCR date was resolved against the account date of birth.
+- L124 [string-literal] Matched the date of birth stored in the account.
+- L126 [string-literal] The OCR text near the birth label was selected.
+- L127 [string-literal] The first valid date found in the OCR text was selected.
+- L148 [string-literal] A document is required.
+- L152 [string-literal] image/
+- L154 [string-literal] Only image documents are accepted for event KYC.
+- L160 [string-literal] The document exceeds the allowed size.
+- L200 [string-literal] The full name does not match the account record.
+- L210 [string-literal] The date of birth does not match the account record.
+- L216 [string-literal] The identity document text could not be read.
+- L222 [string-literal] The document name does not match the account record.
+- L230 [string-literal] The document date of birth does not match the account record.
+- L238 [string-literal] The face comparison could not be completed.
+- L243 [string-literal] The face comparison is too weak to approve the request.
+- L245 [string-literal] The selfie does not match the document face.
+- L255 [string-literal] The verification passed. The account data, OCR text, and face comparison all matched.
+- L256 [string-literal] The verification failed. The request does not meet the automated checks.
+- L267 [string-literal] tesseract.js + face-api.js
+
+### views/partials/rightSidebar.ejs (20)
+
+- L25 [text-node] String(value ?? '').replace(/[&
+- L65 [attribute] ${escapeHtml(contact.name)}
+- L71 [text-node] ${escapeHtml(contact.name)}
+- L72 [text-node] ${escapeHtml(relationLabel)}
+- L74 [text-node] @${escapeHtml(contact.username)}
+- L75 [text-node] ${escapeHtml(contact.preview || translate('messages.startConversation', 'Start a conversation...'))}
+- L79 [text-node] ${escapeHtml(contact.presence_text || translate('messages.offline', 'Offline'))}
+- L80 [text-node] ${escapeHtml(contact.time_text)}
+- L177 [attribute] Search messages
+- L204 [attribute] Close compose message modal
+- L215 [attribute] Search people to message
+- L311 [attribute] Ex. Découvrez nos nouveaux designs
+- L319 [attribute] Ex. Une courte description accrocheuse qui invite au clic...
+- L346 [attribute] Aperçu
+- L370 [text-node] Envoyer des notifications à tous (+1.00 $)
+- L376 [text-node] Afficher dans le flux de posts (+1.00 $)
+- L385 [text-node] Tarif unitaire :
+- L386 [text-node] $5.00 / 24h
+- L390 [text-node] Votre solde de dépôt :
+- L397 [text-node] Total à payer :
+
+### views/register.ejs (20)
+
+- L6 [text-node] WeShare - Register
+- L67 [text-node] Créer votre compte WeShare
+- L77 [text-node] Important :
+- L83 [text-node] First Name
+- L87 [text-node] Last Name
+- L101 [text-node] Date of Birth
+- L106 [attribute] john@example.com
+- L111 [text-node] Phone Number
+- L125 [text-node] I accept the Terms and Conditions and confirm that my registration details are accurate.
+- L128 [text-node] Créer mon compte
+- L132 [text-node] J’ai deja un compte
+- L136 [text-node] Téléchargez aussi l’application
+- L144 [text-node] Download on the
+- L145 [text-node] App Store
+- L157 [text-node] Google Play
+- L170 [text-node] Francais (France)
+- L171 [text-node] Kreyol Ayisyen
+- L172 [text-node] English (US)
+- L174 [text-node] Portugues (Brasil)
+- L177 [text-node] Autres langues...
+
+### controllers/authController.js (18)
+
+- L15 [string-literal] Please provide all required real data.
+- L19 [string-literal] You must accept the terms and conditions.
+- L24 [string-literal] User with that email or username already exists.
+- L59 [string-literal] Register Error:
+- L60 [string-literal] An error occurred during registration.
+- L102 [string-literal] Check Username Error:
+- L103 [string-literal] Server error
+- L132 [string-literal] User not found
+- L135 [string-literal] Invalid verification code
+- L151 [string-literal] Server error
+- L157 [string-literal] Your account has been verified. You can now login.
+- L166 [string-literal] Invalid credentials
+- L170 [string-literal] Please verify your email first.
+- L175 [string-literal] Invalid credentials
+- L179 [string-literal] Your account has been permanently blocked.
+- L183 [string-literal] Votre compte a été gelé par un administrateur. Veuillez contacter le support.
+- L189 [string-literal] Login Error:
+- L190 [string-literal] Server error
+
+### models/Event.js (17)
+
+- L9 [string-literal] TEXT DEFAULT NULL
+- L10 [string-literal] VARCHAR(180) DEFAULT NULL
+- L11 [string-literal] VARCHAR(255) DEFAULT NULL
+- L12 [string-literal] DATETIME NULL DEFAULT NULL
+- L13 [string-literal] DATETIME DEFAULT NULL
+- L14 [string-literal] VARCHAR(80) DEFAULT 'Community'
+- L15 [string-literal] VARCHAR(255) DEFAULT NULL
+- L16 [string-literal] ENUM('generated', 'uploaded') DEFAULT 'generated'
+- L17 [string-literal] TINYINT(1) DEFAULT 0
+- L18 [string-literal] DECIMAL(10,2) DEFAULT 0.00
+- L19 [string-literal] VARCHAR(255) DEFAULT NULL
+- L20 [string-literal] VARCHAR(255) DEFAULT NULL
+- L21 [string-literal] VARCHAR(50) DEFAULT NULL
+- L22 [string-literal] ENUM('public', 'friends', 'private') DEFAULT 'public'
+- L23 [string-literal] INT DEFAULT NULL
+- L27 [string-literal] SHOW COLUMNS FROM events LIKE ?
+- L29 [string-literal] ALTER TABLE events ADD COLUMN
+
+### views/login.ejs (17)
+
+- L6 [text-node] WeShare - Login
+- L58 [text-node] vous aimez.
+- L66 [text-node] Se connecter à WeShare
+- L77 [attribute] E-mail ou numero de mobile
+- L78 [attribute] Mot de passe
+- L79 [text-node] Se connecter
+- L83 [text-node] Mot de passe oublié ?
+- L84 [text-node] Créer un nouveau compte
+- L88 [text-node] Téléchargez aussi l’application
+- L96 [text-node] Download on the
+- L97 [text-node] App Store
+- L109 [text-node] Google Play
+- L122 [text-node] Francais (France)
+- L123 [text-node] Kreyol Ayisyen
+- L124 [text-node] English (US)
+- L126 [text-node] Portugues (Brasil)
+- L129 [text-node] Autres langues...
+
+### controllers/profileController.js (16)
+
+- L101 [string-literal] Error while loading the profile.
+- L119 [string-literal] Profile not found.
+- L169 [string-literal] Error while loading the public profile.
+- L254 [string-literal] Video file required.
+- L259 [string-literal] Image file required.
+- L262 [string-literal] Audio file required.
+- L268 [string-literal] Voice recording required.
+- L273 [string-literal] Audio file required.
+- L282 [string-literal] Solde insuffisant pour creer un Trade Short.
+- L292 [string-literal] Trade short creation fee
+- L321 [string-literal] Solde insuffisant pour utiliser le hashtag premium # .
+- L326 [string-literal] a utilise votre hashtag premium # dans un short et $ ont ete ajoutes a votre compte de retrait.
+- L376 [string-literal] Original Audio
+- L390 [string-literal] Short uploaded successfully!
+- L392 [string-literal] Create Reel Error:
+- L393 [string-literal] Failed to upload short.
+
+### models/Admin.js (15)
+
+- L34 [string-literal] SHOW COLUMNS FROM admins LIKE ?
+- L36 [string-literal] ALTER TABLE admins ADD COLUMN balance DECIMAL(15,2) NOT NULL DEFAULT 0.00
+- L40 [string-literal] SHOW COLUMNS FROM admins LIKE ?
+- L42 [string-literal] ALTER TABLE admins ADD COLUMN withdrawal_fees_balance DECIMAL(15,2) NOT NULL DEFAULT 0.00
+- L46 [string-literal] SHOW COLUMNS FROM admins LIKE ?
+- L48 [string-literal] ALTER TABLE admins ADD COLUMN ads_fees_balance DECIMAL(15,2) NOT NULL DEFAULT 0.00
+- L51 [string-literal] SHOW COLUMNS FROM admins LIKE ?
+- L53 [string-literal] ALTER TABLE admins ADD COLUMN display_name VARCHAR(120) NULL DEFAULT NULL AFTER email
+- L56 [string-literal] SHOW COLUMNS FROM admins LIKE ?
+- L58 [string-literal] ALTER TABLE admins ADD COLUMN is_super_admin TINYINT(1) NOT NULL DEFAULT 0 AFTER password_hash
+- L61 [string-literal] SHOW COLUMNS FROM admins LIKE ?
+- L63 [string-literal] ALTER TABLE admins ADD COLUMN permissions_json LONGTEXT NULL AFTER is_super_admin
+- L66 [string-literal] SHOW COLUMNS FROM admins LIKE ?
+- L68 [string-literal] ALTER TABLE admins ADD COLUMN created_by_admin_id INT NULL DEFAULT NULL AFTER permissions_json
+- L213 [string-literal] FOR UPDATE
+
+### models/Reel.js (14)
+
+- L7 [string-literal] SHOW COLUMNS FROM reels
+- L11 [string-literal] ALTER TABLE reels ADD COLUMN media_fit VARCHAR(20) NOT NULL DEFAULT 'cover'
+- L14 [string-literal] ALTER TABLE reels ADD COLUMN is_trade TINYINT(1) DEFAULT 0
+- L17 [string-literal] ALTER TABLE reels ADD COLUMN trade_price DECIMAL(10,2) DEFAULT NULL
+- L20 [string-literal] ALTER TABLE reels ADD COLUMN last_possession_user_id INT DEFAULT NULL
+- L23 [string-literal] ALTER TABLE reels ADD COLUMN next_trade_payout_admin TINYINT(1) NOT NULL DEFAULT 0
+- L26 [string-literal] ALTER TABLE reels ADD COLUMN promo_daily_target INT NOT NULL DEFAULT 0
+- L29 [string-literal] ALTER TABLE reels ADD COLUMN promo_paid_hashtag_count INT NOT NULL DEFAULT 0
+- L161 [string-literal] Original Audio
+- L206 [string-literal] (?, ?, CURDATE())
+- L267 [string-literal] SHOW COLUMNS FROM reel_comments
+- L270 [string-literal] ALTER TABLE reel_comments ADD COLUMN parent_id INT DEFAULT NULL AFTER user_id
+- L273 [string-literal] ALTER TABLE reel_comments ADD COLUMN voice_url VARCHAR(255) DEFAULT NULL
+- L276 [string-literal] ALTER TABLE reel_comments ADD COLUMN voice_duration_seconds INT DEFAULT NULL
+
+### models/EventTicket.js (10)
+
+- L1 [string-literal] node:crypto
+- L30 [string-literal] VARCHAR(255) DEFAULT NULL
+- L31 [string-literal] VARCHAR(255) DEFAULT NULL
+- L32 [string-literal] VARCHAR(50) DEFAULT NULL
+- L36 [string-literal] SHOW COLUMNS FROM event_tickets LIKE ?
+- L38 [string-literal] ALTER TABLE event_tickets ADD COLUMN
+- L60 [string-literal] EVT- - -
+- L203 [string-literal] image/
+- L242 [string-literal] email_sent_at = COALESCE(email_sent_at, NOW())
+- L245 [string-literal] message_sent_at = COALESCE(message_sent_at, NOW())
+
+### controllers/hashtagController.js (9)
+
+- L13 [string-literal] Server error
+- L24 [string-literal] Name is required
+- L34 [string-literal] Hashtag already exists
+- L43 [string-literal] Insufficient token balance. You need 0.5 tokens to create a premium hashtag.
+- L52 [string-literal] hashtag:
+- L53 [string-literal] Premium hashtag creation cost
+- L66 [string-literal] Server error
+- L74 [string-literal] Name required
+- L85 [string-literal] Server error
+
+### models/Notification.js (9)
+
+- L8 [string-literal] SHOW COLUMNS FROM notifications LIKE ?
+- L10 [string-literal] ALTER TABLE notifications ADD COLUMN actor_id INT DEFAULT NULL AFTER recipient_id
+- L12 [string-literal] ALTER TABLE notifications MODIFY COLUMN actor_id INT DEFAULT NULL
+- L16 [string-literal] SHOW COLUMNS FROM notifications LIKE ?
+- L20 [string-literal] ALTER TABLE notifications MODIFY COLUMN type ENUM('like', 'comment', 'share', 'follow', 'mention', 'message', 'ad-published', 'game', 'gift', 'market') NOT NULL
+- L25 [string-literal] SHOW COLUMNS FROM notifications LIKE ?
+- L27 [string-literal] ALTER TABLE notifications ADD COLUMN ad_url VARCHAR(255) DEFAULT NULL AFTER comment_id
+- L31 [string-literal] SHOW COLUMNS FROM notifications LIKE ?
+- L33 [string-literal] ALTER TABLE notifications ADD COLUMN ad_image_url VARCHAR(255) DEFAULT NULL AFTER ad_url
+
+### utils/bscMonitor.js (9)
+
+- L71 [string-literal] WeShare Market
+- L117 [string-literal] No transactions found
+- L118 [string-literal] No transactions found
+- L172 [string-literal] Votre dépôt de USDT (BEP-20) a été confirmé.
+- L173 [string-literal] Dépôt de USDT confirmé !
+- L184 [string-literal] Dépôt de USDT détecté ( / confirmations)
+- L207 [string-literal] Votre dépôt de USDT (BEP-20) a été confirmé.
+- L208 [string-literal] Dépôt de USDT confirmé !
+- L224 [string-literal] Dépôt en attente : / confirmations
+
+### models/Challenge.js (7)
+
+- L7 [string-literal] haiti (ayiti)
+- L8 [string-literal] united states
+- L10 [string-literal] united states of america
+- L26 [string-literal] dominican republic
+- L62 [string-literal] SHOW COLUMNS FROM challenge_participants LIKE ?
+- L64 [string-literal] ALTER TABLE challenge_participants ADD COLUMN photo_url VARCHAR(255) DEFAULT NULL AFTER status
+- L80 [string-literal] ALTER TABLE challenge_votes DROP INDEX uniq_challenge_vote
+
+### utils/messageInbox.js (7)
+
+- L4 [string-literal] Start a conversation...
+- L13 [string-literal] Sent an image
+- L14 [string-literal] Sent a video
+- L21 [string-literal] Sent a voice note
+- L25 [string-literal] Sent a file
+- L26 [string-literal] Sent an attachment
+- L81 [string-literal] Online now
+
+### views/share.ejs (7)
+
+- L6 [text-node] WeShare - Publication partagée
+- L153 [text-node] Publication partagée par
+- L156 [text-node] Partage unique
+- L157 [text-node] Token:
+- L171 [text-node] - via
+- L181 [attribute] Publication partagée
+- L190 [text-node] Ouvrir le fil
+
+### utils/presence.js (6)
+
+- L23 [string-literal] Last seen just now
+- L24 [string-literal] Last seen m ago
+- L27 [string-literal] Last seen h ago
+- L30 [string-literal] Last seen d ago
+- L32 [string-literal] Last seen )}
+- L35 [string-literal] Online now
+
+### views/partials/header.ejs (6)
+
+- L16 [attribute] Toggle Dark Mode
+- L20 [attribute] Toggle Navigation
+- L36 [attribute] Add emoji
+- L41 [attribute] Add Short
+- L43 [text-node] Add Short
+- L85 [attribute] Toggle Dark Mode
+
+### controllers/statusController.js (5)
+
+- L6 [string-literal] application/json
+- L58 [string-literal] image/
+- L58 [string-literal] video/
+- L58 [string-literal] audio/
+- L94 [string-literal] Create status error:
+
+### routes/adminRoutes.js (4)
+
+- L22 [string-literal] Accès refusé.
+- L33 [string-literal] Vous ne pouvez pas voir cette page.
+- L42 [string-literal] Vous n’avez pas les droits nécessaires pour cette action.
+- L45 [string-literal] Vous n’avez pas les droits nécessaires pour cette action.
+
+### views/publicProfile.ejs (4)
+
+- L273 [attribute] Demander de jouer
+- L362 [text-node] View all
+- L411 [text-node] View all
+- L467 [attribute] Live YouTube
+
+### models/Ad.js (3)
+
+- L27 [string-literal] SHOW COLUMNS FROM ads
+- L30 [string-literal] ALTER TABLE ads ADD COLUMN send_notification TINYINT(1) DEFAULT 0
+- L33 [string-literal] ALTER TABLE ads ADD COLUMN show_in_feed TINYINT(1) DEFAULT 0
+
+### models/Bot.js (3)
+
+- L22 [string-literal] ALTER TABLE bots ADD COLUMN wins INT DEFAULT 0
+- L48 [string-literal] Bots table seeded successfully!
+- L52 [string-literal] Failed to create or seed bots table:
+
+### models/Status.js (3)
+
+- L27 [string-literal] ALTER TABLE statuses ADD COLUMN trim_start FLOAT DEFAULT NULL
+- L30 [string-literal] ALTER TABLE statuses ADD COLUMN trim_end FLOAT DEFAULT NULL
+- L33 [string-literal] ALTER TABLE statuses ADD COLUMN bg_color VARCHAR(255) DEFAULT NULL
+
+### views/eventTicket.ejs (3)
+
+- L6 [text-node] - Ticket
+- L240 [attribute] Ticket preview
+- L276 [text-node] lucide.createIcons();
+
+### views/verify.ejs (3)
+
+- L6 [text-node] WeShare - Verify Email
+- L116 [text-node] Enter the 6-digit code sent to your email.
+- L134 [text-node] Verification Code
+
+### controllers/feedController.js (2)
+
+- L165 [string-literal] Internal server error while loading the feed.
+- L182 [string-literal] Impossible de charger les anniversaires du jour.
+
+### models/Hashtag.js (2)
+
+- L22 [string-literal] (^|[^a-z0-9_])#
+- L22 [string-literal] ([^a-z0-9_]|$)
+
+### routes/eventsRoutes.js (2)
+
+- L26 [string-literal] ticket- .
+- L46 [string-literal] kyc- .
+
+### views/partials/leftSidebar.ejs (2)
+
+- L56 [text-node] P2P Market
+- L89 [text-node] Platform &copy; 2026
+
+### models/PostShare.js (1)
+
+- L1 [string-literal] node:crypto
+
+### routes/statusRoutes.js (1)
+
+- L22 [string-literal] status- .
+
+### views/partials/head.ejs (1)
+
+- L6 [text-node] WeShare - Premium Social Dashboard
+

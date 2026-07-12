@@ -1,0 +1,19020 @@
+document.addEventListener('DOMContentLoaded', () => {
+  // Initialisation du client Socket.io
+  const socket = io();
+
+  function getYouTubeId(url) {
+    if (!url) return null;
+    const cleaned = url.trim();
+    if (cleaned.length === 11 && !cleaned.includes('/') && !cleaned.includes('.')) {
+      return cleaned;
+    }
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|live\/)([^#\&\?]*).*/;
+    const match = cleaned.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  }
+
+  window.currentView = 'feed';
+  let wasReelDragging = false;
+
+  // Initialize Lucide Icons
+  if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+  }
+
+  const ensureToastElement = () => {
+    let toast = document.getElementById('appToast');
+    if (toast) return toast;
+
+    toast = document.createElement('div');
+    toast.id = 'appToast';
+    toast.setAttribute('aria-live', 'polite');
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 84px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--text-primary, #111827);
+      color: var(--bg-card, #ffffff);
+      padding: 12px 24px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
+      z-index: 99999;
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+      opacity: 0;
+      pointer-events: none;
+      border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+      max-width: min(92vw, 420px);
+      text-align: center;
+    `;
+    document.body.appendChild(toast);
+    return toast;
+  };
+
+  const showAdToast = (message) => {
+    const toast = ensureToastElement();
+    toast.textContent = message;
+    toast.style.zIndex = '5000';
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(-50%) translateY(100px)';
+    }, 5000);
+  };
+
+  const initAdModalControls = () => {
+    const createAdModal = document.getElementById('createAdModal');
+    const openAdModalBtn = document.getElementById('openAdModalBtn');
+    const adPlaceholderBtn = document.getElementById('adPlaceholderBtn');
+    const closeAdModalBtn = document.getElementById('closeAdModalBtn');
+    const createAdForm = document.getElementById('createAdForm');
+    const adDaysInput = document.getElementById('adDaysInput');
+    const adDaysVal = document.getElementById('adDaysVal');
+    const adTotalPriceVal = document.getElementById('adTotalPriceVal');
+    const adImageInput = document.getElementById('adImageInput');
+    const adImageZone = document.getElementById('adImageZone');
+    const adImagePreviewWrapper = document.getElementById('adImagePreviewWrapper');
+    const adImagePreview = document.getElementById('adImagePreview');
+    const removeAdImageBtn = document.getElementById('removeAdImageBtn');
+    const adSendNotificationInput = document.getElementById('adSendNotificationInput');
+    const adShowInFeedInput = document.getElementById('adShowInFeedInput');
+    const adFormStatus = document.getElementById('adFormStatus');
+
+    const bindOnce = (element, key, eventName, handler) => {
+      if (!element || element.dataset[key] === '1') return;
+      element.dataset[key] = '1';
+      element.addEventListener(eventName, handler);
+    };
+
+    const openModal = (event) => {
+      event?.preventDefault();
+      if (createAdModal) createAdModal.style.display = 'flex';
+    };
+    const closeModal = () => {
+      if (createAdModal) createAdModal.style.display = 'none';
+    };
+    const setAdFormStatus = (message, type = 'error') => {
+      if (!adFormStatus) return;
+      if (!message) {
+        adFormStatus.style.display = 'none';
+        adFormStatus.textContent = '';
+        return;
+      }
+      const isSuccess = type === 'success';
+      adFormStatus.textContent = message;
+      adFormStatus.style.display = 'block';
+      adFormStatus.style.borderColor = isSuccess ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.28)';
+      adFormStatus.style.background = isSuccess ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)';
+      adFormStatus.style.color = isSuccess ? '#10b981' : '#ef4444';
+    };
+
+    bindOnce(openAdModalBtn, 'adOpenBound', 'click', openModal);
+    bindOnce(adPlaceholderBtn, 'adOpenBound', 'click', openModal);
+    bindOnce(closeAdModalBtn, 'adCloseBound', 'click', closeModal);
+    bindOnce(createAdModal, 'adBackdropBound', 'click', (event) => {
+      if (event.target === createAdModal) closeModal();
+    });
+
+    const updateAdPrice = () => {
+      const days = parseInt(adDaysInput?.value, 10) || 1;
+      const sendNotification = adSendNotificationInput?.checked ? 1.00 : 0.00;
+      const showInFeed = adShowInFeedInput?.checked ? 1.00 : 0.00;
+
+      if (adDaysVal) {
+        adDaysVal.textContent = days === 1 ? '1 jour' : `${days} jours`;
+      }
+      if (adTotalPriceVal) {
+        const totalPrice = (days * 5.00) + sendNotification + showInFeed;
+        adTotalPriceVal.textContent = `$${totalPrice.toFixed(2)}`;
+      }
+    };
+
+    bindOnce(adDaysInput, 'adPriceBound', 'input', updateAdPrice);
+    bindOnce(adSendNotificationInput, 'adPriceBound', 'change', updateAdPrice);
+    bindOnce(adShowInFeedInput, 'adPriceBound', 'change', updateAdPrice);
+    updateAdPrice();
+
+    bindOnce(adImageZone, 'adImageZoneBound', 'click', () => {
+      adImageInput?.click();
+    });
+
+    bindOnce(adImageInput, 'adImagePreviewBound', 'change', () => {
+      const file = adImageInput.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (adImagePreview) adImagePreview.src = event.target.result;
+        if (adImagePreviewWrapper) adImagePreviewWrapper.style.display = 'block';
+        if (adImageZone) adImageZone.style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    });
+
+    bindOnce(removeAdImageBtn, 'adRemoveImageBound', 'click', (event) => {
+      event.stopPropagation();
+      if (adImageInput) adImageInput.value = '';
+      if (adImagePreviewWrapper) adImagePreviewWrapper.style.display = 'none';
+      if (adImagePreview) adImagePreview.src = '';
+      if (adImageZone) adImageZone.style.display = 'block';
+    });
+
+    const submitAdForm = async (event) => {
+      event.preventDefault();
+      setAdFormStatus('');
+
+      const titleInput = document.getElementById('adTitleInput');
+      const descInput = document.getElementById('adDescInput');
+      const urlInput = document.getElementById('adUrlInput');
+      const submitBtn = document.getElementById('submitAdBtn');
+      if (submitBtn?.disabled) return;
+      const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+      const title = titleInput?.value?.trim();
+      const description = descInput?.value?.trim();
+      const adUrl = urlInput?.value?.trim();
+      const days = parseInt(adDaysInput?.value, 10) || 0;
+
+      if (!title || !description || !adUrl || !days) {
+        const message = 'Complétez le titre, la description, le lien et la durée.';
+        setAdFormStatus(message);
+        showAdToast(message);
+        (!title ? titleInput : !description ? descInput : !adUrl ? urlInput : adDaysInput)?.focus();
+        return;
+      }
+
+      try {
+        new URL(adUrl);
+      } catch (error) {
+        const message = 'Entrez une URL valide, par exemple https://votre-site.com.';
+        setAdFormStatus(message);
+        showAdToast(message);
+        urlInput?.focus();
+        return;
+      }
+
+      if (!adImageInput?.files?.length) {
+        const message = 'Ajoutez une image publicitaire avant de publier.';
+        setAdFormStatus(message);
+        showAdToast(message);
+        adImageInput?.click();
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="spinner" style="display:inline-block; width:12px; height:12px; border:2px solid white; border-top-color:transparent; border-radius:50%; animation:spin 0.6s linear infinite; margin-right:6px;"></i> Envoi en cours...';
+      }
+
+      try {
+        const response = await fetch('/api/ads/create', {
+          method: 'POST',
+          body: new FormData(createAdForm)
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (response.ok && data.success) {
+          showAdToast(data.message || 'Publicité publiée avec succès !');
+          closeModal();
+          createAdForm.reset();
+          if (adImagePreviewWrapper) adImagePreviewWrapper.style.display = 'none';
+          if (adImagePreview) adImagePreview.src = '';
+          if (adImageZone) adImageZone.style.display = 'block';
+          updateAdPrice();
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+          return;
+        }
+
+        const message = data.error || 'Une erreur est survenue lors de la création de la publicité.';
+        setAdFormStatus(message);
+        showAdToast(message);
+      } catch (error) {
+        console.error('Ad submit error:', error);
+        const message = 'Une erreur réseau est survenue.';
+        setAdFormStatus(message);
+        showAdToast(message);
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalBtnHtml;
+        }
+      }
+    };
+
+    bindOnce(createAdForm, 'adSubmitBound', 'submit', submitAdForm);
+    bindOnce(document.getElementById('submitAdBtn'), 'adSubmitClickBound', 'click', submitAdForm);
+  };
+
+  initAdModalControls();
+
+  const ticketModeSelect = document.querySelector('[data-ticket-mode-select]');
+  const ticketUploadField = document.querySelector('[data-ticket-upload-field]');
+  const ticketFileInput = document.getElementById('ticketFile');
+  const syncTicketUploadVisibility = () => {
+    if (!ticketModeSelect || !ticketUploadField || !ticketFileInput) return;
+    const isUploadedMode = ticketModeSelect.value === 'uploaded';
+    ticketUploadField.style.display = isUploadedMode ? '' : 'none';
+    ticketFileInput.required = isUploadedMode;
+    if (!isUploadedMode) {
+      ticketFileInput.value = '';
+    }
+  };
+  if (ticketModeSelect && ticketUploadField && ticketFileInput) {
+    ticketModeSelect.addEventListener('change', syncTicketUploadVisibility);
+    syncTicketUploadVisibility();
+  }
+
+  const formatVideoTime = (seconds) => {
+    if (!Number.isFinite(seconds)) return '0:00';
+    const total = Math.max(0, Math.floor(seconds));
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const formatVoiceDuration = (seconds) => formatVideoTime(seconds);
+
+  const getDirectChildComments = (list) => Array.from(list?.children || []).filter((child) => child.classList?.contains('comment-item-container'));
+  const getReplyItems = (container) => Array.from(container?.children || []).filter((child) => child.classList?.contains('reply-item'));
+  const getDirectReplyInputRow = (container) => {
+    const child = Array.from(container?.children || []).find((node) => node.classList?.contains('reply-input-row'));
+    if (child) return child;
+    const sibling = container?.nextElementSibling;
+    if (sibling?.classList?.contains('reply-input-row')) return sibling;
+    return null;
+  };
+  const getCommentAuthorName = (container) => container?.getAttribute('data-comment-author')?.trim() || container?.querySelector('strong')?.textContent?.trim() || 'this user';
+  const isVoiceNoteComment = (container) => container?.getAttribute('data-comment-type') === 'voice' || !!container?.querySelector('.voice-note-player');
+  const getCommentReplyPlaceholder = (container) => {
+    const targetName = getCommentAuthorName(container);
+    return isVoiceNoteComment(container)
+      ? `Reply to ${targetName}'s voice note...`
+      : `Reply to ${targetName}'s text comment...`;
+  };
+  const updateFollowButtonState = (button, isFollowing) => {
+    if (!button) return;
+    const nextState = !!isFollowing;
+    button.disabled = false;
+    button.dataset.following = nextState ? '1' : '0';
+    button.title = nextState ? 'Unfollow' : 'Follow';
+    button.setAttribute('aria-label', nextState ? 'Unfollow' : 'Follow');
+    button.innerHTML = `<i data-lucide="${nextState ? 'user-check' : 'user-plus'}" style="width: 14px; height: 14px;"></i>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  const formatNumber = (num) => {
+    num = Number(num) || 0;
+    if (num >= 1000000) {
+      const formatted = (num / 1000000).toFixed(1);
+      return (formatted.endsWith('.0') ? formatted.slice(0, -2) : formatted) + 'M';
+    }
+    if (num >= 1000) {
+      const formatted = (num / 1000).toFixed(1);
+      return (formatted.endsWith('.0') ? formatted.slice(0, -2) : formatted) + 'k';
+    }
+    return String(num);
+  };
+  window.formatNumber = formatNumber;
+
+  const updateFollowStat = (type, value) => {
+    document.querySelectorAll(`[data-follow-stat="${type}"]`).forEach((node) => {
+      node.textContent = formatNumber(Math.max(0, Number(value) || 0));
+    });
+  };
+  const syncFollowButtons = (targetUserId, isFollowing) => {
+    document.querySelectorAll(`.follow-toggle-btn[data-follow-target-id="${targetUserId}"]`).forEach((button) => {
+      updateFollowButtonState(button, isFollowing);
+    });
+    document.querySelectorAll(`.reel-follow-toggle-btn[data-follow-target-id="${targetUserId}"]`).forEach((btn) => {
+      btn.dataset.following = isFollowing ? '1' : '0';
+      btn.textContent = `• ${isFollowing ? 'Following' : 'Follow'}`;
+      btn.disabled = false;
+      btn.style.pointerEvents = 'auto';
+    });
+    document.querySelectorAll(`.message-item[data-follow-target-id="${targetUserId}"]`).forEach((item) => {
+      item.dataset.following = isFollowing ? '1' : '0';
+    });
+  };
+  const handleFollowToggleClick = (followBtn) => {
+    if (!followBtn || followBtn.disabled) return;
+    const targetUserId = parseInt(followBtn.getAttribute('data-follow-target-id'), 10);
+    if (!targetUserId || targetUserId === window.currentUserId) return;
+
+    followBtn.disabled = true;
+    fetch(`/api/users/${encodeURIComponent(targetUserId)}/follow`, {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+      credentials: 'same-origin'
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Impossible de mettre à jour cet abonnement.');
+        }
+        return data;
+      })
+      .then((data) => {
+        syncFollowButtons(targetUserId, !!data.isFollowing);
+        if (typeof data.followersCount !== 'undefined' && Number(targetUserId) === Number(window.viewedProfileId || 0)) {
+          updateFollowStat('followers', data.followersCount);
+        }
+        if (typeof data.followingCount !== 'undefined' && Number(window.currentUserId) === Number(window.viewedProfileId || window.currentUserId)) {
+          updateFollowStat('following', data.followingCount);
+        }
+      })
+      .catch((error) => {
+        showToast(error.message || 'Impossible de mettre à jour cet abonnement.');
+      })
+      .finally(() => {
+        followBtn.disabled = false;
+      });
+  };
+  const formatCommentVoiceDuration = (seconds) => {
+    const value = Number(seconds);
+    return Number.isFinite(value) && value > 0 ? formatVoiceDuration(value) : '0:00';
+  };
+  const getCommentTargetId = (container) => container?.getAttribute('data-comment-id') || container?.getAttribute('data-reply-id');
+
+  const getCurrentUserId = () => Number(window.currentUserId || 0);
+
+  const buildMessageItemHtml = (contact) => {
+    const name = escapeHtml(contact?.name || contact?.username || 'Unknown');
+    const avatar = escapeHtml(contact?.avatar || '/assets/avatar_placeholder.jpg');
+    const preview = escapeHtml(contact?.preview || 'Start a conversation...');
+    const timeText = escapeHtml(contact?.time_text || '');
+    const presenceText = escapeHtml(contact?.presence_text || '');
+    const contactId = escapeHtml(contact?.id ?? '');
+    const isFollowing = !!contact?.is_following;
+    const isFollowedBy = !!contact?.is_followed_by;
+    const isMutual = !!contact?.is_mutual;
+    const isOnline = !!contact?.is_online;
+    const category = escapeHtml(contact?.category || 'general');
+    const requestStatus = escapeHtml(contact?.request_status || contact?.requestStatus || '');
+    const canManageRequest = !!(contact?.can_manage_request || contact?.canManageRequest);
+    const requestActionsHtml = canManageRequest ? `
+      <div class="message-request-actions">
+        <button type="button" class="message-request-action accept" data-message-request-action="accept" data-requester-id="${contactId}">Accepter</button>
+        <button type="button" class="message-request-action decline" data-message-request-action="decline" data-requester-id="${contactId}">Refuser</button>
+      </div>
+    ` : '';
+
+    return `
+      <div class="message-item ${isOnline ? 'online' : ''}" data-contact-id="${contactId}" data-message-category="${category}" data-message-request-status="${requestStatus}" data-can-manage-request="${canManageRequest ? '1' : '0'}" data-follow-target-id="${contactId}" data-following="${isFollowing ? '1' : '0'}" data-followed-by="${isFollowedBy ? '1' : '0'}" data-mutual="${isMutual ? '1' : '0'}" data-is-online="${isOnline ? '1' : '0'}" data-last-seen-text="${presenceText}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 14px; border-radius: var(--border-radius-item); background-color: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-sm);">
+        <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
+          <div class="msg-avatar-wrapper ${isOnline ? 'online' : ''}">
+            <div class="avatar" style="width: 36px; height: 36px;">
+              <img src="${avatar}" alt="${name}">
+            </div>
+            <span class="status-dot"></span>
+          </div>
+          <div class="message-details" style="flex: 1; min-width: 0;">
+            <h4 class="contact-name" style="margin: 0; font-size: 13.5px; font-weight: 600; color: var(--text-primary);">${name}</h4>
+            <p class="message-preview" id="chat-preview-${contactId}" style="margin: 2px 0 0 0; font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${preview}</p>
+            <p class="message-presence" id="chat-presence-${contactId}" style="margin: 2px 0 0 0; font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${presenceText}</p>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+          <span class="chat-time" id="chat-time-${contactId}" style="font-size: 10px; color: var(--text-muted); white-space: nowrap;">${timeText}</span>
+          <button type="button" class="follow-toggle-btn" data-follow-target-id="${contactId}" data-following="${isFollowing ? '1' : '0'}" title="${isFollowing ? 'Unfollow' : 'Follow'}" aria-label="${isFollowing ? 'Unfollow' : 'Follow'}">
+            <i data-lucide="${isFollowing ? 'user-check' : 'user-plus'}" style="width: 14px; height: 14px;"></i>
+          </button>
+        </div>
+        ${requestActionsHtml}
+      </div>
+    `;
+  };
+
+  const syncMessageTabCounts = (card) => {
+    if (!card) return;
+    card.querySelectorAll('.messages-list').forEach((list) => {
+      const tab = list.getAttribute('data-message-tab-list');
+      const tabBtn = card.querySelector(`.tab-btn[data-tab="${tab}"]`);
+      if (!tabBtn) return;
+      const count = list.querySelectorAll('.message-item').length;
+      const countSpan = tabBtn.querySelector('.tab-count');
+      if (countSpan) {
+        countSpan.textContent = `(${count})`;
+      }
+    });
+  };
+
+  const setMessageTab = (card, tabName) => {
+    if (!card) return;
+    card.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+    card.querySelectorAll('.messages-list').forEach((list) => {
+      list.classList.toggle('active', list.dataset.messageTabList === tabName);
+      if (list.dataset.messageTabList === tabName) {
+        list.style.display = 'flex';
+      } else {
+        list.style.display = 'none';
+      }
+    });
+  };
+
+  const upsertMessageItem = (card, conversation) => {
+    if (!card || !conversation) return;
+    const contactId = Number(conversation.contactId);
+    if (!contactId) return;
+    const list = card.querySelector(`.messages-list[data-message-tab-list="${conversation.category || 'general'}"]`) || card.querySelector('.messages-list.active') || card.querySelector('.messages-list');
+    if (!list) return;
+
+    const existing = card.querySelector(`.message-item[data-contact-id="${contactId}"]`);
+    const previewText = conversation.preview || 'Start a conversation...';
+    const timeText = conversation.timeText || '';
+
+    if (existing) {
+      const preview = existing.querySelector(`#chat-preview-${contactId}`);
+      const time = existing.querySelector(`#chat-time-${contactId}`);
+      const presence = existing.querySelector(`#chat-presence-${contactId}`);
+      if (preview) preview.textContent = previewText;
+      if (time) time.textContent = timeText;
+      if (presence) presence.textContent = conversation.isOnline ? 'Online now' : (conversation.presenceText || 'Offline');
+      existing.dataset.messageCategory = conversation.category || existing.dataset.messageCategory || 'general';
+      existing.dataset.messageRequestStatus = conversation.requestStatus || '';
+      existing.dataset.canManageRequest = conversation.canManageRequest ? '1' : '0';
+      existing.dataset.following = conversation.isFollowing ? '1' : '0';
+      existing.dataset.followedBy = conversation.isFollowedBy ? '1' : '0';
+      existing.dataset.mutual = conversation.isMutual ? '1' : '0';
+      existing.dataset.isOnline = conversation.isOnline ? '1' : '0';
+      existing.dataset.lastSeenText = conversation.presenceText || '';
+      existing.classList.toggle('online', !!conversation.isOnline);
+      existing.querySelector('.msg-avatar-wrapper')?.classList.toggle('online', !!conversation.isOnline);
+      existing.querySelectorAll('.follow-toggle-btn').forEach((button) => {
+        updateFollowButtonState(button, conversation.isFollowing);
+      });
+      existing.querySelector('.message-request-actions')?.remove();
+      if (conversation.canManageRequest) {
+        existing.insertAdjacentHTML('beforeend', `
+          <div class="message-request-actions">
+            <button type="button" class="message-request-action accept" data-message-request-action="accept" data-requester-id="${contactId}">Accepter</button>
+            <button type="button" class="message-request-action decline" data-message-request-action="decline" data-requester-id="${contactId}">Refuser</button>
+          </div>
+        `);
+      }
+      if (existing.parentElement !== list) {
+        existing.remove();
+        list.prepend(existing);
+      } else {
+        list.prepend(existing);
+      }
+    } else {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = buildMessageItemHtml({
+        id: contactId,
+        name: conversation.contactName,
+        username: conversation.contactUsername,
+        avatar: conversation.contactAvatar,
+        preview: previewText,
+        time_text: timeText,
+        presence_text: conversation.presenceText || '',
+        is_online: !!conversation.isOnline,
+        is_following: conversation.isFollowing,
+        is_followed_by: conversation.isFollowedBy,
+        is_mutual: conversation.isMutual,
+        category: conversation.category,
+        request_status: conversation.requestStatus,
+        can_manage_request: conversation.canManageRequest
+      }).trim();
+      const item = wrapper.firstElementChild;
+      if (item) list.prepend(item);
+    }
+
+    syncMessageTabCounts(card);
+  };
+
+  const upsertConversationAcrossCards = (conversation) => {
+    document.querySelectorAll('.messages-card').forEach((card) => {
+      upsertMessageItem(card, conversation);
+    });
+  };
+
+  const syncConversationFollowState = (partnerId, isFollowing, isFollowedBy) => {
+    document.querySelectorAll('.messages-card').forEach((card) => {
+      const item = card.querySelector(`.message-item[data-contact-id="${partnerId}"]`);
+      if (!item) return;
+
+      const currentFollowing = item.dataset.following === '1';
+      const currentFollowedBy = item.dataset.followedBy === '1';
+      const currentIsOnline = item.dataset.isOnline === '1';
+      const nextFollowing = typeof isFollowing === 'boolean' ? isFollowing : currentFollowing;
+      const nextFollowedBy = typeof isFollowedBy === 'boolean' ? isFollowedBy : currentFollowedBy;
+      const nextMutual = nextFollowing && nextFollowedBy;
+      const nextCategory = 'general';
+
+      item.dataset.following = nextFollowing ? '1' : '0';
+      item.dataset.followedBy = nextFollowedBy ? '1' : '0';
+      item.dataset.mutual = nextMutual ? '1' : '0';
+      item.dataset.messageCategory = nextCategory;
+      item.classList.toggle('online', currentIsOnline);
+      item.querySelector('.msg-avatar-wrapper')?.classList.toggle('online', currentIsOnline);
+
+      const button = item.querySelector('.follow-toggle-btn');
+      updateFollowButtonState(button, nextFollowing);
+
+      const targetList = card.querySelector(`.messages-list[data-message-tab-list="${nextCategory}"]`);
+      if (targetList && item.parentElement !== targetList) {
+        item.remove();
+        targetList.prepend(item);
+      }
+      syncMessageTabCounts(card);
+    });
+  };
+
+  const handleMessageRequestAction = async (button) => {
+    const requesterId = Number(button?.dataset.requesterId || 0);
+    const action = button?.dataset.messageRequestAction;
+    if (!requesterId || !['accept', 'decline'].includes(action)) return;
+
+    button.disabled = true;
+    try {
+      const response = await fetch(`/api/message-requests/${requesterId}/${action}`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin'
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Impossible de traiter cette demande.');
+      }
+
+      document.querySelectorAll(`.message-item[data-contact-id="${requesterId}"]`).forEach((item) => {
+        if (data.status === 'accepted') {
+          item.dataset.messageCategory = 'general';
+          item.dataset.messageRequestStatus = 'accepted';
+          item.dataset.canManageRequest = '0';
+          item.querySelector('.message-request-actions')?.remove();
+          const card = item.closest('.messages-card');
+          const targetList = card?.querySelector('.messages-list[data-message-tab-list="general"]');
+          if (targetList && item.parentElement !== targetList) {
+            item.remove();
+            targetList.prepend(item);
+          }
+          if (card) syncMessageTabCounts(card);
+        } else {
+          const card = item.closest('.messages-card');
+          item.remove();
+          if (card) syncMessageTabCounts(card);
+        }
+      });
+
+      showToast(data.status === 'accepted' ? 'Demande de message acceptée.' : 'Demande de message refusée.');
+    } catch (error) {
+      showToast(error.message || 'Impossible de traiter cette demande.');
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    const size = Number(bytes || 0);
+    if (!Number.isFinite(size) || size <= 0) return '';
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const CHAT_ATTACHMENT_LIMITS = {
+    image: 25 * 1024 * 1024,
+    video: 100 * 1024 * 1024,
+    audio: 25 * 1024 * 1024,
+    file: 25 * 1024 * 1024
+  };
+
+  const getChatAttachmentType = (file) => {
+    if (!file) return 'file';
+    if (file.type.startsWith('image/')) return 'image';
+    if (file.type.startsWith('video/')) return 'video';
+    if (file.type.startsWith('audio/')) return 'audio';
+    return 'file';
+  };
+
+  const getChatAttachmentLimit = (file) => CHAT_ATTACHMENT_LIMITS[getChatAttachmentType(file)] || CHAT_ATTACHMENT_LIMITS.file;
+
+  const getMessageAttachmentIcon = (type) => {
+    if (type === 'image') return 'image';
+    if (type === 'video') return 'film';
+    if (type === 'audio') return 'mic';
+    return 'file';
+  };
+
+  const getMessageAttachmentLabel = (message) => {
+    const type = String(message?.attachment_type || '').toLowerCase();
+    const name = String(message?.attachment_name || '').trim();
+    if (type === 'image') return 'Image';
+    if (type === 'video') return 'Video';
+    if (type === 'audio') return 'Voice note';
+    if (name) return name;
+    return 'Attachment';
+  };
+
+  const getChatMessagePreviewText = (message) => {
+    if (!message) return 'Start a conversation...';
+
+    const content = String(message.content || '').trim();
+    let gameData = null;
+    try {
+      if (content.startsWith('{') && content.endsWith('}')) {
+        gameData = JSON.parse(content);
+      }
+    } catch (e) {}
+
+    if (gameData && gameData.type === 'game_invitation') {
+      const gameNames = { morpion: 'Morpion', puissance4: 'Puissance 4', tablefootball: 'Football Table' };
+      const gameLabel = gameNames[gameData.game] || gameData.game || 'Jeu';
+      return `🎮 Invitation : ${gameLabel}`;
+    }
+    if (content) return content;
+
+    const attachmentType = String(message.attachment_type || '').toLowerCase();
+    const attachmentName = String(message.attachment_name || '').trim();
+    const voiceDuration = Number(message.voice_duration_seconds || 0);
+
+    if (attachmentType === 'image') return 'Sent an image';
+    if (attachmentType === 'video') return 'Sent a video';
+    if (attachmentType === 'audio') {
+      if (voiceDuration > 0) return `Voice note ${formatVoiceDuration(voiceDuration)}`;
+      return 'Sent a voice note';
+    }
+    if (attachmentName) return `Sent ${attachmentName}`;
+    if (attachmentType === 'file') return 'Sent a file';
+    return 'Sent an attachment';
+  };
+
+  const getMessageBubbleAttachmentHtml = (message) => {
+    if (!message?.attachment_url) return '';
+    const url = escapeHtml(message.attachment_url);
+    const type = String(message.attachment_type || '').toLowerCase();
+    const name = escapeHtml(message.attachment_name || 'Attachment');
+    const size = formatFileSize(message.attachment_size);
+    const duration = Number(message.voice_duration_seconds || 0);
+
+    if (type === 'image') {
+      return `
+        <a href="${url}" target="_blank" rel="noopener" style="display:block; margin-top: 8px; border-radius: 12px; overflow:hidden; border:1px solid var(--border-color);">
+          <img src="${url}" alt="${name}" style="display:block; width:100%; max-width: 240px; max-height: 260px; object-fit: cover;">
+        </a>
+      `;
+    }
+
+    if (type === 'video') {
+      return `
+        <video controls src="${url}" style="display:block; width:100%; max-width: 280px; border-radius: 12px; margin-top: 8px; border:1px solid var(--border-color); background: #000;"></video>
+      `;
+    }
+
+    if (type === 'audio') {
+      return `
+        <div class="voice-note-player chat-voice-note-player" data-voice-kind="chat" style="display:flex; align-items:center; gap:8px; background: rgba(0,0,0,0.05); padding: 6px 10px; border-radius: 18px; border: 1px solid var(--border-color); margin-top: 8px; max-width: 280px; user-select: none;">
+          <button type="button" class="voice-play-btn" style="width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <i data-lucide="play" style="width: 10px; height: 10px; fill: white;"></i>
+          </button>
+          <div class="voice-timeline-wrap" style="flex: 1; display: flex; align-items: center; min-width: 0;">
+            <div class="voice-timeline" style="flex: 1; height: 3px; background: var(--border-color); border-radius: 1.5px; position: relative; cursor: pointer; min-width: 80px;">
+              <div class="voice-progress" style="width: 0%; height: 100%; background: var(--primary); border-radius: 1.5px; position: absolute; left: 0; top: 0;"></div>
+            </div>
+          </div>
+          <span class="voice-duration" style="font-size: 10px; color: var(--text-muted); font-family: monospace; min-width: 52px; text-align: right; white-space: nowrap;">${duration > 0 ? formatVoiceDuration(duration) : ''}</span>
+          <audio class="voice-audio-element" src="${url}" preload="auto" style="display:none;"></audio>
+        </div>
+      `;
+    }
+
+    return `
+      <a href="${url}" target="_blank" rel="noopener" download="${name}" style="display:flex; align-items:center; gap:10px; margin-top: 8px; padding: 10px 12px; border:1px solid var(--border-color); border-radius: 12px; color: var(--text-primary); text-decoration:none; max-width: 280px;">
+        <i data-lucide="${getMessageAttachmentIcon(type)}" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
+        <div style="min-width: 0; flex: 1;">
+          <div style="font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
+          <div style="font-size: 10px; color: var(--text-muted);">${size}</div>
+        </div>
+      </a>
+    `;
+  };
+
+  const getMessageDeliveryStatus = (message, msgType) => {
+    if (msgType !== 'outgoing') return null;
+    if (message?.read_at) return 'read';
+    if (message?.delivered_at) return 'delivered';
+    return message?.messageStatus || 'sent';
+  };
+
+  const renderMessageStatusHtml = (status) => {
+    if (!status) return '';
+    if (status === 'sent') {
+      return `
+        <span class="chat-msg-status sent" aria-label="Sent">
+          <i data-lucide="check" style="width: 11px; height: 11px;"></i>
+        </span>
+      `;
+    }
+
+    return `
+      <span class="chat-msg-status ${status}" aria-label="${status === 'read' ? 'Read' : 'Delivered'}">
+        <i data-lucide="check" style="width: 11px; height: 11px;"></i>
+        <i data-lucide="check" style="width: 11px; height: 11px;"></i>
+      </span>
+    `;
+  };
+
+  const setVoicePlayButtonIcon = (button, iconName) => {
+    if (!button) return;
+    button.innerHTML = `<i data-lucide="${iconName}" style="width: 10px; height: 10px; fill: white;"></i>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  const toggleVoicePlayer = (player, playBtn) => {
+    if (!player || !playBtn) return;
+    const audio = player.querySelector('.voice-audio-element');
+    const progress = player.querySelector('.voice-progress');
+    const durationEl = player.querySelector('.voice-duration');
+    if (!audio) return;
+
+    document.querySelectorAll('.voice-note-player').forEach((p) => {
+      if (p === player) return;
+      const otherAudio = p.querySelector('.voice-audio-element');
+      if (otherAudio && !otherAudio.paused) {
+        otherAudio.pause();
+        p.classList.remove('playing');
+        const otherPlayBtn = p.querySelector('.voice-play-btn');
+        setVoicePlayButtonIcon(otherPlayBtn, 'play');
+      }
+    });
+
+    if (audio.paused) {
+      audio.play().catch(() => { });
+      player.classList.add('playing');
+      setVoicePlayButtonIcon(playBtn, 'pause');
+
+      audio.ontimeupdate = () => {
+        if (audio.duration && isFinite(audio.duration)) {
+          const pct = (audio.currentTime / audio.duration) * 100;
+          if (progress) progress.style.width = pct + '%';
+          const cur = Math.floor(audio.currentTime);
+          const tot = Math.floor(audio.duration);
+          const cm = Math.floor(cur / 60), cs = cur % 60;
+          const tm = Math.floor(tot / 60), ts = tot % 60;
+          if (durationEl) durationEl.textContent = `${cm}:${cs.toString().padStart(2, '0')} / ${tm}:${ts.toString().padStart(2, '0')}`;
+        }
+      };
+
+      audio.onended = () => {
+        player.classList.remove('playing');
+        setVoicePlayButtonIcon(playBtn, 'play');
+        if (progress) progress.style.width = '0%';
+        if (audio.duration && isFinite(audio.duration)) {
+          const dur = Math.floor(audio.duration);
+          const m = Math.floor(dur / 60), s = dur % 60;
+          if (durationEl) durationEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+        }
+      };
+
+      audio.onloadedmetadata = () => {
+        const dur = Math.floor(audio.duration);
+        const m = Math.floor(dur / 60), s = dur % 60;
+        if (durationEl) durationEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+      };
+    } else {
+      audio.pause();
+      player.classList.remove('playing');
+      setVoicePlayButtonIcon(playBtn, 'play');
+      if (audio.duration && isFinite(audio.duration)) {
+        const dur = Math.floor(audio.duration);
+        const m = Math.floor(dur / 60), s = dur % 60;
+        if (durationEl) durationEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+        if (progress) progress.style.width = (audio.currentTime / audio.duration * 100) + '%';
+      }
+    }
+  };
+
+  const seekVoicePlayer = (player, clientX) => {
+    if (!player) return;
+    const audio = player.querySelector('.voice-audio-element');
+    const progress = player.querySelector('.voice-progress');
+    const timeline = player.querySelector('.voice-timeline');
+    if (!audio || !audio.duration || !timeline) return;
+    const rect = timeline.getBoundingClientRect();
+    const clickX = clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+    audio.currentTime = ratio * audio.duration;
+    if (progress) progress.style.width = (ratio * 100) + '%';
+  };
+
+  const updateChatMessageStatus = (messageId, status) => {
+    if (!messageId) return;
+    document.querySelectorAll(`.chat-msg-wrapper[data-message-id="${messageId}"]`).forEach((wrapper) => {
+      wrapper.dataset.messageStatus = status;
+      const statusNode = wrapper.querySelector('.chat-msg-status');
+      if (!statusNode) return;
+      const footer = wrapper.querySelector('.chat-msg-footer');
+      if (!footer) return;
+      statusNode.className = `chat-msg-status ${status}`;
+      statusNode.innerHTML = status === 'sent'
+        ? '<i data-lucide="check" style="width: 11px; height: 11px;"></i>'
+        : '<i data-lucide="check" style="width: 11px; height: 11px;"></i><i data-lucide="check" style="width: 11px; height: 11px;"></i>';
+    });
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  const renderChatMessageHtml = (message, msgType) => {
+    const rawContent = (message?.content || '').trim();
+    let isGameInvitation = false;
+    let gameData = null;
+    try {
+      if (rawContent.startsWith('{') && rawContent.endsWith('}')) {
+        gameData = JSON.parse(rawContent);
+        if (gameData && gameData.type === 'game_invitation') {
+          isGameInvitation = true;
+        }
+      }
+    } catch (e) {}
+    
+    let bubbleContentHtml = '';
+    if (isGameInvitation && gameData) {
+      bubbleContentHtml = renderGameInvitationBubble(gameData, msgType, message.id);
+    } else {
+      const text = escapeHtml(message?.content || '').trim();
+      bubbleContentHtml = text ? `<div class="chat-msg-bubble">${text}</div>` : '';
+    }
+
+    const timestamp = new Date(message?.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const attachmentHtml = getMessageBubbleAttachmentHtml(message);
+    const status = getMessageDeliveryStatus(message, msgType);
+    return `
+      <div class="chat-msg-wrapper ${msgType}" data-message-id="${escapeHtml(message?.id ?? '')}" data-message-status="${escapeHtml(status || '')}">
+        ${bubbleContentHtml}
+        ${attachmentHtml}
+        <div class="chat-msg-footer">
+          <span class="chat-msg-time">${timestamp}</span>
+          ${msgType === 'outgoing' ? renderMessageStatusHtml(status) : ''}
+        </div>
+      </div>
+    `;
+  };
+
+  const renderGameInvitationBubble = (gameData, msgType, messageId) => {
+    const gameNames = { morpion: 'Morpion (Tic-Tac-Toe)', puissance4: 'Puissance 4', tablefootball: 'Football Table' };
+    const gameLabel = gameNames[gameData.game] || gameData.game || 'Jeu';
+    const isPaid = gameData.priceType === 'paid';
+    const priceText = isPaid ? `<span style="color: #ef4444; font-weight: bold;">Payant (${gameData.priceAmount} $)</span>` : '<span style="color: #10b981; font-weight: bold;">Gratuit</span>';
+    const expiresAtTime = new Date(gameData.expiresAt).getTime();
+    
+    let statusText = '';
+    let buttonsHtml = '';
+    let progressBarHtml = '';
+
+    const isPending = gameData.status === 'pending';
+    const isAccepted = gameData.status === 'accepted';
+    const isDeclined = gameData.status === 'declined';
+    
+    const isExpired = Date.now() > expiresAtTime;
+
+    if (isAccepted) {
+      statusText = '<span style="color: #10b981; font-weight: bold;">Partie acceptée !</span>';
+      if (gameData.gameId) {
+        buttonsHtml = `
+          <div class="game-invite-actions" style="margin-top: 12px;">
+            <button type="button" class="game-join-btn" data-game-id="${gameData.gameId}" style="width: 100%; padding: 8px 12px; border-radius: 12px; border: none; background: var(--primary); color: white; cursor: pointer; font-weight: 700; font-size: 12.5px;">Rejoindre la partie</button>
+          </div>
+        `;
+      }
+    } else if (isDeclined) {
+      statusText = '<span style="color: #ef4444; font-weight: bold;">Invitation refusée.</span>';
+    } else if (isExpired) {
+      statusText = '<span style="color: var(--text-muted);">Invitation expirée.</span>';
+    } else if (isPending) {
+      statusText = '<span class="game-time-status" style="color: var(--text-secondary);">En attente de réponse...</span>';
+      
+      if (msgType === 'incoming') {
+        buttonsHtml = `
+          <div class="game-invite-actions" style="display: flex; gap: 8px; margin-top: 12px;">
+            <button type="button" class="game-accept-btn" data-message-id="${messageId}" style="flex: 1; padding: 6px 12px; border-radius: 12px; border: none; background: #10b981; color: white; cursor: pointer; font-weight: 600; font-size: 12px;">Accepter</button>
+            <button type="button" class="game-decline-btn" data-message-id="${messageId}" style="flex: 1; padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-secondary); cursor: pointer; font-weight: 600; font-size: 12px;">Refuser</button>
+          </div>
+        `;
+      }
+
+      progressBarHtml = `
+        <div class="game-invite-progress-container" data-expires="${expiresAtTime}" data-duration="${gameData.durationSeconds}" style="width: 100%; height: 6px; background: var(--border-color); border-radius: 3px; overflow: hidden; margin-top: 10px;">
+          <div class="game-invite-progress-bar" style="width: 100%; height: 100%; background: #10b981; transition: width 0.1s linear;"></div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="chat-msg-bubble game-invite-card" style="padding: 16px; border-radius: 16px; background: var(--bg-hover); border: 1px solid var(--border-color); width: 280px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 4px;">
+          <div style="background: var(--primary); padding: 8px; border-radius: 10px; color: white; display: flex; align-items: center; justify-content: center;">
+            <i data-lucide="gamepad-2" style="width: 18px; height: 18px;"></i>
+          </div>
+          <div style="display: flex; flex-direction: column; min-width: 0;">
+            <span style="font-weight: 700; font-size: 14px; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${gameLabel}</span>
+            <span style="font-size: 12px; color: var(--text-muted);">${priceText}</span>
+          </div>
+        </div>
+        <div style="font-size: 12.5px; color: var(--text-primary); font-style: italic; line-height: 1.4; border-bottom: 1px dashed var(--border-color); padding-bottom: 8px; margin-bottom: 4px;">
+          "Salut ! Je te propose de faire une partie de jeu. Tu es partant ?"
+        </div>
+        <div style="font-size: 12.5px; color: var(--text-secondary);">
+          ${statusText}
+        </div>
+        ${buttonsHtml}
+        ${progressBarHtml}
+      </div>
+    `;
+  };
+
+  const startGameInviteTimer = () => {
+    setInterval(() => {
+      document.querySelectorAll('.game-invite-progress-container').forEach(container => {
+        const expiresTime = parseInt(container.dataset.expires, 10);
+        const duration = parseInt(container.dataset.duration, 10);
+        const now = Date.now();
+        const timeLeft = expiresTime - now;
+
+        const progressBar = container.querySelector('.game-invite-progress-bar');
+        const bubble = container.closest('.game-invite-card');
+        const statusEl = bubble ? bubble.querySelector('.game-time-status') : null;
+        const actionsEl = bubble ? bubble.querySelector('.game-invite-actions') : null;
+
+        if (timeLeft <= 0) {
+          if (progressBar) progressBar.style.width = '0%';
+          if (statusEl && statusEl.textContent !== 'Invitation expirée.') {
+            statusEl.outerHTML = '<span style="color: var(--text-muted);">Invitation expirée.</span>';
+          }
+          if (actionsEl) actionsEl.remove();
+          container.remove();
+        } else {
+          const percentage = Math.max(0, Math.min(100, (timeLeft / (duration * 1000)) * 100));
+          if (progressBar) {
+            progressBar.style.width = percentage + '%';
+            if (percentage < 25) {
+              progressBar.style.background = '#ef4444';
+            } else if (percentage < 50) {
+              progressBar.style.background = '#f59e0b';
+            } else {
+              progressBar.style.background = '#10b981';
+            }
+          }
+        }
+      });
+    }, 500);
+  };
+
+  startGameInviteTimer();
+
+  const appendChatMessageHtml = (container, html) => {
+    if (!container || !html) return null;
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = html.trim();
+    const messageEl = wrapper.firstElementChild;
+    if (!messageEl) return null;
+    container.appendChild(messageEl);
+    const audio = messageEl.querySelector('.chat-voice-note-player .voice-audio-element');
+    if (audio && audio.readyState === 0) {
+      audio.load();
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return messageEl;
+  };
+
+  let chatMediaRecorder = null;
+  let chatAudioChunks = [];
+  let chatRecordingTimer = null;
+  let chatRecordingSeconds = 0;
+  let chatRecordingOverlay = null;
+  let chatRecordingContext = null;
+  let chatRecordingMime = null;
+
+  const getBestChatAudioMimeType = () => {
+    const types = [
+      { mime: 'audio/webm;codecs=opus', ext: 'webm' },
+      { mime: 'audio/webm', ext: 'webm' },
+      { mime: 'audio/mp4', ext: 'mp4' },
+      { mime: 'audio/ogg;codecs=opus', ext: 'ogg' },
+      { mime: 'audio/ogg', ext: 'ogg' },
+      { mime: 'audio/wav', ext: 'wav' }
+    ];
+    for (const t of types) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(t.mime)) return t;
+    }
+    return { mime: 'audio/webm', ext: 'webm' };
+  };
+
+  const uploadMessageAttachment = async (file, kind = 'file') => {
+    const inferredType = kind === 'audio' ? 'audio' : getChatAttachmentType(file);
+    const maxAllowedSize = inferredType === 'video'
+      ? CHAT_ATTACHMENT_LIMITS.video
+      : CHAT_ATTACHMENT_LIMITS.file;
+    if (Number(file?.size || 0) > maxAllowedSize) {
+      throw new Error(inferredType === 'video'
+        ? 'Video files must not exceed 100 MB.'
+        : 'Files must not exceed 25 MB.');
+    }
+    const formData = new FormData();
+    if (kind === 'audio') {
+      formData.append('audio', file, file.name || 'voice.webm');
+    } else {
+      formData.append('file', file, file.name || 'attachment');
+    }
+    const response = await fetch('/api/messages/upload-media', {
+      method: 'POST',
+      body: formData
+    });
+    const json = await response.json();
+    if (!response.ok) {
+      throw new Error(json.error || 'Unable to upload file.');
+    }
+    return json;
+  };
+
+  const updateChatPresenceBadge = (chatBox, isOnline, presenceText) => {
+    if (!chatBox) return;
+    const badge = chatBox.querySelector('.chat-header-status');
+    if (!badge) return;
+    badge.textContent = isOnline ? 'Online now' : (presenceText || 'Offline');
+    badge.dataset.online = isOnline ? '1' : '0';
+  };
+
+  const syncChatPresenceInLists = (userId, isOnline, presenceText) => {
+    document.querySelectorAll(`.message-item[data-contact-id="${userId}"]`).forEach((item) => {
+      item.classList.toggle('online', !!isOnline);
+      item.dataset.isOnline = isOnline ? '1' : '0';
+      item.dataset.lastSeenText = presenceText || '';
+      const wrapper = item.querySelector('.msg-avatar-wrapper');
+      if (wrapper) wrapper.classList.toggle('online', !!isOnline);
+      const presenceNode = item.querySelector('.message-presence');
+      if (presenceNode) presenceNode.textContent = isOnline ? 'Online now' : (presenceText || 'Offline');
+    });
+    document.querySelectorAll(`.chat-box[data-contact-id="${userId}"]`).forEach((chatBox) => {
+      updateChatPresenceBadge(chatBox, isOnline, presenceText);
+    });
+  };
+
+  const formatBalanceAmount = (value) => `$${Number(value || 0).toFixed(2)}`;
+  const parseBalanceAmount = (value) => {
+    const parsed = Number.parseFloat(String(value || '').replace(/[^0-9.-]+/g, ''));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const getCurrentDepositBalance = () => {
+    const profileBalance = parseBalanceAmount(document.getElementById('profile-deposit-balance')?.textContent);
+    if (Number.isFinite(profileBalance)) {
+      window.currentUserDepositBalance = profileBalance;
+      return profileBalance;
+    }
+
+    const settingsBalance = parseBalanceAmount(document.getElementById('settings-deposit-balance')?.textContent);
+    if (Number.isFinite(settingsBalance)) {
+      window.currentUserDepositBalance = settingsBalance;
+      return settingsBalance;
+    }
+
+    const liveBalance = Number(window.currentUserDepositBalance);
+    return Number.isFinite(liveBalance) ? liveBalance : 0;
+  };
+  const setTradePendingState = (button, tradeType) => {
+    if (!button) return;
+    if (button._tradePendingTimeout) {
+      clearTimeout(button._tradePendingTimeout);
+    }
+    button.setAttribute('data-trade-pending', '1');
+    button._tradePendingTimeout = setTimeout(() => {
+      button.removeAttribute('data-trade-pending');
+      button._tradePendingTimeout = null;
+      showToast(`Aucune confirmation recue pour ce trade ${tradeType === 'reel' ? 'de short' : 'de post'}. Verifiez votre connexion puis reessayez.`);
+    }, 7000);
+  };
+  const clearTradePendingState = (button) => {
+    if (!button) return;
+    button.removeAttribute('data-trade-pending');
+    if (button._tradePendingTimeout) {
+      clearTimeout(button._tradePendingTimeout);
+      button._tradePendingTimeout = null;
+    }
+  };
+  const confirmTradeAction = async ({ type, tradePrice, currentBalance }) => {
+    const tradeLabel = type === 'reel' ? 'ce short' : 'ce poste';
+    const formattedTradePrice = Number.isFinite(Number(tradePrice)) ? `$${Number(tradePrice).toFixed(2)}` : 'ce prix';
+    const formattedCurrentBalance = Number.isFinite(Number(currentBalance)) ? `$${Number(currentBalance).toFixed(2)}` : '$0.00';
+    const message = `Est-ce que vous voulez vraiment trader ${tradeLabel} au prix actuel de ${formattedTradePrice} ? Votre solde de depot actuel est ${formattedCurrentBalance}. Si le prochain prix baisse, la difference est convertie en tokens selon le prix actuel du token.`;
+
+    console.log('[trade-modal] confirmTradeAction called', {
+      type,
+      tradeLabel,
+      tradePrice,
+      currentBalance,
+      hasOpenGameConfirmDialog: typeof openGameConfirmDialog === 'function'
+    });
+
+    if (typeof openGameConfirmDialog === 'function') {
+      console.log('[trade-modal] opening custom confirm modal', {
+        title: `Trader ${tradeLabel} ?`,
+        message
+      });
+      return openGameConfirmDialog({
+        title: `Trader ${tradeLabel} ?`,
+        message,
+        confirmLabel: 'Oui, trader'
+      });
+    }
+
+    console.warn('[trade-modal] openGameConfirmDialog unavailable, using window.confirm fallback');
+    return window.confirm(message);
+  };
+  const requestReelTrade = async (tradeBtn, event = null) => {
+    if (!tradeBtn) return;
+    console.log('[trade-modal] short trade click detected', {
+      reelId: tradeBtn.getAttribute('data-reel-id'),
+      price: tradeBtn.getAttribute('data-price'),
+      disabled: tradeBtn.classList.contains('disabled'),
+      pending: tradeBtn.getAttribute('data-trade-pending'),
+      socketConnected: socket?.connected
+    });
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    if (tradeBtn.classList.contains('disabled')) {
+      showToast("You already own this short!");
+      return;
+    }
+
+    const lastTriggerAt = Number(tradeBtn.getAttribute('data-last-trigger-at') || 0);
+    const now = Date.now();
+    if (now - lastTriggerAt < 500) {
+      return;
+    }
+    tradeBtn.setAttribute('data-last-trigger-at', String(now));
+
+    if (tradeBtn.getAttribute('data-trade-pending') === '1') {
+      return;
+    }
+
+    if (!socket.connected) {
+      showToast('Connexion temps reel indisponible. Rechargez la page puis reessayez.');
+      return;
+    }
+
+    const reelId = tradeBtn.getAttribute('data-reel-id');
+    if (!reelId) {
+      showToast('Short introuvable pour ce trade.');
+      return;
+    }
+
+    const preview = await new Promise((resolve) => {
+      socket.emit('reel-trade-preview', { reelId }, (response) => {
+        console.log('[trade-modal] short trade preview response', response);
+        resolve(response || { success: false, error: 'Impossible de verifier votre solde pour ce trade.' });
+      });
+    });
+
+    if (!preview?.success) {
+      showToast(preview?.error || 'Impossible de verifier votre solde pour ce trade.');
+      return;
+    }
+
+    if (Number.isFinite(Number(preview.currentBalance))) {
+      window.currentUserDepositBalance = Number(preview.currentBalance);
+      const profileBalanceNode = document.getElementById('profile-deposit-balance');
+      const settingsBalanceNode = document.getElementById('settings-deposit-balance');
+      const formattedLiveBalance = `$${Number(preview.currentBalance).toFixed(2)}`;
+      if (profileBalanceNode) profileBalanceNode.textContent = formattedLiveBalance;
+      if (settingsBalanceNode) settingsBalanceNode.textContent = formattedLiveBalance;
+    }
+
+    const confirmed = await confirmTradeAction({
+      type: 'reel',
+      tradePrice: preview.tradePrice,
+      currentBalance: preview.currentBalance
+    });
+
+    if (!confirmed) return;
+
+    setTradePendingState(tradeBtn, 'reel');
+    showToast('Traitement du trade en cours...');
+    socket.emit('reel-trade-action', { reelId });
+  };
+  window.handleReelTradeClick = (button, event) => {
+    requestReelTrade(button, event).catch((error) => {
+      console.error('Reel trade click error:', error);
+      showToast('Impossible d ouvrir la confirmation du trade.');
+    });
+  };
+  const getReelTradeButtonAtPoint = (clientX, clientY) => {
+    const tradeButtons = Array.from(document.querySelectorAll('.reel-trade-btn'));
+    return tradeButtons.find((button) => {
+      const rect = button.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return false;
+      return clientX >= rect.left
+        && clientX <= rect.right
+        && clientY >= rect.top
+        && clientY <= rect.bottom;
+    }) || null;
+  };
+  const syncPostTradeButtons = (postId, lastPossessionUserId, newPrice) => {
+    document.querySelectorAll(`.post-card[data-post-id="${postId}"] .trade-btn`).forEach((tradeBtn) => {
+      clearTradePendingState(tradeBtn);
+      tradeBtn.setAttribute('data-price', newPrice);
+      tradeBtn.setAttribute('data-possessor-id', lastPossessionUserId);
+
+      const priceSpan = tradeBtn.querySelector('.trade-price-val');
+      if (priceSpan) {
+        priceSpan.textContent = `$${parseFloat(newPrice).toFixed(2)}`;
+      }
+
+      const isPossessor = Number(lastPossessionUserId) === getCurrentUserId();
+      if (isPossessor) {
+        tradeBtn.classList.add('disabled');
+        tradeBtn.setAttribute('aria-disabled', 'true');
+        tradeBtn.style.opacity = '0.6';
+        tradeBtn.style.cursor = 'not-allowed';
+      } else {
+        tradeBtn.classList.remove('disabled');
+        tradeBtn.setAttribute('aria-disabled', 'false');
+        tradeBtn.style.opacity = '';
+        tradeBtn.style.cursor = '';
+      }
+    });
+  };
+  const syncReelTradeButtons = (reelId, lastPossessionUserId, newPrice) => {
+    document.querySelectorAll(`.reel-card[data-reel-id="${reelId}"] .reel-trade-btn`).forEach((tradeBtn) => {
+      clearTradePendingState(tradeBtn);
+      tradeBtn.setAttribute('data-price', newPrice);
+      tradeBtn.setAttribute('data-possessor-id', lastPossessionUserId);
+
+      const priceSpan = tradeBtn.querySelector('.reel-trade-price-val');
+      if (priceSpan) {
+        priceSpan.textContent = `$${parseFloat(newPrice).toFixed(2)}`;
+      }
+
+      const isPossessor = Number(lastPossessionUserId) === getCurrentUserId();
+      if (isPossessor) {
+        tradeBtn.classList.add('disabled');
+        tradeBtn.setAttribute('aria-disabled', 'true');
+      } else {
+        tradeBtn.classList.remove('disabled');
+        tradeBtn.setAttribute('aria-disabled', 'false');
+      }
+    });
+  };
+
+  const getShortTradeTokenBalance = () => {
+    const liveBalance = Number(window.currentUserTokenBalance);
+    if (Number.isFinite(liveBalance)) return liveBalance;
+    const balanceNode = document.getElementById('shortTradeTokenBalance');
+    return Number(balanceNode?.textContent || 0);
+  };
+
+  const getShortTradeFundsMessage = () => {
+    const balance = getShortTradeTokenBalance();
+    return `Trade Short demande 5 tokens. Solde disponible: ${balance} tokens.`;
+  };
+
+  const syncShortTradeBalanceInfo = (tokenBalance) => {
+    const balance = Number(tokenBalance);
+    if (!Number.isFinite(balance)) return;
+
+    window.currentUserTokenBalance = balance;
+
+    const balanceNode = document.getElementById('shortTradeTokenBalance');
+    if (balanceNode) balanceNode.textContent = String(balance);
+
+    const balanceBox = document.querySelector('.short-trade-balance');
+    if (balanceBox) balanceBox.classList.toggle('is-insufficient', balance < 5);
+
+    let warningNode = document.querySelector('.short-trade-warning');
+    const infoNode = document.getElementById('shortTradeInfo');
+    if (balance < 5 && infoNode && !warningNode) {
+      warningNode = document.createElement('div');
+      warningNode.className = 'short-trade-warning';
+      infoNode.appendChild(warningNode);
+    }
+    if (warningNode) {
+      warningNode.textContent = 'Solde insuffisant pour activer Trade Short.';
+      warningNode.style.display = balance < 5 ? 'block' : 'none';
+    }
+  };
+
+  const syncBalanceWidgets = (payload) => {
+    if (!payload || Number(payload.userId) !== getCurrentUserId()) return;
+
+    if (Number.isFinite(Number(payload.depositBalance))) {
+      window.currentUserDepositBalance = Number(payload.depositBalance);
+    }
+    if (Number.isFinite(Number(payload.withdrawalBalance))) {
+      window.currentUserWithdrawalBalance = Number(payload.withdrawalBalance);
+      if (typeof syncMarketWithdrawalBalance === 'function' && (typeof activeMarketAsset === 'undefined' || activeMarketAsset === 'USDT')) {
+        syncMarketWithdrawalBalance(window.currentUserWithdrawalBalance);
+      }
+      // Update withdrawal button state and warning dynamically based on real-time balance
+      const newBal = Number(payload.withdrawalBalance);
+      const minAmt = Number(window.minWithdrawalAmount || 50);
+      const isWithdrawDisabled = newBal < minAmt;
+
+      const profileWithdrawBtn = document.getElementById('profile-withdraw-btn');
+      const profileWithdrawWarning = document.getElementById('profile-withdraw-warning');
+      const profileWithdrawWarningBal = document.getElementById('profile-withdraw-warning-bal');
+
+      if (profileWithdrawBtn) {
+        if (isWithdrawDisabled) {
+          profileWithdrawBtn.setAttribute('disabled', 'true');
+          profileWithdrawBtn.style.cursor = 'not-allowed';
+          profileWithdrawBtn.style.opacity = '0.5';
+          profileWithdrawBtn.style.filter = 'grayscale(1)';
+        } else {
+          profileWithdrawBtn.removeAttribute('disabled');
+          profileWithdrawBtn.style.cursor = 'pointer';
+          profileWithdrawBtn.style.opacity = '1';
+          profileWithdrawBtn.style.filter = 'none';
+        }
+      }
+
+      if (profileWithdrawWarning) {
+        profileWithdrawWarning.style.display = isWithdrawDisabled ? 'flex' : 'none';
+      }
+
+      if (profileWithdrawWarningBal) {
+        profileWithdrawWarningBal.textContent = newBal.toFixed(2);
+      }
+    }
+    if (Number.isFinite(Number(payload.tokenBalance))) {
+      window.currentUserTokenBalance = Number(payload.tokenBalance);
+      if (typeof syncMarketWithdrawalBalance === 'function' && typeof activeMarketAsset !== 'undefined' && activeMarketAsset === 'TOKEN') {
+        syncMarketWithdrawalBalance(window.currentUserTokenBalance);
+      }
+    }
+
+    const balanceUpdates = [
+      ['profile-deposit-balance', payload.depositBalance],
+      ['profile-withdrawal-balance', payload.withdrawalBalance],
+      ['profile-bonus-balance', payload.bonusBalance],
+      ['settings-deposit-balance', payload.depositBalance],
+      ['settings-withdrawal-balance', payload.withdrawalBalance],
+      ['settings-bonus-balance', payload.bonusBalance],
+      ['withdrawAvailableDisplay', payload.withdrawalBalance]
+    ];
+
+    balanceUpdates.forEach(([id, value]) => {
+      const node = document.getElementById(id);
+      if (node && Number.isFinite(Number(value))) {
+        node.textContent = formatBalanceAmount(value);
+      }
+    });
+
+    const tokenNode = document.getElementById('profile-token-balance');
+    if (tokenNode && Number.isFinite(Number(payload.tokenBalance))) {
+      tokenNode.textContent = String(Number(payload.tokenBalance));
+    }
+    if (Number.isFinite(Number(payload.tokenBalance))) {
+      syncShortTradeBalanceInfo(payload.tokenBalance);
+    }
+
+    // --- Update frozen balance banner ---
+    const frozenBanner = document.getElementById('marketFrozenBanner');
+    if (frozenBanner) {
+      const frozenUsdt = Number(payload.frozenUsdt ?? 0);
+      const frozenToken = Number(payload.frozenToken ?? 0);
+
+      const usdtPill = document.getElementById('marketFrozenUsdtPill');
+      const usdtVal  = document.getElementById('marketFrozenUsdtValue');
+      const tokenPill = document.getElementById('marketFrozenTokenPill');
+      const tokenVal  = document.getElementById('marketFrozenTokenValue');
+
+      if (usdtPill && usdtVal) {
+        usdtVal.textContent = frozenUsdt.toFixed(2);
+        usdtPill.style.display = frozenUsdt > 0 ? '' : 'none';
+      }
+      if (tokenPill && tokenVal) {
+        tokenVal.textContent = frozenToken.toFixed(4).replace(/\.?0+$/, '');
+        tokenPill.style.display = frozenToken > 0 ? '' : 'none';
+      }
+      frozenBanner.style.display = (frozenUsdt > 0 || frozenToken > 0) ? '' : 'none';
+    }
+  };
+
+  const refreshRootCommentLoadMore = (list) => {
+    if (!list) return;
+    const comments = getDirectChildComments(list);
+    const button = list.querySelector('.read-more-comments-btn');
+    comments.forEach((commentEl, index) => {
+      commentEl.style.display = index < 2 ? 'flex' : 'none';
+    });
+    const hiddenCount = Math.max(0, comments.length - 2);
+    if (!button && hiddenCount > 0) {
+      const newButton = document.createElement('button');
+      newButton.className = 'read-more-comments-btn';
+      newButton.style.alignSelf = 'flex-start';
+      newButton.style.background = 'none';
+      newButton.style.border = 'none';
+      newButton.style.color = 'var(--primary)';
+      newButton.style.fontSize = '12px';
+      newButton.style.fontWeight = '600';
+      newButton.style.cursor = 'pointer';
+      newButton.style.padding = '4px 0';
+      newButton.style.marginTop = '2px';
+      newButton.style.display = 'flex';
+      newButton.style.alignItems = 'center';
+      newButton.style.gap = '4px';
+      newButton.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Show ${hiddenCount} more comments`;
+      list.appendChild(newButton);
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      return;
+    }
+    if (button) {
+      button.style.display = hiddenCount > 0 ? 'flex' : 'none';
+      button.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Show ${hiddenCount} more comments`;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+  };
+
+  const refreshReplyLoadMore = (repliesContainer) => {
+    if (!repliesContainer) return;
+    const replies = getReplyItems(repliesContainer);
+    const button = repliesContainer.querySelector('.read-more-replies-btn');
+    const isExpanded = button?.textContent?.includes('Hide');
+    if (!isExpanded) {
+      replies.forEach((replyEl, index) => {
+        const replyRow = replyEl.nextElementSibling?.classList?.contains('reply-input-row') ? replyEl.nextElementSibling : null;
+        const visible = index < 2;
+        replyEl.style.display = visible ? 'flex' : 'none';
+        if (replyRow) replyRow.style.display = visible ? 'none' : 'none';
+      });
+    }
+    if (button) {
+      const hiddenCount = Math.max(0, replies.length - 2);
+      button.style.display = hiddenCount > 0 ? 'flex' : 'none';
+      if (!isExpanded) {
+        button.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Show ${hiddenCount} more replies`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    }
+  };
+
+  const escapeHtml = (text) => {
+    const input = String(text ?? '');
+    const map = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    };
+    return input.replace(/[&<>"']/g, (match) => map[match]);
+  };
+
+  const formatStatusRemaining = (expiresAt) => {
+    const expiry = new Date(expiresAt);
+    const remaining = Math.max(0, Math.floor((expiry.getTime() - Date.now()) / 1000));
+    if (remaining >= 86400) {
+      return `${Math.ceil(remaining / 86400)}d`;
+    }
+    if (remaining >= 3600) {
+      return `${Math.ceil(remaining / 3600)}h`;
+    }
+    if (remaining >= 60) {
+      return `${Math.ceil(remaining / 60)}m`;
+    }
+    return `${remaining}s`;
+  };
+
+  const getStatusRemainingLabel = () => (String(document.documentElement.getAttribute('lang') || 'en').slice(0, 2).toLowerCase() === 'en' ? 'left' : 'restantes');
+  const getStatusNoFileLabel = () => {
+    const locale = String(document.documentElement.getAttribute('lang') || 'en').slice(0, 2).toLowerCase();
+    if (locale === 'fr') return 'Aucun fichier choisi';
+    if (locale === 'es') return 'Ningún archivo seleccionado';
+    return 'No file chosen';
+  };
+
+  let activeStatusAudioPlayer = null; // Store currently playing voice note audio element in viewer
+  let statusVoiceRecorder = null;
+  let statusAudioChunks = [];
+  let statusVoiceRecordingTimer = null;
+  let statusVoiceRecordingSeconds = 0;
+  let statusVoiceAudioBlob = null;
+  let statusVoicePreviewAudio = null;
+
+  const openStatusModal = () => {
+    if (!statusCreateModal) return;
+    statusCreateModal.style.display = 'flex';
+    statusCreateModal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    statusMediaInput?.focus?.();
+  };
+
+  const closeStatusModal = () => {
+    if (!statusCreateModal) return;
+    statusCreateModal.style.display = 'none';
+    statusCreateModal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    if (statusMediaInput) statusMediaInput.value = '';
+    if (statusMediaFilename) statusMediaFilename.textContent = getStatusNoFileLabel();
+
+    // Stop recording if active
+    if (statusVoiceRecorder && statusVoiceRecorder.state !== 'inactive') {
+      try {
+        statusVoiceRecorder.stop();
+      } catch (e) { }
+    }
+
+    // Stop voice preview player if playing
+    if (statusVoicePreviewAudio && !statusVoicePreviewAudio.paused) {
+      statusVoicePreviewAudio.pause();
+    }
+
+    // Clear recording timer
+    if (statusVoiceRecordingTimer) {
+      clearInterval(statusVoiceRecordingTimer);
+      statusVoiceRecordingTimer = null;
+    }
+
+    // Reset inputs
+    document.getElementById('statusTrimStartInput').value = '';
+    document.getElementById('statusTrimEndInput').value = '';
+    const textTextarea = document.getElementById('statusTextTextarea');
+    if (textTextarea) textTextarea.value = '';
+    const statusCaptionInput = document.getElementById('statusCaption');
+    if (statusCaptionInput) statusCaptionInput.value = '';
+
+    // Reset audio elements preview text/timer
+    const voiceTimer = document.getElementById('statusVoiceTimer');
+    if (voiceTimer) voiceTimer.textContent = '00:00';
+    const voiceStatus = document.getElementById('statusVoiceStatus');
+    if (voiceStatus) voiceStatus.textContent = getPageLocale() === 'fr' ? 'Cliquez sur le micro pour démarrer' : 'Click mic to start';
+    const voicePlayerWrapper = document.getElementById('statusVoicePlayerWrapper');
+    if (voicePlayerWrapper) voicePlayerWrapper.style.display = 'none';
+
+    // Reset video editor
+    const videoEditor = document.getElementById('statusVideoEditor');
+    if (videoEditor) videoEditor.style.display = 'none';
+
+    renderStatusMediaPreview(null);
+  };
+
+  let currentGroupStatuses = [];
+  let currentStatusIndex = 0;
+  let storyProgressTimer = null;
+  let storyDuration = 5000;
+  let storyStartTime = 0;
+  let storyElapsedBeforePause = 0;
+  let isStoryPaused = false;
+  let activeStatusCardElement = null;
+  let statusViewerVolumeOn = true;
+
+  const openStatusViewer = (card) => {
+    if (!statusViewerModal || !card) return;
+    activeStatusCardElement = card;
+    currentGroupStatuses = [];
+    try {
+      currentGroupStatuses = JSON.parse(card.dataset.statuses || '[]');
+    } catch (e) {
+      console.error(e);
+    }
+    if (currentGroupStatuses.length === 0) return;
+
+    currentStatusIndex = 0;
+    showStatusSegment(currentStatusIndex);
+
+    statusViewerModal.style.display = 'flex';
+    statusViewerModal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  };
+
+  const showStatusSegment = (index) => {
+    if (index < 0 || index >= currentGroupStatuses.length) return;
+    currentStatusIndex = index;
+
+    // Clear previous timers & players
+    if (storyProgressTimer) {
+      clearInterval(storyProgressTimer);
+      storyProgressTimer = null;
+    }
+    if (activeStatusAudioPlayer) {
+      activeStatusAudioPlayer.pause();
+      activeStatusAudioPlayer = null;
+    }
+    isStoryPaused = false;
+    storyElapsedBeforePause = 0;
+
+    const status = currentGroupStatuses[index];
+    const mediaUrl = status.media_url || '';
+    const mediaType = status.media_type || '';
+    const userName = activeStatusCardElement.dataset.userName || activeStatusCardElement.dataset.username || 'Status';
+    const avatar = activeStatusCardElement.dataset.avatar || '/assets/avatar_placeholder.jpg';
+    const caption = status.caption || '';
+    const expiresAt = status.expires_at || '';
+    const trimStart = status.trim_start;
+    const trimEnd = status.trim_end;
+    const bgColor = status.bg_color;
+
+    statusViewerAvatar.src = avatar;
+    statusViewerAvatar.alt = userName;
+    statusViewerTitle.textContent = userName;
+    statusViewerTimer.textContent = expiresAt ? `${formatStatusRemaining(expiresAt)} ${getStatusRemainingLabel()}` : '';
+    statusViewerCaption.textContent = caption;
+    statusViewerModal.dataset.expiresAt = expiresAt || '';
+    statusViewerModal.dataset.statusId = status.id || '';
+
+    // Hide mute button by default
+    if (statusViewerMuteBtn) {
+      statusViewerMuteBtn.style.display = 'none';
+    }
+
+    // Hide normal media elements
+    statusViewerImage.style.display = 'none';
+    statusViewerVideo.style.display = 'none';
+    statusViewerVideo.style.pointerEvents = 'none';
+    statusViewerImage.removeAttribute('src');
+    statusViewerVideo.removeAttribute('src');
+    statusViewerVideo.pause();
+    statusViewerVideo.currentTime = 0;
+
+    // Remove old custom containers
+    const oldCustom = statusViewerModal.querySelector('.status-viewer-custom-content');
+    if (oldCustom) oldCustom.remove();
+
+    // Render progress segments indicators
+    const progressContainer = document.getElementById('statusViewerProgressContainer');
+    if (progressContainer) {
+      progressContainer.innerHTML = '';
+      currentGroupStatuses.forEach((s, idx) => {
+        const seg = document.createElement('div');
+        seg.className = `status-viewer-progress-segment${idx < index ? ' completed' : (idx === index ? ' active' : '')}`;
+        seg.innerHTML = `<div class="status-viewer-progress-fill"></div>`;
+        progressContainer.appendChild(seg);
+      });
+    }
+
+    const mediaShell = statusViewerModal.querySelector('.status-viewer-media-shell');
+
+    if (mediaType === 'text') {
+      // 1. Text Status WhatsApp Style
+      const textContainer = document.createElement('div');
+      textContainer.className = 'status-viewer-custom-content';
+      textContainer.style.cssText = `
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: ${bgColor || 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)'};
+        color: #ffffff;
+        padding: 30px;
+        font-size: 22px;
+        font-weight: 800;
+        text-align: center;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.25);
+        font-family: 'Outfit', sans-serif;
+        word-break: break-word;
+      `;
+      textContainer.textContent = caption;
+      mediaShell.appendChild(textContainer);
+      statusViewerCaption.textContent = ''; // Don't show redundant caption in footer
+
+      storyDuration = 5000;
+      startStoryTimer();
+    } else if (mediaType.startsWith('audio/')) {
+      // 2. Voice Note Status WhatsApp Style
+      const audioContainer = document.createElement('div');
+      audioContainer.className = 'status-viewer-custom-content';
+      audioContainer.style.cssText = `
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: ${bgColor || 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)'};
+        color: #ffffff;
+        padding: 30px;
+        gap: 16px;
+      `;
+
+      audioContainer.innerHTML = `
+        <div class="voice-status-icon" style="width: 72px; height: 72px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 2px solid white; display: grid; place-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.15); animation: pulse-voice 2s infinite;">
+          <i data-lucide="mic" style="width: 32px; height: 32px; color: white;"></i>
+        </div>
+        <div style="font-size: 14px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,0.2);">Status Voice Note</div>
+        <div class="audio-controls-panel" style="width: 80%; display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.25); padding: 8px 14px; border-radius: 30px; backdrop-filter: blur(4px);">
+          <button type="button" class="voice-play-btn" style="background:none; border:none; color:white; cursor:pointer;"><i data-lucide="play" style="fill:white; width:16px;"></i></button>
+          <div class="voice-timeline" style="flex:1; height:4px; background:rgba(255,255,255,0.3); border-radius:2px; position:relative; cursor:pointer;">
+            <div class="voice-progress" style="width:0%; height:100%; background:white; border-radius:2px; position:absolute;"></div>
+          </div>
+          <span class="voice-time-label" style="font-size: 10px; font-family: monospace;">0:00</span>
+        </div>
+      `;
+
+      mediaShell.appendChild(audioContainer);
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+
+      const audio = new Audio(mediaUrl);
+      activeStatusAudioPlayer = audio;
+
+      const playBtn = audioContainer.querySelector('.voice-play-btn');
+      const progress = audioContainer.querySelector('.voice-progress');
+      const timeLabel = audioContainer.querySelector('.voice-time-label');
+
+      audio.onloadedmetadata = () => {
+        storyDuration = audio.duration * 1000;
+        startStoryTimer();
+        audio.play().catch(() => { });
+        playBtn.innerHTML = `<i data-lucide="pause" style="fill:white; width:16px;"></i>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      };
+
+      audio.ontimeupdate = () => {
+        if (audio.duration) {
+          const pct = (audio.currentTime / audio.duration) * 100;
+          progress.style.width = pct + '%';
+          const currentSec = Math.floor(audio.currentTime);
+          timeLabel.textContent = `${Math.floor(currentSec / 60)}:${String(currentSec % 60).padStart(2, '0')}`;
+        }
+      };
+
+      audio.onended = () => {
+        playBtn.innerHTML = `<i data-lucide="play" style="fill:white; width:16px;"></i>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      };
+
+      playBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Don't trigger tap next/prev
+        if (audio.paused) {
+          audio.play();
+          playBtn.innerHTML = `<i data-lucide="pause" style="fill:white; width:16px;"></i>`;
+        } else {
+          audio.pause();
+          playBtn.innerHTML = `<i data-lucide="play" style="fill:white; width:16px;"></i>`;
+        }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      });
+
+      audio.onerror = () => {
+        storyDuration = 5000;
+        startStoryTimer();
+      };
+    } else if (mediaType.startsWith('video/')) {
+      // Show mute button for video
+      if (statusViewerMuteBtn) {
+        statusViewerMuteBtn.style.display = 'flex';
+        statusViewerMuteBtn.innerHTML = `<i data-lucide="${statusViewerVolumeOn ? 'volume-2' : 'volume-x'}" style="width: 16px; height: 16px;"></i>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+
+      // 3. Video Status (with Media Fragment trimming support)
+      let srcUrl = mediaUrl;
+      if (trimStart !== null || trimEnd !== null) {
+        const start = trimStart !== null ? trimStart : 0;
+        const end = trimEnd !== null ? trimEnd : '';
+        srcUrl += `#t=${start},${end}`;
+      }
+
+      statusViewerVideo.src = srcUrl;
+      statusViewerVideo.muted = !statusViewerVolumeOn;
+      statusViewerVideo.style.display = 'block';
+      statusViewerVideo.style.pointerEvents = 'auto';
+      statusViewerVideo.load();
+      statusViewerVideo.onloadedmetadata = () => {
+        // Calculate story slide duration based on trimmed values
+        const start = trimStart !== null ? trimStart : 0;
+        const end = (trimEnd !== null && trimEnd > start) ? trimEnd : statusViewerVideo.duration;
+        storyDuration = (end - start) * 1000;
+
+        statusViewerVideo.currentTime = start;
+        startStoryTimer();
+        statusViewerVideo.play().catch(() => { });
+      };
+      statusViewerVideo.onerror = () => {
+        storyDuration = 5000;
+        startStoryTimer();
+      };
+    } else {
+      // 4. Image Status
+      statusViewerImage.src = mediaUrl;
+      statusViewerImage.style.display = 'block';
+      storyDuration = 5000;
+      startStoryTimer();
+    }
+  };
+
+  const startStoryTimer = () => {
+    if (storyProgressTimer) {
+      clearInterval(storyProgressTimer);
+    }
+    storyStartTime = Date.now() - storyElapsedBeforePause;
+    storyProgressTimer = setInterval(() => {
+      if (isStoryPaused) return;
+
+      const elapsed = Date.now() - storyStartTime;
+      const pct = Math.min(100, (elapsed / storyDuration) * 100);
+
+      const activeFill = document.querySelector('.status-viewer-progress-segment.active .status-viewer-progress-fill');
+      if (activeFill) {
+        activeFill.style.width = pct + '%';
+      }
+
+      if (elapsed >= storyDuration) {
+        clearInterval(storyProgressTimer);
+        storyProgressTimer = null;
+        advanceStory(1);
+      }
+    }, 50);
+  };
+
+  const advanceStory = (direction) => {
+    const nextIndex = currentStatusIndex + direction;
+    if (nextIndex >= 0 && nextIndex < currentGroupStatuses.length) {
+      showStatusSegment(nextIndex);
+    } else if (nextIndex >= currentGroupStatuses.length) {
+      const nextCard = activeStatusCardElement.nextElementSibling;
+      if (nextCard && nextCard.classList.contains('status-card')) {
+        openStatusViewer(nextCard);
+      } else {
+        closeStatusViewer();
+      }
+    } else if (nextIndex < 0) {
+      const prevCard = activeStatusCardElement.previousElementSibling;
+      if (prevCard && prevCard.classList.contains('status-card')) {
+        openStatusViewer(prevCard);
+        const prevStatuses = JSON.parse(prevCard.dataset.statuses || '[]');
+        if (prevStatuses.length > 0) {
+          showStatusSegment(prevStatuses.length - 1);
+        }
+      } else {
+        showStatusSegment(0);
+      }
+    }
+  };
+
+  const pauseStory = () => {
+    if (isStoryPaused) return;
+    isStoryPaused = true;
+    storyElapsedBeforePause = Date.now() - storyStartTime;
+    if (statusViewerVideo && !statusViewerVideo.paused) {
+      statusViewerVideo.pause();
+    }
+    if (activeStatusAudioPlayer && !activeStatusAudioPlayer.paused) {
+      activeStatusAudioPlayer.pause();
+    }
+  };
+
+  const resumeStory = () => {
+    if (!isStoryPaused) return;
+    isStoryPaused = false;
+    storyStartTime = Date.now() - storyElapsedBeforePause;
+    if (statusViewerVideo && statusViewerVideo.paused && statusViewerVideo.src) {
+      statusViewerVideo.play().catch(() => { });
+    }
+    if (activeStatusAudioPlayer && activeStatusAudioPlayer.paused && activeStatusAudioPlayer.src) {
+      activeStatusAudioPlayer.play().catch(() => { });
+    }
+  };
+
+  const closeStatusViewer = () => {
+    if (storyProgressTimer) {
+      clearInterval(storyProgressTimer);
+      storyProgressTimer = null;
+    }
+    if (activeStatusAudioPlayer) {
+      activeStatusAudioPlayer.pause();
+      activeStatusAudioPlayer = null;
+    }
+    if (!statusViewerModal) return;
+    statusViewerModal.style.display = 'none';
+    statusViewerModal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    if (statusViewerVideo) {
+      statusViewerVideo.pause();
+      statusViewerVideo.currentTime = 0;
+    }
+  };
+
+  const renderStatusMediaPreview = (file) => {
+    if (!statusMediaPreview) return;
+    const existingUrl = statusMediaPreview.dataset.previewUrl;
+    if (existingUrl) {
+      URL.revokeObjectURL(existingUrl);
+      delete statusMediaPreview.dataset.previewUrl;
+    }
+
+    if (!file) {
+      const locale = String(document.documentElement.getAttribute('lang') || 'en').slice(0, 2).toLowerCase();
+      const emptyLabel = locale === 'fr'
+        ? 'Sélectionnez une image ou une vidéo pour l’aperçu.'
+        : (locale === 'es'
+          ? 'Selecciona una imagen o un video para la vista previa.'
+          : 'Select an image or video to preview it here.');
+      if (statusMediaFilename) statusMediaFilename.textContent = getStatusNoFileLabel();
+      statusMediaPreview.innerHTML = `<span>${escapeHtml(emptyLabel)}</span>`;
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    statusMediaPreview.dataset.previewUrl = url;
+    if (statusMediaFilename) statusMediaFilename.textContent = file.name || getStatusNoFileLabel();
+    if (file.type.startsWith('video/')) {
+      statusMediaPreview.innerHTML = `
+        <div style="position: relative; width: 100%; height: 100%; min-height: 200px; display: flex; align-items: center; justify-content: center; background: #000; border-radius: 12px; overflow: hidden;">
+          <video playsinline muted id="statusPreviewVideoTag" src="${url}" style="width: 100%; height: auto; max-height: 240px; display: block; object-fit: contain;"></video>
+          
+          <!-- Premium overlay trimmer track directly on the video container -->
+          <div id="statusVideoEditor" style="position: absolute; bottom: 12px; left: 12px; right: 12px; background: rgba(15, 23, 42, 0.82); padding: 8px 12px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.16); backdrop-filter: blur(10px); z-index: 10; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);">
+            <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: rgba(255,255,255,0.9); font-weight: 600;">
+              <span style="display: flex; align-items: center; gap: 4px;"><i data-lucide="scissors" style="width: 12px; height: 12px; color: var(--primary);"></i> Edit Clip</span>
+              <span style="font-family: monospace; font-size: 11px;"><span id="trimStartVal">0:00</span> - <span id="trimEndVal">1:30</span></span>
+            </div>
+            
+            <!-- Dual Slider Visual Track -->
+            <div style="position: relative; height: 16px; display: flex; align-items: center;">
+              <!-- Track background -->
+              <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.22); border-radius: 2px; position: absolute;"></div>
+              <!-- Highlighted active trim zone -->
+              <div id="trimSliderHighlight" style="position: absolute; height: 4px; background: var(--primary); border-radius: 2px; left: 0%; right: 0%;"></div>
+              
+              <!-- Layered ranges -->
+              <input type="range" id="trimStartSlider" min="0" max="100" value="0" step="0.1" style="position: absolute; width: 100%; height: 16px; background: transparent; -webkit-appearance: none; appearance: none; pointer-events: none; margin: 0; outline: none; z-index: 12;">
+              <input type="range" id="trimEndSlider" min="0" max="100" value="100" step="0.1" style="position: absolute; width: 100%; height: 16px; background: transparent; -webkit-appearance: none; appearance: none; pointer-events: none; margin: 0; outline: none; z-index: 13;">
+            </div>
+          </div>
+        </div>
+      `;
+
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+
+      // Initialize Trimmer timeline slider limits
+      const videoTag = document.getElementById('statusPreviewVideoTag');
+      const startSlider = document.getElementById('trimStartSlider');
+      const endSlider = document.getElementById('trimEndSlider');
+      const startVal = document.getElementById('trimStartVal');
+      const endVal = document.getElementById('trimEndVal');
+
+      if (videoTag && startSlider && endSlider) {
+        const updateHighlight = () => {
+          const start = parseFloat(startSlider.value);
+          const end = parseFloat(endSlider.value);
+          const duration = videoTag.duration || 10;
+          const highlight = document.getElementById('trimSliderHighlight');
+          if (highlight) {
+            highlight.style.left = ((start / duration) * 100) + '%';
+            highlight.style.right = (100 - ((end / duration) * 100)) + '%';
+          }
+        };
+
+        const enforceMax = (changedSlider) => {
+          let start = parseFloat(startSlider.value);
+          let end = parseFloat(endSlider.value);
+          const duration = videoTag.duration || 10;
+          const maxAllowed = 90; // 90 seconds limit
+
+          if (end - start > maxAllowed) {
+            if (changedSlider === 'start') {
+              end = Math.min(duration, start + maxAllowed);
+              endSlider.value = end;
+              if (endVal) endVal.textContent = formatVideoTime(end);
+              document.getElementById('statusTrimEndInput').value = String(end);
+            } else {
+              start = Math.max(0, end - maxAllowed);
+              startSlider.value = start;
+              if (startVal) startVal.textContent = formatVideoTime(start);
+              document.getElementById('statusTrimStartInput').value = String(start);
+            }
+          }
+
+          if (start >= end - 0.5) {
+            if (changedSlider === 'start') {
+              start = end - 0.5;
+              startSlider.value = start;
+              if (startVal) startVal.textContent = formatVideoTime(start);
+              document.getElementById('statusTrimStartInput').value = String(start);
+            } else {
+              end = start + 0.5;
+              endSlider.value = end;
+              if (endVal) endVal.textContent = formatVideoTime(end);
+              document.getElementById('statusTrimEndInput').value = String(end);
+            }
+          }
+
+          updateHighlight();
+        };
+
+        videoTag.onloadedmetadata = () => {
+          const duration = videoTag.duration || 10;
+          const defaultMax = 90;
+          const endValDefault = Math.min(duration, defaultMax);
+
+          startSlider.max = duration;
+          startSlider.value = 0;
+          if (startVal) startVal.textContent = '0:00';
+
+          endSlider.max = duration;
+          endSlider.value = endValDefault;
+          if (endVal) endVal.textContent = formatVideoTime(endValDefault);
+
+          document.getElementById('statusTrimStartInput').value = '0';
+          document.getElementById('statusTrimEndInput').value = String(endValDefault);
+
+          updateHighlight();
+          videoTag.play().catch(() => { });
+        };
+
+        // Listen for timeline updates to play selected trimmed loop
+        startSlider.addEventListener('input', () => {
+          enforceMax('start');
+          const start = parseFloat(startSlider.value);
+          if (startVal) startVal.textContent = formatVideoTime(start);
+          document.getElementById('statusTrimStartInput').value = String(start);
+          videoTag.currentTime = start;
+        });
+
+        endSlider.addEventListener('input', () => {
+          enforceMax('end');
+          const start = parseFloat(startSlider.value);
+          const end = parseFloat(endSlider.value);
+          if (endVal) endVal.textContent = formatVideoTime(end);
+          document.getElementById('statusTrimEndInput').value = String(end);
+          videoTag.currentTime = start;
+        });
+
+        videoTag.addEventListener('timeupdate', () => {
+          const start = parseFloat(startSlider.value);
+          const end = parseFloat(endSlider.value);
+          if (videoTag.currentTime < start || videoTag.currentTime > end) {
+            videoTag.currentTime = start;
+          }
+        });
+      }
+    } else {
+      statusMediaPreview.innerHTML = `<img src="${url}" alt="Status preview">`;
+      document.getElementById('statusTrimStartInput').value = '';
+      document.getElementById('statusTrimEndInput').value = '';
+    }
+  };
+
+  const syncStatusTimers = () => {
+    const cards = document.querySelectorAll('.status-card');
+    const now = Date.now();
+    cards.forEach((card) => {
+      let statuses = [];
+      try {
+        statuses = JSON.parse(card.dataset.statuses || '[]');
+      } catch (e) { }
+      if (statuses.length === 0) {
+        card.remove();
+        return;
+      }
+
+      const activeStatuses = statuses.filter(s => {
+        const expiresAt = new Date(s.expires_at).getTime();
+        return expiresAt > now;
+      });
+
+      if (activeStatuses.length === 0) {
+        if (statusViewerModal?.style.display === 'flex' && activeStatusCardElement === card) {
+          closeStatusViewer();
+        }
+        card.remove();
+        return;
+      }
+
+      if (activeStatuses.length !== statuses.length) {
+        card.dataset.statuses = JSON.stringify(activeStatuses);
+        const badge = card.querySelector('.status-duration-badge');
+        if (badge) {
+          badge.textContent = String(activeStatuses.length);
+        }
+
+        const count = activeStatuses.length;
+        const r = 46;
+        const circumference = 2 * Math.PI * r;
+        const gap = count > 1 ? 6 : 0;
+        const segmentLength = (circumference - (count * gap)) / count;
+        const svg = card.querySelector('.status-ring-svg');
+        if (svg) {
+          const userId = card.dataset.userId || String(Math.random());
+          svg.innerHTML = `
+            <defs>
+              <linearGradient id="statusRingGradient-${userId}" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#8a2be2" />
+                <stop offset="100%" stop-color="#4a00e0" />
+              </linearGradient>
+            </defs>
+          `;
+          for (let i = 0; i < count; i++) {
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', '50');
+            circle.setAttribute('cy', '50');
+            circle.setAttribute('r', String(r));
+            circle.setAttribute('fill', 'none');
+            circle.setAttribute('stroke', `url(#statusRingGradient-${userId})`);
+            circle.setAttribute('stroke-width', '3');
+            circle.setAttribute('stroke-dasharray', `${segmentLength} ${segmentLength + gap}`);
+            circle.setAttribute('stroke-dashoffset', String(-i * (segmentLength + gap)));
+            circle.setAttribute('stroke-linecap', 'round');
+            svg.appendChild(circle);
+          }
+        }
+
+        if (statusViewerModal?.style.display === 'flex' && activeStatusCardElement === card) {
+          const currentStatusObj = currentGroupStatuses[currentStatusIndex];
+          const isStillActive = activeStatuses.some(s => s.id === currentStatusObj.id);
+          if (!isStillActive) {
+            currentGroupStatuses = activeStatuses;
+            currentStatusIndex = 0;
+            showStatusSegment(0);
+          } else {
+            currentGroupStatuses = activeStatuses;
+          }
+        }
+      }
+    });
+
+    if (statusViewerModal?.style.display === 'flex' && currentGroupStatuses[currentStatusIndex]) {
+      const currentStatusObj = currentGroupStatuses[currentStatusIndex];
+      if (statusViewerTimer) {
+        statusViewerTimer.textContent = `${formatStatusRemaining(currentStatusObj.expires_at)} ${getStatusRemainingLabel()}`;
+      }
+    }
+  };
+
+  const updateVideoButtonIcon = (button, iconName) => {
+    if (!button) return;
+    button.innerHTML = `<i data-lucide="${iconName}"></i>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  const setVideoDownloadStatus = (shell, message) => {
+    const status = shell?.querySelector('.video-download-status');
+    if (!status) return;
+    status.textContent = message || '';
+    status.classList.toggle('is-visible', !!message);
+  };
+
+  const downloadBlob = (blob, filename) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+  };
+
+  const createWatermarkedVideoDownload = async (button) => {
+    const shell = button.closest('.post-video-shell');
+    const sourceUrl = button.dataset.videoUrl || shell?.querySelector('video')?.currentSrc || shell?.querySelector('video')?.src;
+    if (!sourceUrl || !shell) return;
+
+    // Trigger share & like increment in real-time when user downloads
+    const postCard = button.closest('.post-card');
+    const postId = button.dataset.postId || postCard?.getAttribute('data-post-id');
+    if (postId) {
+      socket.emit('post-download-action', { postId: parseInt(postId, 10) });
+    }
+
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+      showToast("Your browser cannot generate a watermarked download yet.");
+      return;
+    }
+
+    button.disabled = true;
+    setVideoDownloadStatus(shell, 'Preparing download...');
+
+    try {
+      const video = document.createElement('video');
+      video.src = sourceUrl;
+      video.preload = 'auto';
+      video.playsInline = true;
+      video.muted = false;
+      video.crossOrigin = 'anonymous';
+
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = resolve;
+        video.onerror = () => reject(new Error('Unable to load the video.'));
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+      }
+      const canvasStream = canvas.captureStream(30);
+      let audioContext = null;
+
+      try {
+        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextCtor) {
+          audioContext = new AudioContextCtor();
+          const mediaSource = audioContext.createMediaElementSource(video);
+          const audioDestination = audioContext.createMediaStreamDestination();
+          mediaSource.connect(audioDestination);
+          audioDestination.stream.getAudioTracks().forEach(track => canvasStream.addTrack(track));
+          await audioContext.resume();
+        }
+      } catch (err) {
+        audioContext = null;
+      }
+
+      const recordingFormats = [
+        { mime: 'video/mp4;codecs="avc1.42E01E,mp4a.40.2"', ext: 'mp4' },
+        { mime: 'video/mp4', ext: 'mp4' },
+        { mime: 'video/webm;codecs=vp9,opus', ext: 'webm' },
+        { mime: 'video/webm;codecs=vp8,opus', ext: 'webm' },
+        { mime: 'video/webm', ext: 'webm' }
+      ];
+      const recordingFormat = recordingFormats.find(format => MediaRecorder.isTypeSupported(format.mime));
+      if (!recordingFormat) throw new Error('Watermarked download format not supported.');
+
+      const recorder = new MediaRecorder(canvasStream, {
+        mimeType: recordingFormat.mime,
+        videoBitsPerSecond: 16000000
+      });
+      const chunks = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size) chunks.push(event.data);
+      };
+
+      const finished = new Promise((resolve, reject) => {
+        recorder.onstop = resolve;
+        recorder.onerror = () => reject(new Error('Error while generating the file.'));
+      });
+
+      const drawFrame = () => {
+        if (video.ended || video.paused) return;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const scaleFactor = canvas.width / 540;
+        const authorUsername = button.dataset.videoAuthor || window.currentUsername || 'user';
+        const cleanUsername = String(authorUsername || 'user').trim().replace(/^@+/, '') || 'user';
+        const authorNameText = `@${cleanUsername.toLowerCase()}`;
+
+        // Font sizes (enlarged by ~30%)
+        const brandFontSize = Math.round(14 * scaleFactor);
+        const userFontSize = Math.round(11 * scaleFactor);
+
+        ctx.font = `bold ${brandFontSize}px 'Outfit', sans-serif`;
+        const brandTextWidth = ctx.measureText("WeShare").width;
+        const brandTotalWidth = brandTextWidth + Math.round(8 * scaleFactor);
+
+        ctx.font = `${userFontSize}px 'Outfit', sans-serif`;
+        const userTextWidth = ctx.measureText(authorNameText).width;
+
+        const maxContentWidth = Math.max(brandTotalWidth, userTextWidth);
+        const padding = Math.round(12 * scaleFactor);
+
+        const wWidth = maxContentWidth + (padding * 2);
+        const wHeight = Math.round(48 * scaleFactor); // Enlarged from 34
+        const x = Math.round(30 * scaleFactor); // Left aligned
+        const y = canvas.height - wHeight - Math.round(140 * scaleFactor); // Positioned relative to bottom of canvas
+
+        ctx.save();
+        // Glow and subtle shadow
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+        ctx.shadowBlur = 8 * scaleFactor;
+
+        // Semitransparent card
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+        ctx.lineWidth = 1.2 * scaleFactor;
+
+        ctx.beginPath();
+        ctx.roundRect(x, y, wWidth, wHeight, 10 * scaleFactor);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.shadowBlur = 0; // Disable shadow for text
+
+        // Draw WeShare brand text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${brandFontSize}px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText("WeShare", Math.round(x + padding), Math.round(y + 16 * scaleFactor));
+
+        // Little glowing dot next to WeShare
+        ctx.fillStyle = '#06b6d4'; // Glowing cyan tone
+        ctx.shadowColor = '#06b6d4';
+        ctx.shadowBlur = 4 * scaleFactor;
+        ctx.beginPath();
+        ctx.arc(Math.round(x + padding + brandTextWidth + 5 * scaleFactor), Math.round(y + 16 * scaleFactor), Math.round(2.2 * scaleFactor), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0; // Reset shadow
+
+        // Username below brand text
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+        ctx.font = `${userFontSize}px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+        ctx.fillText(authorNameText, Math.round(x + padding), Math.round(y + 32 * scaleFactor));
+        ctx.restore();
+
+        requestAnimationFrame(drawFrame);
+      };
+
+      video.onended = () => {
+        if (recorder.state !== 'inactive') recorder.stop();
+      };
+
+      recorder.start(1000);
+      await video.play();
+      drawFrame();
+      await finished;
+      if (audioContext) audioContext.close();
+
+      const blob = new Blob(chunks, { type: recordingFormat.mime });
+      downloadBlob(blob, `weshare-video-watermarked-${Date.now()}.${recordingFormat.ext}`);
+      setVideoDownloadStatus(shell, '');
+    } catch (err) {
+      console.error(err);
+      setVideoDownloadStatus(shell, '');
+      showToast(err.message || "Error while generating the download.");
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  const autoplayObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const video = entry.target;
+      if (entry.isIntersecting) {
+        video.muted = true;
+        video.play().catch(err => {
+          // Silently catch autoplay blocks (e.g. browser restriction)
+        });
+      } else {
+        if (!video.paused) {
+          video.pause();
+        }
+      }
+    });
+  }, {
+    root: null,
+    rootMargin: '-30% 0px -30% 0px',
+    threshold: 0.1
+  });
+
+  const initCustomVideoPlayers = (root = document) => {
+    root.querySelectorAll('.post-video-shell:not([data-video-ready])').forEach(shell => {
+      const video = shell.querySelector('.post-video');
+      if (!video) return;
+
+      autoplayObserver.observe(video);
+      shell.dataset.videoReady = 'true';
+      const playBtn = shell.querySelector('[data-video-control="play"]');
+      const muteBtn = shell.querySelector('[data-video-control="mute"]');
+      const fullscreenBtn = shell.querySelector('[data-video-control="fullscreen"]');
+      const progress = shell.querySelector('.video-progress-slider');
+      const volume = shell.querySelector('.video-volume-slider');
+      const currentTime = shell.querySelector('.video-current-time');
+      const duration = shell.querySelector('.video-duration');
+      const downloadBtn = shell.querySelector('[data-video-download]');
+
+      const refreshPlayState = () => {
+        updateVideoButtonIcon(playBtn, video.paused ? 'play' : 'pause');
+        playBtn?.setAttribute('aria-label', video.paused ? 'Play video' : 'Pause video');
+      };
+
+      const refreshMuteState = () => {
+        const muted = video.muted || video.volume === 0;
+        updateVideoButtonIcon(muteBtn, muted ? 'volume-x' : 'volume-2');
+        muteBtn?.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
+      };
+
+      video.addEventListener('loadedmetadata', () => {
+        if (duration) duration.textContent = formatVideoTime(video.duration);
+      });
+
+      video.addEventListener('timeupdate', () => {
+        if (currentTime) currentTime.textContent = formatVideoTime(video.currentTime);
+        if (progress && Number.isFinite(video.duration) && video.duration > 0) {
+          progress.value = String((video.currentTime / video.duration) * 100);
+        }
+      });
+
+      video.addEventListener('play', refreshPlayState);
+      video.addEventListener('pause', refreshPlayState);
+      video.addEventListener('ended', refreshPlayState);
+      video.addEventListener('volumechange', refreshMuteState);
+
+      playBtn?.addEventListener('click', () => {
+        if (video.paused) {
+          video.play().catch(() => showToast("Unable to play the video."));
+        } else {
+          video.pause();
+        }
+      });
+
+      video.addEventListener('click', () => {
+        if (video.paused) {
+          video.play().catch(() => showToast("Unable to play the video."));
+        } else {
+          video.pause();
+        }
+      });
+
+      progress?.addEventListener('input', () => {
+        if (Number.isFinite(video.duration) && video.duration > 0) {
+          video.currentTime = (Number(progress.value) / 100) * video.duration;
+        }
+      });
+
+      muteBtn?.addEventListener('click', () => {
+        video.muted = !video.muted;
+      });
+
+      volume?.addEventListener('input', () => {
+        video.volume = Number(volume.value);
+        video.muted = video.volume === 0;
+      });
+
+      fullscreenBtn?.addEventListener('click', () => {
+        if (document.fullscreenElement) {
+          document.exitFullscreen?.();
+        } else {
+          shell.requestFullscreen?.();
+        }
+      });
+
+      downloadBtn?.addEventListener('click', () => createWatermarkedVideoDownload(downloadBtn));
+
+      refreshPlayState();
+      refreshMuteState();
+    });
+  };
+
+  initCustomVideoPlayers();
+
+  let activeSharePostId = null;
+  let activeSharePostCard = null;
+  let activeGiftPostId = null;
+  let activeGiftPostCard = null;
+  let activeGiftTargetType = 'post';
+  let activeGiftBirthdayUserId = null;
+  let activeGiftBirthdayCard = null;
+  let activeGiftSelection = {
+    name: 'Rose',
+    amount: 1
+  };
+
+  const getShareSheetModal = () => document.getElementById('shareSheetModal');
+  const getGiftPostModal = () => document.getElementById('giftPostModal');
+
+  const formatShareSnippet = (text) => {
+    if (!text) return '';
+    const clean = text.replace(/\s+/g, ' ').trim();
+    return clean.length > 120 ? `${clean.slice(0, 117)}...` : clean;
+  };
+
+  const formatGiftAmountLabel = (amount) => {
+    const numericAmount = Number(amount) || 0;
+    return `$${numericAmount.toFixed(2)}`;
+  };
+
+  const syncGiftSelectionUi = () => {
+    const modal = getGiftPostModal();
+    if (!modal) return;
+
+    const nameEl = modal.querySelector('#giftSelectedName');
+    const amountEl = modal.querySelector('#giftSelectedAmount');
+    const customInput = modal.querySelector('#giftCustomAmountInput');
+
+    if (nameEl) nameEl.textContent = activeGiftSelection.name;
+    if (amountEl) amountEl.textContent = formatGiftAmountLabel(activeGiftSelection.amount);
+    if (customInput) customInput.value = Number(activeGiftSelection.amount).toFixed(2).replace(/\.00$/, '');
+  };
+
+  const openGiftPostModal = (postCard, postId) => {
+    const modal = getGiftPostModal();
+    if (!modal || !postCard) return;
+
+    activeGiftTargetType = 'post';
+    activeGiftPostId = postId;
+    activeGiftPostCard = postCard;
+    activeGiftBirthdayUserId = null;
+    activeGiftBirthdayCard = null;
+
+    const authorName = postCard.querySelector('.author-name')?.textContent?.trim() || 'ce createur';
+    const subtitle = modal.querySelector('#giftPostModalSubtitle');
+    if (subtitle) {
+      subtitle.textContent = `Choisissez un cadeau pour ${authorName} et personnalisez le montant a envoyer.`;
+    }
+
+    const presetCards = modal.querySelectorAll('.gift-preset-card');
+    presetCards.forEach((card, index) => {
+      card.classList.toggle('active', index === 0);
+    });
+
+    activeGiftSelection = {
+      name: presetCards[0]?.dataset.giftName || 'Rose',
+      amount: Number(presetCards[0]?.dataset.giftAmount || 1)
+    };
+    syncGiftSelectionUi();
+
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  const openGiftBirthdayModal = (birthdayCard, recipientUserId) => {
+    const modal = getGiftPostModal();
+    if (!modal || !birthdayCard || !recipientUserId) return;
+
+    activeGiftTargetType = 'birthday';
+    activeGiftBirthdayUserId = Number(recipientUserId);
+    activeGiftBirthdayCard = birthdayCard;
+    activeGiftPostId = null;
+    activeGiftPostCard = null;
+
+    const celebrantName = birthdayCard.querySelector('.birthday-feed-card-name')?.textContent?.trim() || 'cet utilisateur';
+    const isPreview = birthdayCard.getAttribute('data-birthday-preview') === '1';
+    const subtitle = modal.querySelector('#giftPostModalSubtitle');
+    if (subtitle) {
+      subtitle.textContent = isPreview
+        ? `Apercu du cadeau d anniversaire pour ${celebrantName}. Vous pouvez tester l interface du modal ici.`
+        : `Choisissez un cadeau d anniversaire pour ${celebrantName} et personnalisez le montant a envoyer.`;
+    }
+
+    const presetCards = modal.querySelectorAll('.gift-preset-card');
+    presetCards.forEach((card, index) => {
+      card.classList.toggle('active', index === 0);
+    });
+
+    activeGiftSelection = {
+      name: presetCards[0]?.dataset.giftName || 'Rose',
+      amount: Number(presetCards[0]?.dataset.giftAmount || 1)
+    };
+    syncGiftSelectionUi();
+
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  const closeGiftPostModal = () => {
+    const modal = getGiftPostModal();
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    activeGiftTargetType = 'post';
+    activeGiftPostId = null;
+    activeGiftPostCard = null;
+    activeGiftBirthdayUserId = null;
+    activeGiftBirthdayCard = null;
+  };
+
+  const openShareSheet = (postCard, postId) => {
+    const modal = getShareSheetModal();
+    if (!modal || !postCard) return;
+
+    activeSharePostId = postId;
+    activeSharePostCard = postCard;
+
+    const authorEl = postCard.querySelector('.author-name');
+    const avatarEl = postCard.querySelector('.author-avatar img');
+    const excerptEl = postCard.querySelector('.post-text, .post-bg-container p, .post-content p');
+
+    const authorName = authorEl?.textContent?.trim() || 'Post';
+    const avatarSrc = avatarEl?.src || '/assets/avatar_placeholder.jpg';
+    const excerpt = formatShareSnippet(excerptEl?.textContent || postCard.querySelector('.post-content')?.textContent || '');
+
+    const modalAuthor = modal.querySelector('#shareSheetPostAuthor');
+    const modalAvatar = modal.querySelector('#shareSheetPostAvatar');
+    const modalExcerpt = modal.querySelector('#shareSheetPostExcerpt');
+    if (modalAuthor) modalAuthor.textContent = authorName;
+    if (modalAvatar) modalAvatar.src = avatarSrc;
+    if (modalExcerpt) modalExcerpt.textContent = excerpt || 'Choose where to share this post.';
+
+    modal.style.display = 'flex';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  const closeShareSheet = () => {
+    const modal = getShareSheetModal();
+    if (modal) modal.style.display = 'none';
+    activeSharePostId = null;
+    activeSharePostCard = null;
+  };
+
+  document.addEventListener('click', (event) => {
+    const giftModal = getGiftPostModal();
+    if (!giftModal) return;
+
+    if (event.target.closest('#closeGiftPostModalBtn') || event.target.closest('#cancelGiftPostModalBtn')) {
+      closeGiftPostModal();
+      return;
+    }
+
+    if (event.target === giftModal) {
+      closeGiftPostModal();
+      return;
+    }
+
+    const presetCard = event.target.closest('.gift-preset-card');
+    if (presetCard && giftModal.contains(presetCard)) {
+      giftModal.querySelectorAll('.gift-preset-card').forEach((card) => {
+        card.classList.toggle('active', card === presetCard);
+      });
+      activeGiftSelection = {
+        name: presetCard.dataset.giftName || 'Cadeau',
+        amount: Number(presetCard.dataset.giftAmount || 1)
+      };
+      syncGiftSelectionUi();
+      return;
+    }
+
+    const confirmBtn = event.target.closest('#confirmGiftPostModalBtn');
+    if (confirmBtn) {
+      if (activeGiftTargetType === 'birthday' && (!activeGiftBirthdayUserId || !activeGiftBirthdayCard)) {
+        showToast('Anniversaire introuvable pour cet envoi.');
+        closeGiftPostModal();
+        return;
+      }
+
+      if (activeGiftTargetType === 'post' && (!activeGiftPostId || !activeGiftPostCard)) {
+        showToast('Publication introuvable pour cet envoi.');
+        closeGiftPostModal();
+        return;
+      }
+
+      if (!socket?.connected) {
+        showToast('Connexion temps reel indisponible. Rechargez la page puis reessayez.');
+        return;
+      }
+
+      const confirmButton = confirmBtn;
+      const isBirthdayPreview = activeGiftTargetType === 'birthday' && activeGiftBirthdayCard?.getAttribute('data-birthday-preview') === '1';
+      if (isBirthdayPreview) {
+        showToast('Mode apercu: le bouton cadeau et le modal fonctionnent correctement.');
+        closeGiftPostModal();
+        return;
+      }
+
+      confirmButton.disabled = true;
+      confirmButton.textContent = 'Envoi en cours...';
+
+      const eventName = activeGiftTargetType === 'birthday' ? 'birthday-gift-send' : 'post-gift-send';
+      const payload = activeGiftTargetType === 'birthday'
+        ? {
+          recipientUserId: activeGiftBirthdayUserId,
+          giftName: activeGiftSelection.name,
+          amount: Number(activeGiftSelection.amount)
+        }
+        : {
+          postId: activeGiftPostId,
+          giftName: activeGiftSelection.name,
+          amount: Number(activeGiftSelection.amount)
+        };
+
+      socket.emit(eventName, payload, (response) => {
+        confirmButton.disabled = false;
+        confirmButton.textContent = 'Envoyer le cadeau';
+
+        if (!response?.success) {
+          showToast(response?.error || 'Impossible d envoyer ce cadeau.');
+          return;
+        }
+
+        if (Number.isFinite(Number(response.depositBalance))) {
+          syncBalanceWidgets({
+            userId: getCurrentUserId(),
+            depositBalance: response.depositBalance
+          });
+        }
+
+        const recipientName = activeGiftTargetType === 'birthday'
+          ? (activeGiftBirthdayCard.querySelector('.birthday-feed-card-name')?.textContent?.trim() || 'cet utilisateur')
+          : (activeGiftPostCard.querySelector('.author-name')?.textContent?.trim() || 'ce createur');
+        showToast(`Cadeau envoye a ${recipientName} pour ${formatGiftAmountLabel(response.amount || activeGiftSelection.amount)}.`);
+        closeGiftPostModal();
+      });
+    }
+  });
+
+  document.addEventListener('input', (event) => {
+    if (event.target?.id !== 'giftCustomAmountInput') return;
+
+    const rawValue = Number(event.target.value);
+    const customAmount = Math.max(0.01, Number.isFinite(rawValue) ? rawValue : 0.01);
+    activeGiftSelection = {
+      name: 'Cadeau personnalise',
+      amount: customAmount
+    };
+
+    const modal = getGiftPostModal();
+    modal?.querySelectorAll('.gift-preset-card').forEach((card) => card.classList.remove('active'));
+    syncGiftSelectionUi();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && getGiftPostModal()?.style.display === 'flex') {
+      closeGiftPostModal();
+    }
+  });
+
+  const buildShareUrl = async ({ channel = 'social', platform = null, recipientUserId = null } = {}) => {
+    if (!activeSharePostId) throw new Error('No post selected.');
+
+    if (socket && socket.connected) {
+      return new Promise((resolve, reject) => {
+        socket.emit('post-share-create', {
+          postId: activeSharePostId,
+          channel,
+          platform,
+          recipientUserId
+        }, (response) => {
+          if (response?.error) {
+            reject(new Error(response.error));
+            return;
+          }
+          resolve(response || {});
+        });
+      });
+    }
+
+    const response = await fetch(`/api/posts/${activeSharePostId}/shares`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channel,
+        platform,
+        recipientUserId
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Unable to create the share link.');
+    }
+
+    return response.json();
+  };
+
+  const openSocialShare = (platform, shareUrl, shareText) => {
+    const encodedUrl = encodeURIComponent(shareUrl);
+    const encodedText = encodeURIComponent(shareText);
+    const urlMap = {
+      whatsapp: `https://wa.me/?text=${encodedText}%20${encodedUrl}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+      x: `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`,
+      telegram: `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`
+    };
+
+    const targetUrl = urlMap[platform];
+    if (!targetUrl) return;
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  // --- Profile Dropdown Toggle ---
+  const profileDropdownBtn = document.getElementById('profileDropdownBtn');
+  const profileDropdownMenu = document.getElementById('profileDropdownMenu');
+
+  if (profileDropdownBtn && profileDropdownMenu) {
+    profileDropdownBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      profileDropdownMenu.classList.toggle('active');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!profileDropdownBtn.contains(e.target)) {
+        profileDropdownMenu.classList.remove('active');
+      }
+    });
+  }
+
+  // --- Sidebar Navigation Active States & Page Toggles ---
+  const navItems = document.querySelectorAll('.nav-item');
+  const sidebarNavActions = new Set(['feed', 'shorts', 'bookmarks', 'messages', 'connections', 'settings', 'market', 'events', 'games']);
+
+  const openMenuTarget = (action, href) => {
+    const hasFeedLayout = !!(feedMainContent && shortsSection && mobileMessagesSection);
+
+    if (action === 'feed') {
+      if (hasFeedLayout) {
+        showFeedView();
+        return;
+      }
+      window.location.href = href || '/';
+      return;
+    }
+
+    if (action === 'shorts') {
+      if (hasFeedLayout) {
+        showShortsView();
+        return;
+      }
+      window.location.href = href || '/?view=shorts';
+      return;
+    }
+
+    if (action === 'bookmarks') {
+      if (hasFeedLayout) {
+        showBookmarksView();
+        return;
+      }
+      window.location.href = href || '/?view=bookmarks';
+      return;
+    }
+
+    if (action === 'messages') {
+      if (hasFeedLayout) {
+        showMessagesView();
+        return;
+      }
+      window.location.href = href || '/?view=messages';
+      return;
+    }
+
+    if (action === 'games') {
+      if (hasFeedLayout) {
+        showGamesView();
+        return;
+      }
+      window.location.href = href || '/?view=games';
+      return;
+    }
+
+    if (action === 'connections') {
+      if (typeof window.openSocialListModal === 'function' && document.getElementById('socialListModal')) {
+        window.openSocialListModal('following');
+        return;
+      }
+      window.location.href = href || '/profile?section=connections';
+      return;
+    }
+
+    if (action === 'settings') {
+      window.location.href = href || '/settings';
+      return;
+    }
+
+    if (action === 'market') {
+      if (hasFeedLayout) {
+        showMarketView();
+        return;
+      }
+      window.location.href = href || '/?view=market';
+      return;
+    }
+
+    if (action === 'events') {
+      window.location.href = href || '/events';
+      return;
+    }
+
+    window.location.href = href || '/';
+  };
+
+  navItems.forEach((item) => {
+    const action = item.dataset.navAction || '';
+    if (!sidebarNavActions.has(action)) return;
+
+    item.addEventListener('click', (e) => {
+      const href = item.getAttribute('href') || '/';
+      if (href && href !== '#') {
+        e.preventDefault();
+        navItems.forEach((nav) => nav.classList.remove('active'));
+        item.classList.add('active');
+        openMenuTarget(action, href);
+        return;
+      }
+      e.preventDefault();
+      openMenuTarget(action, href);
+    });
+  });
+
+  // --- Messagerie active en Temps Réel (Facebook-style) ---
+  const chatBoxesContainer = document.getElementById('chatBoxesContainer');
+
+  function openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText = '', isPendingRequest = false) {
+    if (!chatBoxesContainer) return;
+    const currentUserId = getCurrentUserId();
+    const numericContactId = Number(contactId);
+
+    if (!isPendingRequest) {
+      const existingItem = document.querySelector(`.message-item[data-contact-id="${numericContactId}"]`);
+      if (existingItem) {
+        isPendingRequest = existingItem.getAttribute('data-message-category') === 'requests' &&
+          existingItem.getAttribute('data-message-request-status') === 'pending';
+      }
+    }
+
+    let chatBox = document.getElementById(`chat-box-${contactId}`);
+    if (chatBox) {
+      chatBox.classList.remove('minimized');
+      const messagesArea = document.getElementById(`chat-messages-${contactId}`);
+      if (messagesArea) {
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+      }
+      updateChatPresenceBadge(chatBox, isOnline, presenceText);
+      const input = document.getElementById(`chat-input-${contactId}`);
+      if (input) input.focus();
+      return;
+    }
+
+    // Limiter à 3 fenêtres de chat ouvertes simultanément sur desktop
+    const openBoxes = chatBoxesContainer.querySelectorAll('.chat-box');
+    if (openBoxes.length >= 3 && window.innerWidth > 768) {
+      openBoxes[0].remove();
+    }
+
+    chatBox = document.createElement('div');
+    chatBox.className = 'chat-box';
+    chatBox.id = `chat-box-${numericContactId}`;
+    chatBox.setAttribute('data-contact-id', numericContactId);
+
+    const onlineClass = isOnline ? 'online' : '';
+    const formStyle = isPendingRequest ? 'style="display:none;"' : '';
+    const overlayStyle = isPendingRequest ? 'style="display:flex; padding: 10px 12px; background: var(--bg-card); align-items: center; justify-content: center; gap: 10px; border-top: 1px solid var(--border-color);"' : 'style="display:none;"';
+
+    chatBox.innerHTML = `
+      <div class="chat-header">
+        <div class="chat-header-info">
+          <div class="msg-avatar-wrapper ${onlineClass}" style="width: 28px; height: 28px;">
+            <div class="avatar" style="width: 28px; height: 28px;">
+              <img src="${avatarUrl}" alt="${contactName}">
+            </div>
+            <span class="status-dot"></span>
+          </div>
+          <div style="display:flex; flex-direction:column; min-width:0;">
+            <span class="chat-header-name" style="display: flex; align-items: center; gap: 6px;">
+              ${contactName}
+              <button type="button" class="chat-game-request-btn"
+                data-contact-id="${numericContactId}"
+                data-contact-name="${contactName}"
+                data-contact-avatar="${avatarUrl}"
+                data-contact-online="${isOnline ? '1' : '0'}"
+                data-contact-presence="${presenceText || ''}"
+                title="Demander de jouer"
+                style="background: none; border: none; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.2s;"
+                onmouseover="this.style.transform='scale(1.2)'"
+                onmouseout="this.style.transform='scale(1)'">
+                <i data-lucide="gamepad-2" style="width: 14px; height: 14px; color: var(--primary); flex-shrink: 0;"></i>
+              </button>
+            </span>
+            <span class="chat-header-status" data-online="${isOnline ? '1' : '0'}" style="font-size: 10px; color: var(--text-muted); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${isOnline ? 'Online now' : (presenceText || 'Offline')}</span>
+          </div>
+        </div>
+        <div class="chat-header-actions">
+          <button class="chat-header-btn minimize-chat" title="Minimiser"><i data-lucide="minus" style="width: 14px; height: 14px;"></i></button>
+          <button class="chat-header-btn close-chat" title="Fermer"><i data-lucide="x" style="width: 14px; height: 14px;"></i></button>
+        </div>
+      </div>
+      <div class="chat-messages" id="chat-messages-${numericContactId}">
+        <div style="text-align: center; color: var(--text-muted); font-size: 11px; padding: 12px 0;">Loading messages...</div>
+      </div>
+      <form class="chat-input-wrapper input-wrapper" id="chat-form-${numericContactId}" ${formStyle}>
+        <input type="file" class="chat-attachment-input" id="chat-attachment-input-${numericContactId}" accept="image/*,video/*,application/pdf,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z" style="display:none;">
+        <input type="text" placeholder="Aa" class="chat-input" id="chat-input-${numericContactId}" autocomplete="off">
+        <button type="button" class="chat-icon-btn emoji-trigger-btn" title="Add an emoji"><i data-lucide="smile" style="width: 14px; height: 14px;"></i></button>
+        <button type="button" class="chat-icon-btn attachment-trigger-btn" title="Attach a file"><i data-lucide="paperclip" style="width: 14px; height: 14px;"></i></button>
+        <button type="button" class="chat-icon-btn voice-trigger-btn" title="Record a voice note"><i data-lucide="mic" style="width: 14px; height: 14px;"></i></button>
+        <button type="submit" class="chat-send-btn"><i data-lucide="send" style="width: 14px; height: 14px;"></i></button>
+      </form>
+      <div class="chat-request-actions-overlay" id="chat-request-overlay-${numericContactId}" ${overlayStyle}>
+        <button type="button" class="message-request-action accept chat-box-request-btn" data-message-request-action="accept" data-requester-id="${numericContactId}" style="flex: 1; padding: 8px; border-radius: 20px; background: var(--primary); color: white; border: none; font-weight: 600; cursor: pointer; font-size: 12px;">Accepter</button>
+        <button type="button" class="message-request-action decline chat-box-request-btn" data-message-request-action="decline" data-requester-id="${numericContactId}" style="flex: 1; padding: 8px; border-radius: 20px; background: var(--bg-hover); color: var(--text-secondary); border: 1px solid var(--border-color); font-weight: 600; cursor: pointer; font-size: 12px;">Refuser</button>
+      </div>
+      <div class="chat-attachment-preview" id="chat-attachment-preview-${numericContactId}" style="display:none; padding: 0 12px 8px 12px;"></div>
+      <div class="chat-voice-recording-overlay" id="chat-voice-recording-overlay-${numericContactId}" style="display:none; position: absolute; left: 12px; right: 12px; bottom: 62px; background: var(--bg-card); border-radius: 16px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--primary); z-index: 5;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="recording-indicator" style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: pulse-recording 1s infinite;"></span>
+          <span class="recording-timer" style="font-size: 12px; color: var(--text-primary); font-family: monospace;">00:00</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="cancel-chat-recording-btn" title="Cancel" style="color: var(--text-muted); background: none; border: none; cursor: pointer; display: flex; align-items: center;"><i data-lucide="trash-2" style="width: 14px; height: 14px;"></i></button>
+          <button type="button" class="stop-chat-recording-btn" title="Send voice note" style="color: var(--primary); background: none; border: none; cursor: pointer; display: flex; align-items: center;"><i data-lucide="check" style="width: 14px; height: 14px;"></i></button>
+        </div>
+      </div>
+    `;
+
+    chatBoxesContainer.appendChild(chatBox);
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+
+    const messagesArea = document.getElementById(`chat-messages-${numericContactId}`);
+    const input = document.getElementById(`chat-input-${numericContactId}`);
+    const attachmentInput = document.getElementById(`chat-attachment-input-${numericContactId}`);
+    const attachmentPreview = document.getElementById(`chat-attachment-preview-${numericContactId}`);
+    const voiceOverlay = document.getElementById(`chat-voice-recording-overlay-${numericContactId}`);
+
+    // Charger l'historique des messages depuis l'API
+    fetch(`/api/messages/${contactId}`)
+      .then(res => res.json())
+      .then(data => {
+        messagesArea.innerHTML = '';
+        if (data.length === 0) {
+          messagesArea.innerHTML = `<div style="text-align: center; color: var(--text-muted); font-size: 11px; padding: 24px 0;">No messages yet. Send one to start the conversation.</div>`;
+        } else {
+          data.forEach(msg => {
+            const msgType = (Number(msg.sender_id) === currentUserId) ? 'outgoing' : 'incoming';
+            appendChatMessageHtml(messagesArea, renderChatMessageHtml(msg, msgType));
+          });
+        }
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+        const unreadMessageIds = data
+          .filter((msg) => Number(msg.sender_id) !== currentUserId && !msg.read_at)
+          .map((msg) => Number(msg.id))
+          .filter((id) => Number.isFinite(id));
+        if (unreadMessageIds.length > 0) {
+          socket.emit('chat-mark-read', {
+            partnerId: numericContactId
+          });
+        }
+        if (input) input.focus();
+      })
+      .catch(err => {
+        console.error('Message load error:', err);
+        messagesArea.innerHTML = `<div style="text-align: center; color: var(--badge-red); font-size: 11px; padding: 12px 0;">Load failed.</div>`;
+      });
+
+    // Actions du header
+    const minimizeBtn = chatBox.querySelector('.minimize-chat');
+    minimizeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      chatBox.classList.toggle('minimized');
+    });
+
+    const closeBtn = chatBox.querySelector('.close-chat');
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      chatBox.remove();
+    });
+
+    const headerInfo = chatBox.querySelector('.chat-header-info');
+    headerInfo.addEventListener('click', () => {
+      chatBox.classList.toggle('minimized');
+      if (!chatBox.classList.contains('minimized')) {
+        setTimeout(() => { messagesArea.scrollTop = messagesArea.scrollHeight; }, 210);
+      }
+    });
+
+    const clearAttachmentPreview = () => {
+      if (!attachmentPreview) return;
+      attachmentPreview.innerHTML = '';
+      attachmentPreview.style.display = 'none';
+      if (attachmentInput) attachmentInput.value = '';
+      if (clearAttachmentPreview._objectUrl) {
+        URL.revokeObjectURL(clearAttachmentPreview._objectUrl);
+        clearAttachmentPreview._objectUrl = null;
+      }
+    };
+
+    const sendChatMessage = async ({ content = '', attachment = null, voiceDurationSeconds = null } = {}) => {
+      const trimmedContent = String(content || '').trim();
+      if (!trimmedContent && !attachment) return;
+
+      let payload = {
+        receiverId: numericContactId,
+        content: trimmedContent
+      };
+
+      if (attachment) {
+        payload.attachmentUrl = attachment.attachmentUrl;
+        payload.attachmentType = attachment.attachmentType;
+        payload.attachmentName = attachment.attachmentName;
+        payload.attachmentSize = attachment.attachmentSize;
+        payload.voiceDurationSeconds = voiceDurationSeconds || null;
+      }
+
+      socket.emit('chat-message', payload);
+      if (input) input.value = '';
+      clearAttachmentPreview();
+    };
+
+    const openAttachmentPreview = (file) => {
+      if (!attachmentPreview) return;
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      const isAudio = file.type.startsWith('audio/');
+      const isPdf = file.type === 'application/pdf';
+      const maxAllowedSize = getChatAttachmentLimit(file);
+      if (Number(file.size || 0) > maxAllowedSize) {
+        showToast(isVideo ? 'Video files must not exceed 100 MB.' : 'Files must not exceed 25 MB.');
+        clearAttachmentPreview();
+        return;
+      }
+      if (clearAttachmentPreview._objectUrl) {
+        URL.revokeObjectURL(clearAttachmentPreview._objectUrl);
+        clearAttachmentPreview._objectUrl = null;
+      }
+      const objectUrl = URL.createObjectURL(file);
+      clearAttachmentPreview._objectUrl = objectUrl;
+      const label = getMessageAttachmentLabel({
+        attachment_type: isImage ? 'image' : isVideo ? 'video' : isAudio ? 'audio' : 'file',
+        attachment_name: file.name
+      });
+
+      attachmentPreview.style.display = 'flex';
+      attachmentPreview.innerHTML = `
+        <div class="chat-attachment-preview-card">
+          ${isImage ? `<img class="chat-attachment-preview-media" src="${objectUrl}" alt="${escapeHtml(file.name)}">` : ''}
+          ${isVideo ? `
+            <video class="chat-attachment-preview-media" src="${objectUrl}" muted playsinline preload="metadata"></video>
+          ` : ''}
+          <div class="chat-attachment-preview-body">
+            <i data-lucide="${isImage ? 'image' : isVideo ? 'film' : isAudio ? 'mic' : 'file'}" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
+            <div class="chat-attachment-preview-meta">
+              <div class="chat-attachment-preview-name">${escapeHtml(label)}</div>
+              <div class="chat-attachment-preview-subtitle">${escapeHtml(file.name)}${file.size ? ` • ${formatFileSize(file.size)}` : ''}</div>
+            </div>
+            <button type="button" class="chat-attachment-preview-remove clear-chat-attachment-btn" aria-label="Remove attachment">
+              <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+            </button>
+          </div>
+        </div>
+      `;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      attachmentPreview.querySelector('.clear-chat-attachment-btn')?.addEventListener('click', clearAttachmentPreview);
+    };
+
+    if (attachmentInput) {
+      attachmentInput.addEventListener('change', async () => {
+        const file = attachmentInput.files && attachmentInput.files[0];
+        if (!file) return;
+        openAttachmentPreview(file);
+      });
+    }
+
+    const attachmentBtn = chatBox.querySelector('.attachment-trigger-btn');
+    if (attachmentBtn && attachmentInput) {
+      attachmentBtn.addEventListener('click', () => attachmentInput.click());
+    }
+
+    const emojiBtn = chatBox.querySelector('.emoji-trigger-btn');
+    if (emojiBtn && input) {
+      emojiBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        createEmojiPicker(input, emojiBtn);
+      });
+    }
+
+    const voiceBtn = chatBox.querySelector('.voice-trigger-btn');
+    if (voiceBtn && voiceOverlay) {
+      voiceBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (chatMediaRecorder) return;
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const { mime, ext } = getBestChatAudioMimeType();
+          chatRecordingMime = { mime, ext };
+          chatMediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+          chatAudioChunks = [];
+          chatRecordingSeconds = 0;
+          chatRecordingContext = { contactId: numericContactId, chatBox };
+          voiceOverlay.style.display = 'flex';
+          const timerEl = voiceOverlay.querySelector('.recording-timer');
+          chatMediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) chatAudioChunks.push(event.data);
+          };
+          chatMediaRecorder.start(100);
+          chatRecordingTimer = setInterval(() => {
+            chatRecordingSeconds += 1;
+            if (timerEl) timerEl.textContent = formatRecordingTime(chatRecordingSeconds);
+            if (chatRecordingSeconds >= 120) {
+              voiceOverlay.querySelector('.stop-chat-recording-btn')?.click();
+            }
+          }, 1000);
+        } catch (err) {
+          showToast('Microphone unavailable: ' + err.message);
+        }
+      });
+
+      voiceOverlay.querySelector('.cancel-chat-recording-btn')?.addEventListener('click', () => {
+        if (!chatMediaRecorder) return;
+        clearInterval(chatRecordingTimer);
+        chatRecordingTimer = null;
+        chatAudioChunks = [];
+        chatRecordingContext = null;
+        chatRecordingMime = null;
+        chatMediaRecorder.stream.getTracks().forEach((track) => track.stop());
+        chatMediaRecorder.stop();
+        chatMediaRecorder = null;
+        voiceOverlay.style.display = 'none';
+      });
+
+      voiceOverlay.querySelector('.stop-chat-recording-btn')?.addEventListener('click', () => {
+        if (!chatMediaRecorder) return;
+        clearInterval(chatRecordingTimer);
+        chatRecordingTimer = null;
+        const recorder = chatMediaRecorder;
+        chatMediaRecorder = null;
+        voiceOverlay.style.display = 'none';
+        recorder.onstop = async () => {
+          recorder.stream.getTracks().forEach((track) => track.stop());
+          if (chatAudioChunks.length === 0) return;
+          const { mime, ext } = chatRecordingMime || { mime: 'audio/webm', ext: 'webm' };
+          const blob = new Blob(chatAudioChunks, { type: mime || 'audio/webm' });
+          try {
+            showToast('Sending voice note...');
+            const uploaded = await uploadMessageAttachment(new File([blob], `voice.${ext}`, { type: mime || 'audio/webm' }), 'audio');
+            const voiceDurationSeconds = await new Promise((resolve) => {
+              const probe = document.createElement('audio');
+              const objectUrl = URL.createObjectURL(blob);
+              probe.preload = 'metadata';
+              probe.src = objectUrl;
+              probe.onloadedmetadata = () => {
+                const duration = Number.isFinite(probe.duration) ? Math.max(1, Math.round(probe.duration)) : null;
+                URL.revokeObjectURL(objectUrl);
+                resolve(duration);
+              };
+              probe.onerror = () => {
+                URL.revokeObjectURL(objectUrl);
+                resolve(null);
+              };
+            });
+            await sendChatMessage({
+              content: input?.value || '',
+              attachment: uploaded,
+              voiceDurationSeconds
+            });
+            showToast('Voice note sent!');
+          } catch (err) {
+            showToast('Error sending voice note');
+          } finally {
+            chatAudioChunks = [];
+            chatRecordingMime = null;
+            chatRecordingContext = null;
+          }
+        };
+        recorder.stop();
+      });
+    }
+
+    // Envoi de message
+    const form = document.getElementById(`chat-form-${numericContactId}`);
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = input.value;
+      const file = attachmentInput?.files?.[0] || null;
+      if (!text.trim() && !file) return;
+      if (file) {
+        showToast('Uploading attachment...');
+        uploadMessageAttachment(file, file.type.startsWith('audio/') ? 'audio' : 'file')
+          .then((uploaded) => sendChatMessage({ content: text, attachment: uploaded }))
+          .catch((err) => showToast(err.message || 'Upload failed'));
+      } else {
+        sendChatMessage({ content: text });
+      }
+    });
+  }
+
+  // Recevoir un message privé en temps réel
+  socket.on('chat-message-received', (data) => {
+    const {
+      senderId,
+      receiverId,
+      sender_name,
+      sender_avatar,
+      content,
+      attachmentUrl,
+      attachmentType,
+      attachmentName,
+      attachmentSize,
+      voiceDurationSeconds,
+      created_at,
+      conversation
+    } = data;
+    const currentUserId = getCurrentUserId();
+    const partnerId = Number(conversation?.contactId || (Number(senderId) === currentUserId ? receiverId : senderId));
+    const createdAt = created_at || new Date().toISOString();
+    const timeText = new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const isOutgoing = Number(senderId) === currentUserId;
+    const message = {
+      id: data.messageId || data.id || null,
+      sender_id: senderId,
+      receiver_id: receiverId,
+      content: content || '',
+      attachment_url: attachmentUrl || data.attachment_url || null,
+      attachment_type: attachmentType || data.attachment_type || null,
+      attachment_name: attachmentName || data.attachment_name || null,
+      attachment_size: attachmentSize || data.attachment_size || null,
+      voice_duration_seconds: voiceDurationSeconds || data.voice_duration_seconds || null,
+      delivered_at: data.delivered_at || null,
+      read_at: data.read_at || null,
+      messageStatus: data.messageStatus || null,
+      created_at: createdAt
+    };
+    const previewText = conversation?.preview || getChatMessagePreviewText(message);
+
+    upsertConversationAcrossCards({
+      contactId: partnerId,
+      contactName: conversation?.contactName || sender_name,
+      contactUsername: conversation?.contactUsername || '',
+      contactAvatar: conversation?.contactAvatar || sender_avatar,
+      preview: previewText,
+      timeText,
+      category: conversation?.category || 'general',
+      isFollowing: !!conversation?.isFollowing,
+      isFollowedBy: !!conversation?.isFollowedBy,
+      isMutual: !!conversation?.isMutual,
+      requestStatus: conversation?.requestStatus || '',
+      canManageRequest: !!conversation?.canManageRequest,
+      isOnline: !!conversation?.isOnline,
+      presenceText: conversation?.presenceText || ''
+    });
+
+    // Mettre à jour la boîte de chat correspondante
+    const chatMsgArea = document.getElementById(`chat-messages-${partnerId}`);
+    if (chatMsgArea) {
+      const emptyText = chatMsgArea.querySelector('div');
+      if (emptyText && (emptyText.textContent.includes('No messages') || emptyText.textContent.includes('Loading'))) {
+        emptyText.remove();
+      }
+
+      const msgType = isOutgoing ? 'outgoing' : 'incoming';
+      appendChatMessageHtml(chatMsgArea, renderChatMessageHtml(message, msgType));
+      chatMsgArea.scrollTop = chatMsgArea.scrollHeight;
+      if (!isOutgoing && message.id) {
+        socket.emit('chat-mark-read', {
+          partnerId: Number(senderId)
+        });
+      }
+    } else {
+      // Si la boîte de chat n'est pas ouverte et que c'est un message entrant, on l'ouvre automatiquement sur desktop
+      if (!isOutgoing && window.innerWidth > 768 && conversation?.category !== 'requests') {
+        openChatBox(partnerId, conversation?.contactName || sender_name, conversation?.contactAvatar || sender_avatar, !!conversation?.isOnline, conversation?.presenceText || '');
+      }
+    }
+
+    showToast(isOutgoing ? 'Message sent' : `New message from ${sender_name}: "${previewText}"`);
+  });
+
+  socket.on('presence-updated', (data) => {
+    if (!data || typeof data.userId === 'undefined') return;
+    syncChatPresenceInLists(Number(data.userId), !!data.isOnline, data.presenceText || '');
+  });
+
+  socket.on('chat-message-status', (data) => {
+    if (!data) return;
+    const { messageId, messageIds, status } = data;
+    if (Array.isArray(messageIds)) {
+      messageIds.forEach((id) => updateChatMessageStatus(id, status));
+      return;
+    }
+    updateChatMessageStatus(messageId, status);
+  });
+
+  socket.on('message-request-updated', (data) => {
+    if (!data) return;
+    const requesterId = Number(data.requesterId || 0);
+    const status = data.status;
+    if (!requesterId || !['accepted', 'declined'].includes(status)) return;
+
+    document.querySelectorAll(`.message-item[data-contact-id="${requesterId}"]`).forEach((item) => {
+      const card = item.closest('.messages-card');
+      if (status === 'accepted') {
+        item.dataset.messageCategory = 'general';
+        item.dataset.messageRequestStatus = 'accepted';
+        item.dataset.canManageRequest = '0';
+        item.querySelector('.message-request-actions')?.remove();
+        const targetList = card?.querySelector('.messages-list[data-message-tab-list="general"]');
+        if (targetList && item.parentElement !== targetList) {
+          item.remove();
+          targetList.prepend(item);
+        }
+      } else if (Number(data.recipientId) === getCurrentUserId()) {
+        item.remove();
+      }
+      if (card) syncMessageTabCounts(card);
+    });
+
+    const partnerId = Number(data.recipientId) === getCurrentUserId() ? requesterId : Number(data.recipientId);
+    const chatBox = document.getElementById(`chat-box-${partnerId}`);
+    if (chatBox) {
+      if (status === 'accepted') {
+        const form = chatBox.querySelector('.chat-input-wrapper');
+        const overlay = chatBox.querySelector('.chat-request-actions-overlay');
+        if (form) form.style.display = 'flex';
+        if (overlay) overlay.style.display = 'none';
+      } else {
+        chatBox.remove();
+      }
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    const requestActionBtn = e.target.closest('[data-message-request-action]');
+    if (requestActionBtn && requestActionBtn.closest('.chat-box')) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleMessageRequestAction(requestActionBtn);
+      return;
+    }
+
+    const playBtn = e.target.closest('.voice-play-btn');
+    if (playBtn) {
+      const player = playBtn.closest('.voice-note-player');
+      if (!player || !player.closest('.chat-box')) return;
+      e.stopPropagation();
+      toggleVoicePlayer(player, playBtn);
+      return;
+    }
+
+    const timeline = e.target.closest('.voice-timeline');
+    if (timeline) {
+      const player = timeline.closest('.voice-note-player');
+      if (!player || !player.closest('.chat-box')) return;
+      e.stopPropagation();
+      seekVoicePlayer(player, e.clientX);
+    }
+  });
+
+  // --- Like, Comment et Bookmark via Socket.io ---
+  const postsContainer = document.getElementById('postsContainer');
+  let birthdayFeedSignature = '';
+
+  const renderBirthdayFeedCardHtml = (celebrant) => {
+    const safeCelebrant = celebrant || {};
+    const userId = Number(safeCelebrant.id || 0);
+    const isSelf = Number(userId) === Number(getCurrentUserId()) || Boolean(safeCelebrant.is_self);
+    const isPreview = Boolean(safeCelebrant.is_preview);
+    const certificationType = String(safeCelebrant.certification_type || 'None').trim() || 'None';
+    const birthdayLabel = escapeHtml(safeCelebrant.birthday_label || 'Anniversaire du jour');
+    const badgeHtml = certificationType !== 'None'
+      ? `<span class="verified-badge-small" title="${escapeHtml(certificationType)}" data-type="${escapeHtml(certificationType)}" style="display: inline-flex; margin-left: 6px;"><i data-lucide="badge-check"></i></span>`
+      : '';
+    const displayName = escapeHtml(safeCelebrant.name || `${safeCelebrant.first_name || ''} ${safeCelebrant.last_name || ''}`.trim() || 'Utilisateur');
+    const username = escapeHtml(safeCelebrant.username || '');
+    const profileUrl = `/profile/u/${encodeURIComponent(safeCelebrant.username || '')}`;
+    const introText = isPreview
+      ? escapeHtml(safeCelebrant.preview_message || `${safeCelebrant.first_name || safeCelebrant.name || 'Cet utilisateur'} fetera bientot son anniversaire.`)
+      : (isSelf
+        ? 'Aujourd hui, c est votre anniversaire.'
+        : `Aujourd hui, ${escapeHtml(safeCelebrant.first_name || safeCelebrant.name || 'cet utilisateur')} fete son anniversaire.`);
+    const countryText = safeCelebrant.country ? `<span>${escapeHtml(safeCelebrant.country)}</span>` : '';
+
+    return `
+      <article class="post-card birthday-feed-card" data-feed-item-type="birthday" data-birthday-user-id="${userId}" data-birthday-preview="${isPreview ? '1' : '0'}">
+        <div class="birthday-feed-card-shell">
+          <div class="birthday-feed-confetti birthday-feed-confetti-left" aria-hidden="true"></div>
+          <div class="birthday-feed-confetti birthday-feed-confetti-right" aria-hidden="true"></div>
+          <div class="birthday-feed-card-hero">
+            <a href="${profileUrl}" class="birthday-feed-card-photo">
+              <img src="${escapeHtml(safeCelebrant.avatar || '/assets/avatar_placeholder.jpg')}" alt="${displayName}">
+            </a>
+          </div>
+          <div class="birthday-feed-card-copy">
+            <span class="birthday-feed-card-kicker"><i data-lucide="cake"></i> ${birthdayLabel}</span>
+            <div class="birthday-feed-title-block">
+              <h3 class="birthday-feed-title">Happy</h3>
+              <div class="birthday-feed-script">Birthday</div>
+            </div>
+            <a href="${profileUrl}" class="birthday-feed-card-name">${displayName}${badgeHtml}</a>
+            <div class="birthday-feed-card-meta">
+              <span>@${username}</span>
+              ${countryText}
+            </div>
+            <p class="birthday-feed-card-text">${introText}</p>
+            <p class="birthday-feed-blessing">QUE DIEU VOUS BENISSE !</p>
+            <div class="birthday-feed-card-actions">
+              ${isPreview
+                ? `<button type="button" class="birthday-gift-btn birthday-gift-btn-demo" data-birthday-user-id="${userId}"><i data-lucide="gift"></i><span>Bouton cadeau</span></button>`
+                : (isSelf
+                ? '<span class="birthday-feed-self-pill">Profitez de votre journee</span>'
+                : `<button type="button" class="birthday-gift-btn" data-birthday-user-id="${userId}"><i data-lucide="gift"></i><span>Envoyer un cadeau</span></button>`)}
+            </div>
+          </div>
+        </div>
+      </article>
+    `;
+  };
+
+  const renderBirthdayFeedCards = (celebrants) => {
+    if (!postsContainer) return;
+    postsContainer.querySelectorAll('[data-feed-item-type="birthday"]').forEach((card) => card.remove());
+
+    if (window.currentView === 'bookmarks') return;
+
+    const safeCelebrants = Array.isArray(celebrants) ? celebrants.filter((item) => Number(item?.id || 0) > 0) : [];
+    if (!safeCelebrants.length) {
+      birthdayFeedSignature = '';
+      return;
+    }
+
+    const firstContentCard = postsContainer.querySelector('[data-feed-item-type="ad"], [data-feed-item-type="post"]');
+    safeCelebrants.slice().reverse().forEach((celebrant) => {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = renderBirthdayFeedCardHtml(celebrant).trim();
+      const card = wrapper.firstElementChild;
+      if (!card) return;
+      if (firstContentCard) {
+        postsContainer.insertBefore(card, firstContentCard);
+      } else {
+        postsContainer.prepend(card);
+      }
+    });
+
+    if (typeof lucide !== 'undefined') lucide.createIcons({ node: postsContainer });
+  };
+
+  const refreshBirthdayFeedCards = async (force = false) => {
+    if (!postsContainer || window.currentView === 'bookmarks') {
+      renderBirthdayFeedCards([]);
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/feed/birthdays', {
+        headers: force ? { 'Cache-Control': 'no-cache' } : undefined
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success === false) return;
+      const celebrants = Array.isArray(data.celebrants) ? data.celebrants : [];
+      const nextSignature = JSON.stringify(celebrants.map((item) => [item.id, item.username, item.is_self]));
+      if (!force && nextSignature === birthdayFeedSignature) return;
+      birthdayFeedSignature = nextSignature;
+      renderBirthdayFeedCards(celebrants);
+    } catch (error) {
+      console.warn('Birthday feed refresh failed:', error);
+    }
+  };
+
+  if (postsContainer) {
+    const initialCelebrants = Array.isArray(window.initialBirthdayCelebrants) ? window.initialBirthdayCelebrants : [];
+    birthdayFeedSignature = JSON.stringify(initialCelebrants.map((item) => [item.id, item.username, item.is_self]));
+    renderBirthdayFeedCards(initialCelebrants);
+    window.requestAnimationFrame(() => {
+      refreshBirthdayFeedCards(true);
+    });
+    window.setInterval(() => {
+      refreshBirthdayFeedCards();
+    }, 60000);
+  }
+
+  const POST_REPORT_REASONS = [
+    { value: 'spam', title: 'Spam ou contenu repetitif', copy: 'Publications trompeuses, promotion agressive ou contenu publie en boucle.' },
+    { value: 'scam', title: 'Arnaque ou fraude', copy: 'Tentative d’arnaque, faux investissement, collecte d’argent suspecte ou phishing.' },
+    { value: 'fake-news', title: 'Fausse information', copy: 'Informations manifestement fausses ou contenu cree pour tromper.' },
+    { value: 'harassment', title: 'Harcèlement ou intimidation', copy: 'Menaces, moqueries ciblees, humiliation ou comportement abusif.' },
+    { value: 'hate-speech', title: 'Discours haineux', copy: 'Attaque envers une personne ou un groupe sur une caracteristique protegee.' },
+    { value: 'violence', title: 'Violence choquante', copy: 'Scenes violentes, blessures explicites ou glorification de la violence.' },
+    { value: 'nudity', title: 'Nudité ou contenu sexuel', copy: 'Nudite explicite, actes sexuels ou contenu sexuellement inapproprie.' },
+    { value: 'child-safety', title: 'Mise en danger des mineurs', copy: 'Exploitation, sexualisation ou tout risque concernant des mineurs.' },
+    { value: 'self-harm', title: 'Automutilation ou suicide', copy: 'Encouragement, demonstration ou risque lie a l’automutilation.' },
+    { value: 'impersonation', title: 'Usurpation d’identité', copy: 'Compte ou post qui se fait passer pour une autre personne ou marque.' },
+    { value: 'privacy', title: 'Atteinte a la vie privee', copy: 'Partage d’informations personnelles, images privees ou doxxing.' },
+    { value: 'copyright', title: 'Violation de droits d’auteur', copy: 'Contenu copie ou republie sans autorisation du proprietaire.' },
+    { value: 'illegal-goods', title: 'Produits ou activites illegales', copy: 'Vente ou promotion de drogues, armes ou autres activites interdites.' },
+    { value: 'terrorism', title: 'Extremisme ou terrorisme', copy: 'Soutien, glorification ou recrutement lie a des organisations violentes.' },
+    { value: 'other', title: 'Autre raison', copy: 'Aucun motif ci-dessus ne correspond. Precise le probleme.' }
+  ];
+
+  let postReportModal = null;
+  let postReportState = null;
+  const POST_OPTIONS_MENU_HTML = `
+    <a href="#" class="hide-post-opt"><i data-lucide="eye-off" style="width:14px; height:14px; margin-right:8px;"></i> Hide Post</a>
+    <a href="#" class="report-post-opt" style="color: var(--badge-red);"><i data-lucide="flag" style="width:14px; height:14px; margin-right:8px;"></i> Signaler</a>
+  `;
+
+  const closeAllPostOptionsMenus = () => {
+    document.querySelectorAll('.post-options-menu').forEach((menu) => menu.remove());
+  };
+
+  const togglePostOptionsMenu = (optionsBtn) => {
+    if (!optionsBtn) return;
+    const postCard = optionsBtn.closest('.post-card');
+    const postHeader = postCard?.querySelector('.post-header');
+    if (!postCard || !postHeader) return;
+
+    const existingMenu = postCard.querySelector('.post-options-menu');
+    if (existingMenu) {
+      existingMenu.remove();
+      return;
+    }
+
+    closeAllPostOptionsMenus();
+
+    const optionsMenu = document.createElement('div');
+    optionsMenu.className = 'dropdown-menu post-options-menu active';
+    optionsMenu.style.cssText = 'position: absolute; right: 16px; top: calc(100% - 6px); width: 160px; display: flex; flex-direction: column; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-item); box-shadow: var(--shadow-lg); z-index: 140;';
+    optionsMenu.innerHTML = POST_OPTIONS_MENU_HTML;
+    postHeader.appendChild(optionsMenu);
+
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  };
+
+  const bindPostOptionButtons = (root = document) => {
+    root.querySelectorAll('.post-options-btn').forEach((button) => {
+      if (button.dataset.optionsBound === '1') return;
+      button.dataset.optionsBound = '1';
+      button.setAttribute('type', 'button');
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        togglePostOptionsMenu(button);
+      });
+    });
+  };
+
+  const getPostReportModal = () => {
+    if (postReportModal) return postReportModal;
+
+    postReportModal = document.createElement('div');
+    postReportModal.className = 'post-report-modal-overlay';
+    postReportModal.setAttribute('aria-hidden', 'true');
+    postReportModal.innerHTML = `
+      <div class="post-report-modal" role="dialog" aria-modal="true" aria-labelledby="postReportModalTitle">
+        <button type="button" class="post-report-modal-close" aria-label="Fermer">
+          <i data-lucide="x"></i>
+        </button>
+        <div class="post-report-modal-header">
+          <div class="post-report-modal-icon"><i data-lucide="flag"></i></div>
+          <div>
+            <h3 id="postReportModalTitle" class="post-report-modal-title">Signaler ce post</h3>
+            <p class="post-report-modal-subtitle">Choisis la raison la plus pertinente pour aider l’equipe de moderation a examiner ce contenu.</p>
+          </div>
+        </div>
+        <form class="post-report-form">
+          <div class="post-report-reasons">
+            ${POST_REPORT_REASONS.map((reason, index) => `
+              <label class="post-report-reason" data-report-reason="${reason.value}">
+                <input type="radio" name="postReportReason" value="${reason.value}" ${index === 0 ? 'checked' : ''}>
+                <span>
+                  <span class="post-report-reason-title">${reason.title}</span>
+                  <span class="post-report-reason-copy">${reason.copy}</span>
+                </span>
+              </label>
+            `).join('')}
+          </div>
+          <textarea class="post-report-details" name="postReportDetails" placeholder="Ajoute un detail utile si necessaire."></textarea>
+          <div class="post-report-details-note">Le detail est recommande pour "Autre raison" et utile pour accelerer la moderation.</div>
+          <div class="post-report-error" aria-live="polite"></div>
+          <div class="post-report-modal-actions">
+            <button type="button" class="post-report-cancel-btn">Annuler</button>
+            <button type="submit" class="post-report-submit-btn">Envoyer le signalement</button>
+          </div>
+        </form>
+      </div>
+    `;
+    document.body.appendChild(postReportModal);
+
+    const syncSelectedReasonStyles = () => {
+      postReportModal.querySelectorAll('.post-report-reason').forEach((label) => {
+        const input = label.querySelector('input');
+        label.classList.toggle('is-selected', !!input?.checked);
+      });
+    };
+
+    postReportModal.addEventListener('change', (event) => {
+      if (event.target.matches('input[name="postReportReason"]')) {
+        syncSelectedReasonStyles();
+      }
+    });
+
+    postReportModal.addEventListener('click', (event) => {
+      if (
+        event.target === postReportModal ||
+        event.target.closest('.post-report-modal-close') ||
+        event.target.closest('.post-report-cancel-btn')
+      ) {
+        closePostReportModal();
+      }
+    });
+
+    postReportModal.querySelector('.post-report-form')?.addEventListener('submit', submitPostReportModal);
+
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+    syncSelectedReasonStyles();
+    return postReportModal;
+  };
+
+  const setPostReportError = (message = '') => {
+    const modal = getPostReportModal();
+    const errorBox = modal.querySelector('.post-report-error');
+    if (!errorBox) return;
+    errorBox.textContent = message;
+    errorBox.style.display = message ? 'block' : 'none';
+  };
+
+  const closePostReportModal = () => {
+    const modal = getPostReportModal();
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+    setPostReportError('');
+    const form = modal.querySelector('.post-report-form');
+    form?.reset();
+    const firstReason = modal.querySelector('input[name="postReportReason"]');
+    if (firstReason) firstReason.checked = true;
+    modal.querySelectorAll('.post-report-reason').forEach((label, index) => {
+      label.classList.toggle('is-selected', index === 0);
+    });
+    const submitBtn = modal.querySelector('.post-report-submit-btn');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Envoyer le signalement';
+    }
+    if (postReportState?.trigger && typeof postReportState.trigger.focus === 'function') {
+      postReportState.trigger.focus();
+    }
+    postReportState = null;
+  };
+
+  const hideReportedPostCard = (postCard) => {
+    if (!postCard) return;
+    postCard.style.transition = 'transform 0.35s ease, opacity 0.35s ease';
+    postCard.style.transform = 'scale(0.96)';
+    postCard.style.opacity = '0';
+    setTimeout(() => {
+      postCard.remove();
+    }, 350);
+  };
+
+  const openPostReportModal = ({ postId, postCard, trigger }) => {
+    const modal = getPostReportModal();
+    postReportState = { postId, postCard, trigger };
+    setPostReportError('');
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+    const firstChecked = modal.querySelector('input[name="postReportReason"]:checked') || modal.querySelector('input[name="postReportReason"]');
+    setTimeout(() => firstChecked?.focus(), 0);
+  };
+
+  async function submitPostReportModal(event) {
+    event.preventDefault();
+    if (!postReportState?.postId) return;
+
+    const modal = getPostReportModal();
+    const form = event.currentTarget;
+    const submitBtn = form.querySelector('.post-report-submit-btn');
+    const selectedReason = form.querySelector('input[name="postReportReason"]:checked')?.value || '';
+    const details = form.querySelector('.post-report-details')?.value.trim() || '';
+
+    if (!selectedReason) {
+      setPostReportError('Choisis un motif de signalement.');
+      return;
+    }
+
+    if (selectedReason === 'other' && details.length < 8) {
+      setPostReportError('Precise davantage la raison du signalement.');
+      return;
+    }
+
+    setPostReportError('');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Envoi...';
+    }
+
+    try {
+      const response = await fetch(`/api/posts/${encodeURIComponent(postReportState.postId)}/report`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          reason: selectedReason,
+          details
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Impossible d’envoyer le signalement pour le moment.');
+      }
+
+      const reportedCard = postReportState?.postCard;
+      closePostReportModal();
+      hideReportedPostCard(reportedCard);
+      showToast(data.message || 'Merci. Votre signalement a bien ete envoye.');
+    } catch (error) {
+      setPostReportError(error.message || 'Impossible d’envoyer le signalement pour le moment.');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Envoyer le signalement';
+      }
+      modal.querySelector('.post-report-details')?.focus();
+    }
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (!postReportModal || !postReportModal.classList.contains('active')) return;
+    if (event.key === 'Escape') {
+      closePostReportModal();
+    }
+  });
+
+  const hidePostFromFeed = async (postId, postCard) => {
+    const response = await fetch(`/api/posts/${encodeURIComponent(postId)}/hide`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json'
+      },
+      credentials: 'same-origin'
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Impossible de masquer ce post pour le moment.');
+    }
+    hideReportedPostCard(postCard);
+    showToast(data.message || 'Post masque. Vous pouvez le restaurer depuis les parametres.');
+  };
+
+  const updateHiddenPostsEmptyState = (container) => {
+    if (!container) return;
+    const remainingCards = container.querySelectorAll('[data-hidden-post-card]');
+    document.querySelectorAll('[data-hidden-post-count]').forEach((node) => {
+      node.textContent = String(remainingCards.length);
+    });
+    let emptyState = container.querySelector('[data-hidden-post-empty]');
+    if (remainingCards.length === 0) {
+      if (!emptyState) {
+        emptyState = document.createElement('div');
+        emptyState.className = 'hidden-posts-empty';
+        emptyState.setAttribute('data-hidden-post-empty', '1');
+        emptyState.innerHTML = `
+          <div class="hidden-posts-empty-icon"><i data-lucide="eye"></i></div>
+          <div class="hidden-posts-empty-title">Aucun post masque</div>
+          <div class="hidden-posts-empty-copy">Les posts que vous masquez depuis le feed apparaitront ici pour pouvoir les restaurer plus tard.</div>
+        `;
+        container.appendChild(emptyState);
+        if (typeof lucide !== 'undefined') {
+          lucide.createIcons();
+        }
+      }
+    } else if (emptyState) {
+      emptyState.remove();
+    }
+  };
+
+  const unhidePostFromSettings = async (postId, trigger) => {
+    const response = await fetch(`/api/posts/${encodeURIComponent(postId)}/unhide`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json'
+      },
+      credentials: 'same-origin'
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Impossible de restaurer ce post pour le moment.');
+    }
+
+    const card = trigger.closest('[data-hidden-post-card]');
+    const list = trigger.closest('[data-hidden-posts-list]');
+    if (card) {
+      card.style.transition = 'transform 0.28s ease, opacity 0.28s ease';
+      card.style.transform = 'translateY(-6px)';
+      card.style.opacity = '0';
+      setTimeout(() => {
+        card.remove();
+        updateHiddenPostsEmptyState(list);
+      }, 280);
+    }
+    showToast(data.message || 'Post restaure dans votre feed.');
+  };
+
+  bindPostOptionButtons();
+
+  if (postsContainer) {
+    postsContainer.addEventListener('click', (e) => {
+      const postCard = e.target.closest('.post-card');
+      if (!postCard) return;
+
+      const birthdayGiftBtn = e.target.closest('.birthday-gift-btn');
+      if (birthdayGiftBtn) {
+        const birthdayCard = birthdayGiftBtn.closest('.birthday-feed-card');
+        const birthdayUserId = Number(birthdayGiftBtn.getAttribute('data-birthday-user-id') || birthdayCard?.getAttribute('data-birthday-user-id') || 0);
+        if (birthdayCard && birthdayUserId) {
+          openGiftBirthdayModal(birthdayCard, birthdayUserId);
+        }
+        return;
+      }
+
+      const postId = parseInt(postCard.getAttribute('data-post-id'), 10);
+
+      // 1. Like button click
+      const likeBtn = e.target.closest('.like-btn');
+      if (likeBtn) {
+        socket.emit('post-like', { postId });
+        return;
+      }
+
+      // 2. Bookmark button click
+      const bookmarkBtn = e.target.closest('.post-bookmark-btn');
+      if (bookmarkBtn) {
+        socket.emit('post-bookmark', { postId });
+        return;
+      }
+
+      // 3. Share button click
+      const shareBtn = e.target.closest('.share-btn');
+      if (shareBtn) {
+        const shareCard = shareBtn.closest('.post-card');
+        if (shareCard) {
+          openShareSheet(shareCard, postId);
+        }
+        return;
+      }
+
+      const giftBtn = e.target.closest('.gift-btn');
+      if (giftBtn) {
+        const giftCard = giftBtn.closest('.post-card');
+        if (giftCard) {
+          openGiftPostModal(giftCard, postId);
+        }
+        return;
+      }
+
+      // 4. Comment button click (Toggles comments list)
+      const commentBtn = e.target.closest('.comment-btn');
+      if (commentBtn) {
+        const commentsSection = postCard.querySelector('.post-comments-section');
+        if (commentsSection) {
+          const isHidden = commentsSection.style.display === 'none';
+          commentsSection.style.display = isHidden ? 'flex' : 'none';
+        }
+        return;
+      }
+
+      // 5. Trade button click
+      const tradeBtn = e.target.closest('.trade-btn');
+      if (tradeBtn) {
+        console.log('[trade-modal] post trade click detected', {
+          postId,
+          price: tradeBtn.getAttribute('data-price'),
+          disabled: tradeBtn.classList.contains('disabled') || tradeBtn.hasAttribute('disabled'),
+          pending: tradeBtn.getAttribute('data-trade-pending'),
+          socketConnected: socket?.connected
+        });
+        if (tradeBtn.classList.contains('disabled') || tradeBtn.hasAttribute('disabled')) {
+          showToast("You already own this post!");
+          return;
+        }
+
+        if (tradeBtn.getAttribute('data-trade-pending') === '1') {
+          return;
+        }
+
+        if (!socket.connected) {
+          showToast('Connexion temps reel indisponible. Rechargez la page puis reessayez.');
+          return;
+        }
+
+        const tradePrice = Number(tradeBtn.getAttribute('data-price'));
+        const currentBalance = getCurrentDepositBalance();
+        console.log('[trade-modal] post trade confirmation payload', {
+          postId,
+          tradePrice,
+          currentBalance
+        });
+        confirmTradeAction({
+          type: 'post',
+          tradePrice,
+          currentBalance
+        }).then((confirmed) => {
+          if (!confirmed) return;
+          setTradePendingState(tradeBtn, 'post');
+          showToast('Traitement du trade en cours...');
+          socket.emit('post-trade-action', { postId });
+        }).catch((error) => {
+          console.error('Post trade confirm error:', error);
+          showToast('Impossible d ouvrir la confirmation du trade.');
+        });
+        return;
+      }
+
+      // 6. Submit comment button click
+      const submitBtn = e.target.closest('.submit-comment-btn');
+      if (submitBtn) {
+        const row = submitBtn.closest('.comment-input-row');
+        const input = row.querySelector('.comment-input');
+        const text = input.value.trim();
+        if (text) {
+          socket.emit('comment-create', { postId, content: text });
+          input.value = '';
+        }
+        return;
+      }
+
+      // 4.5. Click on Reply Trigger Button
+      const replyTriggerBtn = e.target.closest('.reply-trigger-btn');
+      if (replyTriggerBtn) {
+        const commentContainer = replyTriggerBtn.closest('.comment-item-container, .reply-item');
+        if (commentContainer) {
+          const replyInputRow = getDirectReplyInputRow(commentContainer);
+          if (replyInputRow) {
+            const replyInput = replyInputRow.querySelector('.reply-input');
+            if (replyInput) {
+              replyInput.placeholder = getCommentReplyPlaceholder(commentContainer);
+            }
+            const isHidden = replyInputRow.style.display === 'none';
+            replyInputRow.style.display = isHidden ? 'flex' : 'none';
+            if (isHidden) {
+              const input = replyInputRow.querySelector('.reply-input');
+              input?.focus();
+            }
+          }
+        }
+        return;
+      }
+
+      // 4.6. Click on Submit Reply Button
+      const submitReplyBtn = e.target.closest('.submit-reply-btn');
+      if (submitReplyBtn) {
+        const replyInputRow = submitReplyBtn.closest('.reply-input-row');
+        const commentContainer = replyInputRow?.previousElementSibling?.classList?.contains('reply-item')
+          ? replyInputRow.previousElementSibling
+          : replyInputRow?.closest('.comment-item-container');
+        const replyInput = replyInputRow?.querySelector('.reply-input') || commentContainer?.querySelector('.reply-input');
+        const text = replyInput?.value.trim();
+        if (text && (commentContainer || replyInputRow)) {
+          const parentId = getCommentTargetId(commentContainer);
+          socket.emit('comment-create', { postId, content: text, parentId: parseInt(parentId, 10) });
+          replyInput.value = '';
+          if (replyInputRow) replyInputRow.style.display = 'none';
+        }
+        return;
+      }
+
+      // 4.7. Click on Read More Replies Button
+      const readMoreRepliesBtn = e.target.closest('.read-more-replies-btn');
+      if (readMoreRepliesBtn) {
+        const repliesContainer = readMoreRepliesBtn.closest('.replies-list-container');
+        if (repliesContainer) {
+          const replyItems = getReplyItems(repliesContainer);
+          const isExpanded = readMoreRepliesBtn.textContent.includes('Hide');
+
+          if (isExpanded) {
+            // Collapse: hide all replies starting from index 2
+            replyItems.forEach((item, index) => {
+              const replyRow = item.nextElementSibling?.classList?.contains('reply-input-row') ? item.nextElementSibling : null;
+              if (index >= 2) {
+                item.style.display = 'none';
+                if (replyRow) replyRow.style.display = 'none';
+              }
+            });
+            const remainingCount = replyItems.length - 2;
+            readMoreRepliesBtn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Show ${remainingCount} more replies`;
+          } else {
+            // Expand: show all replies
+            replyItems.forEach(item => {
+              item.style.display = 'flex';
+              const replyRow = item.nextElementSibling?.classList?.contains('reply-input-row') ? item.nextElementSibling : null;
+              if (replyRow) replyRow.style.display = 'none';
+            });
+            readMoreRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Hide replies`;
+          }
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+        return;
+      }
+
+      const readMoreCommentsBtn = e.target.closest('.read-more-comments-btn');
+      if (readMoreCommentsBtn) {
+        const commentsList = readMoreCommentsBtn.closest('.comments-list');
+        if (commentsList) {
+          const comments = getDirectChildComments(commentsList);
+          const isExpanded = readMoreCommentsBtn.textContent.includes('Hide');
+
+          if (isExpanded) {
+            comments.forEach((item, index) => {
+              item.style.display = index >= 2 ? 'none' : 'flex';
+            });
+            const remainingCount = comments.length - 2;
+            readMoreCommentsBtn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Show ${remainingCount} more comments`;
+          } else {
+            comments.forEach(item => {
+              item.style.display = 'flex';
+            });
+            readMoreCommentsBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Hide comments`;
+          }
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+        return;
+      }
+
+      // 5. Options post toggle
+      const optionsBtn = e.target.closest('.post-options-btn');
+      if (optionsBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        togglePostOptionsMenu(optionsBtn);
+        return;
+      }
+
+      // 6. Hide post option
+      const hideBtn = e.target.closest('.hide-post-opt');
+      if (hideBtn) {
+        e.preventDefault();
+        postCard.querySelector('.post-options-menu')?.remove();
+        hidePostFromFeed(postId, postCard).catch((error) => {
+          showToast(error.message || 'Impossible de masquer ce post pour le moment.');
+        });
+        return;
+      }
+
+      // 7. Report post option
+      const reportBtn = e.target.closest('.report-post-opt');
+      if (reportBtn) {
+        e.preventDefault();
+        postCard.querySelector('.post-options-menu')?.remove();
+        openPostReportModal({ postId, postCard, trigger: reportBtn });
+        return;
+      }
+
+      // 7.5. Edit challenge option
+      const editChallengeBtn = e.target.closest('.edit-challenge-btn');
+      if (editChallengeBtn) {
+        e.preventDefault();
+        postCard.querySelector('.post-options-menu')?.remove();
+        openEditChallengeModal(postId);
+        return;
+      }
+    });
+
+    // Close options menus when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.post-options-btn') && !e.target.closest('.post-options-menu')) {
+        closeAllPostOptionsMenus();
+      }
+    });
+
+    // Submit comments or replies on Enter key press
+    postsContainer.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const commentInput = e.target.closest('.comment-input');
+        if (commentInput) {
+          const btn = commentInput.closest('.comment-input-row').querySelector('.submit-comment-btn');
+          if (btn) btn.click();
+          return;
+        }
+
+        const replyInput = e.target.closest('.reply-input');
+        if (replyInput) {
+          const btn = replyInput.closest('.reply-input-row').querySelector('.submit-reply-btn');
+          if (btn) btn.click();
+          return;
+        }
+      }
+    });
+
+    // ---- Emoji Picker ----
+    const EMOJI_CATEGORIES = [
+      {
+        key: 'smileys', icon: '😀', label: 'Smileys',
+        emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '🫠', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '☺️', '😚', '😙', '🥲', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🫢', '🫣', '🤫', '🤔', '🫡', '🤐', '🤨', '😐', '😑', '😶', '🫥', '😶‍🌫️', '😏', '😒', '🙄', '😬', '😮‍💨', '🤥', '🫨', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '😵‍💫', '🤯', '🤠', '🥳', '🥸', '😎', '🤓', '🧐', '😕', '🫤', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '🥹', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖']
+      },
+      {
+        key: 'gestures', icon: '👋', label: 'Gestes',
+        emojis: ['👋', '🤚', '🖐️', '✋', '🖖', '🫱', '🫲', '🫳', '🫴', '🫷', '🫸', '👌', '🤌', '🤏', '✌️', '🤞', '🫰', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '🫵', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🫶', '👐', '🤲', '🤝', '🙏', '✍️', '💅', '🤳', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻', '👃', '🫀', '🫁', '🧠', '🦷', '🦴', '👁️', '👀', '🫦', '👅', '👣', '🧬', '🩸', '👶', '🧒', '👦', '👧', '🧑', '👱', '👨', '🧔', '👩', '🧓', '👴', '👵', '🙍', '🙎', '🙅', '🙆', '💁', '🙋', '🧏', '🙇', '🤦', '🤷', '👮', '🕵️', '💂', '🥷', '👷', '🫅', '🤴', '👸', '👰', '🤵', '🙎‍♂️', '🙍‍♀️']
+      },
+      {
+        key: 'animals', icon: '🐶', label: 'Animaux',
+        emojis: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐻‍❄️', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🙈', '🙉', '🙊', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🪱', '🐛', '🦋', '🐌', '🐞', '🐜', '🪲', '🦟', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🦭', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🦣', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🦬', '🐃', '🐂', '🐄', '🫏', '🐎', '🐖', '🐏', '🐑', '🦙', '🐐', '🦌', '🐕', '🐩', '🦮', '🐕‍🦺', '🐈', '🐈‍⬛', '🪶', '🐓', '🦤', '🦚', '🦜', '🦢', '🦩', '🕊️', '🐇', '🦝', '🦨', '🦡', '🦫', '🦦', '🦥', '🐁', '🐀', '🐿️', '🦔', '🐾', '🌵', '🌲', '🌳', '🌴', '🪵', '🌱', '🌿', '☘️', '🍀', '🎋', '🎍', '🪴', '🌾', '🌺', '🌸', '🌼', '🌻', '🌹', '🥀', '🪷', '🌷', '🌱', '🍄', '🪸', '🪨', '🌊', '🌬️', '🌀', '🌈', '🌂', '☂️', '☁️', '⛅', '🌤️', '🌦️', '🌧️', '⛈️', '🌩️', '🌨️', '❄️', '☃️', '⛄', '🌪️', '🌫️', '🌊', '🌁', '🌙', '🌛', '🌜', '🌝', '🌞', '⭐', '🌟', '💫', '✨', '☄️', '🌍', '🌎', '🌏', '🪐', '💥', '🌋', '🏔️', '⛰️', '🗻', '🏕️']
+      },
+      {
+        key: 'food', icon: '🍕', label: 'Nourriture',
+        emojis: ['🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🥭', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🫐', '🥝', '🍅', '🫒', '🥥', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶️', '🫑', '🥒', '🥬', '🥦', '🧄', '🧅', '🍄', '🥜', '🫘', '🌰', '🍞', '🥐', '🥖', '🫓', '🥨', '🥯', '🥞', '🧇', '🧀', '🍖', '🍗', '🥩', '🥓', '🌭', '🍔', '🍟', '🍕', '🫔', '🌮', '🌯', '🥙', '🧆', '🥚', '🍳', '🥘', '🍲', '🫕', '🥣', '🥗', '🍿', '🧂', '🥫', '🍱', '🍘', '🍙', '🍚', '🍛', '🍜', '🍝', '🍠', '🍢', '🍣', '🍤', '🍥', '🥮', '🍡', '🥟', '🥠', '🥡', '🦀', '🦞', '🦐', '🦑', '🦪', '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🧁', '🥧', '🍫', '🍬', '🍭', '🍮', '🍯', '🍼', '🥛', '☕', '🫖', '🍵', '🍶', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🫗', '🥤', '🧋', '🧃', '🧉', '🧊', '🥢', '🍽️', '🍴', '🥄', '🫙']
+      },
+      {
+        key: 'activities', icon: '⚽', label: 'Activities',
+        emojis: ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️', '🤸', '🤼', '🤺', '🤾', '🏌️', '🏇', '🧘', '🏄', '🏊', '🤽', '🚣', '🧗', '🚴', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🏵️', '🎗️', '🎫', '🎟️', '🎪', '🤹', '🎭', '🩰', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🪘', '🎷', '🎺', '🪗', '🎸', '🪕', '🎻', '🎲', '♟️', '🎯', '🎳', '🎮', '🎰', '🧩', '🪄', '🎠', '🎡', '🎢', '🛝', '🎑', '🎆', '🎇', '🧨', '✨', '🎉', '🎊', '🎋', '🎍', '🎎', '🎏', '🎐', '🪅', '🎁', '🎀', '🎈']
+      },
+      {
+        key: 'travel', icon: '✈️', label: 'Voyages',
+        emojis: ['🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚', '🚛', '🚜', '🏍️', '🛵', '🛺', '🚲', '🛴', '🛹', '🛼', '🚏', '🛣️', '🛤️', '⛽', '🚨', '🚥', '🚦', '🛑', '🚧', '⚓', '🪝', '⛵', '🛶', '🚤', '🛥️', '🛳️', '⛴️', '🚢', '✈️', '🛩️', '🛫', '🛬', '🪂', '💺', '🚁', '🚟', '🚠', '🚡', '🛰️', '🚀', '🛸', '🌍', '🌎', '🌏', '🗺️', '🧭', '🏔️', '⛰️', '🌋', '🗻', '🏕️', '🏖️', '🏜️', '🏝️', '🏞️', '🏟️', '🏛️', '🏗️', '🧱', '🏘️', '🏚️', '🏠', '🏡', '🏢', '🏣', '🏤', '🏥', '🏦', '🏨', '🏩', '🏪', '🏫', '🏬', '🏭', '🏯', '🏰', '💒', '🗼', '🗽', '⛪', '🕌', '🛕', '🕍', '⛩️', '🕋', '⛲', '⛺', '🌁', '🌃', '🏙️', '🌄', '🌅', '🌆', '🌇', '🌉', '🎠', '🎡', '🎢', '💈', '🎪']
+      },
+      {
+        key: 'objects', icon: '💡', label: 'Objets',
+        emojis: ['⌚', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '🖲️', '🕹️', '💾', '💿', '📀', '📼', '📷', '📸', '📹', '🎥', '📽️', '🎞️', '📞', '☎️', '📟', '📠', '📺', '📻', '🧭', '⏱️', '⏲️', '⏰', '🕰️', '⌛', '⏳', '📡', '🔋', '🪫', '🔌', '💡', '🔦', '🕯️', '🪔', '🧯', '🛢️', '💰', '🪙', '💳', '💵', '💴', '💶', '💷', '💸', '💹', '✉️', '📧', '📨', '📩', '📤', '📥', '📦', '📫', '📪', '📬', '📭', '📮', '🗳️', '✏️', '✒️', '🖋️', '🖊️', '📝', '📁', '📂', '🗂️', '📅', '📆', '📇', '📈', '📉', '📊', '📋', '📌', '📍', '📎', '🖇️', '📏', '📐', '✂️', '🗃️', '🗄️', '🗑️', '🔒', '🔓', '🔏', '🔐', '🔑', '🗝️', '🔨', '🪓', '⛏️', '⚒️', '🛠️', '🗡️', '⚔️', '🛡️', '🪃', '🔧', '🔩', '⚙️', '🗜️', '⚖️', '🦯', '🔗', '⛓️', '🪝', '🧲', '🪜', '🧪', '🧫', '🧬', '🔬', '🔭', '📡', '💊', '🩺', '🩻', '🩹', '🏥', '🚑', '🧴', '🧷', '🧹', '🧺', '🧻', '🪣', '🧼', '🫧', '🪥', '🧽', '🪤', '🧰', '🪞', '🪟', '🛋️', '🪑', '🚽', '🪠', '🚿', '🛁', '🪤', '🪒', '🧻', '🧸', '🪆', '🖼️', '🪞', '🛍️', '📿', '🧵', '🪡', '🧶', '🪢', '👓', '🕶️', '🥽', '🌂', '☂️', '🧵', '🎀', '🎁']
+      },
+      {
+        key: 'symbols', icon: '❤️', label: 'Symboles',
+        emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '❤️‍🔥', '❤️‍🩹', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '🪯', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🛗', '🈳', '🈹', '🚳', '🚭', '🚯', '🚱', '🚷', '📵', '🔞', '🔕', '🔇', '🔔', '🔕', '📣', '📢', '🔈', '🔉', '🔊', '💬', '💭', '🗯️', '💫', '💥', '💢', '❕', '❗', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⚫', '⚪', '🟤', '🔺', '🔻', '🔷', '🔶', '🔹', '🔸', '🔲', '🔳', '⬛', '⬜', '◼️', '◻️', '▪️', '▫️', '🔊', '⁉️', '🎵', '🎶', '♾️', '➰', '➿', '〰️', '🔚', '🔛', '🔜', '🔝', '🆗', '🆙', '🆒', '🆕', '🆓', '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔠', '🔡', '🔢', '🔣', '🔤', '#️⃣', '*️⃣', '▶️', '⏩', '⏭️', '⏯️', '◀️', '⏪', '⏮️', '🔼', '⏫', '🔽', '⏬', '⏸️', '⏹️', '⏺️', '⏏️', '🎦', '🔅', '🔆', '📶', '📳', '📴', '♀️', '♂️', '⚧️']
+      },
+      {
+        key: 'flags', icon: '🏳️', label: 'Drapeaux',
+        emojis: ['🏳️', '🏴', '🏁', '🚩', '🎌', '🏳️‍🌈', '🏳️‍⚧️', '🏴‍☠️', '🇦🇨', '🇦🇩', '🇦🇪', '🇦🇫', '🇦🇬', '🇦🇮', '🇦🇱', '🇦🇲', '🇦🇴', '🇦🇶', '🇦🇷', '🇦🇸', '🇦🇹', '🇦🇺', '🇦🇼', '🇦🇽', '🇦🇿', '🇧🇦', '🇧🇧', '🇧🇩', '🇧🇪', '🇧🇫', '🇧🇬', '🇧🇭', '🇧🇮', '🇧🇯', '🇧🇱', '🇧🇲', '🇧🇳', '🇧🇴', '🇧🇶', '🇧🇷', '🇧🇸', '🇧🇹', '🇧🇻', '🇧🇼', '🇧🇾', '🇧🇿', '🇨🇦', '🇨🇨', '🇨🇩', '🇨🇫', '🇨🇬', '🇨🇭', '🇨🇮', '🇨🇰', '🇨🇱', '🇨🇲', '🇨🇳', '🇨🇴', '🇨🇵', '🇨🇷', '🇨🇺', '🇨🇻', '🇨🇼', '🇨🇽', '🇨🇾', '🇨🇿', '🇩🇪', '🇩🇬', '🇩🇯', '🇩🇰', '🇩🇲', '🇩🇴', '🇩🇿', '🇪🇦', '🇪🇨', '🇪🇪', '🇪🇬', '🇪🇭', '🇪🇷', '🇪🇸', '🇪🇹', '🇪🇺', '🇫🇮', '🇫🇯', '🇫🇰', '🇫🇲', '🇫🇴', '🇫🇷', '🇬🇦', '🇬🇧', '🇬🇩', '🇬🇪', '🇬🇫', '🇬🇬', '🇬🇭', '🇬🇮', '🇬🇱', '🇬🇲', '🇬🇳', '🇬🇵', '🇬🇶', '🇬🇷', '🇬🇸', '🇬🇹', '🇬🇺', '🇬🇼', '🇬🇾', '🇭🇰', '🇭🇲', '🇭🇳', '🇭🇷', '🇭🇹', '🇭🇺', '🇮🇨', '🇮🇩', '🇮🇪', '🇮🇱', '🇮🇲', '🇮🇳', '🇮🇴', '🇮🇶', '🇮🇷', '🇮🇸', '🇮🇹', '🇯🇪', '🇯🇲', '🇯🇴', '🇯🇵', '🇰🇪', '🇰🇬', '🇰🇭', '🇰🇮', '🇰🇲', '🇰🇳', '🇰🇵', '🇰🇷', '🇰🇼', '🇰🇾', '🇰🇿', '🇱🇦', '🇱🇧', '🇱🇨', '🇱🇮', '🇱🇰', '🇱🇷', '🇱🇸', '🇱🇹', '🇱🇺', '🇱🇻', '🇱🇾', '🇲🇦', '🇲🇨', '🇲🇩', '🇲🇪', '🇲🇫', '🇲🇬', '🇲🇭', '🇲🇰', '🇲🇱', '🇲🇲', '🇲🇳', '🇲🇴', '🇲🇵', '🇲🇶', '🇲🇷', '🇲🇸', '🇲🇹', '🇲🇺', '🇲🇻', '🇲🇼', '🇲🇽', '🇲🇾', '🇲🇿', '🇳🇦', '🇳🇨', '🇳🇪', '🇳🇫', '🇳🇬', '🇳🇮', '🇳🇱', '🇳🇴', '🇳🇵', '🇳🇷', '🇳🇺', '🇳🇿', '🇴🇲', '🇵🇦', '🇵🇪', '🇵🇫', '🇵🇬', '🇵🇭', '🇵🇰', '🇵🇱', '🇵🇲', '🇵🇳', '🇵🇷', '🇵🇸', '🇵🇹', '🇵🇼', '🇵🇾', '🇶🇦', '🇷🇪', '🇷🇴', '🇷🇸', '🇷🇺', '🇷🇼', '🇸🇦', '🇸🇧', '🇸🇨', '🇸🇩', '🇸🇪', '🇸🇬', '🇸🇭', '🇸🇮', '🇸🇯', '🇸🇰', '🇸🇱', '🇸🇲', '🇸🇳', '🇸🇴', '🇸🇷', '🇸🇸', '🇸🇹', '🇸🇻', '🇸🇽', '🇸🇾', '🇸🇿', '🇹🇦', '🇹🇨', '🇹🇩', '🇹🇫', '🇹🇬', '🇹🇭', '🇹🇯', '🇹🇰', '🇹🇱', '🇹🇲', '🇹🇳', '🇹🇴', '🇹🇷', '🇹🇹', '🇹🇻', '🇹🇼', '🇹🇿', '🇺🇦', '🇺🇬', '🇺🇲', '🇺🇳', '🇺🇸', '🇺🇾', '🇺🇿', '🇻🇦', '🇻🇨', '🇻🇪', '🇻🇬', '🇻🇮', '🇻🇳', '🇻🇺', '🇼🇫', '🇼🇸', '🇽🇰', '🇾🇪', '🇾🇹', '🇿🇦', '🇿🇲', '🇿🇼']
+      }
+    ];
+
+    let activeEmojiPicker = null;
+
+    function createEmojiPicker(targetInput, anchorEl) {
+      if (activeEmojiPicker) {
+        if (typeof activeEmojiPicker.cleanup === 'function') {
+          activeEmojiPicker.cleanup();
+        } else {
+          activeEmojiPicker.remove();
+          activeEmojiPicker = null;
+        }
+        return;
+      }
+
+      let currentCategory = EMOJI_CATEGORIES[0].key;
+      let savedRange = null;
+
+      function saveSelection() {
+        const isContentEditable = targetInput.isContentEditable || targetInput.getAttribute('contenteditable') === 'true';
+        if (isContentEditable) {
+          const selection = window.getSelection();
+          if (selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            if (targetInput.contains(range.commonAncestorContainer)) {
+              savedRange = range.cloneRange();
+            }
+          }
+        }
+      }
+
+      saveSelection();
+      targetInput.addEventListener('keyup', saveSelection);
+      targetInput.addEventListener('mouseup', saveSelection);
+      targetInput.addEventListener('blur', saveSelection);
+
+      const picker = document.createElement('div');
+      if (anchorEl.classList.contains('header-search-emoji-btn') || targetInput.id === 'postInput') {
+        picker.className = 'emoji-picker-popover picker-down';
+      } else {
+        picker.className = 'emoji-picker-popover';
+      }
+
+      picker.cleanup = () => {
+        targetInput.removeEventListener('keyup', saveSelection);
+        targetInput.removeEventListener('mouseup', saveSelection);
+        targetInput.removeEventListener('blur', saveSelection);
+        picker.remove();
+        activeEmojiPicker = null;
+      };
+
+      function renderPicker(searchQuery = '') {
+        const q = searchQuery.toLowerCase().trim();
+        const tabsHTML = EMOJI_CATEGORIES.map(cat => `
+          <button type="button" class="emoji-tab-btn${cat.key === currentCategory ? ' active' : ''}" data-cat="${cat.key}" title="${cat.label}">${cat.icon}</button>
+        `).join('');
+
+        let emojiHTML = '';
+        if (q) {
+          const all = EMOJI_CATEGORIES.flatMap(c => c.emojis);
+          emojiHTML = all.filter(e => e.includes(q)).map(e => `<button type="button" class="emoji-picker-btn" data-emoji="${e}">${e}</button>`).join('');
+          if (!emojiHTML) emojiHTML = '<span class="emoji-no-results">No results</span>';
+        } else {
+          const cat = EMOJI_CATEGORIES.find(c => c.key === currentCategory);
+          emojiHTML = cat ? cat.emojis.map(e => `<button type="button" class="emoji-picker-btn" data-emoji="${e}">${e}</button>`).join('') : '';
+        }
+
+        picker.innerHTML = `
+          <div class="emoji-picker-header">
+            <input type="text" class="emoji-search-input" placeholder="Rechercher..." value="${q.replace(/"/g, '&quot;')}" autocomplete="off" />
+            <button type="button" class="emoji-picker-close" title="Fermer">✕</button>
+          </div>
+          <div class="emoji-tab-bar">${tabsHTML}</div>
+          <div class="emoji-picker-grid">${emojiHTML}</div>
+        `;
+
+        // Search
+        const searchInput = picker.querySelector('.emoji-search-input');
+        searchInput.addEventListener('input', (ev) => { renderPicker(ev.target.value); });
+        searchInput.addEventListener('click', ev => ev.stopPropagation());
+        // Maintain focus
+        setTimeout(() => searchInput.focus(), 50);
+
+        // Close
+        picker.querySelector('.emoji-picker-close').addEventListener('click', () => {
+          if (typeof picker.cleanup === 'function') {
+            picker.cleanup();
+          } else {
+            picker.remove();
+            activeEmojiPicker = null;
+          }
+        });
+
+        // Tabs
+        picker.querySelectorAll('.emoji-tab-btn').forEach(btn => {
+          btn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            currentCategory = btn.getAttribute('data-cat');
+            renderPicker('');
+          });
+        });
+
+        // Emoji buttons
+        picker.querySelectorAll('.emoji-picker-btn').forEach(btn => {
+          btn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const emoji = btn.getAttribute('data-emoji');
+
+            const isContentEditable = targetInput.isContentEditable || targetInput.getAttribute('contenteditable') === 'true';
+            if (isContentEditable) {
+              targetInput.focus();
+              const selection = window.getSelection();
+              if (savedRange) {
+                selection.removeAllRanges();
+                selection.addRange(savedRange);
+              }
+
+              if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                range.deleteContents();
+
+                const textNode = document.createTextNode(emoji);
+                range.insertNode(textNode);
+
+                range.setStartAfter(textNode);
+                range.setEndAfter(textNode);
+                selection.removeAllRanges();
+                selection.addRange(range);
+
+                savedRange = range.cloneRange();
+              } else {
+                targetInput.innerText += emoji;
+              }
+              targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+            } else {
+              const start = targetInput.selectionStart || 0;
+              const end = targetInput.selectionEnd || 0;
+              const value = targetInput.value;
+              targetInput.value = value.slice(0, start) + emoji + value.slice(end);
+              targetInput.selectionStart = targetInput.selectionEnd = start + emoji.length;
+              targetInput.focus();
+              targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          });
+        });
+      }
+
+      renderPicker();
+
+      const wrapper = anchorEl.closest('.input-wrapper') || anchorEl.closest('.reel-comment-input-wrap') || anchorEl.closest('.create-post-input-wrapper') || anchorEl.closest('.search-bar');
+      if (wrapper) {
+        wrapper.style.position = 'relative';
+        wrapper.appendChild(picker);
+      } else {
+        anchorEl.parentElement.appendChild(picker);
+      }
+
+      activeEmojiPicker = picker;
+    }
+
+    document.addEventListener('click', (e) => {
+      const emojiBtn = e.target.closest('.emoji-trigger-btn');
+      if (emojiBtn) {
+        e.stopPropagation();
+
+        let input = null;
+        if (emojiBtn.classList.contains('header-search-emoji-btn')) {
+          const searchBar = emojiBtn.closest('.search-bar');
+          input = searchBar ? searchBar.querySelector('input') : null;
+        } else if (emojiBtn.closest('.create-post-input-wrapper')) {
+          const wrapper = emojiBtn.closest('.create-post-input-wrapper');
+          input = wrapper ? wrapper.querySelector('#postInput') : null;
+        } else {
+          const wrapper = emojiBtn.closest('.input-wrapper') || emojiBtn.closest('.comment-input-row') || emojiBtn.closest('.reply-input-row');
+          input = wrapper ? (wrapper.querySelector('.comment-input') || wrapper.querySelector('.reply-input')) : null;
+          if (!input) {
+            const reelForm = emojiBtn.closest('.reel-comment-form');
+            input = reelForm ? reelForm.querySelector('.reel-comment-input') : null;
+          }
+        }
+
+        if (input) {
+          createEmojiPicker(input, emojiBtn);
+        }
+        return;
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (activeEmojiPicker && !e.target.closest('.emoji-picker-popover') && !e.target.closest('.emoji-trigger-btn')) {
+        if (typeof activeEmojiPicker.cleanup === 'function') {
+          activeEmojiPicker.cleanup();
+        } else {
+          activeEmojiPicker.remove();
+          activeEmojiPicker = null;
+        }
+      }
+    });
+
+    // ---- Voice Recording ----
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordingTimer = null;
+    let recordingSeconds = 0;
+    let activeRecordingOverlay = null;
+    let activeRecordingPostId = null;
+    let activeRecordingParentId = null;
+
+    function formatRecordingTime(secs) {
+      const m = Math.floor(secs / 60).toString().padStart(2, '0');
+      const s = (secs % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    // Detect best supported MIME type for recording
+    function getBestAudioMimeType() {
+      const types = [
+        { mime: 'audio/webm;codecs=opus', ext: 'webm' },
+        { mime: 'audio/webm', ext: 'webm' },
+        { mime: 'audio/mp4', ext: 'mp4' },
+        { mime: 'audio/ogg;codecs=opus', ext: 'ogg' },
+        { mime: 'audio/ogg', ext: 'ogg' },
+        { mime: 'audio/wav', ext: 'wav' },
+      ];
+      for (const t of types) {
+        if (MediaRecorder.isTypeSupported(t.mime)) return t;
+      }
+      return { mime: '', ext: 'webm' };
+    }
+
+    // Setup voice note player: loads metadata and shows duration
+    function setupVoiceNotePlayer(player) {
+      const audio = player.querySelector('.voice-audio-element');
+      const durationEl = player.querySelector('.voice-duration');
+      if (!audio || !durationEl) return;
+
+      function formatDuration(seconds) {
+        if (!seconds || !isFinite(seconds)) return '0:00';
+        const s = Math.floor(seconds);
+        const m = Math.floor(s / 60);
+        return `${m}:${(s % 60).toString().padStart(2, '0')}`;
+      }
+
+      function trySetDuration() {
+        if (audio.duration && isFinite(audio.duration)) {
+          durationEl.textContent = formatDuration(audio.duration);
+          return true;
+        }
+        return false;
+      }
+
+      // Already has metadata loaded
+      if (audio.readyState >= 1) {
+        if (!trySetDuration()) {
+          // readyState >= 1 but duration not yet available — wait for durationchange
+          audio.addEventListener('durationchange', trySetDuration, { once: true });
+        }
+      } else {
+        // Metadata not yet loaded — listen to multiple events for cross-browser coverage
+        const onMeta = () => trySetDuration();
+        audio.addEventListener('loadedmetadata', onMeta, { once: true });
+        audio.addEventListener('durationchange', onMeta);
+        audio.addEventListener('canplay', () => {
+          if (trySetDuration()) {
+            audio.removeEventListener('durationchange', onMeta);
+          }
+        }, { once: true });
+        // Force metadata load on Safari
+        if (audio.readyState === 0) audio.load();
+      }
+    }
+
+    // Initialize all existing voice note players on page load
+    document.querySelectorAll('.voice-note-player').forEach(p => setupVoiceNotePlayer(p));
+
+    let _recordingMimeType = null;
+
+    async function startRecording(overlay, postId, parentId) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const { mime, ext } = getBestAudioMimeType();
+        _recordingMimeType = { mime, ext };
+        mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+        audioChunks = [];
+        recordingSeconds = 0;
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) audioChunks.push(event.data);
+        };
+
+        mediaRecorder.start(100);
+        activeRecordingOverlay = overlay;
+        activeRecordingPostId = postId;
+        activeRecordingParentId = parentId;
+
+        overlay.style.display = 'flex';
+
+        const timerEl = overlay.querySelector('.recording-timer');
+        recordingTimer = setInterval(() => {
+          recordingSeconds++;
+          if (timerEl) timerEl.textContent = formatRecordingTime(recordingSeconds);
+          if (recordingSeconds >= 120) {
+            const stopBtn = overlay.querySelector('.stop-recording-btn');
+            if (stopBtn) stopBtn.click();
+          }
+        }, 1000);
+      } catch (err) {
+        showToast('Microphone unavailable: ' + err.message);
+      }
+    }
+
+    function stopRecording(upload) {
+      if (!mediaRecorder) return;
+      clearInterval(recordingTimer);
+
+      mediaRecorder.onstop = async () => {
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+
+        if (upload && audioChunks.length > 0) {
+          const { mime, ext } = _recordingMimeType || { mime: 'audio/webm', ext: 'webm' };
+          const blob = new Blob(audioChunks, { type: mime || 'audio/webm' });
+          const voiceDurationSeconds = await new Promise((resolve) => {
+            const probe = document.createElement('audio');
+            const objectUrl = URL.createObjectURL(blob);
+            probe.preload = 'metadata';
+            probe.src = objectUrl;
+            probe.onloadedmetadata = () => {
+              const duration = Number.isFinite(probe.duration) ? Math.max(1, Math.round(probe.duration)) : null;
+              URL.revokeObjectURL(objectUrl);
+              resolve(duration);
+            };
+            probe.onerror = () => {
+              URL.revokeObjectURL(objectUrl);
+              resolve(null);
+            };
+          });
+          const formData = new FormData();
+          formData.append('audio', blob, `voice.${ext}`);
+          try {
+            showToast('Sending voice note...');
+            const res = await fetch('/api/comments/upload-voice', {
+              method: 'POST',
+              body: formData
+            });
+            const json = await res.json();
+            if (json.voiceUrl) {
+              const emitData = { postId: activeRecordingPostId, content: '', voiceUrl: json.voiceUrl, voiceDuration: voiceDurationSeconds };
+              if (activeRecordingParentId) emitData.parentId = parseInt(activeRecordingParentId, 10);
+              socket.emit('comment-create', emitData);
+              showToast('Voice note sent!');
+            } else {
+              showToast('Error sending the voice note');
+            }
+          } catch (err) {
+            showToast('Network error: ' + err.message);
+          }
+        }
+
+        audioChunks = [];
+        mediaRecorder = null;
+        _recordingMimeType = null;
+      };
+
+      mediaRecorder.stop();
+
+      if (activeRecordingOverlay) {
+        activeRecordingOverlay.style.display = 'none';
+        activeRecordingOverlay = null;
+      }
+    }
+
+    postsContainer.addEventListener('click', (e) => {
+      const voiceBtn = e.target.closest('.voice-trigger-btn');
+      if (voiceBtn) {
+        e.stopPropagation();
+        const postCard = voiceBtn.closest('.post-card');
+        const postId = postCard ? parseInt(postCard.getAttribute('data-post-id'), 10) : null;
+        const commentContainer = voiceBtn.closest('.comment-item-container');
+        const parentId = commentContainer ? commentContainer.getAttribute('data-comment-id') : null;
+        const overlay = voiceBtn.closest('.input-wrapper')?.querySelector('.voice-recording-overlay')
+          || voiceBtn.closest('.comment-input-row')?.querySelector('.voice-recording-overlay')
+          || voiceBtn.closest('.reply-input-row')?.querySelector('.voice-recording-overlay');
+
+        if (overlay && postId) {
+          startRecording(overlay, postId, parentId);
+        }
+        return;
+      }
+
+      const stopBtn = e.target.closest('.stop-recording-btn');
+      if (stopBtn) {
+        e.stopPropagation();
+        stopRecording(true);
+        return;
+      }
+
+      const cancelBtn = e.target.closest('.cancel-recording-btn');
+      if (cancelBtn) {
+        e.stopPropagation();
+        stopRecording(false);
+        return;
+      }
+
+      const playBtn = e.target.closest('.voice-play-btn');
+      if (playBtn) {
+        e.stopPropagation();
+        const player = playBtn.closest('.voice-note-player');
+        if (!player) return;
+        const audio = player.querySelector('.voice-audio-element');
+        const progress = player.querySelector('.voice-progress');
+        const durationEl = player.querySelector('.voice-duration');
+        const playIcon = playBtn.querySelector('i, svg');
+
+        // Pause all other players
+        document.querySelectorAll('.voice-note-player').forEach(p => {
+          if (p !== player) {
+            const a = p.querySelector('.voice-audio-element');
+            if (a && !a.paused) {
+              a.pause();
+              p.classList.remove('playing');
+              const icon = p.querySelector('.voice-play-btn i, .voice-play-btn svg');
+              if (icon) { icon.setAttribute('data-lucide', 'play'); }
+              if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+          }
+        });
+
+        if (audio.paused) {
+          audio.play().catch(() => { });
+          player.classList.add('playing');
+          if (playIcon) playIcon.setAttribute('data-lucide', 'pause');
+
+          audio.ontimeupdate = () => {
+            if (audio.duration && isFinite(audio.duration)) {
+              const pct = (audio.currentTime / audio.duration) * 100;
+              if (progress) progress.style.width = pct + '%';
+              const cur = Math.floor(audio.currentTime);
+              const tot = Math.floor(audio.duration);
+              const cm = Math.floor(cur / 60), cs = cur % 60;
+              const tm = Math.floor(tot / 60), ts = tot % 60;
+              if (durationEl) durationEl.textContent = `${cm}:${cs.toString().padStart(2, '0')} / ${tm}:${ts.toString().padStart(2, '0')}`;
+            }
+          };
+
+          audio.onended = () => {
+            player.classList.remove('playing');
+            if (playIcon) playIcon.setAttribute('data-lucide', 'play');
+            if (progress) progress.style.width = '0%';
+            // Restore total duration on end
+            if (audio.duration && isFinite(audio.duration)) {
+              const dur = Math.floor(audio.duration);
+              const m = Math.floor(dur / 60), s = dur % 60;
+              if (durationEl) durationEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+            }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+          };
+
+          audio.onloadedmetadata = () => {
+            const dur = Math.floor(audio.duration);
+            const m = Math.floor(dur / 60), s = dur % 60;
+            if (durationEl) durationEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+          };
+        } else {
+          audio.pause();
+          player.classList.remove('playing');
+          if (playIcon) playIcon.setAttribute('data-lucide', 'play');
+          // Restore total duration on pause
+          if (audio.duration && isFinite(audio.duration)) {
+            const dur = Math.floor(audio.duration);
+            const m = Math.floor(dur / 60), s = dur % 60;
+            if (durationEl) durationEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+            if (progress) progress.style.width = (audio.currentTime / audio.duration * 100) + '%';
+          }
+        }
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        return;
+      }
+
+      const timeline = e.target.closest('.voice-timeline');
+      if (timeline) {
+        e.stopPropagation();
+        const player = timeline.closest('.voice-note-player');
+        if (!player) return;
+        const audio = player.querySelector('.voice-audio-element');
+        if (!audio || !audio.duration) return;
+        const rect = timeline.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+        audio.currentTime = ratio * audio.duration;
+        const progress = player.querySelector('.voice-progress');
+        if (progress) progress.style.width = (ratio * 100) + '%';
+        return;
+      }
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const unhideBtn = e.target.closest('[data-hidden-post-action="unhide"]');
+    if (!unhideBtn) return;
+    e.preventDefault();
+    if (unhideBtn.disabled) return;
+    const postId = parseInt(unhideBtn.getAttribute('data-post-id'), 10);
+    if (!postId) return;
+    const originalLabel = unhideBtn.innerHTML;
+    unhideBtn.disabled = true;
+    unhideBtn.innerHTML = '<i data-lucide="loader-circle" class="spin"></i><span>Restauration...</span>';
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+    unhidePostFromSettings(postId, unhideBtn).catch((error) => {
+      unhideBtn.disabled = false;
+      unhideBtn.innerHTML = originalLabel;
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+      showToast(error.message || 'Impossible de restaurer ce post pour le moment.');
+    });
+  });
+
+  // --- Socket Responses Event Listeners ---
+
+  // 1. Response for like toggle
+  socket.on('like-response', (data) => {
+    const { postId, liked, count } = data;
+    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
+    if (postCard) {
+      const likeBtn = postCard.querySelector('.like-btn');
+      const likeCountSpan = postCard.querySelector('.like-count');
+      if (likeBtn && likeCountSpan) {
+        if (liked) {
+          likeBtn.classList.add('liked');
+        } else {
+          likeBtn.classList.remove('liked');
+        }
+        likeBtn.setAttribute('data-likes', count);
+        likeCountSpan.textContent = formatNumber(count);
+      }
+    }
+  });
+
+  // Broadcast updates of other users' likes
+  socket.on('post-liked', (data) => {
+    const { postId, likes_count } = data;
+    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
+    if (postCard) {
+      const likeBtn = postCard.querySelector('.like-btn');
+      const likeCountSpan = postCard.querySelector('.like-count');
+      if (likeBtn && likeCountSpan) {
+        likeBtn.setAttribute('data-likes', likes_count);
+        likeCountSpan.textContent = formatNumber(likes_count);
+      }
+    }
+  });
+
+  socket.on('post-shared', (data) => {
+    const { postId, shares_count } = data;
+    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
+    if (postCard) {
+      const shareBtn = postCard.querySelector('.share-btn');
+      if (shareBtn) {
+        shareBtn.setAttribute('data-shares', shares_count);
+        const countNode = shareBtn.querySelector('.share-count');
+        if (countNode) countNode.textContent = formatNumber(shares_count);
+      }
+    }
+  });
+
+  // 2. Response for bookmark toggle
+  socket.on('bookmark-response', (data) => {
+    const { postId, bookmarked } = data;
+    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
+    if (postCard) {
+      const bookmarkBtn = postCard.querySelector('.post-bookmark-btn');
+      if (bookmarkBtn) {
+        if (bookmarked) {
+          bookmarkBtn.classList.add('bookmarked');
+          showToast("Post added to Bookmarks");
+        } else {
+          bookmarkBtn.classList.remove('bookmarked');
+          showToast("Post removed from Bookmarks");
+
+          // If in bookmarks view, animate the card out and hide it
+          if (window.currentView === 'bookmarks') {
+            postCard.classList.add('fade-out');
+            setTimeout(() => {
+              postCard.style.display = 'none';
+              postCard.classList.remove('fade-out'); // clean up class
+
+              // Recount visible bookmarks to check if we show the empty state
+              const remainingPosts = document.querySelectorAll('.post-card');
+              let visibleBookmarks = 0;
+              remainingPosts.forEach(card => {
+                if (card.style.display !== 'none') {
+                  visibleBookmarks++;
+                }
+              });
+
+              const emptyState = document.getElementById('bookmarksEmptyState');
+              if (emptyState) {
+                emptyState.style.display = visibleBookmarks === 0 ? 'flex' : 'none';
+              }
+            }, 400); // matches the css transition duration (400ms)
+          }
+        }
+      }
+    }
+  });
+
+  // 3. Comment append in real time
+  socket.on('comment-created', (data) => {
+    const { id, postId, user_name, user_avatar, certification_type, content, parent_id, voice_url, voice_duration_seconds, created_at } = data;
+    const certificationBadgeHtml = renderCertificationBadgeHtml(certification_type);
+    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
+    if (postCard) {
+      const list = postCard.querySelector('.comments-list');
+      if (list) {
+        if (parent_id) {
+          // This is a reply to an existing comment
+          const directParentEl = list.querySelector(`.comment-item-container[data-comment-id="${parent_id}"], .reply-item[data-reply-id="${parent_id}"]`);
+          const parentContainer = directParentEl ? (directParentEl.closest('.comment-item-container') || directParentEl) : null;
+
+          if (parentContainer) {
+            const repliesContainer = parentContainer.querySelector('.replies-list-container');
+
+            // Resolve parent depth from DOM attribute
+            const parentDepth = parseInt(directParentEl?.getAttribute('data-depth') || '0', 10);
+            const depth = parentDepth + 1;
+
+            // Resolve target name of parent directly from DOM attribute
+            const replyToName = directParentEl ? directParentEl.getAttribute('data-comment-author') : null;
+
+            // Count existing replies
+            const existingReplies = repliesContainer.querySelectorAll('.reply-item');
+            const replyIndex = existingReplies.length;
+
+            // Create new reply element
+            const replyEl = document.createElement('div');
+            replyEl.className = 'reply-item';
+            replyEl.setAttribute('data-reply-id', id);
+            replyEl.setAttribute('data-comment-id', id);
+            replyEl.setAttribute('data-depth', String(depth));
+            replyEl.setAttribute('data-comment-type', voice_url ? 'voice' : 'text');
+            replyEl.setAttribute('data-comment-author', user_name);
+            replyEl.style.display = 'flex';
+            replyEl.style.gap = '8px';
+            replyEl.style.alignItems = 'flex-start';
+            replyEl.style.width = '100%';
+
+            // Indent based on depth (each depth level above 1 adds 16px margin)
+            if (depth > 1) {
+              replyEl.style.marginLeft = `${Math.min((depth - 1) * 16, 48)}px`;
+            }
+
+            // Determine if it should be visible based on current expansion state
+            const readMoreBtn = repliesContainer.querySelector('.read-more-replies-btn');
+            const isCollapsed = readMoreBtn && !readMoreBtn.textContent.includes('Hide');
+
+            if (replyIndex >= 2 && isCollapsed) {
+              replyEl.style.display = 'none';
+            } else {
+              replyEl.style.display = 'flex';
+            }
+
+            replyEl.innerHTML = `
+              <div class="avatar" style="width: 24px; height: 24px; flex-shrink: 0; overflow: hidden;">
+                <img src="${user_avatar}" style="width:100%; height:100%; object-fit:cover;">
+              </div>
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                <div style="background: var(--bg-hover); padding: 8px 12px; border-radius: 12px; font-size: 12.5px; border: 1px solid var(--border-color); color: var(--text-primary); width: fit-content; max-width: 100%; word-break: break-word;">
+                  <strong style="color: var(--text-primary); font-size: 11.5px; display: block; margin-bottom: 2px;">${user_name}${certificationBadgeHtml}</strong>
+                  ${replyToName ? `<span class="comment-reply-to" style="color: #3b82f6; font-weight: 700; margin-right: 4px;">@${escapeHtml(replyToName)}</span>` : ''}${escapeHtml(content)}
+                  
+                  ${voice_url ? `
+                    <div class="voice-note-player" style="display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.05); padding: 4px 8px; border-radius: 20px; border: 1px solid var(--border-color); margin-top: 4px; max-width: 200px; user-select: none;">
+                      <button type="button" class="voice-play-btn" style="width: 22px; height: 22px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.2s;">
+                        <i data-lucide="play" style="width: 9px; height: 9px; fill: white;"></i>
+                      </button>
+                      <div class="voice-waveform"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+                      <div class="voice-timeline-wrap" style="flex: 1; display: flex; align-items: center; min-width: 0;">
+                        <div class="voice-timeline" style="flex: 1; height: 3px; background: var(--border-color); border-radius: 1.5px; position: relative; cursor: pointer; min-width: 60px;">
+                          <div class="voice-progress" style="width: 0%; height: 100%; background: var(--primary); border-radius: 1.5px; position: absolute; left: 0; top: 0;"></div>
+                        </div>
+                      </div>
+                      <span class="voice-duration" style="font-size: 9px; color: var(--text-muted); font-family: monospace; min-width: 52px; text-align: right; white-space: nowrap;">${formatCommentVoiceDuration(voice_duration_seconds)}</span>
+                      <audio class="voice-audio-element" src="${voice_url}" preload="metadata" style="display: none;"></audio>
+                    </div>
+                  ` : ''}
+                </div>
+                <div style="display: flex; gap: 12px; padding-left: 8px; font-size: 10px; align-items: center;">
+                  <button class="comment-action-btn reply-trigger-btn" style="background: none; border: none; padding: 0; color: var(--text-secondary); cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                    <i data-lucide="reply" style="width: 12px; height: 12px;"></i> Reply
+                  </button>
+                  <span style="color: var(--text-muted);">${new Date(created_at || new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </div>
+            `;
+
+            const replyInputRow = document.createElement('div');
+            replyInputRow.className = 'reply-input-row';
+            replyInputRow.style.display = 'none';
+            replyInputRow.style.marginLeft = '12px';
+            replyInputRow.style.alignItems = 'center';
+            replyInputRow.style.gap = '8px';
+            replyInputRow.style.marginTop = '4px';
+            replyInputRow.innerHTML = `
+              <div class="avatar" style="width: 24px; height: 24px; flex-shrink: 0; overflow: hidden;">
+                <img src="${window.currentUserAvatar || '/images/default-avatar.png'}" style="width:100%; height:100%; object-fit:cover;">
+              </div>
+              <div class="input-wrapper" style="position: relative; flex: 1; display: flex; align-items: center;">
+                <input type="text" placeholder="${voice_url ? `Reply to ${user_name}'s voice note...` : `Reply to ${user_name}'s text comment...`}" class="reply-input" style="width: 100%; padding: 6px 84px 6px 12px; border-radius: 16px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-primary); font-size: 12px; outline: none;">
+                <div class="comment-actions-container" style="position: absolute; right: 8px; display: flex; align-items: center; gap: 4px;">
+                  <button type="button" class="comment-icon-btn voice-trigger-btn" title="Record a voice note" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
+                    <i data-lucide="mic" style="width: 12px; height: 12px;"></i>
+                  </button>
+                  <button type="button" class="comment-icon-btn emoji-trigger-btn" title="Add an emoji" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
+                    <i data-lucide="smile" style="width: 12px; height: 12px;"></i>
+                  </button>
+                  <button class="submit-reply-btn" style="color: var(--primary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center;">
+                    <i data-lucide="send" style="width: 12px; height: 12px;"></i>
+                  </button>
+                </div>
+              </div>
+            `;
+
+            // Insert reply element before the "Read more" button if it exists, or just append
+            if (readMoreBtn) {
+              repliesContainer.insertBefore(replyEl, readMoreBtn);
+              repliesContainer.insertBefore(replyInputRow, readMoreBtn);
+            } else {
+              repliesContainer.appendChild(replyEl);
+              repliesContainer.appendChild(replyInputRow);
+            }
+            refreshReplyLoadMore(repliesContainer);
+
+            // Initialize voice note player if present in the new reply
+            const newVoicePlayer = replyEl.querySelector('.voice-note-player');
+            if (newVoicePlayer) setupVoiceNotePlayer(newVoicePlayer);
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            // If total replies > 2, manage the "Read more" button
+            const totalReplies = replyIndex + 1;
+            if (totalReplies > 2) {
+              if (!readMoreBtn) {
+                // Create the button
+                const btn = document.createElement('button');
+                btn.className = 'read-more-replies-btn';
+                btn.style.alignSelf = 'flex-start';
+                btn.style.background = 'none';
+                btn.style.border = 'none';
+                btn.style.color = 'var(--primary)';
+                btn.style.fontSize = '11.5px';
+                btn.style.fontWeight = '600';
+                btn.style.cursor = 'pointer';
+                btn.style.padding = '4px 0';
+                btn.style.marginTop = '2px';
+                btn.style.display = 'flex';
+                btn.style.alignItems = 'center';
+                btn.style.gap = '4px';
+                btn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Show ${totalReplies - 2} more replies`;
+                repliesContainer.appendChild(btn);
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+              } else {
+                // Update text
+                const remainingCount = totalReplies - 2;
+                const isExpanded = readMoreBtn.textContent.includes('Hide');
+                if (!isExpanded) {
+                  readMoreBtn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Show ${remainingCount} more replies`;
+                  if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+              }
+            }
+          }
+        } else {
+          // This is a top-level comment
+          const commentContainer = document.createElement('div');
+          commentContainer.className = 'comment-item-container';
+          commentContainer.setAttribute('data-comment-id', id);
+          commentContainer.setAttribute('data-comment-type', voice_url ? 'voice' : 'text');
+          commentContainer.setAttribute('data-comment-author', user_name);
+          commentContainer.style.display = 'flex';
+          commentContainer.style.flexDirection = 'column';
+          commentContainer.style.gap = '8px';
+
+          commentContainer.innerHTML = `
+            <div style="display: flex; gap: 10px; align-items: flex-start;">
+              <div class="avatar" style="width: 30px; height: 30px; flex-shrink: 0; overflow: hidden;">
+                <img src="${user_avatar}" style="width:100%; height:100%; object-fit:cover;">
+              </div>
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                <div style="background: var(--bg-card); padding: 10px 14px; border-radius: 14px; font-size: 13px; border: 1px solid var(--border-color); color: var(--text-primary); width: fit-content; max-width: 100%; word-break: break-word;">
+                  <strong style="color: var(--text-primary); font-size: 12.5px; display: block; margin-bottom: 2px;">${user_name}${certificationBadgeHtml}</strong>
+                  ${escapeHtml(content)}
+                  
+                  ${voice_url ? `
+                    <div class="voice-note-player" style="display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.05); padding: 4px 8px; border-radius: 20px; border: 1px solid var(--border-color); margin-top: 4px; max-width: 200px; user-select: none;">
+                      <button type="button" class="voice-play-btn" style="width: 22px; height: 22px; border-radius: 50%; background: var(--primary); color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.2s;">
+                        <i data-lucide="play" style="width: 9px; height: 9px; fill: white;"></i>
+                      </button>
+                      <div class="voice-waveform"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+                      <div class="voice-timeline-wrap" style="flex: 1; display: flex; align-items: center; min-width: 0;">
+                        <div class="voice-timeline" style="flex: 1; height: 3px; background: var(--border-color); border-radius: 1.5px; position: relative; cursor: pointer; min-width: 60px;">
+                          <div class="voice-progress" style="width: 0%; height: 100%; background: var(--primary); border-radius: 1.5px; position: absolute; left: 0; top: 0;"></div>
+                        </div>
+                      </div>
+                  <span class="voice-duration" style="font-size: 9px; color: var(--text-muted); font-family: monospace; min-width: 52px; text-align: right; white-space: nowrap;">${formatCommentVoiceDuration(voice_duration_seconds)}</span>
+                  <audio class="voice-audio-element" src="${voice_url}" preload="metadata" style="display: none;"></audio>
+                </div>
+              ` : ''}
+                </div>
+                <div style="display: flex; gap: 12px; padding-left: 8px; font-size: 11px;">
+                  <button class="comment-action-btn reply-trigger-btn" style="background: none; border: none; padding: 0; color: var(--text-secondary); cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                    <i data-lucide="reply" style="width: 12px; height: 12px;"></i> Reply
+                  </button>
+                  <span style="color: var(--text-muted);">${new Date(created_at || new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </div>
+            </div>
+            <div class="replies-list-container" style="margin-left: 40px; display: flex; flex-direction: column; gap: 8px; border-left: 2px solid var(--border-color); padding-left: 14px;">
+            </div>
+            <div class="reply-input-row" style="display: none; margin-left: 40px; align-items: center; gap: 8px; margin-top: 4px;">
+              <div class="avatar" style="width: 24px; height: 24px; flex-shrink: 0; overflow: hidden;">
+                <img src="${window.currentUserAvatar || '/images/default-avatar.png'}" style="width:100%; height:100%; object-fit:cover;">
+              </div>
+              <div class="input-wrapper" style="position: relative; flex: 1; display: flex; align-items: center;">
+                <input type="text" placeholder="${voice_url ? `Reply to ${user_name}'s voice note...` : `Reply to ${user_name}'s text comment...`}" class="reply-input" style="width: 100%; padding: 6px 84px 6px 12px; border-radius: 16px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-primary); font-size: 12px; outline: none;">
+                <div class="comment-actions-container" style="position: absolute; right: 8px; display: flex; align-items: center; gap: 4px;">
+                  <button type="button" class="comment-icon-btn voice-trigger-btn" title="Record a voice note" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
+                    <i data-lucide="mic" style="width: 12px; height: 12px;"></i>
+                  </button>
+                  <button type="button" class="comment-icon-btn emoji-trigger-btn" title="Add an emoji" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
+                    <i data-lucide="smile" style="width: 12px; height: 12px;"></i>
+                  </button>
+                  <button class="submit-reply-btn" style="color: var(--primary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center;">
+                    <i data-lucide="send" style="width: 12px; height: 12px;"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+          list.appendChild(commentContainer);
+          refreshRootCommentLoadMore(list);
+          // Initialize voice note player if present in the new comment
+          const newVoicePlayer = commentContainer.querySelector('.voice-note-player');
+          if (newVoicePlayer) setupVoiceNotePlayer(newVoicePlayer);
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+      }
+
+      // Increment comment count UI
+      const commentBtn = postCard.querySelector('.comment-btn');
+      if (commentBtn) {
+        const commentLabel = commentBtn.querySelector('.action-label');
+        let count = parseInt(commentBtn.getAttribute('data-comments') || '0', 10);
+        count++;
+        commentBtn.setAttribute('data-comments', count);
+        const commentCountSpan = commentBtn.querySelector('.comment-count');
+        if (commentCountSpan) {
+          commentCountSpan.textContent = formatNumber(count);
+        } else {
+          commentLabel.innerHTML = `<span class="comment-count">${formatNumber(count)}</span><span class="btn-text-label"> Comment</span>`;
+        }
+      }
+      showToast("New comment posted!");
+    }
+  });
+
+  socket.on('notification-created', (notification) => {
+    prependNotificationItem(notification);
+    const currentCount = Number(notificationBadge?.textContent?.replace(/[^0-9]/g, '') || 0);
+    setNotificationBadgeCount(currentCount + 1);
+  });
+
+  socket.on('notification-count-updated', ({ unreadCount }) => {
+    setNotificationBadgeCount(unreadCount);
+  });
+
+  socket.on('notifications-marked-read', () => {
+    setNotificationItemsRead();
+    setNotificationBadgeCount(0);
+  });
+
+  socket.on('follow-state-updated', (payload) => {
+    if (!payload) return;
+    syncFollowButtons(payload.targetId, payload.isFollowing);
+
+    const viewedProfileId = Number(window.viewedProfileId || window.currentUserId);
+    if (Number(payload.actorId) === Number(viewedProfileId)) {
+      updateFollowStat('following', payload.followingCount);
+    }
+
+    if (Number(payload.targetId) === Number(viewedProfileId)) {
+      updateFollowStat('followers', payload.followersCount);
+    }
+
+    const currentUserId = getCurrentUserId();
+    if (Number(payload.actorId) === currentUserId) {
+      syncConversationFollowState(Number(payload.targetId), !!payload.isFollowing, undefined);
+    } else if (Number(payload.targetId) === currentUserId) {
+      syncConversationFollowState(Number(payload.actorId), undefined, !!payload.isFollowing);
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    const followBtn = e.target.closest('.follow-toggle-btn');
+    if (!followBtn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handleFollowToggleClick(followBtn);
+  });
+
+  socket.on('balance-updated', (payload) => {
+    if (!payload) return;
+    syncBalanceWidgets(payload);
+    if (Number(payload.userId) === getCurrentUserId()) {
+      showToast(payload.message || 'Balance updated.');
+    }
+  });
+
+  socket.on('deposit-status', (data) => {
+    if (!data) return;
+    const badge = document.getElementById('depositStatusBadge');
+    const msg = document.getElementById('depositStatusMessage');
+    
+    if (badge && msg) {
+      if (data.type === 'pending') {
+        badge.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #eab308; animation: pulse 1.5s infinite;"></span> En attente (${data.confirmations}/${data.required})`;
+        msg.textContent = data.message;
+        msg.style.color = '#eab308';
+      } else if (data.type === 'confirmed') {
+        badge.innerHTML = `<span style="color: #10b981; font-weight: 600;">✓</span> Confirmé`;
+        msg.textContent = data.message || 'Dépôt crédité avec succès !';
+        msg.style.color = '#10b981';
+      }
+    }
+  });
+
+  socket.on('withdrawal-status', (data) => {
+    if (!data) return;
+    const icon = document.getElementById('withdrawStatusIcon');
+    const title = document.getElementById('withdrawStatusTitle');
+    const desc = document.getElementById('withdrawStatusDesc');
+    const closeBtn = document.getElementById('withdrawCloseStatusBtn');
+    
+    if (icon && title && desc && closeBtn) {
+      icon.className = '';
+      if (data.type === 'completed') {
+        icon.setAttribute('data-lucide', 'check-circle');
+        icon.style.color = '#10b981';
+        title.textContent = 'Retrait réussi !';
+        const feePct = Number(window.withdrawalFeePercent !== undefined ? window.withdrawalFeePercent : 30);
+        const netAmt = Number(data.netAmount !== undefined ? data.netAmount : (data.amount * (1 - feePct / 100)));
+        const feePercentVal = data.amount > 0 ? Math.round((1 - (netAmt / data.amount)) * 100) : feePct;
+        desc.innerHTML = `Votre retrait de <strong>${data.amount.toFixed(2)} USDT</strong> a été envoyé avec succès (Somme reçue : <strong>${netAmt.toFixed(2)} USDT</strong> après ${feePercentVal}% de frais).<br><br>Hash de transaction : <br><code style="font-family: monospace; font-size: 11px; word-break: break-all; background: rgba(0,0,0,0.2); padding: 2px 4px; border-radius: 4px;">${data.txHash}</code>`;
+      } else if (data.type === 'failed') {
+        icon.setAttribute('data-lucide', 'x-circle');
+        icon.style.color = 'var(--danger)';
+        title.textContent = 'Retrait échoué';
+        desc.textContent = `Erreur blockchain : ${data.error || 'Erreur inconnue'}. Votre solde a été restitué.`;
+      }
+      closeBtn.style.display = 'block';
+      if (window.lucide) window.lucide.createIcons();
+    }
+  });
+
+  socket.on('post-gift-received', (payload) => {
+    if (!payload) return;
+    const senderName = payload.senderName || 'Quelqu un';
+    const giftName = payload.giftName || 'un cadeau';
+    const amount = Number(payload.amount || 0);
+    showToast(`${senderName} vous a envoye ${giftName} pour $${amount.toFixed(2)}.`);
+  });
+
+  socket.on('birthday-gift-received', (payload) => {
+    if (!payload) return;
+    const senderName = payload.senderName || 'Quelqu un';
+    const giftName = payload.giftName || 'un cadeau';
+    const amount = Number(payload.amount || 0);
+    showToast(`${senderName} vous a envoye ${giftName} pour votre anniversaire pour $${amount.toFixed(2)}.`);
+  });
+
+  // Trade Post event handlers
+  socket.on('post-trade-error', (data) => {
+    document.querySelectorAll('.trade-btn[data-trade-pending="1"]').forEach((btn) => {
+      clearTradePendingState(btn);
+    });
+    showToast(data?.error || 'Le trade du post a echoue.');
+  });
+
+  socket.on('post-traded', (data) => {
+    const {
+      postId,
+      lastPossessionUserId,
+      newPrice,
+      buyerId,
+      buyerNewDepositBalance,
+      buyerNewTokenBalance,
+      previousOwnerUserId,
+      payoutRecipientType,
+      payoutRecipientUserId,
+      payoutRecipientNewWithdrawalBalance,
+      tokenBonus,
+      priceDropped
+    } = data;
+
+    syncPostTradeButtons(postId, lastPossessionUserId, newPrice);
+
+    // 2. Update current user balances in DOM if they were involved
+    if (getCurrentUserId() === Number(buyerId)) {
+      showToast(`Trade purchase successful! New price: $${newPrice}. ${tokenBonus > 0 ? tokenBonus + ' tokens refunded!' : ''}`);
+      const depositEl = document.getElementById('profile-deposit-balance');
+      const tokenEl = document.getElementById('profile-token-balance');
+      if (depositEl) depositEl.textContent = `$${parseFloat(buyerNewDepositBalance).toFixed(2)}`;
+      if (tokenEl) tokenEl.textContent = buyerNewTokenBalance;
+      if (Number.isFinite(Number(buyerNewDepositBalance))) {
+        window.currentUserDepositBalance = Number(buyerNewDepositBalance);
+      }
+      if (Number.isFinite(Number(buyerNewTokenBalance))) {
+        window.currentUserTokenBalance = Number(buyerNewTokenBalance);
+      }
+      syncShortTradeBalanceInfo(buyerNewTokenBalance);
+    } else if (payoutRecipientType === 'user' && getCurrentUserId() === Number(payoutRecipientUserId)) {
+      showToast('Your post was traded. The amount was added to your withdrawal account.');
+      const formattedWithdrawalBalance = payoutRecipientNewWithdrawalBalance !== null
+        ? `$${parseFloat(payoutRecipientNewWithdrawalBalance).toFixed(2)}`
+        : null;
+      const withdrawalEl = document.getElementById('profile-withdrawal-balance');
+      const settingsWithdrawalEl = document.getElementById('settings-withdrawal-balance');
+      if (withdrawalEl && formattedWithdrawalBalance) {
+        withdrawalEl.textContent = formattedWithdrawalBalance;
+      }
+      if (settingsWithdrawalEl && formattedWithdrawalBalance) {
+        settingsWithdrawalEl.textContent = formattedWithdrawalBalance;
+      }
+    } else if (getCurrentUserId() === Number(previousOwnerUserId) && payoutRecipientType === 'admin') {
+      showToast('Your post was traded. Because the previous price had dropped, this payment was routed to admin.');
+    }
+  });
+
+  socket.on('reel-trade-error', (data) => {
+    document.querySelectorAll('.reel-trade-btn[data-trade-pending="1"]').forEach((btn) => {
+      clearTradePendingState(btn);
+    });
+    showToast(data?.error || 'Le trade du short a echoue.');
+  });
+
+  socket.on('reel-traded', (data) => {
+    const {
+      reelId,
+      lastPossessionUserId,
+      newPrice,
+      buyerId,
+      buyerNewDepositBalance,
+      buyerNewTokenBalance,
+      previousOwnerUserId,
+      payoutRecipientType,
+      payoutRecipientUserId,
+      payoutRecipientNewWithdrawalBalance,
+      tokenBonus,
+      priceDropped
+    } = data;
+    syncReelTradeButtons(reelId, lastPossessionUserId, newPrice);
+
+    if (getCurrentUserId() === Number(buyerId)) {
+      showToast(`Short trade successful! New price: $${newPrice}. ${tokenBonus > 0 ? tokenBonus + ' tokens refunded!' : ''}`);
+      const depositEl = document.getElementById('profile-deposit-balance');
+      const tokenEl = document.getElementById('profile-token-balance');
+      if (depositEl) depositEl.textContent = `$${parseFloat(buyerNewDepositBalance).toFixed(2)}`;
+      if (tokenEl) tokenEl.textContent = buyerNewTokenBalance;
+      if (Number.isFinite(Number(buyerNewDepositBalance))) {
+        window.currentUserDepositBalance = Number(buyerNewDepositBalance);
+      }
+      if (Number.isFinite(Number(buyerNewTokenBalance))) {
+        window.currentUserTokenBalance = Number(buyerNewTokenBalance);
+      }
+      syncShortTradeBalanceInfo(buyerNewTokenBalance);
+    } else if (payoutRecipientType === 'user' && getCurrentUserId() === Number(payoutRecipientUserId)) {
+      showToast('Your short was traded. The amount was added to your withdrawal account.');
+      const formattedWithdrawalBalance = payoutRecipientNewWithdrawalBalance !== null
+        ? `$${parseFloat(payoutRecipientNewWithdrawalBalance).toFixed(2)}`
+        : null;
+      const withdrawalEl = document.getElementById('profile-withdrawal-balance');
+      const settingsWithdrawalEl = document.getElementById('settings-withdrawal-balance');
+      if (withdrawalEl && formattedWithdrawalBalance) {
+        withdrawalEl.textContent = formattedWithdrawalBalance;
+      }
+      if (settingsWithdrawalEl && formattedWithdrawalBalance) {
+        settingsWithdrawalEl.textContent = formattedWithdrawalBalance;
+      }
+    } else if (getCurrentUserId() === Number(previousOwnerUserId) && payoutRecipientType === 'admin') {
+      showToast('Your short was traded. Because the previous price had dropped, this payment was routed to admin.');
+    }
+  });
+
+  // 4. Render new post in real time
+  socket.on('post-created', (post) => {
+    if (postsContainer) {
+      const newPost = document.createElement('article');
+      newPost.className = 'post-card';
+      newPost.setAttribute('data-post-id', post.id);
+      newPost.setAttribute('data-feed-item-type', 'post');
+      newPost.setAttribute('data-created-at', post.created_at || new Date().toISOString());
+      newPost.setAttribute('data-post-user-id', post.user_id);
+      newPost.setAttribute('data-challenge-type', post.challenge_type || '');
+
+      // Background rendering supporting bg_image_url
+      let postContentHtml = '';
+      if (post.bg_image_url) {
+        const alignMap = { 'left': 'flex-start', 'right': 'flex-end', 'center': 'center' };
+        const posMap = { 'top': 'flex-start', 'center': 'center', 'bottom': 'flex-end' };
+        const alignVal = alignMap[post.text_alignment] || 'center';
+        const posVal = posMap[post.text_position] || 'center';
+
+        postContentHtml = `
+          <div class="post-bg-container" style="background-image: url('${post.bg_image_url}'); color: ${post.text_color || '#ffffff'}; text-align: ${post.text_alignment || 'center'}; font-family: ${post.text_font || "'Outfit', sans-serif"}; align-items: ${alignVal}; justify-content: ${posVal}; font-size: ${post.text_size || '20px'}; --bg-text-size: ${post.text_size || '20px'};">
+            <p class="formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="width: 100%; text-align: inherit; margin: 0; padding: 0; white-space: pre-wrap;">${renderHashtagRichText(post.content || '')}</p>
+          </div>
+        `;
+        if (post.challenge_type) {
+          postContentHtml += renderChallengeCardHtml(post);
+        }
+      } else {
+        postContentHtml = '';
+        if (post.content && post.content.trim() && !post.challenge_type) {
+          postContentHtml += `<p class="post-text formatted-hashtag-text" data-raw-text="${escapeHtml(post.content || '')}" style="padding: 0 20px 16px 20px;">${renderHashtagRichText(post.content || '')}</p>`;
+        }
+        if (post.challenge_type) {
+          postContentHtml += renderChallengeCardHtml(post);
+        }
+        if (Number(post.is_live) === 1) {
+          const ytId = getYouTubeId(post.live_url);
+          const isUnlocked = !post.live_price || parseFloat(post.live_price) === 0 || post.is_live_unlocked || (getCurrentUserId() === post.user_id);
+          
+          postContentHtml += `
+            <div class="post-single-live" style="padding: 0 20px 16px 20px;">
+              ${isUnlocked ? `
+                <div class="post-live-shell" data-youtube-id="${ytId}" id="live-player-container-${post.id}" style="position: relative; border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 16/9;">
+                  <iframe id="youtube-player-${post.id}" 
+                          src="https://www.youtube.com/embed/${ytId}?enablejsapi=1&controls=0&autoplay=0&rel=0" 
+                          frameborder="0" 
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                          allowfullscreen
+                          style="width: 100%; height: 100%; border-radius: 12px; display: block;">
+                  </iframe>
+                  <div class="custom-live-controls" style="position: absolute; bottom: 12px; left: 12px; right: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; z-index: 10; pointer-events: auto;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <button type="button" class="live-control-btn play-pause-btn" data-post-id="${post.id}" aria-label="Play/Pause" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; width: 36px; height: 36px; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(8px); transition: all 0.2s;">
+                        <i data-lucide="play" class="play-icon" style="width: 16px; height: 16px;"></i>
+                        <i data-lucide="pause" class="pause-icon" style="width: 16px; height: 16px; display: none;"></i>
+                      </button>
+                      <span class="live-badge-overlay" style="background: #ef4444; color: white; font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 6px; letter-spacing: 0.05em; display: flex; align-items: center; gap: 4px;">
+                        <span style="width: 6px; height: 6px; background: white; border-radius: 50%; display: inline-block; animation: pulse 1.5s infinite;"></span> LIVE
+                      </span>
+                    </div>
+                    ${getCurrentUserId() === post.user_id ? `
+                      <button type="button" class="end-live-btn" data-post-id="${post.id}" style="background: #ef4444; border: none; border-radius: 8px; padding: 6px 12px; color: white; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);">
+                        Terminer le live
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              ` : `
+                <!-- Paywall Card -->
+                <div class="post-live-paywall" id="live-player-container-${post.id}" data-youtube-id="${ytId}" style="position: relative; border-radius: 12px; overflow: hidden; background: linear-gradient(135deg, #1e1b4b 0%, #311042 100%); aspect-ratio: 16/9; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; border: 1px solid rgba(255,255,255,0.08); box-shadow: inset 0 0 40px rgba(0,0,0,0.6);">
+                  <div style="background: rgba(255, 255, 255, 0.06); border-radius: 50%; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(8px);">
+                    <i data-lucide="lock" style="color: #a78bfa; width: 24px; height: 24px;"></i>
+                  </div>
+                  <h4 style="margin: 0 0 6px 0; color: white; font-size: 15px; font-weight: 700;">Diffusion Premium</h4>
+                  <p style="margin: 0 0 16px 0; color: #cbd5e1; font-size: 12px; max-width: 260px;">Accédez au flux vidéo en direct de ${post.author_name}</p>
+                  <button type="button" class="unlock-live-btn" data-post-id="${post.id}" data-price="${post.live_price}" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); border: none; border-radius: 10px; padding: 10px 20px; color: white; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);">
+                    <i data-lucide="zap" style="width: 14px; height: 14px;"></i>
+                    Débloquer pour ${Number(post.live_price).toFixed(2)}$
+                  </button>
+                </div>
+              `}
+            </div>
+          `;
+          
+          setTimeout(() => {
+            if (isUnlocked) {
+              window.initYouTubePlayer(post.id, ytId);
+            }
+          }, 100);
+        } else if (post.media_type === 'video') {
+          const canDownload = Number(post.allow_download) !== 0;
+          postContentHtml += `
+            <div class="post-single-video">
+                <div class="post-video-shell">
+                  <video src="${post.image_url}" class="post-video" preload="metadata" playsinline poster="${post.thumbnail_url || ''}" oncontextmenu="return false;"></video>
+                  <div class="custom-video-controls">
+                    <div class="video-controls-left">
+                      <button type="button" class="video-control-btn" data-video-control="play" aria-label="Play video" title="Play">
+                        <i data-lucide="play"></i>
+                      </button>
+                    </div>
+                    <div class="video-controls-center">
+                      <span class="video-time video-current-time">0:00</span>
+                      <input type="range" class="video-progress-slider" min="0" max="100" value="0" step="0.1" aria-label="Video progress">
+                      <span class="video-time video-duration">0:00</span>
+                    </div>
+                    <div class="video-controls-right">
+                      <button type="button" class="video-control-btn" data-video-control="mute" aria-label="Mute" title="Sound">
+                        <i data-lucide="volume-2"></i>
+                      </button>
+                      <input type="range" class="video-volume-slider" min="0" max="1" value="1" step="0.05" aria-label="Volume">
+                      ${canDownload ? `
+                        <button type="button" class="video-control-btn" data-video-download data-post-id="${post.id}" data-video-url="${post.image_url}" data-video-author="${post.author_username}" aria-label="Download video with watermark" title="Download with watermark">
+                          <i data-lucide="download"></i>
+                        </button>
+                      ` : ''}
+                      <button type="button" class="video-control-btn" data-video-control="fullscreen" aria-label="Fullscreen" title="Fullscreen">
+                        <i data-lucide="maximize"></i>
+                      </button>
+                    </div>
+                  </div>
+                <div class="video-download-status" aria-live="polite"></div>
+              </div>
+            </div>
+          `;
+        } else {
+          const postImages = [post.image_url, post.image_url_2, post.image_url_3, post.image_url_4].filter(Boolean);
+          const imgCount = postImages.length;
+          if (imgCount === 4) {
+            postContentHtml += `
+              <div class="post-images-grid grid-4" data-images="${postImages.join(',')}" style="cursor: pointer;">
+                <div class="grid-image-wrapper">
+                  <img src="${post.image_url}" class="post-img" alt="Post attachment 1">
+                </div>
+                <div class="grid-image-wrapper">
+                  <img src="${post.image_url_2}" class="post-img" alt="Post attachment 2">
+                </div>
+                <div class="grid-image-wrapper">
+                  <img src="${post.image_url_3}" class="post-img" alt="Post attachment 3">
+                </div>
+                <div class="grid-image-wrapper">
+                  <img src="${post.image_url_4}" class="post-img" alt="Post attachment 4">
+                </div>
+              </div>
+            `;
+          } else if (imgCount === 3) {
+            postContentHtml += `
+              <div class="post-images-grid grid-2" data-images="${postImages.join(',')}" style="cursor: pointer;">
+                <div class="grid-image-wrapper">
+                  <img src="${post.image_url}" class="post-img" alt="Post attachment 1">
+                </div>
+                <div class="grid-image-wrapper" style="position: relative;">
+                  <img src="${post.image_url_2}" class="post-img" alt="Post attachment 2">
+                  <div class="more-images-overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: 700; pointer-events: none; backdrop-filter: blur(2px);">
+                    +1
+                  </div>
+                </div>
+              </div>
+            `;
+          } else if (imgCount === 2) {
+            postContentHtml += `
+              <div class="post-images-grid grid-2" data-images="${postImages.join(',')}" style="cursor: pointer;">
+                <div class="grid-image-wrapper">
+                  <img src="${post.image_url}" class="post-img" alt="Post attachment 1">
+                </div>
+                <div class="grid-image-wrapper">
+                  <img src="${post.image_url_2}" class="post-img" alt="Post attachment 2">
+                </div>
+              </div>
+            `;
+          } else if (imgCount === 1) {
+            postContentHtml += `
+              <div class="post-single-image" data-images="${postImages.join(',')}" style="cursor: pointer;">
+                <img src="${post.image_url}" class="post-img" alt="Post attachment">
+              </div>
+            `;
+          }
+        }
+      }
+
+      let tradeBtnHtml = '';
+      if (post.is_trade) {
+        const isPossessor = (post.last_possession_user_id === window.currentUserId);
+        tradeBtnHtml = `
+            <button class="post-action-btn trade-btn ${isPossessor ? 'disabled' : ''}" 
+                    data-post-id="${post.id}" 
+                    data-price="${post.trade_price}" 
+                    data-possessor-id="${post.last_possession_user_id}"
+                    ${isPossessor ? 'disabled' : ''}
+                    style="${isPossessor ? 'opacity: 0.6; cursor: not-allowed; color: #8b5cf6;' : 'color: #8b5cf6;'}">
+              <i data-lucide="repeat"></i>
+              <span class="action-label">Trade (<span class="trade-price-val">$${parseFloat(post.trade_price).toFixed(2)}</span>)</span>
+            </button>
+          `;
+      }
+
+      newPost.innerHTML = `
+        <header class="post-header">
+          <div class="post-author-info">
+            <a href="/profile/u/${encodeURIComponent(post.author_username)}" class="post-author-link" style="display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none;">
+              <div class="avatar author-avatar">
+                <img src="${post.author_avatar}" alt="${post.author_name}">
+              </div>
+              <div class="author-details">
+                <h3 class="author-name">${post.author_name}${renderCertificationBadgeHtml(post.author_certification_type, 6)}</h3>
+                <span class="post-time">Just now</span>
+              </div>
+            </a>
+            ${Number(post.user_id) !== Number(window.currentUserId) ? `
+              <button type="button" class="follow-toggle-btn" data-follow-target-id="${post.user_id}" data-following="${Number(post.is_author_following) ? '1' : '0'}" title="${Number(post.is_author_following) ? 'Unfollow' : 'Follow'}" aria-label="${Number(post.is_author_following) ? 'Unfollow' : 'Follow'}">
+                <i data-lucide="${Number(post.is_author_following) ? 'user-check' : 'user-plus'}" style="width: 14px; height: 14px;"></i>
+              </button>
+            ` : ''}
+          </div>
+          <button type="button" class="post-options-btn" aria-label="Post settings">
+            <i data-lucide="more-horizontal"></i>
+          </button>
+        </header>
+        
+        <div class="post-content">
+          ${postContentHtml}
+        </div>
+        
+        <footer class="post-footer">
+          <div class="post-actions">
+            <button class="post-action-btn like-btn" data-likes="0">
+              <i data-lucide="heart"></i>
+              <span class="action-label"><span class="like-count">0</span><span class="btn-text-label"> Like</span></span>
+            </button>
+            <button class="post-action-btn comment-btn" data-comments="0">
+              <i data-lucide="message-circle"></i>
+              <span class="action-label"><span class="comment-count">0</span><span class="btn-text-label"> Comment</span></span>
+            </button>
+            <button class="post-action-btn share-btn" data-shares="${post.shares_count || 0}">
+              <i data-lucide="share-2"></i>
+              <span class="action-label"><span class="share-count">${post.shares_count || 0}</span><span class="btn-text-label"> Share</span></span>
+            </button>
+            <button class="post-action-btn gift-btn" type="button">
+              <i data-lucide="gift"></i>
+              <span class="action-label"><span class="btn-text-label"> Gift</span></span>
+            </button>
+            ${tradeBtnHtml}
+          </div>
+          <button class="post-bookmark-btn" aria-label="Bookmark post">
+            <i data-lucide="bookmark"></i>
+          </button>
+        </footer>
+
+        <!-- Comments Section -->
+        <div class="post-comments-section" style="display: none; padding: 16px 20px; border-top: 1px solid var(--border-color); background-color: var(--bg-app); border-bottom-left-radius: var(--border-radius-card); border-bottom-right-radius: var(--border-radius-card); flex-direction: column; gap: 12px;">
+          <div class="comments-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+          <div class="comment-input-row" style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+            <div class="avatar" style="width: 28px; height: 28px; flex-shrink: 0; overflow: hidden;">
+              <img src="${window.currentUserAvatar || '/images/default-avatar.png'}" style="width:100%; height:100%; object-fit:cover;">
+            </div>
+            <div class="input-wrapper" style="position: relative; flex: 1; display: flex; align-items: center;">
+              <input type="text" placeholder="Write a comment..." class="comment-input" style="width: 100%; padding: 8px 90px 8px 12px; border-radius: 18px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary); font-size: 12.5px; outline: none;">
+              
+              <!-- Action buttons inside input -->
+              <div class="comment-actions-container" style="position: absolute; right: 8px; display: flex; align-items: center; gap: 4px;">
+                <button type="button" class="comment-icon-btn voice-trigger-btn" title="Record a voice note" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
+                  <i data-lucide="mic" style="width: 14px; height: 14px;"></i>
+                </button>
+                <button type="button" class="comment-icon-btn emoji-trigger-btn" title="Add an emoji" style="color: var(--text-secondary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color 0.2s;">
+                  <i data-lucide="smile" style="width: 14px; height: 14px;"></i>
+                </button>
+                <button type="button" class="submit-comment-btn" style="color: var(--primary); background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center;">
+                  <i data-lucide="send" style="width: 14px; height: 14px;"></i>
+                </button>
+              </div>
+              
+              <!-- Recording UI (Overlay, hidden by default) -->
+              <div class="voice-recording-overlay" style="display: none; position: absolute; left: 0; right: 0; top: 0; bottom: 0; background: var(--bg-card); border-radius: 18px; align-items: center; justify-content: space-between; padding: 0 12px; border: 1px solid var(--primary);">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="recording-indicator" style="width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: pulse-recording 1s infinite;"></span>
+                  <span class="recording-timer" style="font-size: 12px; color: var(--text-primary); font-family: monospace;">00:00</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <button type="button" class="cancel-recording-btn" title="Annuler" style="color: var(--text-muted); background: none; border: none; cursor: pointer; display: flex; align-items: center;">
+                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                  </button>
+                  <button type="button" class="stop-recording-btn" title="Send voice note" style="color: var(--primary); background: none; border: none; cursor: pointer; display: flex; align-items: center;">
+                    <i data-lucide="check" style="width: 14px; height: 14px;"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Prepend to feed container
+      postsContainer.insertBefore(newPost, postsContainer.firstChild);
+      bindPostOptionButtons(newPost);
+      initCustomVideoPlayers(newPost);
+
+      // Re-create icons
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+
+      if (window.currentView === 'bookmarks') {
+        newPost.style.display = 'none';
+        showToast("New post added! (See the feed)");
+      } else {
+        newPost.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        showToast("New post added!");
+      }
+    }
+  });
+
+  socket.on('challenge-updated', ({ postId, post, participants }) => {
+    document.querySelectorAll(`.challenge-post-card[data-challenge-post-id="${String(postId)}"]`).forEach((card) => {
+      if (post) {
+        card.setAttribute('data-challenge-type', post.challenge_type || '');
+        card.setAttribute('data-challenge-entry-mode', post.challenge_entry_mode || 'open');
+        card.setAttribute('data-challenge-vote-mode', post.challenge_vote_mode || 'free');
+        card.setAttribute('data-challenge-vote-price', Number(post.challenge_vote_price || 0).toFixed(2));
+        card.setAttribute('data-challenge-end-date', post.challenge_end_date ? String(post.challenge_end_date) : '');
+
+        const titleEl = card.querySelector('.challenge-post-title');
+        if (titleEl) {
+          titleEl.textContent = post.challenge_title || 'Challenge en cours';
+        }
+
+        const metaEl = card.querySelector('.challenge-post-meta');
+        if (metaEl) {
+          let countdownHtml = '';
+          if (post.challenge_end_date) {
+            countdownHtml = `
+              <span class="challenge-countdown-badge" data-end-date="${escapeHtml(String(post.challenge_end_date))}" style="font-size: 10px; font-weight: 700; color: #ef4444; background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
+                <i data-lucide="clock" style="width: 10px; height: 10px;"></i>
+                <span class="challenge-countdown-text">Calcul...</span>
+              </span>
+            `;
+          }
+          const voteText = post.challenge_vote_mode === 'paid' ? `Vote payant $${Number(post.challenge_vote_price || 0).toFixed(2)}` : 'Vote gratuit';
+          metaEl.innerHTML = `
+            <span>${voteText}</span>
+            ${countdownHtml}
+          `;
+        }
+
+        const badgeEl = card.querySelector('.challenge-post-badge');
+        if (badgeEl) {
+          badgeEl.textContent = post.challenge_type === 'vote' ? 'Vote' : (post.challenge_entry_mode === 'invite_only' ? 'Invitation' : 'Ouvert');
+        }
+      }
+
+      const board = card.querySelector('.challenge-org-board');
+      if (board) {
+        board.innerHTML = renderChallengeBoardHtml(post || { challenge_type: card.dataset.challengeType }, participants);
+      }
+
+      const actionsContainer = card.querySelector('.challenge-post-actions');
+      if (actionsContainer) {
+        const currentUserId = Number(window.currentUserId);
+        const isUserPending = Array.isArray(participants) && participants.some(p => Number(p.user_id) === currentUserId && p.status === 'pending');
+        const hasUserJoined = Array.isArray(participants) && participants.some(p => Number(p.user_id) === currentUserId && p.status === 'accepted');
+        const acceptedCount = Array.isArray(participants) && participants.filter(p => p.status === 'accepted').length;
+        const entryMode = card.dataset.challengeEntryMode || 'open';
+        const type = card.dataset.challengeType || '';
+
+        let actionsHtml = '';
+        if (type !== 'vote' && type !== 'miss') {
+          if (isUserPending) {
+            actionsHtml = `<button type="button" class="challenge-action-btn challenge-accept-btn" data-post-id="${postId}">Accepter invitation</button>`;
+          } else if (entryMode === 'open' && !hasUserJoined && acceptedCount < 2) {
+            actionsHtml = `<button type="button" class="challenge-action-btn challenge-join-btn" data-post-id="${postId}">Participer</button>`;
+          }
+        }
+        actionsContainer.innerHTML = actionsHtml;
+        actionsContainer.style.display = actionsHtml ? 'flex' : 'none';
+      }
+
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+  });
+
+  socket.on('challenge-update-error', ({ error }) => {
+    showToast(error || 'Erreur lors de la modification du challenge.');
+  });
+
+  function showConfirmationModal(message, onConfirm) {
+    const existing = document.getElementById('globalConfirmationModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'globalConfirmationModal';
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    `;
+
+    modal.innerHTML = `
+      <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 20px; width: 340px; padding: 24px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); transform: scale(0.9); transition: transform 0.25s ease;">
+        <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(249, 115, 22, 0.1); border: 1.5px solid #f97316; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto; color: #f97316;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-help-circle"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <h3 style="font-size: 16px; font-weight: 800; color: var(--text-primary); margin-bottom: 8px;">Confirmer le vote</h3>
+        <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 24px;">${message}</p>
+        <div style="display: flex; gap: 10px; justify-content: center;">
+          <button id="confirmCancelBtn" style="flex: 1; padding: 10px 16px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-primary); font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s;">Annuler</button>
+          <button id="confirmYesBtn" style="flex: 1; padding: 10px 16px; border-radius: 12px; border: none; background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); color: white; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25);">Confirmer</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    modal.offsetHeight;
+    modal.style.opacity = '1';
+    modal.querySelector('div').style.transform = 'scale(1)';
+
+    const closeModal = () => {
+      modal.style.opacity = '0';
+      modal.querySelector('div').style.transform = 'scale(0.9)';
+      setTimeout(() => modal.remove(), 250);
+    };
+
+    modal.querySelector('#confirmCancelBtn').onclick = closeModal;
+    modal.querySelector('#confirmYesBtn').onclick = () => {
+      closeModal();
+      onConfirm();
+    };
+
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
+  }
+
+  document.addEventListener('click', async (event) => {
+    const carouselBtn = event.target.closest('.challenge-carousel-btn');
+    if (carouselBtn) {
+      const missBoard = carouselBtn.closest('.challenge-miss-board');
+      if (!missBoard) return;
+
+      const total = Number(missBoard.dataset.missTotal || 0);
+      const totalPages = Math.ceil(total / 2);
+      let currentPage = Number(missBoard.dataset.missActivePage || 0);
+
+      if (carouselBtn.classList.contains('challenge-carousel-next')) {
+        currentPage = Math.min(totalPages - 1, currentPage + 1);
+      } else {
+        currentPage = Math.max(0, currentPage - 1);
+      }
+
+      missBoard.dataset.missActivePage = String(currentPage);
+
+      const cards = missBoard.querySelectorAll('.beauty-candidate-card');
+      cards.forEach((card) => {
+        const cardIndex = Number(card.dataset.candidateIndex);
+        const cardPage = Math.floor(cardIndex / 2);
+        if (cardPage === currentPage) {
+          card.style.display = 'flex';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+
+      const counter = missBoard.querySelector('.challenge-miss-counter');
+      if (counter) {
+        counter.textContent = `Page ${currentPage + 1} / ${totalPages} (${total} participantes)`;
+      }
+      return;
+    }
+
+    const joinBtn = event.target.closest('.challenge-join-btn');
+    if (joinBtn) {
+      event.preventDefault();
+      const challengeCard = joinBtn.closest('.challenge-post-card');
+      const isBeauty = challengeCard?.dataset.challengeType === 'beauty';
+
+      const proceedJoin = async (photoUrl = null) => {
+        const response = await fetch(`/api/challenges/${encodeURIComponent(joinBtn.dataset.postId)}/participate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photoUrl })
+        });
+        const data = await response.json().catch(() => ({}));
+        showToast(data.success ? 'Participation enregistree.' : (data.error || 'Impossible de participer.'));
+      };
+
+      if (isBeauty) {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.onchange = async () => {
+          const file = fileInput.files[0];
+          if (!file) return;
+
+          showToast('Téléchargement de votre photo...');
+          const formData = new FormData();
+          formData.append('media', file);
+
+          try {
+            const uploadRes = await fetch('/api/posts/upload-media', {
+              method: 'POST',
+              body: formData
+            });
+            const uploadData = await uploadRes.json().catch(() => ({}));
+            if (!uploadRes.ok) {
+              showToast(uploadData.error || "Erreur lors du téléchargement de l'image.");
+              return;
+            }
+            if (uploadData.mediaUrls && uploadData.mediaUrls[0]) {
+              await proceedJoin(uploadData.mediaUrls[0]);
+            } else {
+              showToast(uploadData.error || "Erreur lors du téléchargement de l'image.");
+            }
+          } catch (err) {
+            console.error(err);
+            showToast("Erreur de connexion.");
+          }
+        };
+        fileInput.click();
+      } else {
+        await proceedJoin();
+      }
+      return;
+    }
+
+    const acceptBtn = event.target.closest('.challenge-accept-btn');
+    if (acceptBtn) {
+      event.preventDefault();
+      const challengeCard = acceptBtn.closest('.challenge-post-card');
+      const isBeauty = challengeCard?.dataset.challengeType === 'beauty';
+
+      const proceedAccept = async (photoUrl = null) => {
+        const response = await fetch(`/api/challenges/${encodeURIComponent(acceptBtn.dataset.postId)}/respond`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'accept', photoUrl })
+        });
+        const data = await response.json().catch(() => ({}));
+        showToast(data.success ? 'Invitation acceptee.' : (data.error || 'Impossible d’accepter.'));
+      };
+
+      if (isBeauty) {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'image/*';
+        fileInput.onchange = async () => {
+          const file = fileInput.files[0];
+          if (!file) return;
+
+          showToast('Téléchargement de votre photo...');
+          const formData = new FormData();
+          formData.append('media', file);
+
+          try {
+            const uploadRes = await fetch('/api/posts/upload-media', {
+              method: 'POST',
+              body: formData
+            });
+            const uploadData = await uploadRes.json().catch(() => ({}));
+            if (!uploadRes.ok) {
+              showToast(uploadData.error || "Erreur lors du téléchargement de l'image.");
+              return;
+            }
+            if (uploadData.mediaUrls && uploadData.mediaUrls[0]) {
+              await proceedAccept(uploadData.mediaUrls[0]);
+            } else {
+              showToast(uploadData.error || "Erreur lors du téléchargement de l'image.");
+            }
+          } catch (err) {
+            console.error(err);
+            showToast("Erreur de connexion.");
+          }
+        };
+        fileInput.click();
+      } else {
+        await proceedAccept();
+      }
+      return;
+    }
+
+    const positionCard = event.target.closest('.challenge-poll-option') || event.target.closest('.challenge-vote-card');
+    const challengeCard = event.target.closest('.challenge-post-card');
+    if (positionCard && challengeCard) {
+      const participantUserId = Number(positionCard.dataset.participantUserId || 0);
+      if (!participantUserId) return;
+      const voteMode = challengeCard.dataset.challengeVoteMode || 'free';
+      const votePrice = Number(challengeCard.dataset.challengeVotePrice || 0);
+
+      const confirmMsg = voteMode === 'paid'
+        ? `Voter pour ce candidat coûtera $${votePrice.toFixed(2)}. Le montant sera débité de votre solde.`
+        : 'Voulez-vous enregistrer votre vote pour ce candidat ?';
+
+      showConfirmationModal(confirmMsg, async () => {
+        const response = await fetch(`/api/challenges/${encodeURIComponent(challengeCard.dataset.challengePostId)}/vote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participantUserId })
+        });
+        const data = await response.json().catch(() => ({}));
+        showToast(data.success ? 'Vote enregistré !' : (data.error || 'Impossible de voter.'));
+      });
+    }
+  });
+
+  // --- Profile Dropdown Navigation Toasts ---
+  const dropdownLinks = document.querySelectorAll('.dropdown-menu a');
+  dropdownLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      if (!link.classList.contains('privacy-option')) {
+        const text = link.textContent.trim();
+        showToast(`Navigating to ${text}...`);
+      }
+    });
+  });
+
+  // --- Messages Tabs Switching ---
+  document.querySelectorAll('.messages-card').forEach((card) => {
+    const tabButtons = card.querySelectorAll('.tab-btn');
+    const searchInput = card.querySelector('.messages-search-wrapper input');
+
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setMessageTab(card, btn.dataset.tab);
+      });
+    });
+
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        const query = searchInput.value.trim().toLowerCase();
+        card.querySelectorAll('.message-item').forEach((item) => {
+          const name = item.querySelector('.contact-name')?.textContent?.toLowerCase() || '';
+          const preview = item.querySelector('.message-preview')?.textContent?.toLowerCase() || '';
+          const visible = !query || name.includes(query) || preview.includes(query);
+          item.style.display = visible ? '' : 'none';
+        });
+      });
+    }
+
+    card.addEventListener('click', (e) => {
+      const requestActionBtn = e.target.closest('[data-message-request-action]');
+      if (requestActionBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleMessageRequestAction(requestActionBtn);
+        return;
+      }
+
+      const followBtn = e.target.closest('.follow-toggle-btn');
+      if (followBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleFollowToggleClick(followBtn);
+        return;
+      }
+      const messageItem = e.target.closest('.message-item');
+      if (messageItem) {
+        const contactId = messageItem.getAttribute('data-contact-id');
+        const contactName = messageItem.querySelector('.contact-name')?.textContent || 'Conversation';
+        const img = messageItem.querySelector('img') || messageItem.querySelector('.avatar img');
+        const avatarUrl = img ? img.getAttribute('src') : '';
+        const isOnline = messageItem.dataset.isOnline === '1' || messageItem.classList.contains('online');
+        const presenceText = messageItem.dataset.lastSeenText || '';
+        const isPendingRequest = messageItem.dataset.messageCategory === 'requests' && messageItem.dataset.messageRequestStatus === 'pending';
+        openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText, isPendingRequest);
+      }
+    });
+
+    syncMessageTabCounts(card);
+  });
+
+  document.querySelectorAll('.profile-message-btn[data-profile-message-id]').forEach((button) => {
+    button.addEventListener('click', () => {
+      openChatBox(
+        button.dataset.profileMessageId,
+        button.dataset.profileMessageName || 'Conversation',
+        button.dataset.profileMessageAvatar || '/assets/avatar_placeholder.jpg',
+        button.dataset.profileMessageOnline === '1',
+        button.dataset.profileMessagePresence || ''
+      );
+    });
+  });
+
+  const composeMessageBtn = document.getElementById('composeMessageBtn');
+  const composeMessageModal = document.getElementById('composeMessageModal');
+  const composeMessageSearch = document.getElementById('composeMessageSearch');
+
+  const setComposeMessageModalState = (isOpen) => {
+    if (!composeMessageModal) return;
+    composeMessageModal.classList.toggle('active', !!isOpen);
+    composeMessageModal.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+  };
+
+  const filterComposeMessageItems = (query = '') => {
+    if (!composeMessageModal) return;
+    const term = String(query || '').trim().toLowerCase();
+    let anyVisible = false;
+
+    composeMessageModal.querySelectorAll('.compose-message-section').forEach((section) => {
+      let sectionVisible = false;
+      section.querySelectorAll('.compose-contact-item').forEach((item) => {
+        const searchText = String(item.dataset.searchText || item.textContent || '').toLowerCase();
+        const visible = !term || searchText.includes(term);
+        item.style.display = visible ? 'flex' : 'none';
+        if (visible) {
+          sectionVisible = true;
+          anyVisible = true;
+        }
+      });
+      section.style.display = sectionVisible ? 'flex' : 'none';
+    });
+
+    const emptyState = composeMessageModal.querySelector('.compose-message-empty');
+    if (emptyState) {
+      emptyState.style.display = anyVisible ? 'none' : 'block';
+    }
+  };
+
+  if (composeMessageBtn && composeMessageModal) {
+    composeMessageBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setComposeMessageModalState(true);
+      if (composeMessageSearch) {
+        composeMessageSearch.value = '';
+      }
+      filterComposeMessageItems('');
+      setTimeout(() => composeMessageSearch?.focus(), 50);
+    });
+
+    composeMessageModal.addEventListener('click', (e) => {
+      if (e.target === composeMessageModal || e.target.closest('[data-compose-close]')) {
+        setComposeMessageModalState(false);
+        return;
+      }
+
+      const contactItem = e.target.closest('.compose-contact-item');
+      if (!contactItem) return;
+
+      const contactId = contactItem.getAttribute('data-compose-contact-id');
+      const contactName = contactItem.getAttribute('data-compose-contact-name') || 'Conversation';
+      const avatarUrl = contactItem.getAttribute('data-compose-contact-avatar') || '/assets/avatar_placeholder.jpg';
+      const isOnline = contactItem.getAttribute('data-compose-contact-online') === '1';
+      const presenceText = contactItem.getAttribute('data-compose-contact-presence') || '';
+
+      setComposeMessageModalState(false);
+      openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText);
+    });
+
+    composeMessageSearch?.addEventListener('input', () => {
+      filterComposeMessageItems(composeMessageSearch.value);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (composeMessageModal.classList.contains('active')) {
+          setComposeMessageModalState(false);
+        }
+        if (statusCreateModal?.style.display === 'flex') {
+          closeStatusModal();
+        }
+        if (statusViewerModal?.style.display === 'flex') {
+          closeStatusViewer();
+        }
+      }
+    });
+  }
+
+  // --- Mobile Left Sidebar Toggle ---
+  const menuToggle = document.getElementById('menuToggle');
+  const leftSidebar = document.getElementById('leftSidebar');
+
+  if (menuToggle && leftSidebar) {
+    menuToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      leftSidebar.classList.toggle('mobile-active');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (window.innerWidth <= 768) {
+        if (!leftSidebar.contains(e.target) && !menuToggle.contains(e.target)) {
+          leftSidebar.classList.remove('mobile-active');
+        }
+      }
+    });
+  }
+
+  // --- Create Post Actions ---
+  const sharePostBtn = document.getElementById('sharePostBtn');
+  const postInput = document.getElementById('postInput');
+
+  if (sharePostBtn && postInput) {
+    let selectedMediaFiles = [];
+    let selectedMediaType = null;
+    let selectedVideoThumbnailBlob = null;
+
+    const createVideoThumbnail = (file) => new Promise((resolve) => {
+      const video = document.createElement('video');
+      const objectUrl = URL.createObjectURL(file);
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+      video.src = objectUrl;
+
+      const cleanup = () => URL.revokeObjectURL(objectUrl);
+      video.onerror = () => {
+        cleanup();
+        resolve(null);
+      };
+      video.onloadedmetadata = () => {
+        video.currentTime = Math.min(1, Math.max(0, (video.duration || 1) * 0.08));
+      };
+      video.onseeked = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const width = video.videoWidth || 1280;
+          const height = video.videoHeight || 720;
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, width, height);
+          canvas.toBlob((blob) => {
+            cleanup();
+            resolve(blob);
+          }, 'image/jpeg', 0.82);
+        } catch (err) {
+          cleanup();
+          resolve(null);
+        }
+      };
+    });
+
+    const handleMediaSelection = (filesList) => {
+      if (!filesList) return;
+      const files = (filesList instanceof FileList || Array.isArray(filesList)) ? Array.from(filesList) : [filesList];
+      if (files.length === 0) return;
+
+      const hasVideo = files.some(f => f.type.startsWith('video/'));
+      if (hasVideo) {
+        if (files.length > 1 || selectedMediaFiles.length > 0) {
+          showToast("Vous ne pouvez pas combiner une vidéo avec d'autres fichiers ou ajouter plusieurs vidéos.");
+          return;
+        }
+        const file = files[0];
+        if (file.size > 150 * 1024 * 1024) {
+          showToast("The video must not exceed 150 MB.");
+          return;
+        }
+        // Check duration
+        const tempVideo = document.createElement('video');
+        tempVideo.preload = 'metadata';
+        tempVideo.src = URL.createObjectURL(file);
+        tempVideo.onloadedmetadata = () => {
+          URL.revokeObjectURL(tempVideo.src);
+          const duration = tempVideo.duration;
+          if (duration > 360) {
+            showToast("The video must not exceed 6 minutes.");
+          } else {
+            selectedMediaFiles = [file];
+            selectedMediaType = 'video';
+            displayVisualPreview(selectedMediaFiles, 'video');
+            createVideoThumbnail(file).then((blob) => {
+              if (selectedMediaFiles.includes(file)) selectedVideoThumbnailBlob = blob;
+            });
+          }
+        };
+        tempVideo.onerror = () => {
+          URL.revokeObjectURL(tempVideo.src);
+          showToast("Error reading video metadata.");
+        };
+      } else {
+        // Only images
+        if (selectedMediaType === 'video') {
+          showToast("Vous ne pouvez pas ajouter des images à une vidéo.");
+          return;
+        }
+
+        // Validate each image
+        for (const file of files) {
+          if (!file.type.startsWith('image/')) {
+            showToast("Tous les fichiers sélectionnés doivent être des images.");
+            return;
+          }
+          if (file.size > 10 * 1024 * 1024) {
+            showToast(`L'image ${file.name} dépasse la limite de 10 Mo.`);
+            return;
+          }
+        }
+
+        // Check total limit (max 4 images)
+        if (selectedMediaFiles.length + files.length > 4) {
+          showToast("Vous ne pouvez pas sélectionner plus de 4 images.");
+          return;
+        }
+
+        selectedMediaFiles = [...selectedMediaFiles, ...files];
+        selectedMediaType = 'image';
+        displayVisualPreview(selectedMediaFiles, 'image');
+      }
+    };
+
+    const displayVisualPreview = (files, type) => {
+      const previewContainer = document.getElementById('postMediaVisualPreview');
+      if (!previewContainer) return;
+
+      previewContainer.innerHTML = '';
+      const downloadSetting = document.getElementById('videoDownloadSetting');
+      if (downloadSetting) downloadSetting.classList.toggle('is-visible', type === 'video');
+
+      if (type === 'image') {
+        if (files.length === 1) {
+          const mediaEl = document.createElement('img');
+          const objectUrl = URL.createObjectURL(files[0]);
+          mediaEl.src = objectUrl;
+          mediaEl.onload = () => URL.revokeObjectURL(objectUrl);
+
+          // Add close button (individual or clear all)
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'cancel-media-btn';
+          closeBtn.type = 'button';
+          closeBtn.innerHTML = '<i data-lucide="x" style="width:16px; height:16px;"></i>';
+          closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            clearSelectedMedia();
+          };
+
+          previewContainer.appendChild(mediaEl);
+          previewContainer.appendChild(closeBtn);
+          previewContainer.style.maxHeight = '';
+        } else {
+          // grid layout
+          previewContainer.style.maxHeight = 'none';
+          const gridDiv = document.createElement('div');
+          gridDiv.className = 'post-images-grid';
+          gridDiv.style.cssText = 'display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; width:100%; padding:8px; box-sizing:border-box;';
+
+          files.forEach((file, idx) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'grid-image-wrapper';
+            wrapper.style.cssText = 'aspect-ratio:1.15; border-radius:8px; overflow:hidden; background-color:var(--bg-input); position:relative;';
+
+            const imgEl = document.createElement('img');
+            imgEl.className = 'post-img';
+            imgEl.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;';
+            const objectUrl = URL.createObjectURL(file);
+            imgEl.src = objectUrl;
+            imgEl.onload = () => URL.revokeObjectURL(objectUrl);
+
+            // Individual image delete button
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.style.cssText = 'position:absolute; top:6px; right:6px; background:rgba(15, 23, 42, 0.7); border:none; border-radius:50%; width:22px; height:22px; color:white; display:flex; align-items:center; justify-content:center; cursor:pointer; font-weight:bold; z-index:10; transition:background 0.2s;';
+            delBtn.innerHTML = '<i data-lucide="x" style="width:12px; height:12px;"></i>';
+            delBtn.onclick = (e) => {
+              e.stopPropagation();
+              window.removeSelectedImage(idx);
+            };
+
+            wrapper.appendChild(imgEl);
+            wrapper.appendChild(delBtn);
+            gridDiv.appendChild(wrapper);
+          });
+          previewContainer.appendChild(gridDiv);
+
+          // Add close button (clear all)
+          const closeBtn = document.createElement('button');
+          closeBtn.className = 'cancel-media-btn';
+          closeBtn.type = 'button';
+          closeBtn.innerHTML = '<i data-lucide="x" style="width:16px; height:16px;"></i>';
+          closeBtn.onclick = (e) => {
+            e.stopPropagation();
+            clearSelectedMedia();
+          };
+          previewContainer.appendChild(closeBtn);
+        }
+      } else {
+        const mediaEl = document.createElement('video');
+        const objectUrl = URL.createObjectURL(files[0]);
+        mediaEl.src = objectUrl;
+        mediaEl.controls = true;
+        mediaEl.autoplay = false;
+        mediaEl.muted = true;
+        mediaEl.onloadeddata = () => URL.revokeObjectURL(objectUrl);
+
+        // Add close button
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'cancel-media-btn';
+        closeBtn.type = 'button';
+        closeBtn.innerHTML = '<i data-lucide="x" style="width:16px; height:16px;"></i>';
+        closeBtn.onclick = (e) => {
+          e.stopPropagation();
+          clearSelectedMedia();
+        };
+
+        previewContainer.appendChild(mediaEl);
+        previewContainer.appendChild(closeBtn);
+        previewContainer.style.maxHeight = '';
+      }
+
+      previewContainer.style.display = 'flex';
+
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+
+      // Automatically close the popover modal so user sees the preview
+      const photoVideoModal = document.getElementById('photoVideoModal');
+      if (photoVideoModal) photoVideoModal.style.display = 'none';
+    };
+
+    const clearSelectedMedia = () => {
+      selectedMediaFiles = [];
+      selectedMediaType = null;
+      selectedVideoThumbnailBlob = null;
+      const previewContainer = document.getElementById('postMediaVisualPreview');
+      if (previewContainer) {
+        previewContainer.innerHTML = '';
+        previewContainer.style.display = 'none';
+        previewContainer.style.maxHeight = '';
+      }
+      const photoVideoInput = document.getElementById('photoVideoInput');
+      if (photoVideoInput) photoVideoInput.value = '';
+      const downloadSetting = document.getElementById('videoDownloadSetting');
+      if (downloadSetting) downloadSetting.classList.remove('is-visible');
+    };
+
+    const handleSharePost = () => {
+      const text = postInput.innerText.trim();
+      if (!text && selectedMediaFiles.length === 0) return;
+
+      if (selectedMediaType === 'image' && selectedMediaFiles.length !== 1 && selectedMediaFiles.length !== 2 && selectedMediaFiles.length !== 4) {
+        showToast("Vous devez choisir exactement 1, 2 ou 4 images pour publier.");
+        return;
+      }
+
+      const isTrade = document.getElementById('tradePostToggle')?.checked || false;
+      const privacyText = document.getElementById('privacyBtnText')?.textContent.trim() || 'Public';
+      if (isTrade && privacyText !== 'Public') {
+        showToast("Trade posts must be public.");
+        return;
+      }
+
+      // Validation of challenge configuration before posting
+      if (selectedChallengeConfig && selectedChallengeConfig.type) {
+        const draft = selectedChallengeConfig;
+        draft.title = (challengeTitleInput?.value || '').trim() || text || '';
+        draft.votePrice = Math.max(0, Number(challengeVotePriceInput?.value || 0));
+
+        const endDateVal = document.getElementById('challengeEndDateInput')?.value;
+        if (endDateVal) {
+          const parsedEnd = new Date(endDateVal);
+          if (parsedEnd <= new Date()) {
+            showToast("La date de fin doit être dans le futur.");
+            return;
+          }
+          draft.challengeEndDate = parsedEnd.toISOString();
+        } else {
+          draft.challengeEndDate = null;
+        }
+
+        if (draft.type === 'vote') {
+          if (!draft.participants || draft.participants.length < 2) {
+            showToast('Ajoutez au moins deux participants pour le challenge de vote.');
+            return;
+          }
+        } else if (draft.type === 'miss') {
+          draft.entryMode = 'invite_only';
+          syncSelectedChallengeParticipantsConfig();
+          if (!draft.participantEntries || draft.participantEntries.length < 2) {
+            showToast('Ajoutez au moins deux participantes pour le challenge miss.');
+            return;
+          }
+          if (draft.participantEntries.some((entry) => !entry.photoUrl)) {
+            showToast('Ajoutez une photo pour chaque participante du challenge miss.');
+            return;
+          }
+        } else {
+          if (draft.entryMode === 'invite_only' && !draft.invitedUserId) {
+            showToast('Choisissez la personne a inviter.');
+            return;
+          }
+          if (draft.type === 'beauty' && draft.creatorParticipates && !draft.creatorPhotoUrl) {
+            showToast("Veuillez choisir votre photo pour participer au challenge de beauté.");
+            return;
+          }
+        }
+      }
+
+      // If media files are selected, upload them first
+      if (selectedMediaFiles.length > 0) {
+        // Disable buttons
+        if (sharePostBtn) {
+          sharePostBtn.disabled = true;
+          sharePostBtn.textContent = "Posting...";
+        }
+        const confirmShareBtn = document.getElementById('confirmShareBtn');
+        if (confirmShareBtn) {
+          confirmShareBtn.disabled = true;
+          confirmShareBtn.textContent = "Posting...";
+        }
+
+        const thumbnailReady = selectedMediaType === 'video' && !selectedVideoThumbnailBlob
+          ? createVideoThumbnail(selectedMediaFiles[0]).then((blob) => {
+            selectedVideoThumbnailBlob = blob;
+          })
+          : Promise.resolve();
+
+        thumbnailReady.then(() => {
+          const formData = new FormData();
+          selectedMediaFiles.forEach((file) => {
+            formData.append('media', file);
+          });
+          if (selectedMediaType === 'video' && selectedVideoThumbnailBlob) {
+            formData.append('thumbnail', selectedVideoThumbnailBlob, 'video-thumbnail.jpg');
+          }
+
+          return fetch('/api/posts/upload-media', {
+            method: 'POST',
+            body: formData
+          });
+        })
+          .then(response => {
+            if (!response.ok) {
+              return response.json().then(err => { throw new Error(err.error || "Upload failed"); });
+            }
+            return response.json();
+          })
+          .then(data => {
+            const { mediaUrls, mediaType, thumbnailUrl } = data;
+            const allowDownload = document.getElementById('allowVideoDownloadToggle')?.checked !== false;
+
+            socket.emit('post-create', {
+              content: text,
+              paidHashtags: acceptedPaidHashtags,
+              bgImageUrl: selectedBackground ? selectedBackground.image_url : null,
+              textColor: selectedBackground ? selectedTextColor : null,
+              textAlignment: selectedBackground ? selectedTextAlignment : null,
+              textPosition: selectedBackground ? selectedTextPosition : null,
+              textFont: selectedBackground ? selectedTextFont : null,
+              textSize: selectedBackground ? selectedTextSize : null,
+              isTrade: isTrade,
+              mediaUrls: mediaUrls,
+              mediaType: mediaType,
+              thumbnailUrl: thumbnailUrl || null,
+              allowDownload: mediaType === 'video' ? allowDownload : true,
+              challengeConfig: selectedChallengeConfig,
+              isLive: selectedLiveConfig?.isLive ? 1 : 0,
+              liveUrl: selectedLiveConfig?.liveUrl || null,
+              livePrice: selectedLiveConfig?.livePrice || 0
+            });
+
+            finalizePostCreation();
+          })
+          .catch(err => {
+            console.error(err);
+            showToast("Posting error: " + err.message);
+
+            // Re-enable buttons
+            if (sharePostBtn) {
+              sharePostBtn.disabled = false;
+              sharePostBtn.textContent = "Share Post";
+            }
+            if (confirmShareBtn) {
+              confirmShareBtn.disabled = false;
+              confirmShareBtn.textContent = "Share Post";
+            }
+          });
+      } else {
+        // Direct socket post creation without media upload
+        socket.emit('post-create', {
+          content: text,
+          paidHashtags: acceptedPaidHashtags,
+          bgImageUrl: selectedBackground ? selectedBackground.image_url : null,
+          textColor: selectedBackground ? selectedTextColor : null,
+          textAlignment: selectedBackground ? selectedTextAlignment : null,
+          textPosition: selectedBackground ? selectedTextPosition : null,
+          textFont: selectedBackground ? selectedTextFont : null,
+          textSize: selectedBackground ? selectedTextSize : null,
+          isTrade: isTrade,
+          mediaUrls: [],
+          mediaType: null,
+          thumbnailUrl: null,
+          allowDownload: true,
+          challengeConfig: selectedChallengeConfig,
+          isLive: selectedLiveConfig?.isLive ? 1 : 0,
+          liveUrl: selectedLiveConfig?.liveUrl || null,
+          livePrice: selectedLiveConfig?.livePrice || 0
+        });
+        finalizePostCreation();
+      }
+    };
+
+    const finalizePostCreation = () => {
+      postInput.innerHTML = '';
+      const placeholder = postInput.nextElementSibling;
+      if (placeholder && placeholder.classList.contains('post-input-placeholder')) {
+        placeholder.style.display = 'block';
+      }
+      acceptedPaidHashtags = [];
+
+      // Reset styled backgrounds
+      selectedBackground = null;
+      selectedTextColor = '#ffffff';
+      selectedTextAlignment = 'center';
+      selectedTextPosition = 'center';
+      selectedTextFont = "'Outfit', sans-serif";
+      selectedTextSize = '20px';
+      resetChallengeConfig();
+      resetLiveConfig();
+
+      const textColorPicker = document.getElementById('textColorPicker');
+      const textFontSelect = document.getElementById('textFontSelect');
+      const textSizeSelect = document.getElementById('textSizeSelect');
+      if (textColorPicker) textColorPicker.value = '#ffffff';
+      if (textFontSelect) textFontSelect.value = "'Outfit', sans-serif";
+      if (textSizeSelect) textSizeSelect.value = '20px';
+      const allowVideoDownloadToggle = document.getElementById('allowVideoDownloadToggle');
+      if (allowVideoDownloadToggle) allowVideoDownloadToggle.checked = true;
+
+      // Reset trade switch
+      const tradePostToggle = document.getElementById('tradePostToggle');
+      if (tradePostToggle) {
+        tradePostToggle.checked = false;
+        const tradePostInfoBox = document.getElementById('tradePostInfoBox');
+        if (tradePostInfoBox) tradePostInfoBox.style.display = 'none';
+        const toggleBg = document.getElementById('tradePostToggleBg');
+        if (toggleBg) toggleBg.style.background = 'var(--border-color)';
+        const toggleKnob = document.getElementById('tradePostToggleKnob');
+        if (toggleKnob) toggleKnob.style.transform = 'translateX(0)';
+        const modalTradePostInfo = document.getElementById('modalTradePostInfo');
+        if (modalTradePostInfo) modalTradePostInfo.style.display = 'none';
+      }
+
+      document.getElementById('alignLeftBtn')?.classList.remove('active');
+      document.getElementById('alignCenterBtn')?.classList.add('active');
+      document.getElementById('alignRightBtn')?.classList.remove('active');
+      document.getElementById('posTopBtn')?.classList.remove('active');
+      document.getElementById('posCenterBtn')?.classList.add('active');
+      document.getElementById('posBottomBtn')?.classList.remove('active');
+
+      updatePostInputPreview();
+      clearSelectedMedia();
+
+      // Reset upload states & list elements
+      if (typeof selectedPostMedia !== 'undefined') selectedPostMedia = [];
+      if (typeof selectedPostAttachments !== 'undefined') selectedPostAttachments = [];
+      const mediaPreview = document.getElementById('mediaPreviewContainer');
+      const attachmentPreview = document.getElementById('attachmentPreviewContainer');
+      if (mediaPreview) mediaPreview.innerHTML = '';
+      if (attachmentPreview) attachmentPreview.innerHTML = '';
+
+      // Reset buttons
+      if (sharePostBtn) {
+        sharePostBtn.disabled = false;
+        sharePostBtn.textContent = "Share Post";
+      }
+      const confirmShareBtn = document.getElementById('confirmShareBtn');
+      if (confirmShareBtn) {
+        confirmShareBtn.disabled = false;
+        confirmShareBtn.textContent = "Share Post";
+      }
+
+      // Hide the confirm share modal
+      const confirmShareModal = document.getElementById('confirmShareModal');
+      if (confirmShareModal) {
+        confirmShareModal.style.display = 'none';
+      }
+    };
+
+    // Export validation helper to DOM scope for other listeners if needed
+    window.handleMediaSelection = handleMediaSelection;
+    window.clearSelectedMedia = clearSelectedMedia;
+    window.removeSelectedImage = (index) => {
+      selectedMediaFiles.splice(index, 1);
+      if (selectedMediaFiles.length === 0) {
+        clearSelectedMedia();
+      } else {
+        displayVisualPreview(selectedMediaFiles, 'image');
+      }
+    };
+
+    const openShareModal = () => {
+      const text = postInput.innerText.trim();
+      if (!text && selectedMediaFiles.length === 0) return;
+
+      if (selectedMediaType === 'image' && selectedMediaFiles.length !== 1 && selectedMediaFiles.length !== 2 && selectedMediaFiles.length !== 4) {
+        showToast("Vous devez choisir exactement 1, 2 ou 4 images pour publier.");
+        return;
+      }
+
+      const confirmShareModal = document.getElementById('confirmShareModal');
+      if (confirmShareModal) {
+        // Reset modal controls on open
+        const tradePostToggle = document.getElementById('tradePostToggle');
+        if (tradePostToggle) {
+          tradePostToggle.checked = false;
+          const toggleBg = document.getElementById('tradePostToggleBg');
+          const toggleKnob = document.getElementById('tradePostToggleKnob');
+          const modalInfo = document.getElementById('modalTradePostInfo');
+          if (toggleBg) toggleBg.style.background = 'var(--border-color)';
+          if (toggleKnob) toggleKnob.style.transform = 'translateX(0)';
+          if (modalInfo) modalInfo.style.display = 'none';
+        }
+        confirmShareModal.style.display = 'flex';
+      } else {
+        handleSharePost();
+      }
+    };
+
+    sharePostBtn.addEventListener('click', openShareModal);
+    postInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        openShareModal();
+      }
+    });
+
+    const confirmShareBtn = document.getElementById('confirmShareBtn');
+    if (confirmShareBtn) {
+      confirmShareBtn.addEventListener('click', handleSharePost);
+    }
+
+    const cancelShareBtn = document.getElementById('cancelShareBtn');
+    if (cancelShareBtn) {
+      cancelShareBtn.addEventListener('click', () => {
+        const confirmShareModal = document.getElementById('confirmShareModal');
+        if (confirmShareModal) {
+          confirmShareModal.style.display = 'none';
+        }
+      });
+    }
+
+    const confirmShareModal = document.getElementById('confirmShareModal');
+    if (confirmShareModal) {
+      confirmShareModal.addEventListener('click', (e) => {
+        if (e.target === confirmShareModal) {
+          confirmShareModal.style.display = 'none';
+        }
+      });
+    }
+
+    const shareSheetModal = document.getElementById('shareSheetModal');
+    const closeShareSheetBtn = document.getElementById('closeShareSheetBtn');
+    if (closeShareSheetBtn) {
+      closeShareSheetBtn.addEventListener('click', closeShareSheet);
+    }
+    if (shareSheetModal) {
+      shareSheetModal.addEventListener('click', (e) => {
+        if (e.target === shareSheetModal) {
+          closeShareSheet();
+        }
+      });
+
+      shareSheetModal.addEventListener('click', async (e) => {
+        const recipientBtn = e.target.closest('.share-target-btn');
+        const socialBtn = e.target.closest('.social-share-btn');
+        if (!recipientBtn && !socialBtn) return;
+
+        try {
+          const shareText = `Check out this post from WeShare`;
+
+          if (recipientBtn) {
+            const recipientUserId = recipientBtn.getAttribute('data-share-recipient-id');
+            const recipientName = recipientBtn.getAttribute('data-share-recipient-name') || 'friend';
+            const { shareUrl } = await buildShareUrl({
+              channel: 'direct',
+              recipientUserId
+            });
+
+            socket.emit('chat-message', {
+              receiverId: parseInt(recipientUserId, 10),
+              content: `${shareText}: ${shareUrl}`
+            });
+
+            showToast(`Shared with ${recipientName}.`);
+            closeShareSheet();
+            return;
+          }
+
+          if (socialBtn) {
+            const platform = socialBtn.getAttribute('data-share-platform');
+            const { shareUrl } = await buildShareUrl({
+              channel: platform === 'copy' ? 'copy' : 'social',
+              platform
+            });
+
+            if (platform === 'copy') {
+              await navigator.clipboard.writeText(shareUrl);
+              showToast('Share link copied.');
+            } else {
+              openSocialShare(platform, shareUrl, shareText);
+              showToast(`Share opened in ${socialBtn.textContent.trim()}.`);
+            }
+            closeShareSheet();
+          }
+        } catch (err) {
+          console.error(err);
+          showToast(err.message || 'Unable to prepare the share.');
+        }
+      });
+    }
+  }
+
+  // --- Global Toast Notification Helper ---
+  const showToast = (message) => {
+    const toast = ensureToastElement();
+    toast.textContent = message;
+    toast.style.zIndex = '99999';
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(-50%) translateY(100px)';
+    }, 5000);
+  };
+
+  const socialListModal = document.getElementById('socialListModal');
+  const socialListModalTitle = document.getElementById('socialListModalTitle');
+  const socialListModalCount = document.getElementById('socialListModalCount');
+  const socialListModalBody = document.getElementById('socialListModalBody');
+  const socialListSearch = document.getElementById('socialListSearch');
+  let activeSocialListKey = 'followers';
+
+  const getSocialListData = (key) => {
+    const source = window.profileSocialLists || {};
+    return Array.isArray(source?.[key]) ? source[key] : [];
+  };
+
+  const getSocialRelationMeta = (person) => {
+    const isFollowing = Number(person.is_following) === 1;
+    const isMutual = Number(person.is_mutual) === 1;
+
+    if (isMutual) {
+      return { label: 'Friends', tone: 'success', actionLabel: 'Friends', canAct: false };
+    }
+
+    if (activeSocialListKey === 'followers') {
+      return {
+        label: 'Follows you',
+        tone: 'primary',
+        actionLabel: isFollowing ? 'Following' : 'Follow back',
+        canAct: !isFollowing
+      };
+    }
+
+    return { label: 'Following', tone: 'muted', actionLabel: 'Unfollow', canAct: true };
+  };
+
+  const renderSocialListModalBody = () => {
+    if (!socialListModalBody) return;
+    const list = getSocialListData(activeSocialListKey);
+    const query = (socialListSearch?.value || '').trim().toLowerCase();
+    const filtered = query
+      ? list.filter((person) => {
+        const name = `${person.name || ''} ${person.username || ''}`.toLowerCase();
+        return name.includes(query);
+      })
+      : list;
+
+    if (socialListModalCount) {
+      socialListModalCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'person' : 'people'}`;
+    }
+
+    if (!filtered.length) {
+      socialListModalBody.innerHTML = `
+        <div style="padding: 18px 0; color: var(--text-muted); font-size: 13px; text-align: center;">
+          No results.
+        </div>
+      `;
+      return;
+    }
+
+    socialListModalBody.innerHTML = filtered.map((person) => `
+      <div class="social-user-item" style="border-bottom: 1px solid var(--border-color);">
+        <a href="/profile/u/${encodeURIComponent(person.username)}" class="social-user-link">
+          <div class="avatar social-user-avatar" style="width: 36px; height: 36px;">
+            <img src="${person.avatar || '/assets/avatar_placeholder.jpg'}" alt="${escapeHtml(person.name || '')}" style="width:100%; height:100%; object-fit:cover;">
+          </div>
+          <div style="min-width: 0;">
+            <div class="social-user-name">${escapeHtml(person.name || 'User')}${renderCertificationBadgeHtml(person.certification_type)}</div>
+            <div class="social-user-handle">@${escapeHtml(person.username || '')}</div>
+          </div>
+        </a>
+        <span class="social-user-pill" data-tone="${getSocialRelationMeta(person).tone}">
+          ${getSocialRelationMeta(person).label}
+        </span>
+        ${Number(person.id) !== Number(window.currentUserId) && getSocialRelationMeta(person).canAct ? `
+          <button type="button" class="follow-toggle-btn follow-toggle-btn--text social-user-action" data-follow-target-id="${person.id}" data-following="${Number(person.is_following) ? '1' : '0'}" title="${getSocialRelationMeta(person).actionLabel}" aria-label="${getSocialRelationMeta(person).actionLabel}">
+            ${escapeHtml(getSocialRelationMeta(person).actionLabel)}
+          </button>
+        ` : ''}
+      </div>
+    `).join('');
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  const openSocialListModal = (key) => {
+    if (!socialListModal) return;
+    activeSocialListKey = key === 'following' ? 'following' : 'followers';
+    if (socialListModalTitle) {
+      socialListModalTitle.innerHTML = `<i data-lucide="users"></i> ${activeSocialListKey === 'followers' ? 'Followers' : 'Following'}`;
+    }
+    if (socialListSearch) socialListSearch.value = '';
+    renderSocialListModalBody();
+    socialListModal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  const closeSocialListModal = () => {
+    if (!socialListModal) return;
+    socialListModal.classList.remove('active');
+    document.body.style.overflow = '';
+  };
+
+  window.openSocialListModal = openSocialListModal;
+  window.closeSocialListModal = closeSocialListModal;
+
+  document.addEventListener('click', (e) => {
+    const openBtn = e.target.closest('[data-open-list-modal]');
+    if (openBtn && socialListModal) {
+      e.preventDefault();
+      openSocialListModal(openBtn.getAttribute('data-open-list-modal'));
+      return;
+    }
+    const closeBtn = e.target.closest('[data-close-list-modal]');
+    if (closeBtn && socialListModal) {
+      e.preventDefault();
+      closeSocialListModal();
+      return;
+    }
+    if (e.target === socialListModal) {
+      closeSocialListModal();
+    }
+  });
+
+  socialListSearch?.addEventListener('input', renderSocialListModalBody);
+  socialListModalBody?.addEventListener('click', (e) => {
+    const anchor = e.target.closest('a[href]');
+    if (anchor) {
+      closeSocialListModal();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeSocialListModal();
+    }
+  });
+  socialListModal?.addEventListener('click', (e) => {
+    if (e.target === socialListModal) {
+      closeSocialListModal();
+    }
+  });
+
+  const sharedPostId = new URLSearchParams(window.location.search).get('shared_post');
+  const sharedBy = new URLSearchParams(window.location.search).get('from');
+  if (sharedPostId) {
+    window.setTimeout(() => {
+      if (sharedBy) {
+        showToast(`Shared by @${sharedBy}`);
+      }
+      const sharedPostCard = document.querySelector(`.post-card[data-post-id="${sharedPostId}"]`);
+      if (sharedPostCard) {
+        sharedPostCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        sharedPostCard.style.outline = '2px solid var(--primary)';
+        sharedPostCard.style.outlineOffset = '6px';
+        window.setTimeout(() => {
+          sharedPostCard.style.outline = 'none';
+          sharedPostCard.style.outlineOffset = '0';
+        }, 2500);
+      }
+    }, 250);
+  }
+
+  // --- Notifications Dropdown Handling ---
+  const notificationBtn = document.getElementById('notificationBtn');
+  const notificationsDropdown = document.getElementById('notificationsDropdown');
+  const notificationBadge = document.getElementById('notificationBadge');
+  const notificationBadges = Array.from(document.querySelectorAll('.notification-badge'));
+  const notificationToggleBtns = Array.from(document.querySelectorAll('[data-notification-toggle]'));
+  const notificationItemsList = document.getElementById('notificationItemsList');
+  const markAllReadBtn = document.getElementById('markAllReadBtn');
+
+  if (notificationsDropdown && notificationsDropdown.parentElement !== document.body) {
+    document.body.appendChild(notificationsDropdown);
+  }
+
+  const formatNotificationTime = (dateValue) => {
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const setNotificationBadgeCount = (count) => {
+    const badges = notificationBadges.length ? notificationBadges : (notificationBadge ? [notificationBadge] : []);
+    if (!badges.length) return;
+    const nextCount = Math.max(0, Number(count) || 0);
+    badges.forEach((badge) => {
+      if (nextCount > 0) {
+        badge.textContent = nextCount > 99 ? '99+' : String(nextCount);
+        badge.style.display = 'inline-flex';
+      } else {
+        badge.textContent = '';
+        badge.style.display = 'none';
+      }
+    });
+  };
+
+  const prependNotificationItem = (notification) => {
+    if (!notificationItemsList) return;
+
+    const emptyState = notificationItemsList.querySelector('[data-notification-empty]');
+    if (emptyState) emptyState.remove();
+
+    const item = document.createElement('div');
+    item.className = 'notification-item is-unread';
+    item.dataset.notificationId = notification.id;
+    if (notification.ad_url) {
+      item.setAttribute('data-ad-url', notification.ad_url);
+    }
+    item.style.display = 'flex';
+    item.style.gap = '12px';
+    item.style.padding = '12px 16px';
+    item.style.borderBottom = '1px solid var(--border-color)';
+    item.style.cursor = 'pointer';
+    item.style.alignItems = 'flex-start';
+    item.style.transition = 'background 0.2s';
+    item.style.background = 'rgba(59, 130, 246, 0.06)';
+    item.innerHTML = `
+      <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0; overflow: hidden;">
+        <img src="${notification.actor_avatar || '/assets/avatar_placeholder.jpg'}" alt="${escapeHtml(notification.actor_name || '')}" style="width: 100%; height: 100%; object-fit: cover;">
+      </div>
+      <div style="font-size: 12.5px; line-height: 1.35; color: var(--text-secondary); flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+        <strong style="color: var(--text-primary);">${escapeHtml(notification.actor_name || 'Quelqu\'un')}</strong>
+        <span>${escapeHtml(notification.message || '')}</span>
+        ${notification.ad_image_url ? `
+          <div style="margin-top: 6px; width: 100%; max-width: 180px; height: 55px; border-radius: 6px; overflow: hidden; background: #000;">
+            <img src="${notification.ad_image_url}" alt="Banner" style="width: 100%; height: 100%; object-fit: cover;">
+          </div>
+        ` : ''}
+        <div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;">${formatNotificationTime(notification.created_at)}</div>
+      </div>
+    `;
+    notificationItemsList.prepend(item);
+  };
+
+  const setNotificationItemsRead = () => {
+    if (!notificationItemsList) return;
+    notificationItemsList.querySelectorAll('.notification-item.is-unread').forEach((item) => {
+      item.classList.remove('is-unread');
+      item.style.background = 'transparent';
+    });
+  };
+
+  const renderNotificationItems = (notifications = []) => {
+    if (!notificationItemsList) return;
+
+    if (!notifications.length) {
+      notificationItemsList.innerHTML = `
+        <div data-notification-empty style="padding: 22px 16px; text-align: center; color: var(--text-muted); font-size: 13px;">
+          No notifications yet.
+        </div>
+      `;
+      return;
+    }
+
+    notificationItemsList.innerHTML = notifications.map((notification) => {
+      const unread = Number(notification.is_read) === 0;
+      return `
+        <div class="notification-item ${unread ? 'is-unread' : ''}" data-notification-id="${notification.id}" data-ad-url="${notification.ad_url || ''}" style="display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; align-items: flex-start; transition: background 0.2s; ${unread ? 'background: rgba(59, 130, 246, 0.06);' : ''}">
+          <div class="avatar" style="width: 32px; height: 32px; flex-shrink: 0; overflow: hidden;">
+        <img src="${notification.actor_avatar || '/assets/avatar_placeholder.jpg'}" alt="${escapeHtml(notification.actor_name || '')}" style="width: 100%; height: 100%; object-fit: cover;">
+          </div>
+          <div style="font-size: 12.5px; line-height: 1.35; color: var(--text-secondary); flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+        <strong style="color: var(--text-primary);">${escapeHtml(notification.actor_name || 'Quelqu\'un')}</strong>
+        <span>${escapeHtml(notification.message || '')}</span>
+        ${notification.ad_image_url ? `
+          <div style="margin-top: 6px; width: 100%; max-width: 180px; height: 55px; border-radius: 6px; overflow: hidden; background: #000;">
+            <img src="${notification.ad_image_url}" alt="Banner" style="width: 100%; height: 100%; object-fit: cover;">
+          </div>
+        ` : ''}
+            <div style="font-size: 10px; color: var(--text-muted); margin-top: 3px;">${formatNotificationTime(notification.created_at)}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  };
+
+  const syncNotifications = async () => {
+    try {
+      const response = await fetch('/api/notifications', { credentials: 'same-origin' });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (typeof data.unreadCount !== 'undefined') {
+        setNotificationBadgeCount(data.unreadCount);
+      }
+      if (Array.isArray(data.notifications)) {
+        renderNotificationItems(data.notifications);
+      }
+    } catch (err) {
+      console.error('Notification sync error:', err);
+    }
+  };
+
+  if (notificationToggleBtns.length && notificationsDropdown) {
+    notificationToggleBtns.forEach((toggleBtn) => {
+      toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isHidden = notificationsDropdown.style.display === 'none';
+        notificationsDropdown.style.display = isHidden ? 'block' : 'none';
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      const clickedToggle = notificationToggleBtns.some((toggleBtn) => toggleBtn.contains(e.target));
+      if (!clickedToggle && !notificationsDropdown.contains(e.target)) {
+        notificationsDropdown.style.display = 'none';
+      }
+    });
+  } else if (notificationBtn && notificationsDropdown) {
+    notificationBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = notificationsDropdown.style.display === 'none';
+      notificationsDropdown.style.display = isHidden ? 'block' : 'none';
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!notificationBtn.contains(e.target) && !notificationsDropdown.contains(e.target)) {
+        notificationsDropdown.style.display = 'none';
+      }
+    });
+  }
+
+  if (markAllReadBtn) {
+    markAllReadBtn.addEventListener('click', () => {
+      if (socket && socket.connected) {
+        socket.emit('notifications-mark-read', {}, (response) => {
+          if (response?.error) {
+            showToast(response.error);
+            return;
+          }
+          setNotificationItemsRead();
+          setNotificationBadgeCount(0);
+          showToast("Notifications marked as read");
+          notificationsDropdown.style.display = 'none';
+        });
+        return;
+      }
+
+      setNotificationItemsRead();
+      setNotificationBadgeCount(0);
+      showToast("Notifications marked as read");
+      notificationsDropdown.style.display = 'none';
+    });
+  }
+
+  syncNotifications();
+  window.addEventListener('focus', syncNotifications);
+  setInterval(syncNotifications, 30000);
+
+  if (notificationItemsList) {
+    notificationItemsList.addEventListener('click', (e) => {
+      const item = e.target.closest('.notification-item');
+      if (item) {
+        const adUrl = item.getAttribute('data-ad-url');
+        if (adUrl) {
+          window.open(adUrl, '_blank');
+        }
+      }
+    });
+  }
+
+  // --- Bookmarks Header Button ---
+  const bookmarkBtn = document.getElementById('bookmarkBtn');
+  if (bookmarkBtn) {
+    bookmarkBtn.addEventListener('click', () => {
+      if (window.currentView === 'bookmarks') {
+        showFeedView();
+      } else {
+        showBookmarksView();
+      }
+    });
+  }
+
+  // --- Privacy Dropdown Selection ---
+  const privacyBtn = document.getElementById('privacyBtn');
+  const privacyMenu = document.getElementById('privacyMenu');
+  const privacyBtnText = document.getElementById('privacyBtnText');
+  const privacyBtnIcon = document.getElementById('privacyBtnIcon');
+
+  if (privacyBtn && privacyMenu) {
+    privacyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = privacyMenu.style.display === 'none';
+      privacyMenu.style.display = isHidden ? 'flex' : 'none';
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!privacyBtn.contains(e.target) && !privacyMenu.contains(e.target)) {
+        privacyMenu.style.display = 'none';
+      }
+    });
+
+    const privacyOptions = privacyMenu.querySelectorAll('.privacy-option');
+    privacyOptions.forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.preventDefault();
+        const val = opt.getAttribute('data-value');
+        const icon = opt.getAttribute('data-icon');
+        if (privacyBtnText) privacyBtnText.textContent = val;
+        if (privacyBtnIcon) {
+          privacyBtnIcon.setAttribute('data-lucide', icon);
+          if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+          }
+        }
+        privacyMenu.style.display = 'none';
+        showToast(`Privacy set to ${val}`);
+      });
+    });
+
+    // --- Trade Post Toggle Switch ---
+    const tradePostToggle = document.getElementById('tradePostToggle');
+    const tradePostInfoBox = document.getElementById('tradePostInfoBox');
+    if (tradePostToggle) {
+      tradePostToggle.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          // Trade posts must be public
+          if (privacyBtnText && privacyBtnText.textContent.trim() !== 'Public') {
+            privacyBtnText.textContent = 'Public';
+            if (privacyBtnIcon) {
+              privacyBtnIcon.setAttribute('data-lucide', 'globe');
+              if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+              }
+            }
+            showToast("Trade posts must be public. Privacy changed to Public.");
+          }
+          if (tradePostInfoBox) {
+            tradePostInfoBox.style.display = 'flex';
+            if (typeof lucide !== 'undefined') {
+              lucide.createIcons();
+            }
+          }
+        } else {
+          if (tradePostInfoBox) {
+            tradePostInfoBox.style.display = 'none';
+          }
+        }
+      });
+
+      // If user changes privacy dropdown away from Public while trade is checked
+      const privacyOptions = privacyMenu?.querySelectorAll('.privacy-option');
+      if (privacyOptions) {
+        privacyOptions.forEach(opt => {
+          opt.addEventListener('click', (e) => {
+            const val = opt.getAttribute('data-value');
+            if (val !== 'Public' && tradePostToggle.checked) {
+              tradePostToggle.checked = false;
+              if (tradePostInfoBox) tradePostInfoBox.style.display = 'none';
+              document.getElementById('tradePostToggleBg').style.background = 'var(--border-color)';
+              document.getElementById('tradePostToggleKnob').style.transform = 'translateX(0)';
+              const modalTradePostInfo = document.getElementById('modalTradePostInfo');
+              if (modalTradePostInfo) modalTradePostInfo.style.display = 'none';
+              showToast("Trade Post option disabled because the post is no longer public.");
+            }
+          });
+        });
+      }
+    }
+  }
+
+  // --- Create Post Attachment Option Buttons ---
+  const postOptBtns = document.querySelectorAll('.post-opt-btn');
+  postOptBtns.forEach(btn => {
+    if (btn.classList.contains('hashtag')) return; // handled separately
+    btn.addEventListener('click', () => {
+      const type = btn.querySelector('span').textContent;
+      showToast(`Option selected: ${type}`);
+      const postInput = document.getElementById('postInput');
+      if (postInput) postInput.focus();
+    });
+  });
+
+  // --- Mobile Bottom Navigation ---
+  const mobileShortsBtn = document.getElementById('mobileShortsBtn');
+  const mobileCreatePostBtn = document.getElementById('mobileCreatePostBtn');
+  const mobileProfileBtn = document.getElementById('mobileProfileBtn');
+  const mobileHomeBtn = document.getElementById('mobileHomeBtn');
+  const mobileMessagesBtn = document.getElementById('mobileMessagesBtn');
+  const feedMainContent = document.getElementById('feedMainContent');
+
+  if (mobileHomeBtn) {
+    mobileHomeBtn.addEventListener('click', (e) => {
+      if (feedMainContent) {
+        e.preventDefault();
+        showFeedView();
+      }
+    });
+  }
+
+  if (mobileShortsBtn) {
+    mobileShortsBtn.addEventListener('click', (e) => {
+      if (window.innerWidth <= 768) {
+        e.preventDefault();
+        window.location.href = mobileShortsBtn.getAttribute('href') || '/?view=shorts';
+      } else if (feedMainContent) {
+        e.preventDefault();
+        showShortsView();
+      } else {
+        window.location.href = mobileShortsBtn.getAttribute('href') || '/?view=shorts';
+      }
+    });
+  }
+
+  if (mobileMessagesBtn) {
+    mobileMessagesBtn.addEventListener('click', (e) => {
+      if (window.innerWidth <= 768) {
+        e.preventDefault();
+        window.location.href = mobileMessagesBtn.getAttribute('href') || '/?view=messages';
+      } else if (feedMainContent) {
+        e.preventDefault();
+        showMessagesView();
+      } else {
+        window.location.href = mobileMessagesBtn.getAttribute('href') || '/?view=messages';
+      }
+    });
+  }
+
+  if (mobileCreatePostBtn) {
+    mobileCreatePostBtn.addEventListener('click', (e) => {
+      if (document.body.classList.contains('viewing-shorts')) {
+        e.preventDefault();
+        const shortModal = document.getElementById('shortCreateModal');
+        if (shortModal) {
+          shortModal.style.display = 'flex';
+        }
+        return;
+      }
+      if (feedMainContent) {
+        e.preventDefault();
+        if (document.body.classList.contains('viewing-messages')) {
+          showFeedView();
+        }
+        const createPostCard = document.querySelector('.create-post-card');
+        const postInput = document.getElementById('postInput');
+        if (createPostCard) {
+          createPostCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          if (postInput) setTimeout(() => postInput.focus(), 300);
+        }
+      } else {
+        window.location.href = mobileCreatePostBtn.getAttribute('href') || '/';
+      }
+    });
+  }
+
+  if (mobileProfileBtn) {
+    mobileProfileBtn.addEventListener('click', (e) => {
+      // Allow normal navigation to /profile
+    });
+  }
+
+  // --- Shorts Section Toggle Logic ---
+  const backToFeedBtn = document.getElementById('backToFeedBtn');
+  const marketBackToFeedBtn = document.getElementById('marketBackToFeedBtn');
+  const mobileMessagesBackBtn = document.getElementById('mobileMessagesBackBtn');
+  // feedMainContent is declared above
+  const shortsSection = document.getElementById('shortsSection');
+  const marketSection = document.getElementById('marketSection');
+  const gamesSection = document.getElementById('gamesSection');
+  const mobileMessagesSection = document.getElementById('mobileMessagesSection');
+
+  const updateNavActiveStates = (view) => {
+    // Desktop Nav
+    const navItems = document.querySelectorAll('.nav-item');
+    navItems.forEach(item => item.classList.remove('active'));
+
+    // Mobile Nav
+    const mobileNavItems = document.querySelectorAll('.mobile-nav-item');
+    mobileNavItems.forEach(item => item.classList.remove('active'));
+
+    const bookmarkBtn = document.getElementById('bookmarkBtn');
+    if (bookmarkBtn) bookmarkBtn.classList.remove('active');
+
+    if (view === 'shorts') {
+      const shortsSidebarBtn = document.getElementById('shortsSidebarBtn');
+      if (shortsSidebarBtn) shortsSidebarBtn.classList.add('active');
+      const mobileShortsBtn = document.getElementById('mobileShortsBtn');
+      if (mobileShortsBtn) mobileShortsBtn.classList.add('active');
+    } else if (view === 'messages') {
+      const mobileMessagesBtn = document.getElementById('mobileMessagesBtn');
+      if (mobileMessagesBtn) mobileMessagesBtn.classList.add('active');
+    } else if (view === 'bookmarks') {
+      const bookmarksSidebarBtn = document.getElementById('bookmarksSidebarBtn');
+      if (bookmarksSidebarBtn) bookmarksSidebarBtn.classList.add('active');
+      if (bookmarkBtn) bookmarkBtn.classList.add('active');
+    } else if (view === 'games') {
+      const gamesSidebarBtn = document.getElementById('gamesSidebarBtn');
+      if (gamesSidebarBtn) gamesSidebarBtn.classList.add('active');
+    } else if (view === 'market') {
+      const marketSidebarBtn = document.querySelector('.sidebar-nav .nav-item[data-nav-action="market"]');
+      if (marketSidebarBtn) marketSidebarBtn.classList.add('active');
+    } else {
+      const feedNavItem = document.querySelector('.sidebar-nav .nav-item:first-child');
+      if (feedNavItem) feedNavItem.classList.add('active');
+      if (mobileHomeBtn) mobileHomeBtn.classList.add('active');
+    }
+  };
+
+  const showShortsView = () => {
+    if (feedMainContent && shortsSection && mobileMessagesSection) {
+      const storiesWrapper = document.querySelector('.stories-wrapper');
+      const createPostCard = document.querySelector('.create-post-card');
+      const postsContainer = document.getElementById('postsContainer');
+      if (storiesWrapper) storiesWrapper.style.display = 'none';
+      if (createPostCard) createPostCard.style.display = 'none';
+      if (postsContainer) postsContainer.style.display = 'none';
+      shortsSection.style.display = 'flex';
+      mobileMessagesSection.style.display = 'none';
+      if (marketSection) marketSection.style.display = 'none';
+      if (gamesSection) gamesSection.style.display = 'none';
+
+      feedMainContent.style.display = 'none';
+      document.body.classList.add('viewing-shorts');
+      document.body.classList.remove('viewing-messages');
+      document.body.classList.remove('viewing-market');
+      document.body.classList.remove('viewing-games');
+      window.currentView = 'shorts';
+      updateNavActiveStates('shorts');
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.location.href = '/';
+    }
+  };
+
+  const showBookmarksView = () => {
+    if (feedMainContent && shortsSection && mobileMessagesSection) {
+      shortsSection.style.display = 'none';
+      feedMainContent.style.display = 'flex';
+      mobileMessagesSection.style.display = 'none';
+      if (marketSection) marketSection.style.display = 'none';
+      if (gamesSection) gamesSection.style.display = 'none';
+
+      document.body.classList.remove('viewing-shorts');
+      document.body.classList.remove('viewing-messages');
+      document.body.classList.remove('viewing-market');
+      document.body.classList.remove('viewing-games');
+      window.currentView = 'bookmarks';
+      updateNavActiveStates('bookmarks');
+
+      // Hide stories and post creator
+      const storiesWrapper = document.querySelector('.stories-wrapper');
+      if (storiesWrapper) storiesWrapper.style.display = 'none';
+      const createPostCard = document.querySelector('.create-post-card');
+      if (createPostCard) createPostCard.style.display = 'none';
+      const postsContainer = document.getElementById('postsContainer');
+      if (postsContainer) postsContainer.style.display = 'flex';
+
+      // Filter posts
+      const posts = document.querySelectorAll('.post-card');
+      let bookmarkedCount = 0;
+      posts.forEach(post => {
+        const bookmarkBtn = post.querySelector('.post-bookmark-btn');
+        if (bookmarkBtn && bookmarkBtn.classList.contains('bookmarked')) {
+          post.style.display = '';
+          post.classList.remove('fade-out');
+          bookmarkedCount++;
+        } else {
+          post.style.display = 'none';
+        }
+      });
+
+      // Show/Hide empty state
+      const emptyState = document.getElementById('bookmarksEmptyState');
+      if (emptyState) {
+        emptyState.style.display = bookmarkedCount === 0 ? 'flex' : 'none';
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.location.href = '/?view=bookmarks';
+    }
+  };
+
+  const showFeedView = () => {
+    if (feedMainContent && shortsSection && mobileMessagesSection) {
+      shortsSection.style.display = 'none';
+      feedMainContent.style.display = 'flex';
+      mobileMessagesSection.style.display = 'none';
+      if (marketSection) marketSection.style.display = 'none';
+      if (gamesSection) gamesSection.style.display = 'none';
+
+      document.body.classList.remove('viewing-shorts');
+      document.body.classList.remove('viewing-messages');
+      document.body.classList.remove('viewing-market');
+      document.body.classList.remove('viewing-games');
+      window.currentView = 'feed';
+      updateNavActiveStates('feed');
+
+      // Restore stories and post creator
+      const storiesWrapper = document.querySelector('.stories-wrapper');
+      if (storiesWrapper) storiesWrapper.style.display = '';
+      const createPostCard = document.querySelector('.create-post-card');
+      if (createPostCard) createPostCard.style.display = '';
+      const postsContainer = document.getElementById('postsContainer');
+      if (postsContainer) postsContainer.style.display = 'flex';
+
+      // Show all posts
+      const posts = document.querySelectorAll('.post-card');
+      posts.forEach(post => {
+        post.style.display = '';
+        post.classList.remove('fade-out');
+      });
+
+      // Hide empty state
+      const emptyState = document.getElementById('bookmarksEmptyState');
+      if (emptyState) {
+        emptyState.style.display = 'none';
+      }
+
+      refreshBirthdayFeedCards(true);
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.location.href = '/';
+    }
+  };
+
+  const showMessagesView = () => {
+    if (feedMainContent && shortsSection && mobileMessagesSection) {
+      const storiesWrapper = document.querySelector('.stories-wrapper');
+      const createPostCard = document.querySelector('.create-post-card');
+      const postsContainer = document.getElementById('postsContainer');
+      if (storiesWrapper) storiesWrapper.style.display = 'none';
+      if (createPostCard) createPostCard.style.display = 'none';
+      if (postsContainer) postsContainer.style.display = 'none';
+      shortsSection.style.display = 'none';
+      mobileMessagesSection.style.display = 'flex';
+      if (marketSection) marketSection.style.display = 'none';
+      if (gamesSection) gamesSection.style.display = 'none';
+
+      feedMainContent.style.display = 'none';
+      document.body.classList.remove('viewing-shorts');
+      document.body.classList.add('viewing-messages');
+      document.body.classList.remove('viewing-market');
+      document.body.classList.remove('viewing-games');
+      updateNavActiveStates('messages');
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.location.href = '/';
+    }
+  };
+
+  const showMarketView = () => {
+    if (feedMainContent && marketSection && shortsSection && mobileMessagesSection) {
+      const storiesWrapper = document.querySelector('.stories-wrapper');
+      const createPostCard = document.querySelector('.create-post-card');
+      const postsContainer = document.getElementById('postsContainer');
+      if (storiesWrapper) storiesWrapper.style.display = 'none';
+      if (createPostCard) createPostCard.style.display = 'none';
+      if (postsContainer) postsContainer.style.display = 'none';
+
+      shortsSection.style.display = 'none';
+      mobileMessagesSection.style.display = 'none';
+      if (gamesSection) gamesSection.style.display = 'none';
+      feedMainContent.style.display = 'none';
+      marketSection.style.display = 'flex';
+
+      document.body.classList.remove('viewing-shorts');
+      document.body.classList.remove('viewing-messages');
+      document.body.classList.remove('viewing-games');
+      document.body.classList.add('viewing-market');
+      window.currentView = 'market';
+      updateNavActiveStates('market');
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    window.location.href = '/?view=market';
+  };
+
+  if (backToFeedBtn) {
+    backToFeedBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      showFeedView();
+    });
+  }
+
+  if (marketBackToFeedBtn) {
+    marketBackToFeedBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      showFeedView();
+    });
+  }
+
+  if (mobileMessagesBackBtn) {
+    mobileMessagesBackBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      showFeedView();
+    });
+  }
+
+  // --- Reels / Shorts Interactions & Socket Events ---
+
+  const getReelCommentsDrawer = (reelId, card) => {
+    let drawer = document.querySelector(`.reel-comments-drawer[data-reel-id="${reelId}"]`);
+    if (!drawer && card) {
+      drawer = card.querySelector('.reel-comments-drawer');
+    }
+    return drawer;
+  };
+
+  // Helpers to retrieve media elements and metadata dynamically for any media mode (video, image_audio, voice, audio)
+  const getMediaElements = (card) => {
+    const video = card.querySelector('video.reel-video');
+    if (video) {
+      return {
+        main: video,
+        audio: null,
+        type: 'video',
+        start: parseFloat(video.getAttribute('data-audio-start') || 0),
+        duration: parseFloat(video.getAttribute('data-audio-duration') || 30)
+      };
+    }
+    const nonVideo = card.querySelector('.reel-video');
+    if (nonVideo) {
+      const type = nonVideo.getAttribute('data-media-type');
+      const audio = card.querySelector('.reel-audio-track');
+      return {
+        main: nonVideo,
+        audio: audio,
+        type: type,
+        start: parseFloat(nonVideo.getAttribute('data-audio-start') || 0),
+        duration: parseFloat(nonVideo.getAttribute('data-audio-duration') || 30)
+      };
+    }
+    return null;
+  };
+
+  const playMedia = (card) => {
+    const media = getMediaElements(card);
+    if (!media) return Promise.reject("No media");
+
+    const playOverlay = card.querySelector('.reel-play-overlay');
+
+    // Mute or pause all other background audio tracks
+    document.querySelectorAll('.reel-audio-track').forEach(aud => {
+      if (!media.audio || aud !== media.audio) {
+        aud.pause();
+      }
+    });
+
+    if (media.type === 'video') {
+      const start = media.start;
+      if (media.main.currentTime < start) {
+        media.main.currentTime = start;
+      }
+
+      // Set up loop boundary watcher
+      if (!media.main.dataset.hasTimeupdate) {
+        media.main.dataset.hasTimeupdate = "true";
+        media.main.addEventListener('timeupdate', () => {
+          const startVal = parseFloat(media.main.getAttribute('data-audio-start') || 0);
+          const durationVal = parseFloat(media.main.getAttribute('data-audio-duration') || 30);
+          if (media.main.currentTime >= startVal + durationVal) {
+            media.main.currentTime = startVal;
+          }
+        });
+      }
+
+      // Unmute the video for sound
+      media.main.muted = false;
+
+      return media.main.play().then(() => {
+        if (playOverlay) playOverlay.style.opacity = '0';
+      }).catch(err => {
+        console.log("Autoplay with sound blocked, playing muted:", err);
+        media.main.muted = true;
+        return media.main.play().then(() => {
+          if (playOverlay) playOverlay.style.opacity = '0';
+        });
+      });
+    } else {
+      if (media.audio) {
+        const start = media.start;
+        if (media.audio.currentTime < start) {
+          media.audio.currentTime = start;
+        }
+
+        // Set up loop boundary watcher
+        if (!media.audio.dataset.hasTimeupdate) {
+          media.audio.dataset.hasTimeupdate = "true";
+          media.audio.addEventListener('timeupdate', () => {
+            const startVal = parseFloat(media.main.getAttribute('data-audio-start') || 0);
+            const durationVal = parseFloat(media.main.getAttribute('data-audio-duration') || 30);
+            if (media.audio.currentTime >= startVal + durationVal) {
+              media.audio.currentTime = startVal;
+            }
+          });
+        }
+
+        // Start animation states
+        if (media.type === 'audio') {
+          const vinyl = media.main.querySelector('.spinning-vinyl');
+          if (vinyl) vinyl.style.animationPlayState = 'running';
+          media.main.classList.add('is-playing');
+        } else if (media.type === 'voice') {
+          media.main.querySelectorAll('.voice-bar').forEach(bar => bar.classList.add('animating'));
+        }
+
+        return media.audio.play().then(() => {
+          if (playOverlay) playOverlay.style.opacity = '0';
+        });
+      }
+    }
+    return Promise.resolve();
+  };
+
+  const pauseMedia = (card) => {
+    const media = getMediaElements(card);
+    if (!media) return;
+
+    if (media.type === 'video') {
+      media.main.pause();
+    } else {
+      if (media.audio) {
+        media.audio.pause();
+        if (media.type === 'audio') {
+          const vinyl = media.main.querySelector('.spinning-vinyl');
+          if (vinyl) vinyl.style.animationPlayState = 'paused';
+          media.main.classList.remove('is-playing');
+        } else if (media.type === 'voice') {
+          media.main.querySelectorAll('.voice-bar').forEach(bar => bar.classList.remove('animating'));
+        }
+      }
+    }
+  };
+
+  // 1. Vertical autoplay IntersectionObserver
+  const reelObserverOptions = {
+    root: document.querySelector('.reels-feed'),
+    rootMargin: '0px',
+    threshold: 0.65 // Card must be at least 65% visible to autoplay
+  };
+
+  const reelObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const card = entry.target;
+      const playOverlay = card.querySelector('.reel-play-overlay');
+      const media = getMediaElements(card);
+      if (!media) return;
+
+      if (entry.isIntersecting) {
+        card.classList.add('active');
+        // Autoplay the video or background audio track
+        playMedia(card).catch(err => {
+          console.log('Autoplay blocked (waiting for user click):', err);
+          if (playOverlay) playOverlay.style.opacity = '1';
+        });
+      } else {
+        card.classList.remove('active');
+        // Pause out-of-viewport media
+        pauseMedia(card);
+        if (media.type === 'video') {
+          media.main.currentTime = media.start;
+        } else if (media.audio) {
+          media.audio.currentTime = media.start;
+        }
+
+        // Make sure to close any comments drawer if it was left open
+        const reelId = card.getAttribute('data-reel-id');
+        const drawer = getReelCommentsDrawer(reelId, card);
+        if (drawer && drawer.classList.contains('open')) {
+          drawer.classList.remove('open');
+          document.body.classList.remove('comments-drawer-open');
+          socket.emit('reel-comments-leave', { reelId });
+        }
+      }
+    });
+  }, reelObserverOptions);
+
+  // Bind observer to all reels cards
+  const observeReels = () => {
+    document.querySelectorAll('.reel-card').forEach(card => {
+      reelObserver.observe(card);
+    });
+  };
+
+  // Run initial observation
+  observeReels();
+
+  // Reels share bottom sheet and watermark recording elements
+  let activeRecordingVideo = null;
+  let activeRecordingAudio = null;
+  let animationFrameId = null;
+  let mediaRecorder = null;
+
+  const openReelsShareSheet = (reelId, card) => {
+    console.log("[DEBUG Share Sheet] openReelsShareSheet appelée. reelId =", reelId, "card =", card);
+    const overlay = document.getElementById('reelsShareSheet');
+    if (!overlay) {
+      console.error("[DEBUG Share Sheet] Element overlay #reelsShareSheet introuvable dans le DOM !");
+      return;
+    }
+
+    overlay.setAttribute('data-reel-id', reelId);
+    console.log("[DEBUG Share Sheet] Attr data-reel-id défini sur :", reelId);
+
+    const authorNameEl = card ? card.querySelector('h4') : null;
+    const authorAvatarEl = card ? card.querySelector('.avatar img') : null;
+    const captionEl = card ? card.querySelector('p') : null;
+    console.log("[DEBUG Share Sheet] Elements de la carte trouvés :", { authorNameEl, authorAvatarEl, captionEl });
+
+    const targetAuthor = document.getElementById('reelsShareAuthor');
+    const targetAvatar = document.getElementById('reelsShareAvatar');
+    const targetCaption = document.getElementById('reelsShareCaption');
+    console.log("[DEBUG Share Sheet] Elements cibles dans le modal :", { targetAuthor, targetAvatar, targetCaption });
+
+    if (targetAuthor) {
+      targetAuthor.textContent = authorNameEl ? (authorNameEl.textContent || '').split('•')[0].trim() : 'User';
+    }
+    if (targetAvatar) {
+      targetAvatar.src = authorAvatarEl ? authorAvatarEl.src : '/img/default-avatar.png';
+    }
+    if (targetCaption) {
+      targetCaption.textContent = captionEl ? (captionEl.textContent || '') : '';
+    }
+
+    console.log("[DEBUG Share Sheet] Affichage du modal (display = flex)");
+    overlay.style.display = 'flex';
+    if (typeof lucide !== 'undefined') {
+      console.log("[DEBUG Share Sheet] Appel de lucide.createIcons()");
+      lucide.createIcons();
+    } else {
+      console.warn("[DEBUG Share Sheet] Lucide n'est pas défini !");
+    }
+    setTimeout(() => {
+      console.log("[DEBUG Share Sheet] Ajout de la classe 'open'");
+      overlay.classList.add('open');
+    }, 10);
+  };
+
+  const closeReelsShareSheet = () => {
+    const overlay = document.getElementById('reelsShareSheet');
+    if (!overlay) return;
+    overlay.classList.remove('open');
+    setTimeout(() => {
+      overlay.style.display = 'none';
+    }, 300);
+  };
+
+  const downloadReelWithWatermark = async (reelId) => {
+    const card = document.querySelector(`.reel-card[data-reel-id="${reelId}"]`);
+    if (!card) return;
+
+    // Trigger share increment in real-time when user downloads
+    socket.emit('reel-share-add', { reelId });
+
+    // Get the video url from the video element source
+    const videoEl = card.querySelector('video.reel-video');
+    let fileUrl = "";
+    if (videoEl) {
+      fileUrl = videoEl.src;
+    } else {
+      // fallback to audio track or other media elements if any
+      const audioEl = card.querySelector('audio.reel-audio-track');
+      if (audioEl) {
+        fileUrl = audioEl.src;
+      } else {
+        const imgEl = card.querySelector('img.reel-video');
+        if (imgEl) fileUrl = imgEl.src;
+      }
+    }
+
+    if (!fileUrl) {
+      showToast("Impossible de trouver le fichier média à télécharger.");
+      return;
+    }
+
+    // TikTok style top progress bar
+    const topProgressBar = document.getElementById('globalDownloadProgressBar');
+    if (topProgressBar) {
+      topProgressBar.style.width = '0%';
+      topProgressBar.style.opacity = '1';
+    }
+
+    try {
+      showToast("Téléchargement du short démarré...");
+
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error("Erreur de téléchargement");
+
+      const reader = response.body.getReader();
+      const contentLength = +response.headers.get('Content-Length');
+
+      let receivedLength = 0;
+      const chunks = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        receivedLength += value.length;
+
+        if (contentLength && topProgressBar) {
+          const pct = Math.round((receivedLength / contentLength) * 100);
+          topProgressBar.style.width = `${pct}%`;
+        }
+      }
+
+      if (topProgressBar) {
+        topProgressBar.style.width = '100%';
+        setTimeout(() => {
+          topProgressBar.style.opacity = '0';
+          setTimeout(() => {
+            topProgressBar.style.width = '0%';
+          }, 300);
+        }, 800);
+      }
+
+      const blob = new Blob(chunks, { type: response.headers.get('Content-Type') || 'video/webm' });
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      const extension = fileUrl.split('.').pop().split('?')[0] || 'webm';
+      link.download = `weshare-short-${reelId}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+
+      showToast("Short téléchargé avec succès !");
+    } catch (err) {
+      console.error("Download error:", err);
+      showToast("Erreur lors du téléchargement en arrière-plan.");
+      if (topProgressBar) {
+        topProgressBar.style.opacity = '0';
+      }
+    }
+  };
+
+  // Bind close and overlay events for Reels Share Sheet
+  const closeReelsBtn = document.getElementById('closeReelsShareBtn');
+  if (closeReelsBtn) {
+    closeReelsBtn.addEventListener('click', closeReelsShareSheet);
+  }
+  const reelsShareSheet = document.getElementById('reelsShareSheet');
+  if (reelsShareSheet) {
+    reelsShareSheet.addEventListener('click', (e) => {
+      if (e.target === reelsShareSheet) {
+        closeReelsShareSheet();
+      }
+    });
+
+    reelsShareSheet.addEventListener('click', async (e) => {
+      const recipientBtn = e.target.closest('.reels-share-friend-btn');
+      const socialBtn = e.target.closest('.reels-social-btn');
+      if (!recipientBtn && !socialBtn) return;
+
+      const reelId = reelsShareSheet.getAttribute('data-reel-id');
+      const card = document.querySelector(`.reel-card[data-reel-id="${reelId}"]`);
+      if (!card) return;
+
+      try {
+        const shareText = `Découvrez ce Short sur WeShare`;
+        const shareUrl = `${window.location.origin}/?view=shorts#reel-${reelId}`;
+
+        if (recipientBtn) {
+          const recipientUserId = recipientBtn.getAttribute('data-share-recipient-id');
+          const recipientName = recipientBtn.getAttribute('data-share-recipient-name') || 'un ami';
+
+          socket.emit('chat-message', {
+            receiverId: parseInt(recipientUserId, 10),
+            content: `${shareText}: ${shareUrl}`
+          });
+
+          const countSpan = card.querySelector('.share-count');
+          if (countSpan) {
+            const reelShareBtn = card.querySelector('.reel-share-btn');
+            let count = parseInt(reelShareBtn?.getAttribute('data-shares') || countSpan.textContent, 10) || 0;
+            count += 1;
+            if (reelShareBtn) reelShareBtn.setAttribute('data-shares', count);
+            countSpan.textContent = formatNumber(count);
+          }
+          socket.emit('reel-share-add', { reelId });
+
+          showToast(`Partagé avec ${recipientName}.`);
+          closeReelsShareSheet();
+          return;
+        }
+
+        if (socialBtn) {
+          const platform = socialBtn.getAttribute('data-platform');
+
+          const countSpan = card.querySelector('.share-count');
+          if (countSpan) {
+            const reelShareBtn = card.querySelector('.reel-share-btn');
+            let count = parseInt(reelShareBtn?.getAttribute('data-shares') || countSpan.textContent, 10) || 0;
+            count += 1;
+            if (reelShareBtn) reelShareBtn.setAttribute('data-shares', count);
+            countSpan.textContent = formatNumber(count);
+          }
+          socket.emit('reel-share-add', { reelId });
+
+          if (platform === 'copy') {
+            await navigator.clipboard.writeText(shareUrl);
+            showToast('Lien copié dans le presse-papiers !');
+          } else {
+            openSocialShare(platform, shareUrl, shareText);
+          }
+          closeReelsShareSheet();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    });
+
+    const reelsDownloadBtn = document.getElementById('reelsDownloadBtn');
+    if (reelsDownloadBtn) {
+      reelsDownloadBtn.addEventListener('click', () => {
+        const reelId = reelsShareSheet.getAttribute('data-reel-id');
+        closeReelsShareSheet();
+        downloadReelWithWatermark(reelId);
+      });
+    }
+  }
+
+  // Run initial observation
+  observeReels();
+
+
+  // Play/Pause indicator dynamic creation helper
+  const showPlayPauseFlash = (card, type) => {
+    let indicator = card.querySelector('.play-pause-indicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.className = 'play-pause-indicator';
+      card.appendChild(indicator);
+    }
+
+    // Choose icon
+    if (type === 'play') {
+      indicator.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-play"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
+    } else {
+      indicator.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>';
+    }
+
+    indicator.classList.remove('animate-flash');
+    void indicator.offsetWidth; // Trigger reflow
+    indicator.classList.add('animate-flash');
+  };
+
+  // Click & Double Click listener for video elements
+  document.addEventListener('click', (e) => {
+    const reelTradeBtn = e.target.closest('.reel-trade-btn');
+    if (reelTradeBtn) {
+      requestReelTrade(reelTradeBtn, e);
+      return;
+    }
+
+    const video = e.target.closest('.reel-video');
+    if (!video) return;
+
+    if (wasReelDragging) {
+      wasReelDragging = false;
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    e.preventDefault();
+    const card = video.closest('.reel-card');
+    const playOverlay = card.querySelector('.reel-play-overlay');
+    const media = getMediaElements(card);
+    if (!media) return;
+
+    const isPaused = media.type === 'video' ? media.main.paused : (media.audio ? media.audio.paused : true);
+
+    if (isPaused) {
+      playMedia(card).then(() => {
+        showPlayPauseFlash(card, 'play');
+      }).catch(err => console.error(err));
+    } else {
+      pauseMedia(card);
+      if (playOverlay) playOverlay.style.opacity = '1';
+      showPlayPauseFlash(card, 'pause');
+    }
+  });
+
+  // Double click to like logic
+  document.addEventListener('dblclick', (e) => {
+    const video = e.target.closest('.reel-video');
+    if (!video) return;
+
+    e.preventDefault();
+    const card = video.closest('.reel-card');
+    const reelId = card.getAttribute('data-reel-id');
+    const likeBtn = card.querySelector('.reel-like-btn');
+
+    // Float heart effect at click coordinates
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const heart = document.createElement('div');
+    heart.className = 'floating-heart-icon';
+    heart.style.left = `${x}px`;
+    heart.style.top = `${y}px`;
+    heart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-heart"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
+    card.appendChild(heart);
+    setTimeout(() => heart.remove(), 900);
+
+    // If not already liked, trigger like action
+    if (likeBtn && !likeBtn.classList.contains('liked')) {
+      likeBtn.classList.add('liked');
+      const countSpan = likeBtn.querySelector('.like-count');
+      if (countSpan) {
+        let count = parseInt(likeBtn.getAttribute('data-likes') || countSpan.textContent, 10) || 0;
+        count += 1;
+        likeBtn.setAttribute('data-likes', count);
+        countSpan.textContent = formatNumber(count);
+      }
+      socket.emit('reel-like-toggle', { reelId, isLiked: true });
+    }
+  });
+
+  const setReelCommentSubmitState = (form) => {
+    if (!form) return;
+    const input = form.querySelector('.reel-comment-input');
+    const submitBtn = form.querySelector('.reel-comment-submit-btn');
+    if (!submitBtn) return;
+
+    const hasText = !!input?.value.trim();
+    submitBtn.style.opacity = hasText ? '1' : '0.5';
+    submitBtn.style.pointerEvents = hasText ? 'auto' : 'none';
+    submitBtn.toggleAttribute('disabled', !hasText);
+  };
+
+  const clearReelReplyContext = (form) => {
+    if (!form) return;
+    form.removeAttribute('data-parent-id');
+    form.removeAttribute('data-reply-author');
+    const input = form.querySelector('.reel-comment-input');
+    if (input) input.placeholder = 'Add comment...';
+    const context = form.querySelector('.reel-reply-context');
+    const contextText = form.querySelector('.reel-reply-context-text');
+    if (context) context.style.display = 'none';
+    if (contextText) contextText.textContent = '';
+  };
+
+  const setReelReplyContext = (form, commentId, authorName) => {
+    if (!form || !commentId) return;
+    const safeName = authorName || 'this comment';
+    form.setAttribute('data-parent-id', String(commentId));
+    form.setAttribute('data-reply-author', safeName);
+    const input = form.querySelector('.reel-comment-input');
+    if (input) {
+      input.placeholder = `Reply to ${safeName}...`;
+      input.focus();
+    }
+    const context = form.querySelector('.reel-reply-context');
+    const contextText = form.querySelector('.reel-reply-context-text');
+    if (context) context.style.display = 'flex';
+    if (contextText) contextText.textContent = `Replying to ${safeName}`;
+  };
+
+  // Input listener on comment inputs to toggle Send button state
+  document.addEventListener('input', (e) => {
+    const input = e.target.closest('.reel-comment-input');
+    if (!input) return;
+
+    const form = input.closest('.reel-comment-form');
+    setReelCommentSubmitState(form);
+  });
+
+  const initReelSeekbar = (card) => {
+    const media = getMediaElements(card);
+    if (!media) return;
+
+    const slider = card.querySelector('.reel-progress-slider');
+    const currentTimeEl = card.querySelector('.reel-current-time');
+    const durationEl = card.querySelector('.reel-duration');
+    if (!slider) return;
+
+    const track = (media.type === 'video') ? media.main : media.audio;
+    if (!track) return;
+
+    // Format seconds to mm:ss
+    const formatTime = (secs) => {
+      if (isNaN(secs) || !isFinite(secs)) return '0:00';
+      const m = Math.floor(secs / 60);
+      const s = Math.floor(secs % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    };
+
+    // Update slider and time display on timeupdate
+    const onTimeUpdate = () => {
+      const startVal = media.start;
+      const durationVal = media.duration || track.duration || 30;
+
+      const current = Math.max(0, track.currentTime - startVal);
+      if (currentTimeEl) currentTimeEl.textContent = formatTime(current);
+      if (durationEl) durationEl.textContent = formatTime(durationVal);
+
+      if (durationVal > 0) {
+        slider.value = (current / durationVal) * 100;
+      }
+    };
+
+    // Remove existing event listener if any
+    track.removeEventListener('timeupdate', onTimeUpdate);
+    track.addEventListener('timeupdate', onTimeUpdate);
+
+    // Initial update
+    const durationVal = media.duration || track.duration || 30;
+    if (durationEl) durationEl.textContent = formatTime(durationVal);
+
+    // Update time when loadedmetadata is fired
+    track.addEventListener('loadedmetadata', () => {
+      const d = media.duration || track.duration || 30;
+      if (durationEl) durationEl.textContent = formatTime(d);
+    });
+
+    // When the user drags/inputs the slider
+    slider.addEventListener('input', (e) => {
+      const pct = parseFloat(e.target.value) / 100;
+      const durationVal = media.duration || track.duration || 30;
+      const targetTime = media.start + (pct * durationVal);
+
+      track.currentTime = targetTime;
+      if (currentTimeEl) currentTimeEl.textContent = formatTime(pct * durationVal);
+    });
+
+    // Loader event listeners for waiting / playing / pause
+    const loader = card.querySelector('.reel-loader-container');
+    if (loader) {
+      const showLoader = () => {
+        if (!track.paused) loader.style.display = 'flex';
+      };
+      const hideLoader = () => {
+        loader.style.display = 'none';
+      };
+
+      track.addEventListener('waiting', showLoader);
+      track.addEventListener('stalled', showLoader);
+      track.addEventListener('loadstart', showLoader);
+
+      track.addEventListener('playing', hideLoader);
+      track.addEventListener('canplay', hideLoader);
+      track.addEventListener('canplaythrough', hideLoader);
+      track.addEventListener('seeked', hideLoader);
+      track.addEventListener('pause', hideLoader);
+    }
+  };
+
+  // Direct Event Listeners for Reels Action Buttons and Drawer interactions
+  const initReelCardEvents = (card) => {
+    initReelSeekbar(card);
+    const reelId = card.getAttribute('data-reel-id');
+    const likeBtn = card.querySelector('.reel-like-btn');
+    const commentBtn = card.querySelector('.reel-comment-btn');
+    const shareBtn = card.querySelector('.reel-share-btn');
+    const tradeBtn = card.querySelector('.reel-trade-btn');
+    const drawer = getReelCommentsDrawer(reelId, card);
+    const closeDrawerBtn = drawer ? drawer.querySelector('.close-comments-drawer-btn') : null;
+
+    if (likeBtn) {
+      likeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const isLiked = !likeBtn.classList.contains('liked');
+        likeBtn.classList.toggle('liked', isLiked);
+
+        const countSpan = likeBtn.querySelector('.like-count');
+        if (countSpan) {
+          let count = parseInt(likeBtn.getAttribute('data-likes') || countSpan.textContent, 10) || 0;
+          count = isLiked ? count + 1 : Math.max(0, count - 1);
+          likeBtn.setAttribute('data-likes', count);
+          countSpan.textContent = formatNumber(count);
+        }
+
+        socket.emit('reel-like-toggle', { reelId, isLiked });
+      });
+    }
+
+    if (commentBtn && drawer) {
+      commentBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Move the drawer dynamically depending on screen size to avoid positioning/containment issues
+        const isMobile = window.matchMedia('(max-width: 768px)').matches;
+        if (isMobile) {
+          if (drawer.parentElement !== document.body) {
+            document.body.appendChild(drawer);
+          }
+        } else {
+          if (drawer.parentElement !== card) {
+            card.appendChild(drawer);
+          }
+        }
+
+        const isOpen = drawer.classList.contains('open');
+        if (isOpen) {
+          // Close drawer
+          drawer.classList.remove('open');
+          document.body.classList.remove('comments-drawer-open');
+          socket.emit('reel-comments-leave', { reelId });
+        } else {
+          // Close any other open drawers first to prevent stacking of fixed elements on mobile
+          document.querySelectorAll('.reel-comments-drawer.open').forEach(openDrawer => {
+            if (openDrawer !== drawer) {
+              openDrawer.classList.remove('open');
+              const otherReelId = openDrawer.getAttribute('data-reel-id');
+              socket.emit('reel-comments-leave', { reelId: otherReelId });
+            }
+          });
+
+          // Open drawer
+          drawer.classList.add('open');
+          document.body.classList.add('comments-drawer-open');
+          socket.emit('reel-comments-join', { reelId });
+
+          // Show loading state
+          const listContainer = drawer.querySelector('.reel-comments-list');
+          if (listContainer) {
+            listContainer.innerHTML = '<div style="text-align: center; color: rgba(255,255,255,0.6); padding: 20px; font-size: 13px;"><div class="spinner" style="display:inline-block; width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.25); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 8px;"></div><div>Loading comments...</div></div>';
+
+            // Fetch comments
+            socket.emit('reel-comments-fetch', { reelId }, (response) => {
+              if (response && response.success) {
+                renderReelComments(listContainer, response.comments);
+              } else {
+                listContainer.innerHTML = '<div style="text-align: center; color: rgba(255,255,255,0.5); padding: 20px; font-size: 13px;">Failed to load comments</div>';
+              }
+            });
+          }
+        }
+      });
+    }
+
+    if (shareBtn) {
+      console.log("[DEBUG Share Sheet] Bouton de partage trouvé pour le short ID :", reelId);
+      shareBtn.addEventListener('click', (e) => {
+        console.log("[DEBUG Share Sheet] Clic détecté sur le bouton de partage pour le short ID :", reelId);
+        e.preventDefault();
+        e.stopPropagation();
+        openReelsShareSheet(reelId, card);
+      });
+    } else {
+      console.warn("[DEBUG Share Sheet] Bouton de partage (.reel-share-btn) INTROUVABLE pour le short ID :", reelId);
+    }
+
+    if (closeDrawerBtn && drawer) {
+      closeDrawerBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        drawer.classList.remove('open');
+        document.body.classList.remove('comments-drawer-open');
+        socket.emit('reel-comments-leave', { reelId });
+      });
+    }
+  };
+
+  // Helper to dynamically position drawers depending on viewport size to prevent snap container containment bugs on mobile
+  const handleResponsiveDrawers = () => {
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    document.querySelectorAll('.reel-comments-drawer').forEach(drawer => {
+      const reelId = drawer.getAttribute('data-reel-id');
+      const card = document.querySelector(`.reel-card[data-reel-id="${reelId}"]`);
+      if (isMobile) {
+        if (drawer.parentElement !== document.body) {
+          document.body.appendChild(drawer);
+        }
+      } else {
+        if (card && drawer.parentElement !== card) {
+          card.appendChild(drawer);
+        }
+      }
+    });
+  };
+
+  handleResponsiveDrawers();
+  window.addEventListener('resize', handleResponsiveDrawers);
+
+  // Initialize events for all reel cards
+  const cardsToInit = document.querySelectorAll('.reel-card');
+  console.log("[DEBUG Share Sheet] Nombre de cartes .reel-card trouvées au chargement :", cardsToInit.length);
+  cardsToInit.forEach(card => {
+    initReelCardEvents(card);
+  });
+
+  let reelCommentRecorder = null;
+  let reelCommentChunks = [];
+  let reelCommentRecordingSeconds = 0;
+  let reelCommentTimer = null;
+  let activeReelCommentForm = null;
+  let reelCommentMimeInfo = null;
+
+  const getBlobAudioDuration = (blob) => new Promise((resolve) => {
+    const probe = document.createElement('audio');
+    const objectUrl = URL.createObjectURL(blob);
+    probe.preload = 'metadata';
+    probe.src = objectUrl;
+    probe.onloadedmetadata = () => {
+      const duration = Number.isFinite(probe.duration) ? Math.max(1, Math.round(probe.duration)) : null;
+      URL.revokeObjectURL(objectUrl);
+      resolve(duration);
+    };
+    probe.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(null);
+    };
+  });
+
+  const startReelCommentRecording = async (form) => {
+    if (reelCommentRecorder) return;
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      showToast('Microphone unavailable.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      reelCommentMimeInfo = getBestAudioMimeType();
+      reelCommentRecorder = reelCommentMimeInfo.mime
+        ? new MediaRecorder(stream, { mimeType: reelCommentMimeInfo.mime })
+        : new MediaRecorder(stream);
+      reelCommentChunks = [];
+      reelCommentRecordingSeconds = 0;
+      activeReelCommentForm = form;
+
+      const overlay = form.querySelector('.reel-voice-recording-overlay');
+      const timerEl = overlay?.querySelector('.recording-timer');
+
+      reelCommentRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) reelCommentChunks.push(event.data);
+      };
+
+      reelCommentRecorder.start(100);
+      if (overlay) overlay.style.display = 'flex';
+      if (timerEl) timerEl.textContent = '00:00';
+      reelCommentTimer = setInterval(() => {
+        reelCommentRecordingSeconds += 1;
+        if (timerEl) timerEl.textContent = formatRecordingTime(reelCommentRecordingSeconds);
+        if (reelCommentRecordingSeconds >= 120) {
+          stopReelCommentRecording(true);
+        }
+      }, 1000);
+    } catch (err) {
+      showToast('Microphone unavailable: ' + err.message);
+    }
+  };
+
+  const stopReelCommentRecording = (send) => {
+    if (!reelCommentRecorder) return;
+    clearInterval(reelCommentTimer);
+
+    const recorder = reelCommentRecorder;
+    const form = activeReelCommentForm;
+    const overlay = form?.querySelector('.reel-voice-recording-overlay');
+    reelCommentRecorder = null;
+    activeReelCommentForm = null;
+
+    recorder.onstop = async () => {
+      recorder.stream.getTracks().forEach((track) => track.stop());
+      if (overlay) overlay.style.display = 'none';
+
+      if (send && form && reelCommentChunks.length > 0) {
+        const reelId = form.getAttribute('data-reel-id');
+        const parentId = form.getAttribute('data-parent-id');
+        const { mime, ext } = reelCommentMimeInfo || { mime: 'audio/webm', ext: 'webm' };
+        const blob = new Blob(reelCommentChunks, { type: mime || 'audio/webm' });
+        const voiceDuration = await getBlobAudioDuration(blob);
+        const formData = new FormData();
+        formData.append('audio', blob, `reel-comment-voice.${ext || 'webm'}`);
+
+        try {
+          showToast('Sending voice note...');
+          const response = await fetch('/api/comments/upload-voice', {
+            method: 'POST',
+            body: formData
+          });
+          const json = await response.json().catch(() => ({}));
+          if (!response.ok || !json.voiceUrl) {
+            showToast(json.error || 'Error sending the voice note.');
+          } else {
+            socket.emit('reel-comment-add', {
+              reelId,
+              content: '',
+              voiceUrl: json.voiceUrl,
+              voiceDuration,
+              parentId: parentId ? parseInt(parentId, 10) : null
+            }, (socketResponse) => {
+              if (socketResponse?.success) {
+                const input = form.querySelector('.reel-comment-input');
+                if (input) input.value = '';
+                clearReelReplyContext(form);
+                setReelCommentSubmitState(form);
+                showToast('Voice note sent!');
+              } else {
+                showToast("Impossible d'ajouter la note vocale.");
+              }
+            });
+          }
+        } catch (err) {
+          showToast('Network error: ' + err.message);
+        }
+      }
+
+      reelCommentChunks = [];
+      reelCommentRecordingSeconds = 0;
+      reelCommentMimeInfo = null;
+    };
+
+    recorder.stop();
+  };
+
+  document.addEventListener('click', (e) => {
+    const reelVoiceBtn = e.target.closest('.reel-voice-trigger-btn');
+    if (reelVoiceBtn) {
+      const form = reelVoiceBtn.closest('.reel-comment-form');
+      if (form) startReelCommentRecording(form);
+      return;
+    }
+
+    const reelStopBtn = e.target.closest('.reel-stop-recording-btn');
+    if (reelStopBtn) {
+      stopReelCommentRecording(true);
+      return;
+    }
+
+    const reelCancelBtn = e.target.closest('.reel-cancel-recording-btn');
+    if (reelCancelBtn) {
+      stopReelCommentRecording(false);
+      return;
+    }
+
+    const reelCancelReplyBtn = e.target.closest('.reel-cancel-reply-btn');
+    if (reelCancelReplyBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const form = reelCancelReplyBtn.closest('.reel-comment-form');
+      if (form) clearReelReplyContext(form);
+      return;
+    }
+
+    const reelFollowBtn = e.target.closest('.reel-follow-toggle-btn');
+    if (reelFollowBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      handleFollowToggleClick(reelFollowBtn);
+      return;
+    }
+
+    const reelVoicePlayBtn = e.target.closest('.reel-comments-drawer .voice-play-btn');
+    if (reelVoicePlayBtn) {
+      const player = reelVoicePlayBtn.closest('.voice-note-player');
+      toggleVoicePlayer(player, reelVoicePlayBtn);
+    }
+  });
+
+  // Handle Comment Submission Form
+  document.addEventListener('submit', (e) => {
+    const form = e.target.closest('.reel-comment-form');
+    if (!form) return;
+
+    e.preventDefault();
+    const reelId = form.getAttribute('data-reel-id');
+    const parentId = form.getAttribute('data-parent-id');
+    const input = form.querySelector('.reel-comment-input');
+    const content = input.value.trim();
+    if (!content) return;
+
+    socket.emit('reel-comment-add', {
+      reelId,
+      content,
+      parentId: parentId ? parseInt(parentId, 10) : null
+    }, (response) => {
+      if (response && response.success) {
+        input.value = '';
+        clearReelReplyContext(form);
+        setReelCommentSubmitState(form);
+      } else {
+        showToast("Impossible d'ajouter le commentaire.");
+      }
+    });
+  });
+
+  const renderReelVoiceNoteHtml = (comment) => {
+    if (!comment.voice_url) return '';
+    const duration = formatCommentVoiceDuration(comment.voice_duration_seconds);
+    return `
+      <div class="voice-note-player reel-voice-note-player">
+        <button type="button" class="voice-play-btn">
+          <i data-lucide="play"></i>
+        </button>
+        <div class="voice-waveform"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="voice-timeline-wrap">
+          <div class="voice-timeline">
+            <div class="voice-progress"></div>
+          </div>
+        </div>
+        <span class="voice-duration">${duration}</span>
+        <audio class="voice-audio-element" src="${escapeHTML(comment.voice_url)}" preload="metadata"></audio>
+      </div>
+    `;
+  };
+
+  const renderCertificationBadgeHtml = (certificationType, marginLeft = 4) => {
+    const normalizedType = String(certificationType || 'None').trim() || 'None';
+    if (normalizedType === 'None') return '';
+    return `
+      <span class="verified-badge-small" title="${escapeHTML(normalizedType)}" data-type="${escapeHTML(normalizedType)}" style="display: inline-flex; margin-left: ${marginLeft}px;">
+        <i data-lucide="badge-check"></i>
+      </span>
+    `;
+  };
+
+  const renderReelCommentItem = (comment, isReply = false, replyToName = null, depth = 0) => {
+    const timeString = formatRelativeTime(comment.created_at);
+    const fullName = `${comment.first_name || ''} ${comment.last_name || ''}`.trim() || comment.username || 'User';
+    const certificationBadgeHtml = renderCertificationBadgeHtml(comment.certification_type);
+
+    // Manage Read More (Lire plus) and Read Less (Lire moins)
+    const content = comment.content || '';
+    let textHtml = '';
+    if (content) {
+      const prefix = replyToName ? `<span class="reel-comment-reply-to" style="color: #3b82f6; font-weight: 700; margin-right: 4px;">@${escapeHTML(replyToName)}</span>` : '';
+      if (content.length > 120) {
+        const truncated = content.slice(0, 120);
+        textHtml = `
+          <p class="reel-comment-text">
+            ${prefix}
+            <span class="comment-text-short">${escapeHTML(truncated)}...</span>
+            <span class="comment-text-full" style="display: none;">${escapeHTML(content)}</span>
+            <button type="button" class="comment-text-toggle-btn" style="background: none; border: none; padding: 0 4px; color: var(--primary); font-size: 11.5px; font-weight: 700; cursor: pointer; display: inline;">Lire plus</button>
+          </p>
+        `;
+      } else {
+        textHtml = `<p class="reel-comment-text">${prefix}${escapeHTML(content)}</p>`;
+      }
+    }
+
+    const voiceHtml = renderReelVoiceNoteHtml(comment);
+
+    const item = document.createElement('div');
+    item.className = `reel-comment-item${isReply ? ' is-reply' : ''}`;
+    item.setAttribute('data-comment-id', comment.id);
+    item.setAttribute('data-comment-author', fullName);
+    item.setAttribute('data-depth', String(depth));
+
+    if (isReply && depth > 1) {
+      // Indent based on depth (each depth level above 1 adds 16px margin)
+      item.style.marginLeft = `${Math.min((depth - 1) * 16, 48)}px`;
+    }
+
+    item.innerHTML = `
+      <div class="reel-comment-avatar">
+        <img src="${escapeHTML(comment.avatar || '/assets/avatar_placeholder.jpg')}" alt="${escapeHTML(fullName)}">
+      </div>
+      <div class="reel-comment-content-wrapper">
+        <div class="reel-comment-user-info">
+          <span class="reel-comment-username">${escapeHTML(fullName)}${certificationBadgeHtml}</span>
+          <span class="reel-comment-time">${timeString}</span>
+        </div>
+        ${textHtml}
+        ${voiceHtml}
+        <div class="reel-comment-actions">
+          <button class="reel-reply-btn" type="button"><i data-lucide="reply" style="width: 12px; height: 12px;"></i> Répondre</button>
+        </div>
+      </div>
+    `;
+
+    const voicePlayer = item.querySelector('.voice-note-player');
+    if (voicePlayer) setupVoiceNotePlayer(voicePlayer);
+
+    // Bind event listener to the Reply button
+    const replyBtn = item.querySelector('.reel-reply-btn');
+    if (replyBtn) {
+      replyBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Find the closest comment form in the drawer
+        const drawer = item.closest('.reel-comments-drawer');
+        const form = drawer ? drawer.querySelector('.reel-comment-form') : null;
+        if (form) {
+          setReelReplyContext(form, comment.id, fullName);
+        }
+      });
+    }
+
+    // Bind event listener to the text toggle button (Lire plus/Lire moins)
+    const textToggleBtn = item.querySelector('.comment-text-toggle-btn');
+    if (textToggleBtn) {
+      textToggleBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const shortSpan = item.querySelector('.comment-text-short');
+        const fullSpan = item.querySelector('.comment-text-full');
+        const isCollapsed = fullSpan.style.display === 'none';
+        if (isCollapsed) {
+          fullSpan.style.display = 'inline';
+          shortSpan.style.display = 'none';
+          textToggleBtn.textContent = 'Lire moins';
+        } else {
+          fullSpan.style.display = 'none';
+          shortSpan.style.display = 'inline';
+          textToggleBtn.textContent = 'Lire plus';
+        }
+      });
+    }
+
+    return item;
+  };
+
+  const renderReelCommentItemWithReplies = (rootComment, commentMap) => {
+    // Render the root comment item element
+    const container = renderReelCommentItem(rootComment, false);
+    const contentWrapper = container.querySelector('.reel-comment-content-wrapper');
+
+    const replies = rootComment.replies || [];
+    if (replies.length > 0) {
+      // Create a replies list container
+      const repliesList = document.createElement('div');
+      repliesList.className = 'reel-replies-list';
+      repliesList.style.display = 'none'; // hidden by default
+
+      // Render all replies inside this container
+      replies.forEach(reply => {
+        const directParent = commentMap.get(reply.parent_id);
+        const replyToName = directParent ? (`${directParent.first_name || ''} ${directParent.last_name || ''}`.trim() || directParent.username) : null;
+        repliesList.appendChild(renderReelCommentItem(reply, true, replyToName, reply.depth || 0));
+      });
+
+      // Create show/hide replies toggle button (Lire plus / Lire moins)
+      const toggleRepliesBtn = document.createElement('button');
+      toggleRepliesBtn.className = 'reel-read-more-replies-btn';
+      toggleRepliesBtn.type = 'button';
+      toggleRepliesBtn.style.marginTop = '6px';
+      toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Afficher les réponses (${replies.length})`;
+
+      toggleRepliesBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const isHidden = repliesList.style.display === 'none';
+        if (isHidden) {
+          repliesList.style.display = 'flex';
+          toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Masquer les réponses`;
+        } else {
+          repliesList.style.display = 'none';
+          toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Afficher les réponses (${replies.length})`;
+        }
+        if (typeof lucide !== 'undefined') lucide.createIcons({ node: toggleRepliesBtn });
+      });
+
+      contentWrapper.appendChild(toggleRepliesBtn);
+      contentWrapper.appendChild(repliesList);
+    }
+
+    return container;
+  };
+
+  // Helper function to render comments list
+  const renderReelComments = (container, comments) => {
+    if (!comments || comments.length === 0) {
+      container.innerHTML = '<div style="text-align: center; color: rgba(255,255,255,0.5); padding: 40px 10px; font-size: 13px;"><i data-lucide="message-square" style="width: 28px; height: 28px; margin: 0 auto 10px auto; opacity: 0.5; display: block;"></i>Be the first to comment!</div>';
+      if (typeof lucide !== 'undefined') lucide.createIcons({ node: container });
+      return;
+    }
+
+    container.innerHTML = '';
+
+    // Create a map of comments for quick lookup
+    const commentMap = new Map();
+    comments.forEach(c => {
+      commentMap.set(c.id, { ...c, replies: [] });
+    });
+
+    const rootComments = [];
+
+    // Sort comments by created_at ascending so that replies are in chronological order
+    const sortedComments = [...comments].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+    // Re-initialize map with sorted comments
+    commentMap.clear();
+    sortedComments.forEach(c => {
+      commentMap.set(c.id, { ...c, replies: [] });
+    });
+
+    sortedComments.forEach(c => {
+      const mapped = commentMap.get(c.id);
+
+      // Calculate depth by traversing up the parent chain
+      let depth = 0;
+      let curr = c;
+      while (curr.parent_id && commentMap.has(curr.parent_id)) {
+        depth++;
+        curr = commentMap.get(curr.parent_id);
+      }
+      mapped.depth = depth;
+
+      if (c.parent_id) {
+        // Find the root ancestor to group all replies under it
+        let parent = commentMap.get(c.parent_id);
+        if (parent) {
+          // Keep traversing up until we find a root comment (no parent_id)
+          let ancestor = parent;
+          while (ancestor.parent_id && commentMap.has(ancestor.parent_id)) {
+            ancestor = commentMap.get(ancestor.parent_id);
+          }
+          ancestor.replies.push(mapped);
+        } else {
+          // If parent is missing, treat as root
+          rootComments.push(mapped);
+        }
+      } else {
+        rootComments.push(mapped);
+      }
+    });
+
+    // In a comments drawer, root comments are shown newest first
+    rootComments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    // Render root comments and their nested replies
+    rootComments.forEach(rootComment => {
+      container.appendChild(renderReelCommentItemWithReplies(rootComment, commentMap));
+    });
+
+    if (typeof lucide !== 'undefined') lucide.createIcons({ node: container });
+  };
+
+  // Helper formatting and escaping functions
+  const formatRelativeTime = (dateStr) => {
+    try {
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffSec = Math.floor(diffMs / 1000);
+      const diffMin = Math.floor(diffSec / 60);
+      const diffHrs = Math.floor(diffMin / 60);
+      const diffDays = Math.floor(diffHrs / 24);
+
+      if (diffSec < 60) return 'Just now';
+      if (diffMin < 60) return `${diffMin}m ago`;
+      if (diffHrs < 24) return `${diffHrs}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+
+      return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const escapeHTML = (str) => {
+    return String(str ?? '').replace(/[&<>'"]/g,
+      tag => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        "'": '&#39;',
+        '"': '&quot;'
+      }[tag] || tag)
+    );
+  };
+
+  // Socket broadcast listeners for real-time comment synchronization
+  socket.on('reel-comment-broadcast', (data) => {
+    const { reelId, comment } = data;
+    const drawer = document.querySelector(`.reel-comments-drawer[data-reel-id="${reelId}"]`);
+    if (!drawer) return;
+
+    const listContainer = drawer.querySelector('.reel-comments-list');
+
+    // Remove empty state message if it is present
+    const emptyState = listContainer.querySelector('[style*="text-align: center"]');
+    if (emptyState && !emptyState.querySelector('.spinner')) {
+      listContainer.innerHTML = '';
+    }
+
+    if (comment.parent_id) {
+      // Find the parent comment or reply element in the DOM
+      const parentEl = listContainer.querySelector(`.reel-comment-item[data-comment-id="${comment.parent_id}"]`);
+      if (parentEl) {
+        // Find the root ancestor container
+        let rootCommentEl = parentEl.closest('.reel-comment-item:not(.is-reply)');
+        if (!rootCommentEl && !parentEl.classList.contains('is-reply')) {
+          rootCommentEl = parentEl;
+        }
+
+        if (rootCommentEl) {
+          const contentWrapper = rootCommentEl.querySelector('.reel-comment-content-wrapper');
+          let repliesList = rootCommentEl.querySelector('.reel-replies-list');
+          let toggleRepliesBtn = rootCommentEl.querySelector('.reel-read-more-replies-btn');
+
+          // If replies list doesn't exist yet, create it
+          if (!repliesList) {
+            repliesList = document.createElement('div');
+            repliesList.className = 'reel-replies-list';
+            repliesList.style.display = 'flex'; // Auto-show list when a new reply arrives in real-time
+
+            // Create show/hide button
+            toggleRepliesBtn = document.createElement('button');
+            toggleRepliesBtn.className = 'reel-read-more-replies-btn';
+            toggleRepliesBtn.type = 'button';
+            toggleRepliesBtn.style.marginTop = '6px';
+            toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Masquer les réponses`;
+
+            toggleRepliesBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const isHidden = repliesList.style.display === 'none';
+              if (isHidden) {
+                repliesList.style.display = 'flex';
+                toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Masquer les réponses`;
+              } else {
+                repliesList.style.display = 'none';
+                const count = repliesList.querySelectorAll('.reel-comment-item').length;
+                toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i> Afficher les réponses (${count})`;
+              }
+              if (typeof lucide !== 'undefined') lucide.createIcons({ node: toggleRepliesBtn });
+            });
+
+            contentWrapper.appendChild(toggleRepliesBtn);
+            contentWrapper.appendChild(repliesList);
+          } else {
+            // Make sure the replies list is visible when a reply is posted
+            repliesList.style.display = 'flex';
+            toggleRepliesBtn.innerHTML = `<i data-lucide="chevron-up" style="width: 12px; height: 12px;"></i> Masquer les réponses`;
+          }
+
+          // Resolve parent depth from DOM attribute
+          const parentDepth = parseInt(parentEl.getAttribute('data-depth') || '0', 10);
+          const depth = parentDepth + 1;
+
+          // Resolve target name of parent directly from DOM attribute
+          const replyToName = parentEl.getAttribute('data-comment-author');
+
+          // Render the reply and append
+          const replyItem = renderReelCommentItem(comment, true, replyToName, depth);
+          repliesList.appendChild(replyItem);
+          if (typeof lucide !== 'undefined') lucide.createIcons({ node: replyItem });
+
+          replyItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+    } else {
+      // It's a root comment, append it to the top of the list container
+      const item = renderReelCommentItem(comment, false);
+      listContainer.insertBefore(item, listContainer.firstChild);
+      if (typeof lucide !== 'undefined') lucide.createIcons({ node: item });
+
+      listContainer.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    }
+
+    // Update comments count text in drawer header
+    const headerCount = drawer.querySelector('.drawer-comments-count');
+    if (headerCount) {
+      let count = parseInt(headerCount.getAttribute('data-count') || headerCount.textContent, 10) || 0;
+      count += 1;
+      headerCount.setAttribute('data-count', count);
+      headerCount.textContent = formatNumber(count);
+    }
+  });
+
+  // Socket updates for other clients (likes, shares, comment counts)
+  socket.on('reel-likes-updated', (data) => {
+    const likeBtns = document.querySelectorAll(`.reel-like-btn[data-reel-id="${data.reelId}"]`);
+    likeBtns.forEach(btn => {
+      btn.setAttribute('data-likes', data.likesCount);
+      const countSpan = btn.querySelector('.like-count');
+      if (countSpan) countSpan.textContent = formatNumber(data.likesCount);
+    });
+  });
+
+  socket.on('reel-comments-updated', (data) => {
+    const commentBtns = document.querySelectorAll(`.reel-comment-btn[data-reel-id="${data.reelId}"]`);
+    commentBtns.forEach(btn => {
+      btn.setAttribute('data-comments', data.commentsCount);
+      const countSpan = btn.querySelector('.comment-count');
+      if (countSpan) countSpan.textContent = formatNumber(data.commentsCount);
+    });
+
+    const drawer = document.querySelector(`.reel-comments-drawer[data-reel-id="${data.reelId}"]`);
+    if (drawer) {
+      const headerCount = drawer.querySelector('.drawer-comments-count');
+      if (headerCount) {
+        headerCount.setAttribute('data-count', data.commentsCount);
+        headerCount.textContent = formatNumber(data.commentsCount);
+      }
+    }
+  });
+
+  socket.on('reel-shares-updated', (data) => {
+    const shareBtns = document.querySelectorAll(`.reel-share-btn[data-reel-id="${data.reelId}"]`);
+    shareBtns.forEach(btn => {
+      btn.setAttribute('data-shares', data.sharesCount);
+      const countSpan = btn.querySelector('.share-count');
+      if (countSpan) countSpan.textContent = formatNumber(data.sharesCount);
+    });
+  });
+
+  const applyNavigationQueryState = () => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedView = params.get('view');
+    const requestedSection = params.get('section');
+    const requestedModal = params.get('modal');
+
+    if (requestedView === 'shorts') {
+      showShortsView();
+    } else if (requestedView === 'bookmarks') {
+      showBookmarksView();
+    } else if (requestedView === 'messages') {
+      showMessagesView();
+    } else if (requestedView === 'market') {
+      showMarketView();
+    } else if (requestedView === 'events') {
+      window.location.href = '/events';
+    }
+
+    if (requestedSection === 'followers') {
+      window.openSocialListModal?.('followers');
+    } else if (requestedSection === 'following' || requestedSection === 'connections') {
+      window.openSocialListModal?.('following');
+    }
+
+    if (requestedModal === 'settings') {
+      window.location.href = '/settings';
+    }
+  };
+
+  // --- Dark Mode / Theme Toggle Logic ---
+  const themeToggleBtns = [
+    document.getElementById('themeToggleBtn'),
+    document.getElementById('mobileThemeToggleBtn')
+  ].filter(Boolean);
+
+  const getSavedTheme = () => localStorage.getItem('theme');
+  const getSystemTheme = () => window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+
+  const applyTheme = (theme) => {
+    if (theme === 'dark') {
+      document.body.setAttribute('data-theme', 'dark');
+    } else {
+      document.body.removeAttribute('data-theme');
+    }
+  };
+
+  const initialTheme = getSavedTheme() || getSystemTheme();
+  applyTheme(initialTheme);
+
+  themeToggleBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const currentTheme = document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      applyTheme(currentTheme);
+      localStorage.setItem('theme', currentTheme);
+    });
+  });
+
+  // --- HASHTAG LOGIC ---
+  let knownHashtags = {};
+  let acceptedPaidHashtags = [];
+  let pendingPaymentHashtag = null;
+  let cachedHashtagsList = null;
+  let activeHashtagInsertTarget = 'post';
+  let selectedChallengeConfig = null;
+  let selectedChallengeParticipants = [];
+  let editingChallengePostId = null;
+
+  let selectedBackground = null;
+  let selectedTextColor = '#ffffff';
+  let selectedTextAlignment = 'center';
+  let selectedTextPosition = 'center';
+  let selectedTextFont = "'Outfit', sans-serif";
+  let selectedTextSize = '20px';
+  let cachedBackgroundsList = null;
+  let pendingPaymentBackground = null;
+
+  const postInputEl = document.getElementById('postInput');
+  const statusCaptionInput = document.getElementById('statusCaption');
+  const shortCaptionInput = document.getElementById('shortCaption');
+  const hashtagListModal = document.getElementById('hashtagListModal');
+  const createHashtagModal = document.getElementById('createHashtagModal');
+  const paymentConfirmationModal = document.getElementById('paymentConfirmationModal');
+  const photoVideoModal = document.getElementById('photoVideoModal');
+  const attachmentModal = document.getElementById('attachmentModal');
+  const challengeModal = document.getElementById('challengeModal');
+  const challengeTitleInput = document.getElementById('challengeTitleInput');
+  const challengeVotePriceInput = document.getElementById('challengeVotePriceInput');
+  const challengeInviteSearchInput = document.getElementById('challengeInviteSearchInput');
+  const challengeInviteResults = document.getElementById('challengeInviteResults');
+  const mentionModal = document.getElementById('mentionModal');
+  const statusCreateModal = document.getElementById('statusCreateModal');
+  const statusViewerModal = document.getElementById('statusViewerModal');
+  const openStatusModalBtn = document.getElementById('openStatusModalBtn');
+  const closeStatusCreateModalBtn = document.getElementById('closeStatusCreateModal');
+  const closeStatusViewerModalBtn = document.getElementById('closeStatusViewerModal');
+  const statusMediaInput = document.getElementById('statusMediaInput');
+  const statusMediaFilename = document.getElementById('statusMediaFilename');
+  const statusMediaPreview = document.getElementById('statusMediaPreview');
+  const statusViewerAvatar = document.getElementById('statusViewerAvatar');
+  const statusViewerTitle = document.getElementById('statusViewerTitle');
+  const statusViewerTimer = document.getElementById('statusViewerTimer');
+  const statusViewerCaption = document.getElementById('statusViewerCaption');
+  const statusViewerImage = document.getElementById('statusViewerImage');
+  const statusViewerVideo = document.getElementById('statusViewerVideo');
+  const statusViewerMuteBtn = document.getElementById('statusViewerMuteBtn');
+  const eventsUnlockModal = document.getElementById('eventsUnlockModal');
+  const eventsUnlockModalText = document.getElementById('eventsUnlockModalText');
+  const eventsUnlockModalStatus = document.getElementById('eventsUnlockModalStatus');
+  const eventsUnlockModalFee = document.getElementById('eventsUnlockModalFee');
+  const eventsUnlockModalTitle = document.getElementById('eventsUnlockModalTitle');
+  const confirmEventsUnlockModal = document.getElementById('confirmEventsUnlockModal');
+  const cancelEventsUnlockModal = document.getElementById('cancelEventsUnlockModal');
+  const closeEventsUnlockModal = document.getElementById('closeEventsUnlockModal');
+
+  // --- Ad elements selectors ---
+  const createAdModal = document.getElementById('createAdModal');
+  const openAdModalBtn = document.getElementById('openAdModalBtn');
+  const adPlaceholderBtn = document.getElementById('adPlaceholderBtn');
+  const closeAdModalBtn = document.getElementById('closeAdModalBtn');
+  const createAdForm = document.getElementById('createAdForm');
+  const adDaysInput = document.getElementById('adDaysInput');
+  const adDaysVal = document.getElementById('adDaysVal');
+  const adTotalPriceVal = document.getElementById('adTotalPriceVal');
+  const adImageInput = document.getElementById('adImageInput');
+  const adImageZone = document.getElementById('adImageZone');
+  const adImagePreviewWrapper = document.getElementById('adImagePreviewWrapper');
+  const adImagePreview = document.getElementById('adImagePreview');
+  const removeAdImageBtn = document.getElementById('removeAdImageBtn');
+  let pendingEventsUnlockForm = null;
+  const getPageLocale = () => String(window.currentLocale || document.documentElement.getAttribute('lang') || 'en').slice(0, 2).toLowerCase();
+
+  applyNavigationQueryState();
+
+  const statusCards = document.querySelectorAll('.status-card');
+  statusCards.forEach((card) => {
+    card.addEventListener('click', (e) => {
+      e.preventDefault();
+      openStatusViewer(card);
+    });
+  });
+
+  if (openStatusModalBtn) {
+    openStatusModalBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      openStatusModal();
+    });
+  }
+
+  if (closeStatusCreateModalBtn) {
+    closeStatusCreateModalBtn.addEventListener('click', closeStatusModal);
+  }
+
+  if (statusCreateModal) {
+    statusCreateModal.addEventListener('click', (e) => {
+      if (e.target === statusCreateModal) {
+        closeStatusModal();
+      }
+    });
+  }
+
+  if (closeStatusViewerModalBtn) {
+    closeStatusViewerModalBtn.addEventListener('click', closeStatusViewer);
+  }
+
+  if (statusViewerModal) {
+    statusViewerModal.addEventListener('click', (e) => {
+      if (e.target === statusViewerModal) {
+        closeStatusViewer();
+      }
+    });
+  }
+
+  if (statusViewerMuteBtn) {
+    statusViewerMuteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      statusViewerVolumeOn = !statusViewerVolumeOn;
+      if (statusViewerVideo) {
+        statusViewerVideo.muted = !statusViewerVolumeOn;
+      }
+      statusViewerMuteBtn.innerHTML = `<i data-lucide="${statusViewerVolumeOn ? 'volume-2' : 'volume-x'}" style="width: 16px; height: 16px;"></i>`;
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+    });
+  }
+
+  if (statusViewerVideo) {
+    statusViewerVideo.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const rect = statusViewerVideo.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+
+      if (clickX < rect.width * 0.35) {
+        advanceStory(-1);
+      } else if (clickX > rect.width * 0.65) {
+        advanceStory(1);
+      } else {
+        if (isStoryPaused) {
+          resumeStory();
+        } else {
+          pauseStory();
+        }
+      }
+    });
+    statusViewerVideo.addEventListener('mousedown', (e) => e.stopPropagation());
+    statusViewerVideo.addEventListener('mouseup', (e) => e.stopPropagation());
+    statusViewerVideo.addEventListener('touchstart', (e) => e.stopPropagation());
+    statusViewerVideo.addEventListener('touchend', (e) => e.stopPropagation());
+
+    statusViewerVideo.addEventListener('timeupdate', () => {
+      if (statusViewerModal?.style.display === 'flex' && currentGroupStatuses && currentGroupStatuses[currentStatusIndex]) {
+        const currentStatusObj = currentGroupStatuses[currentStatusIndex];
+        if (currentStatusObj.media_type && currentStatusObj.media_type.startsWith('video/')) {
+          const start = (currentStatusObj.trim_start !== undefined && currentStatusObj.trim_start !== null) ? Number(currentStatusObj.trim_start) : 0;
+          const end = (currentStatusObj.trim_end !== undefined && currentStatusObj.trim_end !== null) ? Number(currentStatusObj.trim_end) : statusViewerVideo.duration;
+
+          if (statusViewerVideo.currentTime < start - 0.3 || statusViewerVideo.currentTime >= end) {
+            statusViewerVideo.currentTime = start;
+            statusViewerVideo.play().catch(() => { });
+          }
+        }
+      }
+    });
+  }
+
+  // Re-run in case a partial page render inserted the ad modal after the first bind.
+  initAdModalControls();
+
+  // --- Ad Slideshow Rotation Logic ---
+  let slideshowIntervalId = null;
+  const initAdSlideshow = () => {
+    if (slideshowIntervalId) {
+      clearInterval(slideshowIntervalId);
+      slideshowIntervalId = null;
+    }
+
+    const container = document.querySelector('.ads-slideshow-container');
+    if (!container) return;
+
+    const slideshowItems = container.querySelectorAll('.ad-slideshow-item');
+    if (slideshowItems.length <= 1) return;
+
+    let currentIndex = 0;
+    slideshowItems.forEach((item, idx) => {
+      if (item.classList.contains('active')) {
+        currentIndex = idx;
+      }
+    });
+
+    slideshowIntervalId = setInterval(() => {
+      const items = container.querySelectorAll('.ad-slideshow-item');
+      if (items.length <= 1) return;
+
+      const currentItem = items[currentIndex];
+      currentIndex = (currentIndex + 1) % items.length;
+      const nextItem = items[currentIndex];
+
+      if (currentItem && nextItem) {
+        // Fade out current item
+        currentItem.style.opacity = '0';
+        currentItem.style.pointerEvents = 'none';
+        currentItem.style.zIndex = '1';
+        currentItem.classList.remove('active');
+
+        // Fade in next item
+        nextItem.style.opacity = '1';
+        nextItem.style.pointerEvents = 'auto';
+        nextItem.style.zIndex = '2';
+        nextItem.classList.add('active');
+      }
+    }, 4000);
+  };
+  initAdSlideshow();
+
+  const getAdDisplayUrl = (url) => {
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch (_error) {
+      return String(url || '').replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
+    }
+  };
+
+  const buildSponsoredAdCard = (ad) => {
+    const article = document.createElement('article');
+    article.className = 'post-card sponsored-ad-card';
+    article.dataset.feedItemType = 'ad';
+    if (ad.id) article.dataset.adId = String(ad.id);
+    article.dataset.createdAt = ad.created_at || new Date().toISOString();
+
+    const displayUrl = getAdDisplayUrl(ad.ad_url);
+
+    article.innerHTML = `
+      <a class="sponsored-ad-link" href="${escapeHtml(ad.ad_url || '#')}" target="_blank" rel="noopener noreferrer">
+        <header class="sponsored-ad-header">
+          <div class="sponsored-ad-brand">
+            <div class="sponsored-ad-meta">
+              <span class="sponsored-ad-subtitle">Sponsorisé · ${escapeHtml(displayUrl)}</span>
+            </div>
+          </div>
+          <span class="sponsored-ad-label"><i data-lucide="badge-ad"></i> Annonce</span>
+        </header>
+        <div class="sponsored-ad-copy">
+          <h4>${escapeHtml(ad.title || '')}</h4>
+          <p>${escapeHtml(ad.description || '')}</p>
+        </div>
+        <div class="sponsored-ad-media">
+          <img src="${escapeHtml(ad.image_url || '')}" alt="${escapeHtml(ad.title || 'Publicité')}">
+        </div>
+        <div class="sponsored-ad-footer">
+          <span class="sponsored-ad-domain">${escapeHtml(displayUrl)}</span>
+          <span class="sponsored-ad-cta">Ouvrir <i data-lucide="arrow-up-right"></i></span>
+        </div>
+      </a>
+    `;
+
+    return article;
+  };
+
+  const insertSponsoredAdIntoFeed = (ad) => {
+    if (!postsContainer || Number(ad?.show_in_feed) !== 1) return;
+    if (ad.id && postsContainer.querySelector(`.sponsored-ad-card[data-ad-id="${String(ad.id)}"]`)) return;
+
+    const card = buildSponsoredAdCard(ad);
+    const newTime = new Date(card.dataset.createdAt || Date.now()).getTime();
+    const feedItems = Array.from(postsContainer.querySelectorAll('.post-card[data-created-at]'));
+    const insertBeforeItem = feedItems.find((item) => {
+      const itemTime = new Date(item.dataset.createdAt || 0).getTime();
+      return Number.isFinite(itemTime) && itemTime < newTime;
+    });
+
+    if (insertBeforeItem) {
+      postsContainer.insertBefore(card, insertBeforeItem);
+    } else {
+      postsContainer.appendChild(card);
+    }
+
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  };
+
+  // Listen for real-time ad publication broadcasts
+  socket.on('ad-published', (ad) => {
+    showToast(`Nouvelle publicité sponsorisée : ${ad.title}`);
+
+    const container = document.querySelector('.ads-slideshow-container');
+    if (container) {
+      // Remove placeholder if present
+      const placeholder = document.getElementById('adPlaceholderBtn');
+      if (placeholder) {
+        placeholder.remove();
+      }
+
+      // Create new ad slide
+      const adLink = document.createElement('a');
+      adLink.href = ad.ad_url;
+      adLink.target = '_blank';
+      adLink.rel = 'noopener noreferrer';
+      adLink.className = 'ad-item-link ad-slideshow-item';
+
+      adLink.style.position = 'absolute';
+      adLink.style.inset = '0';
+      adLink.style.display = 'flex';
+      adLink.style.flexDirection = 'column';
+      adLink.style.gap = '8px';
+      adLink.style.textDecoration = 'none';
+      adLink.style.color = 'inherit';
+      adLink.style.transition = 'opacity 0.8s ease-in-out, transform 0.8s ease-in-out';
+
+      const currentItems = container.querySelectorAll('.ad-slideshow-item');
+      if (currentItems.length === 0) {
+        adLink.style.opacity = '1';
+        adLink.style.pointerEvents = 'auto';
+        adLink.style.zIndex = '2';
+        adLink.classList.add('active');
+      } else {
+        adLink.style.opacity = '0';
+        adLink.style.pointerEvents = 'none';
+        adLink.style.zIndex = '1';
+      }
+
+      const displayUrl = ad.ad_url.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
+      adLink.innerHTML = `
+        <div class="ad-banner-wrapper" style="width: 100%; height: 130px; border-radius: 10px; overflow: hidden; background: #000; position: relative;">
+          <img src="${ad.image_url}" alt="${ad.title}" style="width: 100%; height: 100%; object-fit: cover;">
+        </div>
+        <div style="min-width: 0;">
+          <h4 class="ad-title" style="margin: 0; font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${ad.title}</h4>
+          <p class="ad-description" style="margin: 2px 0 0 0; font-size: 11px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35;">${ad.description}</p>
+          <span class="ad-link-text" style="display: inline-block; margin-top: 4px; font-size: 10px; color: var(--primary); font-weight: 600;">${displayUrl}</span>
+        </div>
+      `;
+
+      container.appendChild(adLink);
+
+      // Re-initialize the slideshow
+      initAdSlideshow();
+
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+    }
+
+    insertSponsoredAdIntoFeed(ad);
+  });
+
+  if (statusMediaInput) {
+    statusMediaInput.addEventListener('change', () => {
+      const file = statusMediaInput.files?.[0] || null;
+      if (file && file.type.startsWith('video/')) {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.src = URL.createObjectURL(file);
+        video.onloadedmetadata = () => {
+          URL.revokeObjectURL(video.src);
+          const maxDuration = 15 * 60; // 15 minutes
+          if (video.duration > maxDuration) {
+            showToast(getPageLocale() === 'fr' ? 'La vidéo ne doit pas dépasser 15 minutes.' : 'The video must not exceed 15 minutes.');
+            statusMediaInput.value = '';
+            renderStatusMediaPreview(null);
+          } else {
+            renderStatusMediaPreview(file);
+          }
+        };
+        video.onerror = () => {
+          URL.revokeObjectURL(video.src);
+          showToast(getPageLocale() === 'fr' ? 'Erreur lors de la lecture des métadonnées vidéo.' : 'Error reading video metadata.');
+          statusMediaInput.value = '';
+          renderStatusMediaPreview(null);
+        };
+      } else {
+        renderStatusMediaPreview(file);
+      }
+    });
+  }
+
+  // --- Status Creation Tab Selection ---
+  const statusTabBtns = document.querySelectorAll('.status-tab-btn[data-tab-id]');
+  const statusTypeInput = document.getElementById('statusTypeInput');
+  if (statusTabBtns && statusTabBtns.length > 0) {
+    statusTabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tabId = btn.dataset.tabId;
+
+        // Update active tab buttons visual state
+        statusTabBtns.forEach(b => {
+          b.classList.toggle('active', b === btn);
+          if (b === btn) {
+            b.style.background = 'var(--primary-light)';
+            b.style.color = 'var(--primary)';
+            b.style.fontWeight = '700';
+          } else {
+            b.style.background = 'transparent';
+            b.style.color = 'var(--text-secondary)';
+            b.style.fontWeight = '600';
+          }
+        });
+
+        // Toggle visibility of panels
+        const mediaPanel = document.getElementById('statusTabContentMedia');
+        const textPanel = document.getElementById('statusTabContentText');
+        const voicePanel = document.getElementById('statusTabContentVoice');
+
+        if (mediaPanel) mediaPanel.style.display = tabId === 'media' ? 'block' : 'none';
+        if (textPanel) textPanel.style.display = tabId === 'text' ? 'block' : 'none';
+        if (voicePanel) voicePanel.style.display = tabId === 'voice' ? 'block' : 'none';
+
+        // Update hidden status type input
+        if (statusTypeInput) {
+          statusTypeInput.value = tabId;
+        }
+
+        // Clean up from other tabs
+        if (tabId !== 'voice') {
+          // Stop recording
+          if (statusVoiceRecorder && statusVoiceRecorder.state !== 'inactive') {
+            try { statusVoiceRecorder.stop(); } catch (e) { }
+          }
+          // Stop preview playback
+          if (statusVoicePreviewAudio && !statusVoicePreviewAudio.paused) {
+            statusVoicePreviewAudio.pause();
+          }
+        }
+        if (tabId !== 'media') {
+          // Stop preview video if playing
+          const videoTag = document.getElementById('statusPreviewVideoTag');
+          if (videoTag) {
+            videoTag.pause();
+          }
+        }
+      });
+    });
+  }
+
+  // --- Status Gradient Background Selection ---
+  const colorDots = document.querySelectorAll('.color-dot');
+  const statusBgColorInput = document.getElementById('statusBgColorInput');
+  const statusTextPreviewContainer = document.getElementById('statusTextPreviewContainer');
+  const statusVoicePreviewContainer = document.getElementById('statusVoicePreviewContainer');
+  if (colorDots && colorDots.length > 0) {
+    colorDots.forEach(dot => {
+      dot.addEventListener('click', () => {
+        const gradient = dot.dataset.gradient;
+        if (statusBgColorInput) statusBgColorInput.value = gradient;
+
+        if (statusTextPreviewContainer) statusTextPreviewContainer.style.background = gradient;
+        if (statusVoicePreviewContainer) statusVoicePreviewContainer.style.background = gradient;
+
+        // Toggle active border style
+        colorDots.forEach(d => {
+          if (d === dot) {
+            d.classList.add('active');
+            d.style.border = '2px solid white';
+            d.style.boxShadow = '0 0 0 1px #ccc';
+          } else {
+            d.classList.remove('active');
+            d.style.border = '2px solid transparent';
+            d.style.boxShadow = 'none';
+          }
+        });
+      });
+    });
+  }
+
+  // --- Voice Status note Media Recording ---
+  const recordBtn = document.getElementById('statusVoiceRecordBtn');
+  const voiceTimerEl = document.getElementById('statusVoiceTimer');
+  const voiceStatusEl = document.getElementById('statusVoiceStatus');
+  const voicePlayerWrapper = document.getElementById('statusVoicePlayerWrapper');
+  const voicePlayBtn = document.getElementById('statusVoicePlayBtn');
+  const voicePlayTimeline = document.getElementById('statusVoicePlayTimeline');
+  const voicePlayProgress = document.getElementById('statusVoicePlayProgress');
+  const voicePlayTime = document.getElementById('statusVoicePlayTime');
+
+  if (recordBtn) {
+    recordBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+
+      if (!statusVoiceRecorder || statusVoiceRecorder.state === 'inactive') {
+        // Start recording
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+          statusAudioChunks = [];
+          const options = getBestChatAudioMimeType();
+          statusVoiceRecorder = new MediaRecorder(stream, { mimeType: options.mime });
+
+          statusVoiceRecorder.ondataavailable = (evt) => {
+            if (evt.data && evt.data.size > 0) {
+              statusAudioChunks.push(evt.data);
+            }
+          };
+
+          statusVoiceRecorder.onstop = () => {
+            statusVoiceAudioBlob = new Blob(statusAudioChunks, { type: options.mime });
+
+            const audioUrl = URL.createObjectURL(statusVoiceAudioBlob);
+            if (statusVoicePreviewAudio) {
+              statusVoicePreviewAudio.pause();
+            }
+            statusVoicePreviewAudio = new Audio(audioUrl);
+
+            try {
+              const file = new File([statusVoiceAudioBlob], `status_voice.${options.ext}`, { type: options.mime });
+              const container = new DataTransfer();
+              container.items.add(file);
+              if (statusMediaInput) {
+                statusMediaInput.files = container.files;
+              }
+            } catch (err) {
+              console.error('DataTransfer failed:', err);
+            }
+
+            if (voicePlayerWrapper) {
+              voicePlayerWrapper.style.display = 'flex';
+            }
+
+            statusVoicePreviewAudio.ontimeupdate = () => {
+              if (statusVoicePreviewAudio.duration) {
+                const pct = (statusVoicePreviewAudio.currentTime / statusVoicePreviewAudio.duration) * 100;
+                if (voicePlayProgress) voicePlayProgress.style.width = pct + '%';
+
+                const cur = Math.floor(statusVoicePreviewAudio.currentTime);
+                const cm = Math.floor(cur / 60), cs = cur % 60;
+                if (voicePlayTime) voicePlayTime.textContent = `${cm}:${String(cs).padStart(2, '0')}`;
+              }
+            };
+
+            statusVoicePreviewAudio.onended = () => {
+              if (voicePlayBtn) {
+                voicePlayBtn.innerHTML = '<i data-lucide="play" style="width: 16px; height: 16px; fill: white;"></i>';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+              }
+              if (voicePlayProgress) voicePlayProgress.style.width = '0%';
+            };
+
+            statusVoicePreviewAudio.onloadedmetadata = () => {
+              const dur = Math.floor(statusVoicePreviewAudio.duration);
+              const m = Math.floor(dur / 60), s = dur % 60;
+              if (voicePlayTime) voicePlayTime.textContent = `0:00 / ${m}:${String(s).padStart(2, '0')}`;
+            };
+
+            if (voiceStatusEl) {
+              voiceStatusEl.textContent = getPageLocale() === 'fr' ? 'Enregistrement terminé' : 'Recording finished';
+            }
+
+            recordBtn.style.transform = '';
+            recordBtn.innerHTML = '<i data-lucide="mic" style="width: 24px; height: 24px;"></i>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          statusVoiceRecorder.start();
+
+          recordBtn.innerHTML = '<i data-lucide="square" style="width: 24px; height: 24px; fill: #f5576c;"></i>';
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+          recordBtn.style.transform = 'scale(1.1)';
+
+          if (voiceStatusEl) {
+            voiceStatusEl.textContent = getPageLocale() === 'fr' ? 'Enregistrement en cours...' : 'Recording...';
+          }
+
+          if (voicePlayerWrapper) {
+            voicePlayerWrapper.style.display = 'none';
+          }
+          if (voicePlayProgress) voicePlayProgress.style.width = '0%';
+          if (voicePlayTime) voicePlayTime.textContent = '0:00';
+
+          statusVoiceRecordingSeconds = 0;
+          if (voiceTimerEl) voiceTimerEl.textContent = '00:00';
+
+          if (statusVoiceRecordingTimer) {
+            clearInterval(statusVoiceRecordingTimer);
+          }
+
+          statusVoiceRecordingTimer = setInterval(() => {
+            statusVoiceRecordingSeconds++;
+            const mins = Math.floor(statusVoiceRecordingSeconds / 60);
+            const secs = statusVoiceRecordingSeconds % 60;
+            if (voiceTimerEl) {
+              voiceTimerEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            }
+            if (statusVoiceRecordingSeconds >= 600) {
+              try { statusVoiceRecorder.stop(); } catch (e) { }
+            }
+          }, 1000);
+
+        } catch (err) {
+          console.error('Failed to start recording:', err);
+          showToast(getPageLocale() === 'fr' ? 'Impossible d’accéder au microphone.' : 'Microphone access denied.');
+        }
+      } else {
+        try {
+          statusVoiceRecorder.stop();
+        } catch (e) {
+          console.error(e);
+        }
+        if (statusVoiceRecordingTimer) {
+          clearInterval(statusVoiceRecordingTimer);
+          statusVoiceRecordingTimer = null;
+        }
+      }
+    });
+  }
+
+  if (voicePlayBtn) {
+    voicePlayBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!statusVoicePreviewAudio) return;
+
+      if (statusVoicePreviewAudio.paused) {
+        statusVoicePreviewAudio.play().catch(() => { });
+        voicePlayBtn.innerHTML = '<i data-lucide="pause" style="width: 16px; height: 16px; fill: white;"></i>';
+      } else {
+        statusVoicePreviewAudio.pause();
+        voicePlayBtn.innerHTML = '<i data-lucide="play" style="width: 16px; height: 16px; fill: white;"></i>';
+      }
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+  }
+
+  if (voicePlayTimeline) {
+    voicePlayTimeline.addEventListener('click', (e) => {
+      if (!statusVoicePreviewAudio || !statusVoicePreviewAudio.duration) return;
+      const rect = voicePlayTimeline.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+      statusVoicePreviewAudio.currentTime = ratio * statusVoicePreviewAudio.duration;
+      if (voicePlayProgress) voicePlayProgress.style.width = (ratio * 100) + '%';
+    });
+  }
+
+  // --- Status Form Validation & Submission ---
+  const statusCreateForm = document.getElementById('statusCreateForm');
+  if (statusCreateForm) {
+    statusCreateForm.addEventListener('submit', (e) => {
+      const type = statusTypeInput ? statusTypeInput.value : 'media';
+
+      if (type === 'text') {
+        const textVal = document.getElementById('statusTextTextarea')?.value?.trim() || '';
+        if (!textVal) {
+          e.preventDefault();
+          showToast(getPageLocale() === 'fr' ? 'Veuillez saisir du texte pour votre statut.' : 'Please enter some text for your status.');
+          return;
+        }
+        const captionInput = document.getElementById('statusCaption');
+        if (captionInput) {
+          captionInput.value = textVal;
+        }
+      } else if (type === 'voice') {
+        if (!statusVoiceAudioBlob) {
+          e.preventDefault();
+          showToast(getPageLocale() === 'fr' ? 'Veuillez enregistrer une note vocale avant de publier.' : 'Please record a voice note before posting.');
+          return;
+        }
+      } else {
+        if (!statusMediaInput || statusMediaInput.files.length === 0) {
+          e.preventDefault();
+          showToast(getPageLocale() === 'fr' ? 'Veuillez choisir une image ou une vidéo pour votre statut.' : 'Please choose an image or video for your status.');
+          return;
+        }
+      }
+    });
+  }
+
+  const statusViewerMediaShell = document.querySelector('.status-viewer-media-shell');
+  if (statusViewerMediaShell) {
+    statusViewerMediaShell.addEventListener('click', (e) => {
+      const rect = statusViewerMediaShell.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      if (clickX < rect.width * 0.35) {
+        advanceStory(-1);
+      } else {
+        advanceStory(1);
+      }
+    });
+
+    statusViewerMediaShell.addEventListener('mousedown', pauseStory);
+    statusViewerMediaShell.addEventListener('mouseup', resumeStory);
+    statusViewerMediaShell.addEventListener('mouseleave', resumeStory);
+
+    statusViewerMediaShell.addEventListener('touchstart', () => {
+      pauseStory();
+    });
+    statusViewerMediaShell.addEventListener('touchend', () => {
+      resumeStory();
+    });
+  }
+
+  if (statusMediaFilename) {
+    statusMediaFilename.textContent = getStatusNoFileLabel();
+  }
+
+  renderStatusMediaPreview(null);
+  syncStatusTimers();
+  setInterval(syncStatusTimers, 1000);
+
+  // Global popover modals config
+  const popovers = [
+    { modalId: 'photoVideoModal', btnSelector: '.post-opt-btn.image-video' },
+    { modalId: 'diffusionModal', btnSelector: '.post-opt-btn.diffusion' },
+    { modalId: 'challengeModal', btnSelector: '.post-opt-btn.challenge' },
+    { modalId: 'hashtagListModal', btnSelector: '.post-opt-btn.hashtag', onLoad: () => loadHashtags() },
+    {
+      modalId: 'mentionModal', btnSelector: '.post-opt-btn.mention', onLoad: () => {
+        const searchInput = document.getElementById('mentionSearchInput');
+        if (searchInput) {
+          searchInput.value = '';
+          searchInput.focus();
+        }
+        loadMentions('');
+      }
+    },
+    { modalId: 'textStyleModal', btnSelector: '.post-opt-btn.text-style', onLoad: () => loadBackgrounds() }
+  ];
+
+  function hideAllPopovers() {
+    popovers.forEach(p => {
+      const m = document.getElementById(p.modalId);
+      if (m) m.style.display = 'none';
+    });
+  }
+
+  function positionPopover(modal, triggerBtn) {
+    if (!modal || !triggerBtn || modal.style.display !== 'flex') return;
+
+    const card = modal.closest('.create-post-card');
+    const btnRect = triggerBtn.getBoundingClientRect();
+    const arrow = modal.querySelector('.hashtag-popover-arrow');
+    const popoverWidth = modal.offsetWidth || 320;
+
+    if (!card) {
+      const viewportPadding = 12;
+      const fallbackTop = Math.min(window.innerHeight - modal.offsetHeight - viewportPadding, btnRect.bottom + 10);
+      const fallbackLeft = Math.max(
+        viewportPadding,
+        Math.min(window.innerWidth - popoverWidth - viewportPadding, btnRect.left + (btnRect.width / 2) - (popoverWidth / 2))
+      );
+
+      modal.style.position = 'fixed';
+      modal.style.zIndex = '10050';
+      modal.style.top = `${Math.max(viewportPadding, fallbackTop)}px`;
+      modal.style.left = `${fallbackLeft}px`;
+
+      if (arrow) {
+        arrow.style.left = `${Math.max(16, Math.min(popoverWidth - 16, (btnRect.width / 2)))}px`;
+      }
+      return;
+    }
+
+    modal.style.position = 'absolute';
+    modal.style.zIndex = '1000';
+    const cardRect = card.getBoundingClientRect();
+
+    // 1. Calculate top position relative to card (button bottom + 10px)
+    const popoverTop = (btnRect.bottom - cardRect.top) + 10;
+
+    // 2. Calculate horizontal centering relative to button
+    const btnCenterRelativeToCard = (btnRect.left + btnRect.width / 2) - cardRect.left;
+    let popoverLeft = btnCenterRelativeToCard - (popoverWidth / 2);
+
+    // 3. Clamp left to stay within the card boundaries (with 10px padding)
+    const minLeft = 10;
+    const maxLeft = cardRect.width - popoverWidth - 10;
+    const popoverLeftClamped = Math.max(minLeft, Math.min(maxLeft, popoverLeft));
+
+    // Apply position to modal
+    modal.style.top = `${popoverTop}px`;
+    modal.style.left = `${popoverLeftClamped}px`;
+
+    // 4. Align the arrow to point to the button center
+    if (arrow) {
+      const arrowLeft = btnCenterRelativeToCard - popoverLeftClamped;
+      const minArrowLeft = 16;
+      const maxArrowLeft = popoverWidth - 16;
+      const clampedArrowLeft = Math.max(minArrowLeft, Math.min(maxArrowLeft, arrowLeft));
+      arrow.style.left = `${clampedArrowLeft}px`;
+
+      // Adapt the arrow's background color to match the header gradient at its horizontal position
+      const popoverGradients = {
+        hashtagListModal: { start: [59, 130, 246], end: [139, 92, 246] },      // linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)
+        photoVideoModal: { start: [24, 119, 242], end: [0, 198, 255] },       // linear-gradient(135deg, #1877f2 0%, #00c6ff 100%)
+        diffusionModal: { start: [229, 57, 53], end: [227, 93, 91] },          // YouTube red gradient
+        challengeModal: { start: [244, 67, 54], end: [255, 152, 0] },         // linear-gradient(135deg, #f44336 0%, #ff9800 100%)
+        mentionModal: { start: [156, 39, 176], end: [224, 64, 251] },          // linear-gradient(135deg, #9c27b0 0%, #e040fb 100%)
+        textStyleModal: { start: [236, 72, 153], end: [139, 92, 246] }          // linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)
+      };
+      const colors = popoverGradients[modal.id];
+      if (colors) {
+        const ratio = clampedArrowLeft / popoverWidth;
+        const r = Math.round(colors.start[0] + (colors.end[0] - colors.start[0]) * ratio);
+        const g = Math.round(colors.start[1] + (colors.end[1] - colors.start[1]) * ratio);
+        const b = Math.round(colors.start[2] + (colors.end[2] - colors.start[2]) * ratio);
+        arrow.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+      }
+    }
+  }
+
+  function getActivePopover() {
+    for (let p of popovers) {
+      const m = document.getElementById(p.modalId);
+      if (m && m.style.display === 'flex') {
+        const btn = document.querySelector(p.btnSelector);
+        return { modal: m, btn: btn };
+      }
+    }
+    return null;
+  }
+
+  // Window resize repositioning
+  window.addEventListener('resize', () => {
+    const active = getActivePopover();
+    if (active) {
+      positionPopover(active.modal, active.btn);
+    }
+  });
+
+  // Centralized click handling
+  document.addEventListener('click', (e) => {
+    let clickedPopoverInfo = null;
+    let clickedBtn = null;
+
+    for (let p of popovers) {
+      const btn = e.target.closest(p.btnSelector);
+      if (btn) {
+        clickedPopoverInfo = p;
+        clickedBtn = btn;
+        break;
+      }
+    }
+
+    if (clickedPopoverInfo) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const modal = document.getElementById(clickedPopoverInfo.modalId);
+      if (modal) {
+        const isCurrentlyVisible = modal.style.display === 'flex';
+        hideAllPopovers();
+
+        if (!isCurrentlyVisible) {
+          modal.style.display = 'flex';
+          if (clickedPopoverInfo.onLoad) {
+            clickedPopoverInfo.onLoad();
+          }
+
+          requestAnimationFrame(() => {
+            positionPopover(modal, clickedBtn);
+          });
+        }
+      }
+    } else {
+      const active = getActivePopover();
+      if (active && !active.modal.contains(e.target)) {
+        hideAllPopovers();
+      }
+    }
+  });
+
+  // Close buttons handling
+  ['closeHashtagListModal', 'closePhotoVideoModal', 'closeDiffusionModal', 'closeChallengeModal', 'closeMentionModal', 'closeTextStyleModal'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (id === 'closeChallengeModal') {
+        resetChallengeConfig();
+      }
+      hideAllPopovers();
+    });
+  });
+
+  document.getElementById('openCreateHashtagModalBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    hideAllPopovers();
+    createHashtagModal.style.display = 'flex';
+  });
+
+  document.getElementById('closeCreateHashtagModal')?.addEventListener('click', () => {
+    createHashtagModal.style.display = 'none';
+  });
+
+  const newHashtagIsPaidInput = document.getElementById('newHashtagIsPaid');
+  const submitCreateHashtagBtn = document.getElementById('submitCreateHashtagBtn');
+  const updateCreateHashtagButtonLabel = () => {
+    if (!submitCreateHashtagBtn) return;
+    const isPremium = !!newHashtagIsPaidInput?.checked;
+    submitCreateHashtagBtn.innerHTML = `
+      <i data-lucide="zap" style="width: 18px;"></i>
+      ${isPremium ? 'Create for 0.5 Tokens' : 'Create for Free'}
+    `;
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  };
+  newHashtagIsPaidInput?.addEventListener('change', updateCreateHashtagButtonLabel);
+  updateCreateHashtagButtonLabel();
+
+  // Media Upload Logic
+  let selectedPostMedia = [];
+  const mediaUploadZone = document.getElementById('mediaUploadZone');
+  const photoVideoInput = document.getElementById('photoVideoInput');
+  const mediaPreviewContainer = document.getElementById('mediaPreviewContainer');
+
+  mediaUploadZone?.addEventListener('click', () => {
+    photoVideoInput?.click();
+  });
+
+  photoVideoInput?.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      if (typeof window.handleMediaSelection === 'function') {
+        window.handleMediaSelection(e.target.files);
+      }
+    }
+  });
+
+  function renderMediaPreviews() {
+    if (!mediaPreviewContainer) return;
+    mediaPreviewContainer.innerHTML = '';
+    selectedPostMedia.forEach((file, index) => {
+      const div = document.createElement('div');
+      div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:var(--bg-hover); padding:6px 10px; border-radius:6px; font-size:12px; border:1px solid var(--border-color);';
+      div.innerHTML = `
+      <div style="display:flex; align-items:center; gap:6px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
+        <i data-lucide="file-image" style="width:14px; height:14px; color:#1877f2; flex-shrink:0;"></i>
+        <span style="font-weight:550; color:var(--text-primary); text-overflow:ellipsis; overflow:hidden;">${file.name}</span>
+        <span style="font-size:10px; color:var(--text-secondary);">(${(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+      </div>
+      <button type="button" style="background:transparent; border:none; cursor:pointer; color:var(--danger); display:flex; align-items:center; justify-content:center;" onclick="removePostMedia(${index})">
+        <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
+      </button>
+    `;
+      mediaPreviewContainer.appendChild(div);
+    });
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  }
+
+  window.removePostMedia = function (index) {
+    selectedPostMedia.splice(index, 1);
+    renderMediaPreviews();
+  };
+
+  // Diffusion Logic
+  let selectedLiveConfig = null;
+  const liveUrlInput = document.getElementById('liveUrlInput');
+  const livePriceInput = document.getElementById('livePriceInput');
+  const livePriceContainer = document.getElementById('livePriceContainer');
+  const liveModeFreeBtn = document.getElementById('liveModeFreeBtn');
+  const liveModePaidBtn = document.getElementById('liveModePaidBtn');
+  const applyLiveConfigBtn = document.getElementById('applyLiveConfigBtn');
+  const clearLiveConfigBtn = document.getElementById('clearLiveConfigBtn');
+  let currentLiveAccessMode = 'free'; // 'free' or 'paid'
+
+  liveModeFreeBtn?.addEventListener('click', () => {
+    currentLiveAccessMode = 'free';
+    liveModeFreeBtn.classList.add('active');
+    liveModePaidBtn.classList.remove('active');
+    liveModeFreeBtn.style.border = '1px solid var(--primary)';
+    liveModePaidBtn.style.border = '1px solid var(--border-color)';
+    if (livePriceContainer) livePriceContainer.style.display = 'none';
+  });
+
+  liveModePaidBtn?.addEventListener('click', () => {
+    currentLiveAccessMode = 'paid';
+    liveModePaidBtn.classList.add('active');
+    liveModeFreeBtn.classList.remove('active');
+    liveModePaidBtn.style.border = '1px solid var(--primary)';
+    liveModeFreeBtn.style.border = '1px solid var(--border-color)';
+    if (livePriceContainer) livePriceContainer.style.display = 'flex';
+  });
+
+  applyLiveConfigBtn?.addEventListener('click', () => {
+    const url = liveUrlInput?.value || '';
+    const ytId = getYouTubeId(url);
+    if (!ytId) {
+      showToast("Veuillez entrer une URL ou un ID de Live YouTube valide.");
+      return;
+    }
+
+    let price = 0;
+    if (currentLiveAccessMode === 'paid') {
+      price = parseFloat(livePriceInput?.value || 0);
+      if (isNaN(price) || price <= 0) {
+        showToast("Veuillez entrer un prix d'accès valide.");
+        return;
+      }
+    }
+
+    selectedLiveConfig = {
+      isLive: true,
+      liveUrl: url,
+      livePrice: price
+    };
+
+    updateLiveButtonState();
+    if (clearLiveConfigBtn) clearLiveConfigBtn.style.display = 'flex';
+    hideAllPopovers();
+    showToast("Live configuré avec succès !");
+  });
+
+  clearLiveConfigBtn?.addEventListener('click', () => {
+    resetLiveConfig();
+    hideAllPopovers();
+    showToast("Live annulé.");
+  });
+
+  function resetLiveConfig() {
+    selectedLiveConfig = null;
+    currentLiveAccessMode = 'free';
+    if (liveUrlInput) liveUrlInput.value = '';
+    if (livePriceInput) livePriceInput.value = '';
+    if (livePriceContainer) livePriceContainer.style.display = 'none';
+    if (liveModeFreeBtn) {
+      liveModeFreeBtn.classList.add('active');
+      liveModeFreeBtn.style.border = '1px solid var(--primary)';
+    }
+    if (liveModePaidBtn) {
+      liveModePaidBtn.classList.remove('active');
+      liveModePaidBtn.style.border = '1px solid var(--border-color)';
+    }
+    if (clearLiveConfigBtn) clearLiveConfigBtn.style.display = 'none';
+    updateLiveButtonState();
+  }
+
+  function updateLiveButtonState() {
+    const button = document.querySelector('.post-opt-btn.diffusion');
+    if (!button) return;
+    const isActive = !!(selectedLiveConfig && selectedLiveConfig.isLive);
+    button.style.background = isActive ? 'linear-gradient(135deg, #e53935 0%, #e35d5b 100%)' : 'var(--bg-hover)';
+    button.style.color = isActive ? '#ffffff' : 'var(--text-primary)';
+    button.style.borderColor = isActive ? 'transparent' : 'var(--border-color)';
+  }
+
+  function updateChallengeButtonsState(selector, activeValue, attributeName) {
+    document.querySelectorAll(selector).forEach((button) => {
+      const isActive = button.dataset[attributeName] === activeValue;
+      button.style.background = isActive ? 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' : 'var(--bg-hover)';
+      button.style.color = isActive ? '#ffffff' : 'var(--text-primary)';
+      button.style.borderColor = isActive ? 'transparent' : 'var(--border-color)';
+    });
+  }
+
+  function syncSelectedChallengeParticipantsConfig() {
+    selectedChallengeConfig = selectedChallengeConfig || {};
+    selectedChallengeConfig.participants = selectedChallengeParticipants.map((participant) => Number(participant.id)).filter((id) => id > 0);
+    selectedChallengeConfig.participantEntries = selectedChallengeParticipants.map((participant) => ({
+      userId: Number(participant.id),
+      username: participant.username || '',
+      photoUrl: participant.photoUrl || null
+    }));
+  }
+
+  async function uploadChallengeParticipantPhoto(userId) {
+    const participant = selectedChallengeParticipants.find((item) => Number(item.id) === Number(userId));
+    if (!participant) return;
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.onchange = async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+
+      showToast(`Téléchargement de la photo de @${participant.username}...`);
+      try {
+        const formData = new FormData();
+        formData.append('media', file);
+
+        const res = await fetch('/api/posts/upload-media', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.mediaUrls && data.mediaUrls[0]) {
+          participant.photoUrl = data.mediaUrls[0];
+          syncSelectedChallengeParticipantsConfig();
+          renderSelectedParticipantsTags();
+          showToast(`Photo ajoutée pour @${participant.username}.`);
+        } else {
+          showToast("Erreur lors du téléchargement de l'image.");
+        }
+      } catch (error) {
+        console.error(error);
+        showToast('Erreur de connexion.');
+      }
+    };
+    fileInput.click();
+  }
+
+  function renderSelectedParticipantsTags() {
+    const list = document.getElementById('challengeParticipantsList');
+    if (!list) return;
+    list.innerHTML = '';
+    const type = selectedChallengeConfig?.type || '';
+    selectedChallengeParticipants.forEach((user) => {
+      const tag = document.createElement('div');
+      tag.className = 'challenge-participant-tag';
+      if (type === 'miss') {
+        tag.style.cssText = 'display:flex; align-items:center; gap:10px; background:var(--bg-card); border:1px solid var(--border-color); padding:10px 12px; border-radius:14px; font-size:11px; color:var(--text-primary); margin:0; min-width:0;';
+        tag.innerHTML = `
+          <img src="${user.photoUrl || user.avatar || '/assets/avatar_placeholder.jpg'}" style="width:42px; height:42px; border-radius:12px; object-fit:cover; background:var(--bg-hover); flex-shrink:0;">
+          <div style="display:flex; flex-direction:column; gap:3px; min-width:0; flex:1;">
+            <span style="font-size:12px; font-weight:800; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">@${user.username}</span>
+            <span style="font-size:10px; font-weight:700; color:${user.photoUrl ? 'var(--success)' : 'var(--danger)'};">${user.photoUrl ? 'Photo prête' : 'Photo requise'}</span>
+          </div>
+          <button type="button" class="challenge-participant-photo-btn" data-user-id="${user.id}" style="padding:6px 10px; border-radius:10px; border:1px solid var(--border-color); background:var(--bg-hover); color:var(--text-primary); font-size:10px; font-weight:800; cursor:pointer; flex-shrink:0;">${user.photoUrl ? 'Changer' : 'Ajouter photo'}</button>
+          <button type="button" class="remove-participant-btn" data-user-id="${user.id}" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:16px; font-weight:700; padding:0 2px; line-height:1; display:flex; align-items:center; justify-content:center; flex-shrink:0;">&times;</button>
+        `;
+      } else {
+        tag.style.cssText = 'display:inline-flex; align-items:center; gap:6px; background:rgba(234,88,12,0.1); border:1px solid rgba(234,88,12,0.25); padding:6px 10px; border-radius:999px; font-size:11px; font-weight:700; color:var(--text-primary); margin: 2px;';
+        tag.innerHTML = `
+          <img src="${user.avatar || '/assets/avatar_placeholder.jpg'}" style="width:18px; height:18px; border-radius:50%; object-fit:cover; background:#fff;">
+          <span>@${user.username}</span>
+          <button type="button" class="remove-participant-btn" data-user-id="${user.id}" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:14px; font-weight:700; padding:0 2px; line-height:1; display:flex; align-items:center; justify-content:center;">&times;</button>
+        `;
+      }
+      tag.querySelector('.challenge-participant-photo-btn')?.addEventListener('click', () => {
+        uploadChallengeParticipantPhoto(user.id);
+      });
+      tag.querySelector('.remove-participant-btn').addEventListener('click', (e) => {
+        const uid = Number(e.currentTarget.dataset.userId);
+        selectedChallengeParticipants = selectedChallengeParticipants.filter((p) => Number(p.id) !== uid);
+        syncSelectedChallengeParticipantsConfig();
+
+        if (uid === Number(window.currentUserId)) {
+          const creatorToggle = document.getElementById('challengeCreatorParticipateToggle');
+          const creatorToggleBg = document.getElementById('challengeCreatorParticipateToggleBg');
+          const creatorToggleKnob = document.getElementById('challengeCreatorParticipateToggleKnob');
+          if (creatorToggle) creatorToggle.checked = false;
+          if (creatorToggleBg) creatorToggleBg.style.background = 'var(--border-color)';
+          if (creatorToggleKnob) creatorToggleKnob.style.transform = 'translateX(0)';
+        }
+
+        renderSelectedParticipantsTags();
+      });
+      list.appendChild(tag);
+    });
+  }
+
+  function syncChallengeUI() {
+    const type = selectedChallengeConfig?.type || '';
+    const entryMode = selectedChallengeConfig?.entryMode || '';
+    const voteMode = selectedChallengeConfig?.voteMode || '';
+
+    const entryContainer = document.getElementById('challengeEntryModeContainer');
+    const searchInput = document.getElementById('challengeInviteSearchInput');
+    const participantsList = document.getElementById('challengeParticipantsList');
+    const votePriceInput = document.getElementById('challengeVotePriceInput');
+    const creatorParticipateContainer = document.getElementById('challengeCreatorParticipationContainer');
+    const creatorPhotoContainer = document.getElementById('challengeCreatorPhotoContainer');
+    const creatorToggle = document.getElementById('challengeCreatorParticipateToggle');
+
+    if (type === 'vote') {
+      if (entryContainer) entryContainer.style.display = 'none';
+      if (searchInput) {
+        searchInput.style.display = 'block';
+        searchInput.placeholder = "Ajouter un participant (chercher par username)";
+      }
+      if (participantsList) {
+        participantsList.style.display = 'flex';
+        participantsList.style.gridTemplateColumns = '';
+      }
+      if (creatorParticipateContainer) creatorParticipateContainer.style.display = 'flex';
+    } else if (type === 'miss') {
+      selectedChallengeConfig.entryMode = 'invite_only';
+      if (entryContainer) entryContainer.style.display = 'none';
+      if (participantsList) {
+        participantsList.style.display = 'grid';
+        participantsList.style.gridTemplateColumns = '1fr';
+      }
+      if (creatorParticipateContainer) creatorParticipateContainer.style.display = 'none';
+      if (creatorPhotoContainer) creatorPhotoContainer.style.display = 'none';
+      if (searchInput) {
+        searchInput.style.display = 'block';
+        searchInput.placeholder = "Ajouter les candidates du challenge miss";
+      }
+    } else if (type === 'beauty') {
+      if (entryContainer) entryContainer.style.display = 'grid';
+      if (participantsList) participantsList.style.display = 'none';
+      if (creatorParticipateContainer) creatorParticipateContainer.style.display = 'flex';
+      if (searchInput) {
+        searchInput.style.display = entryMode === 'invite_only' ? 'block' : 'none';
+        searchInput.placeholder = "Rechercher un utilisateur à inviter";
+      }
+    } else {
+      if (entryContainer) entryContainer.style.display = 'grid';
+      if (participantsList) participantsList.style.display = 'none';
+      if (creatorParticipateContainer) creatorParticipateContainer.style.display = 'none';
+      if (searchInput) {
+        searchInput.style.display = entryMode === 'invite_only' ? 'block' : 'none';
+        searchInput.placeholder = "Rechercher un utilisateur a inviter";
+      }
+    }
+
+    if (creatorPhotoContainer && creatorToggle) {
+      creatorPhotoContainer.style.display = (type === 'beauty' && creatorToggle.checked) ? 'flex' : 'none';
+    }
+
+    if (votePriceInput) {
+      votePriceInput.style.display = voteMode === 'paid' ? 'block' : 'none';
+    }
+  }
+
+  function resetChallengeConfig() {
+    selectedChallengeConfig = null;
+    selectedChallengeParticipants = [];
+    editingChallengePostId = null;
+
+    const endDateInput = document.getElementById('challengeEndDateInput');
+    if (endDateInput) endDateInput.value = '';
+
+    const applyBtn = document.getElementById('applyChallengeConfigBtn');
+    if (applyBtn) applyBtn.textContent = 'Créer et publier le challenge';
+
+    document.querySelectorAll('.challenge-type-btn').forEach(btn => {
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+    });
+
+    const modal = document.getElementById('challengeModal');
+    if (modal) {
+      modal.classList.remove('edit-mode-modal');
+    }
+    const backdrop = document.getElementById('challengeEditModalBackdrop');
+    if (backdrop) backdrop.style.display = 'none';
+    const list = document.getElementById('challengeParticipantsList');
+    if (list) list.innerHTML = '';
+    if (challengeTitleInput) challengeTitleInput.value = '';
+    if (challengeVotePriceInput) {
+      challengeVotePriceInput.value = '';
+      challengeVotePriceInput.style.display = 'none';
+    }
+    if (challengeInviteSearchInput) {
+      challengeInviteSearchInput.value = '';
+      challengeInviteSearchInput.style.display = 'none';
+    }
+    if (challengeInviteResults) {
+      challengeInviteResults.innerHTML = '';
+      challengeInviteResults.style.display = 'none';
+    }
+
+    const creatorToggle = document.getElementById('challengeCreatorParticipateToggle');
+    const creatorToggleBg = document.getElementById('challengeCreatorParticipateToggleBg');
+    const creatorToggleKnob = document.getElementById('challengeCreatorParticipateToggleKnob');
+    if (creatorToggle) creatorToggle.checked = false;
+    if (creatorToggleBg) creatorToggleBg.style.background = 'var(--border-color)';
+    if (creatorToggleKnob) creatorToggleKnob.style.transform = 'translateX(0)';
+    const creatorParticipateContainer = document.getElementById('challengeCreatorParticipationContainer');
+    if (creatorParticipateContainer) creatorParticipateContainer.style.display = 'none';
+
+    const creatorPhotoContainer = document.getElementById('challengeCreatorPhotoContainer');
+    if (creatorPhotoContainer) creatorPhotoContainer.style.display = 'none';
+    const creatorPhotoStatus = document.getElementById('challengeCreatorPhotoStatus');
+    if (creatorPhotoStatus) creatorPhotoStatus.textContent = 'Aucune photo choisie';
+    const creatorPhotoInput = document.getElementById('challengeCreatorPhotoInput');
+    if (creatorPhotoInput) creatorPhotoInput.value = '';
+
+    updateChallengeButtonsState('.challenge-type-btn', '', 'challengeType');
+    updateChallengeButtonsState('.challenge-entry-btn', '', 'challengeEntry');
+    updateChallengeButtonsState('.challenge-vote-btn', '', 'challengeVote');
+    const entryContainer = document.getElementById('challengeEntryModeContainer');
+    if (entryContainer) entryContainer.style.display = 'grid';
+  }
+
+  async function searchChallengeInviteUsers(query) {
+    if (!challengeInviteResults) return;
+    if (!query) {
+      challengeInviteResults.innerHTML = '';
+      challengeInviteResults.style.display = 'none';
+      return;
+    }
+
+    let cleanQuery = query.trim();
+    if (cleanQuery.startsWith('@')) {
+      cleanQuery = cleanQuery.substring(1);
+    }
+    if (!cleanQuery) {
+      challengeInviteResults.innerHTML = '';
+      challengeInviteResults.style.display = 'none';
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(cleanQuery)}`);
+      const users = await res.json();
+      challengeInviteResults.innerHTML = '';
+      challengeInviteResults.style.display = 'block';
+
+      if (!users.length) {
+        challengeInviteResults.innerHTML = '<div style="padding:10px 12px; font-size:11px; color:var(--text-secondary);">Aucun utilisateur trouve</div>';
+        return;
+      }
+
+      users.forEach((user) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.style.cssText = 'width:100%; display:flex; align-items:center; gap:10px; padding:10px 12px; background:transparent; border:none; border-bottom:1px solid var(--border-color); cursor:pointer; text-align:left;';
+        row.innerHTML = `
+          <img src="${user.avatar || '/assets/avatar_placeholder.jpg'}" alt="${user.first_name}" style="width:30px; height:30px; border-radius:50%; object-fit:cover;">
+          <div>
+            <div style="font-size:12px; font-weight:700; color:var(--text-primary);">${user.first_name} ${user.last_name}</div>
+            <div style="font-size:10px; color:var(--text-secondary);">@${user.username}</div>
+          </div>
+        `;
+        row.addEventListener('click', () => {
+          selectedChallengeConfig = selectedChallengeConfig || {};
+          const type = selectedChallengeConfig.type || '';
+          if (type === 'vote' || type === 'miss') {
+            const existing = selectedChallengeParticipants.find((participant) => Number(participant.id) === Number(user.id));
+            if (!existing) {
+              selectedChallengeParticipants = selectedChallengeParticipants || [];
+              selectedChallengeParticipants.push({
+                ...user,
+                photoUrl: type === 'miss' ? null : (user.photoUrl || null)
+              });
+              syncSelectedChallengeParticipantsConfig();
+              renderSelectedParticipantsTags();
+            }
+            if (challengeInviteSearchInput) challengeInviteSearchInput.value = '';
+          } else {
+            selectedChallengeConfig.invitedUserId = Number(user.id);
+            selectedChallengeConfig.invitedUsername = user.username;
+            if (challengeInviteSearchInput) challengeInviteSearchInput.value = `@${user.username}`;
+          }
+          challengeInviteResults.style.display = 'none';
+        });
+        challengeInviteResults.appendChild(row);
+      });
+    } catch (error) {
+      console.error('Challenge invite search failed:', error);
+    }
+  }
+
+  document.querySelectorAll('.challenge-type-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectedChallengeConfig = selectedChallengeConfig || {};
+      const previousType = selectedChallengeConfig.type || '';
+      const nextType = button.dataset.challengeType;
+      if (previousType && previousType !== nextType) {
+        selectedChallengeParticipants = [];
+        selectedChallengeConfig.participants = [];
+        selectedChallengeConfig.participantEntries = [];
+        selectedChallengeConfig.invitedUserId = null;
+        selectedChallengeConfig.invitedUsername = '';
+        selectedChallengeConfig.creatorParticipates = false;
+        if (challengeInviteSearchInput) challengeInviteSearchInput.value = '';
+        const creatorToggle = document.getElementById('challengeCreatorParticipateToggle');
+        const creatorToggleBg = document.getElementById('challengeCreatorParticipateToggleBg');
+        const creatorToggleKnob = document.getElementById('challengeCreatorParticipateToggleKnob');
+        if (creatorToggle) creatorToggle.checked = false;
+        if (creatorToggleBg) creatorToggleBg.style.background = 'var(--border-color)';
+        if (creatorToggleKnob) creatorToggleKnob.style.transform = 'translateX(0)';
+        renderSelectedParticipantsTags();
+      }
+      selectedChallengeConfig.type = nextType;
+      updateChallengeButtonsState('.challenge-type-btn', nextType, 'challengeType');
+      if (selectedChallengeConfig.type === 'vote' || selectedChallengeConfig.type === 'miss') {
+        selectedChallengeConfig.entryMode = 'invite_only';
+      }
+      syncChallengeUI();
+    });
+  });
+
+  document.querySelectorAll('.challenge-entry-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectedChallengeConfig = selectedChallengeConfig || {};
+      selectedChallengeConfig.entryMode = button.dataset.challengeEntry;
+      updateChallengeButtonsState('.challenge-entry-btn', button.dataset.challengeEntry, 'challengeEntry');
+      syncChallengeUI();
+    });
+  });
+
+  document.querySelectorAll('.challenge-vote-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectedChallengeConfig = selectedChallengeConfig || {};
+      selectedChallengeConfig.voteMode = button.dataset.challengeVote;
+      updateChallengeButtonsState('.challenge-vote-btn', button.dataset.challengeVote, 'challengeVote');
+      syncChallengeUI();
+    });
+  });
+
+  challengeInviteSearchInput?.addEventListener('input', (event) => {
+    searchChallengeInviteUsers(event.target.value.trim());
+  });
+
+  document.getElementById('applyChallengeConfigBtn')?.addEventListener('click', () => {
+    const draft = selectedChallengeConfig || {};
+    draft.title = (challengeTitleInput?.value || '').trim();
+    draft.votePrice = Math.max(0, Number(challengeVotePriceInput?.value || 0));
+
+    const endDateVal = document.getElementById('challengeEndDateInput')?.value;
+    if (endDateVal) {
+      const parsedEnd = new Date(endDateVal);
+      if (parsedEnd <= new Date()) {
+        return showToast("La date de fin doit être dans le futur.");
+      }
+      draft.challengeEndDate = parsedEnd.toISOString();
+    } else {
+      draft.challengeEndDate = null;
+    }
+
+    if (!draft.type) return showToast('Choisissez un type de challenge.');
+    if (!draft.entryMode && draft.type !== 'vote') return showToast('Choisissez un mode de participation.');
+    if (!draft.voteMode) return showToast('Choisissez un mode de vote.');
+    if (draft.type === 'vote') {
+      if (!draft.participants || draft.participants.length < 2) {
+        return showToast('Ajoutez au moins deux participants pour le challenge de vote.');
+      }
+    } else if (draft.type === 'miss') {
+      draft.entryMode = 'invite_only';
+      syncSelectedChallengeParticipantsConfig();
+      if (!draft.participantEntries || draft.participantEntries.length < 2) {
+        return showToast('Ajoutez au moins deux participantes pour le challenge miss.');
+      }
+      if (draft.participantEntries.some((entry) => !entry.photoUrl)) {
+        return showToast('Ajoutez une photo pour chaque participante du challenge miss.');
+      }
+    } else {
+      if (draft.entryMode === 'invite_only' && !draft.invitedUserId) {
+        return showToast('Choisissez la personne a inviter.');
+      }
+      if (draft.type === 'beauty' && draft.creatorParticipates && !draft.creatorPhotoUrl) {
+        return showToast("Veuillez choisir votre photo pour participer au challenge de beauté.");
+      }
+    }
+    if (draft.voteMode === 'paid' && draft.votePrice <= 0) return showToast('Entrez un montant de vote payant.');
+
+    if (!draft.title) {
+      draft.title = `${draft.type} challenge`;
+    }
+
+    if (editingChallengePostId) {
+      socket.emit('challenge-update', {
+        postId: editingChallengePostId,
+        title: draft.title,
+        price: draft.votePrice,
+        endDate: draft.challengeEndDate,
+        participants: draft.participants || [],
+        participantEntries: draft.participantEntries || [],
+        creatorPhotoUrl: draft.creatorPhotoUrl || null,
+        creatorParticipates: draft.creatorParticipates === true,
+        invitedUserId: draft.invitedUserId || null
+      });
+      showToast('Challenge mis à jour !');
+    } else {
+      // Direct socket post creation for the challenge
+      socket.emit('post-create', {
+        content: draft.title || '',
+        paidHashtags: [],
+        bgImageUrl: null,
+        textColor: null,
+        textAlignment: null,
+        textPosition: null,
+        textFont: null,
+        textSize: null,
+        isTrade: 0,
+        mediaUrls: [],
+        mediaType: null,
+        thumbnailUrl: null,
+        allowDownload: true,
+        challengeConfig: draft
+      });
+      showToast('Challenge créé et publié !');
+    }
+
+    resetChallengeConfig();
+    hideAllPopovers();
+  });
+
+  document.getElementById('challengeCreatorParticipateToggle')?.addEventListener('change', (e) => {
+    const isChecked = e.target.checked;
+    const bg = document.getElementById('challengeCreatorParticipateToggleBg');
+    const knob = document.getElementById('challengeCreatorParticipateToggleKnob');
+    if (bg) bg.style.background = isChecked ? '#f97316' : 'var(--border-color)';
+    if (knob) knob.style.transform = isChecked ? 'translateX(20px)' : 'translateX(0)';
+
+    selectedChallengeConfig = selectedChallengeConfig || {};
+    selectedChallengeConfig.creatorParticipates = isChecked;
+    selectedChallengeConfig.participants = selectedChallengeConfig.participants || [];
+    selectedChallengeParticipants = selectedChallengeParticipants || [];
+
+    const creatorId = Number(window.currentUserId);
+
+    if (isChecked) {
+      if (!selectedChallengeParticipants.some(p => Number(p.id) === creatorId)) {
+        selectedChallengeParticipants.push({
+          id: creatorId,
+          username: window.currentUsername || 'moi',
+          avatar: window.currentUserAvatar || '/assets/avatar_placeholder.jpg',
+          first_name: 'Moi',
+          last_name: '(Créateur)'
+        });
+      }
+    } else {
+      selectedChallengeParticipants = selectedChallengeParticipants.filter(p => Number(p.id) !== creatorId);
+    }
+    syncSelectedChallengeParticipantsConfig();
+    renderSelectedParticipantsTags();
+    syncChallengeUI();
+  });
+
+  const creatorPhotoBtn = document.getElementById('challengeCreatorPhotoBtn');
+  const creatorPhotoInput = document.getElementById('challengeCreatorPhotoInput');
+  const creatorPhotoStatus = document.getElementById('challengeCreatorPhotoStatus');
+
+  creatorPhotoBtn?.addEventListener('click', () => {
+    creatorPhotoInput?.click();
+  });
+
+  creatorPhotoInput?.addEventListener('change', async () => {
+    const file = creatorPhotoInput.files[0];
+    if (!file) return;
+
+    if (creatorPhotoStatus) creatorPhotoStatus.textContent = 'Téléchargement...';
+    
+    try {
+      const formData = new FormData();
+      formData.append('media', file);
+
+      const res = await fetch('/api/posts/upload-media', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.mediaUrls && data.mediaUrls[0]) {
+        selectedChallengeConfig = selectedChallengeConfig || {};
+        selectedChallengeConfig.creatorPhotoUrl = data.mediaUrls[0];
+        if (creatorPhotoStatus) creatorPhotoStatus.textContent = 'Photo prête !';
+        showToast('Photo téléchargée avec succès !');
+      } else {
+        if (creatorPhotoStatus) creatorPhotoStatus.textContent = 'Erreur';
+        showToast('Erreur lors du téléchargement.');
+      }
+    } catch (err) {
+      console.error(err);
+      if (creatorPhotoStatus) creatorPhotoStatus.textContent = 'Erreur';
+      showToast('Erreur de connexion.');
+    }
+  });
+
+  async function openEditChallengeModal(postId) {
+    resetChallengeConfig();
+    hideAllPopovers();
+
+    try {
+      const res = await fetch(`/api/posts/${postId}`);
+      if (!res.ok) {
+        throw new Error(await res.text() || 'Impossible de récupérer les détails du challenge.');
+      }
+      const data = await res.json();
+      const post = data.post;
+      const participants = data.participants || [];
+
+      if (post.challenge_end_date && new Date(post.challenge_end_date) <= new Date()) {
+        showToast("Ce challenge est déjà terminé et ne peut plus être modifié.");
+        return;
+      }
+
+      editingChallengePostId = postId;
+
+      selectedChallengeConfig = {
+        type: post.challenge_type,
+        title: post.challenge_title,
+        entryMode: post.challenge_entry_mode,
+        voteMode: post.challenge_vote_mode,
+        votePrice: Number(post.challenge_vote_price || 0),
+        challengeEndDate: post.challenge_end_date ? String(post.challenge_end_date) : null,
+        participants: participants.map(p => Number(p.user_id)).filter(Boolean),
+        participantEntries: participants.map(p => ({
+          userId: Number(p.user_id),
+          username: p.username || '',
+          photoUrl: p.candidate_photo_url || null
+        }))
+      };
+
+      selectedChallengeParticipants = participants.map(p => ({
+        id: Number(p.user_id),
+        username: p.username || '',
+        avatar: p.avatar_url || '/assets/avatar_placeholder.jpg',
+        photoUrl: p.candidate_photo_url || null
+      }));
+
+      if (challengeTitleInput) {
+        challengeTitleInput.value = post.challenge_title || '';
+      }
+      if (challengeVotePriceInput) {
+        challengeVotePriceInput.value = post.challenge_vote_price || '';
+      }
+      
+      const endDateInput = document.getElementById('challengeEndDateInput');
+      if (endDateInput && post.challenge_end_date) {
+        const d = new Date(post.challenge_end_date);
+        const pad = (num) => String(num).padStart(2, '0');
+        const localVal = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        endDateInput.value = localVal;
+      }
+
+      const creatorId = Number(post.user_id);
+      const isCreatorParticipating = participants.some(p => Number(p.user_id) === creatorId);
+      selectedChallengeConfig.creatorParticipates = isCreatorParticipating;
+      
+      const creatorToggle = document.getElementById('challengeCreatorParticipateToggle');
+      const creatorToggleBg = document.getElementById('challengeCreatorParticipateToggleBg');
+      const creatorToggleKnob = document.getElementById('challengeCreatorParticipateToggleKnob');
+      if (creatorToggle) creatorToggle.checked = isCreatorParticipating;
+      if (creatorToggleBg) creatorToggleBg.style.background = isCreatorParticipating ? '#f97316' : 'var(--border-color)';
+      if (creatorToggleKnob) creatorToggleKnob.style.transform = isCreatorParticipating ? 'translateX(20px)' : 'translateX(0)';
+
+      if (isCreatorParticipating) {
+        const creatorPart = participants.find(p => Number(p.user_id) === creatorId);
+        if (creatorPart) {
+          selectedChallengeConfig.creatorPhotoUrl = creatorPart.candidate_photo_url;
+          const creatorPhotoStatus = document.getElementById('challengeCreatorPhotoStatus');
+          if (creatorPhotoStatus) {
+            creatorPhotoStatus.textContent = creatorPart.candidate_photo_url ? 'Photo prête !' : 'Aucune photo choisie';
+          }
+        }
+      }
+
+      document.querySelectorAll('.challenge-type-btn').forEach(btn => {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.pointerEvents = 'none';
+      });
+
+      const applyBtn = document.getElementById('applyChallengeConfigBtn');
+      if (applyBtn) {
+        applyBtn.textContent = 'Enregistrer les modifications';
+      }
+
+      renderSelectedParticipantsTags();
+      syncChallengeUI();
+
+      let backdrop = document.getElementById('challengeEditModalBackdrop');
+      if (!backdrop) {
+        backdrop = document.createElement('div');
+        backdrop.id = 'challengeEditModalBackdrop';
+        backdrop.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          z-index: 10049;
+          display: none;
+        `;
+        document.body.appendChild(backdrop);
+        backdrop.addEventListener('click', () => {
+          closeEditChallengeModal();
+        });
+      }
+
+      const modal = document.getElementById('challengeModal');
+      if (modal) {
+        modal.classList.add('edit-mode-modal');
+        modal.style.display = 'flex';
+      }
+      backdrop.style.display = 'block';
+
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || 'Impossible de charger ce challenge.');
+    }
+  }
+
+  function closeEditChallengeModal() {
+    resetChallengeConfig();
+    const backdrop = document.getElementById('challengeEditModalBackdrop');
+    if (backdrop) backdrop.style.display = 'none';
+    const modal = document.getElementById('challengeModal');
+    if (modal) {
+      modal.style.display = 'none';
+      modal.classList.remove('edit-mode-modal');
+    }
+  }
+
+  // Mention Search & Insertion Logic
+  const mentionSearchInput = document.getElementById('mentionSearchInput');
+  mentionSearchInput?.addEventListener('input', (e) => {
+    const query = e.target.value.trim();
+    loadMentions(query);
+  });
+
+  async function loadMentions(query = '') {
+    const container = document.getElementById('mentionListContainer');
+    if (!container) return;
+
+    if (!query) {
+      container.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--text-secondary); font-size: 12px;">Start typing a username...</div>';
+      return;
+    }
+
+    container.innerHTML = `
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; gap: 8px;">
+      <div class="spinner" style="border: 2px solid var(--border-color); border-top: 2px solid #9c27b0; border-radius: 50%; width: 16px; height: 16px; animation: spin 0.8s linear infinite;"></div>
+    </div>
+  `;
+
+    try {
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+      const users = await res.json();
+
+      if (users.length === 0) {
+        container.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--text-secondary); font-size: 12px;">No users found</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      users.forEach(user => {
+        const div = document.createElement('div');
+        div.className = 'mention-item';
+        div.innerHTML = `
+        <img class="mention-item-avatar" src="${user.avatar || '/assets/avatar_placeholder.jpg'}" alt="${user.first_name}">
+        <div class="mention-item-info">
+          <span class="mention-item-name">${user.first_name} ${user.last_name}</span>
+          <span class="mention-item-username">@${user.username}</span>
+        </div>
+      `;
+        div.addEventListener('click', () => {
+          insertMentionIntoInput(user.username);
+          hideAllPopovers();
+        });
+        container.appendChild(div);
+      });
+    } catch (err) {
+      console.error(err);
+      container.innerHTML = '<div style="text-align: center; padding: 12px; color: var(--danger); font-size: 12px;">Error searching users</div>';
+    }
+  }
+
+  function insertMentionIntoInput(username) {
+    if (!postInputEl) return;
+
+    postInputEl.focus();
+    const caretPos = getCaretPosition(postInputEl);
+    const text = postInputEl.innerText;
+    const textBeforeCaret = text.substring(0, caretPos);
+    const textAfterCaret = text.substring(caretPos);
+
+    const lastAtIndex = textBeforeCaret.lastIndexOf('@');
+
+    let newText = '';
+    let newCaretPos = 0;
+
+    if (lastAtIndex !== -1 && /^@\w*$/.test(textBeforeCaret.substring(lastAtIndex))) {
+      const beforeAt = textBeforeCaret.substring(0, lastAtIndex);
+      const insertText = `@${username} `;
+      newText = beforeAt + insertText + textAfterCaret;
+      newCaretPos = lastAtIndex + insertText.length;
+    } else {
+      const needsSpace = textBeforeCaret.length > 0 && !/\s$/.test(textBeforeCaret);
+      const insertText = (needsSpace ? ' ' : '') + `@${username} `;
+      newText = textBeforeCaret + insertText + textAfterCaret;
+      newCaretPos = caretPos + insertText.length;
+    }
+
+    postInputEl.innerText = newText;
+    setCaretPosition(postInputEl, newCaretPos);
+
+    const placeholder = postInputEl.nextElementSibling;
+    if (placeholder && placeholder.classList.contains('post-input-placeholder')) {
+      placeholder.style.display = newText.trim() ? 'none' : 'block';
+    }
+
+    analyzeText();
+  }
+
+  // Helper function to insert hashtag into input
+  function insertHashtagIntoInput(tagName) {
+    if (!postInputEl) return;
+
+    postInputEl.focus();
+    const caretPos = getCaretPosition(postInputEl);
+    const text = postInputEl.innerText;
+    const textBeforeCaret = text.substring(0, caretPos);
+    const textAfterCaret = text.substring(caretPos);
+
+    const lastHashIndex = textBeforeCaret.lastIndexOf('#');
+
+    let newText = '';
+    let newCaretPos = 0;
+
+    if (lastHashIndex !== -1 && /^#\w*$/.test(textBeforeCaret.substring(lastHashIndex))) {
+      // Replace the currently typed hashtag prefix
+      const beforeHash = textBeforeCaret.substring(0, lastHashIndex);
+      const insertText = `#${tagName} `;
+      newText = beforeHash + insertText + textAfterCaret;
+      newCaretPos = lastHashIndex + insertText.length;
+    } else {
+      // Fallback: append/insert at caret
+      const needsSpace = textBeforeCaret.length > 0 && !/\s$/.test(textBeforeCaret);
+      const insertText = (needsSpace ? ' ' : '') + `#${tagName} `;
+      newText = textBeforeCaret + insertText + textAfterCaret;
+      newCaretPos = caretPos + insertText.length;
+    }
+
+    postInputEl.innerText = newText;
+
+    // Set caret position back
+    setCaretPosition(postInputEl, newCaretPos);
+
+    // Toggle placeholder
+    const placeholder = postInputEl.nextElementSibling;
+    if (placeholder && placeholder.classList.contains('post-input-placeholder')) {
+      placeholder.style.display = postInputEl.innerText.trim() ? 'none' : 'block';
+    }
+
+    analyzeText();
+  }
+
+  function insertHashtagIntoShortCaption(tagName) {
+    if (!shortCaptionInput) return;
+
+    shortCaptionInput.focus();
+    const start = Number(shortCaptionInput.selectionStart || 0);
+    const end = Number(shortCaptionInput.selectionEnd || start);
+    const text = shortCaptionInput.value || '';
+    const textBeforeCaret = text.substring(0, start);
+    const textAfterCaret = text.substring(end);
+    const lastHashIndex = textBeforeCaret.lastIndexOf('#');
+
+    let newText = '';
+    let newCaretPos = 0;
+
+    if (lastHashIndex !== -1 && /^#\w*$/.test(textBeforeCaret.substring(lastHashIndex))) {
+      const beforeHash = textBeforeCaret.substring(0, lastHashIndex);
+      const insertText = `#${tagName} `;
+      newText = beforeHash + insertText + textAfterCaret;
+      newCaretPos = lastHashIndex + insertText.length;
+    } else {
+      const needsSpace = textBeforeCaret.length > 0 && !/\s$/.test(textBeforeCaret);
+      const insertText = (needsSpace ? ' ' : '') + `#${tagName} `;
+      newText = textBeforeCaret + insertText + textAfterCaret;
+      newCaretPos = start + insertText.length;
+    }
+
+    shortCaptionInput.value = newText;
+    shortCaptionInput.setSelectionRange(newCaretPos, newCaretPos);
+  }
+
+  function insertHashtagIntoStatusCaption(tagName) {
+    if (!statusCaptionInput) return;
+
+    statusCaptionInput.focus();
+    const start = Number(statusCaptionInput.selectionStart || 0);
+    const end = Number(statusCaptionInput.selectionEnd || start);
+    const text = statusCaptionInput.value || '';
+    const textBeforeCaret = text.substring(0, start);
+    const textAfterCaret = text.substring(end);
+    const lastHashIndex = textBeforeCaret.lastIndexOf('#');
+
+    let newText = '';
+    let newCaretPos = 0;
+
+    if (lastHashIndex !== -1 && /^#\w*$/.test(textBeforeCaret.substring(lastHashIndex))) {
+      const beforeHash = textBeforeCaret.substring(0, lastHashIndex);
+      const insertText = `#${tagName} `;
+      newText = beforeHash + insertText + textAfterCaret;
+      newCaretPos = lastHashIndex + insertText.length;
+    } else {
+      const needsSpace = textBeforeCaret.length > 0 && !/\s$/.test(textBeforeCaret);
+      const insertText = (needsSpace ? ' ' : '') + `#${tagName} `;
+      newText = textBeforeCaret + insertText + textAfterCaret;
+      newCaretPos = start + insertText.length;
+    }
+
+    statusCaptionInput.value = newText;
+    statusCaptionInput.setSelectionRange(newCaretPos, newCaretPos);
+  }
+
+  // Fetch and display hashtags
+  async function loadHashtags(query = '') {
+    const container = document.getElementById('hashtagListContainer');
+    if (!container) return;
+
+    let tags = cachedHashtagsList;
+    if (!tags) {
+      container.innerHTML = `
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; gap: 8px;">
+        <div class="spinner" style="border: 2px solid var(--border-color); border-top: 2px solid #8b5cf6; border-radius: 50%; width: 20px; height: 20px; animation: spin 0.8s linear infinite;"></div>
+        <div style="font-size: 13px; color: var(--text-secondary);">Loading hashtags...</div>
+      </div>
+    `;
+
+      try {
+        const res = await fetch('/api/hashtags');
+        tags = await res.json();
+        cachedHashtagsList = tags;
+      } catch (err) {
+        console.error(err);
+        container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--danger); font-size: 13px;">Failed to load hashtags.</div>';
+        return;
+      }
+    }
+
+    // Now filter the tags based on query
+    const filteredTags = query
+      ? tags.filter(tag => tag.name.toLowerCase().includes(query.toLowerCase()))
+      : tags;
+
+    if (filteredTags.length === 0) {
+      container.innerHTML = `
+      <div class="hashtag-empty-state">
+        <i data-lucide="hash"></i>
+        <div class="hashtag-empty-text">
+          No hashtags found<br>
+          <span style="font-size: 12px; opacity: 0.7;">Try searching for something else or create one!</span>
+        </div>
+      </div>
+    `;
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+      return;
+    }
+
+    const premiumTags = filteredTags.filter(tag => tag.is_paid);
+    const freeTags = filteredTags.filter(tag => !tag.is_paid);
+
+    container.innerHTML = '';
+
+    const renderHashtagSection = (title, subtitle, tagsInSection) => {
+      if (!tagsInSection.length) return;
+
+      const section = document.createElement('div');
+      section.style.cssText = 'display:flex; flex-direction:column; gap:10px;';
+      section.innerHTML = `
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:8px 4px 0;">
+          <div>
+            <div style="font-size:13px; font-weight:800; color:var(--text-primary);">${title}</div>
+            <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">${subtitle}</div>
+          </div>
+          <div style="font-size:11px; font-weight:700; color:var(--text-secondary); white-space:nowrap;">${tagsInSection.length}</div>
+        </div>
+      `;
+
+      tagsInSection.forEach((tag, index) => {
+        knownHashtags[tag.name] = tag;
+        const isPaid = tag.is_paid
+          ? '<span class="hashtag-badge paid"><i data-lucide="zap" style="width: 10px; height: 10px; margin-right: 2px;"></i>Premium</span>'
+          : '<span class="hashtag-badge free">Free</span>';
+
+        const itemDiv = document.createElement('div');
+        itemDiv.className = `hashtag-item ${tag.is_paid ? 'is-premium' : ''}`;
+        itemDiv.style.cssText = `
+          background: ${index % 2 === 0 ? 'transparent' : 'rgba(148, 163, 184, 0.08)'};
+          border: 1px solid rgba(148, 163, 184, 0.14);
+          border-radius: 12px;
+          margin-top: 2px;
+          ${index > 0 ? 'box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.12);' : ''}
+        `;
+        itemDiv.innerHTML = `
+          <div class="hashtag-item-info">
+            <div class="hashtag-item-name">#${tag.name}</div>
+            <div class="hashtag-item-meta">By ${tag.first_name} ${tag.last_name} • ${Number(tag.usage_count || 0)} utilisations</div>
+          </div>
+          <div>${isPaid}</div>
+        `;
+
+        itemDiv.addEventListener('click', () => {
+          if (activeHashtagInsertTarget === 'short') {
+            insertHashtagIntoShortCaption(tag.name);
+          } else if (activeHashtagInsertTarget === 'status') {
+            insertHashtagIntoStatusCaption(tag.name);
+          } else {
+            insertHashtagIntoInput(tag.name);
+          }
+          hashtagListModal.style.display = 'none';
+        });
+
+        section.appendChild(itemDiv);
+      });
+
+      container.appendChild(section);
+    };
+
+    renderHashtagSection('Hashtags Premium', 'Les utilisateurs paient pour les utiliser. Ils peuvent rendre vos posts beaucoup plus viraux.', premiumTags);
+    renderHashtagSection('Hashtags Gratuits', 'Disponibles sans frais.', freeTags);
+
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+  }
+
+  // Create Hashtag
+  if (submitCreateHashtagBtn) {
+    submitCreateHashtagBtn.addEventListener('click', async () => {
+      const name = document.getElementById('newHashtagName').value;
+      const isPaid = document.getElementById('newHashtagIsPaid').checked;
+      if (!name) return showToast("Please enter a name");
+
+      submitCreateHashtagBtn.disabled = true;
+      submitCreateHashtagBtn.innerText = "Creating...";
+      try {
+        const res = await fetch('/api/hashtags/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, isPaid })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast("Hashtag created successfully!");
+          createHashtagModal.style.display = 'none';
+          document.getElementById('newHashtagName').value = '';
+          document.getElementById('newHashtagIsPaid').checked = false;
+          updateCreateHashtagButtonLabel();
+          knownHashtags[data.name] = { name: data.name, is_paid: isPaid, price: isPaid ? 0.10 : 0 };
+          if (Number.isFinite(Number(data.tokenBalance))) {
+            window.currentUserTokenBalance = Number(data.tokenBalance);
+            const profileTokenEl = document.getElementById('profile-token-balance');
+            const settingsTokenEl = document.getElementById('settings-token-balance');
+            if (profileTokenEl) profileTokenEl.textContent = String(data.tokenBalance);
+            if (settingsTokenEl) settingsTokenEl.textContent = Number(data.tokenBalance).toFixed(4).replace(/\.?0+$/, '');
+          }
+          // Clear cache so it re-fetches
+          cachedHashtagsList = null;
+        } else {
+          showToast(data.error || "Failed to create hashtag");
+        }
+      } catch (err) {
+        showToast("Server error");
+      }
+      submitCreateHashtagBtn.disabled = false;
+      updateCreateHashtagButtonLabel();
+    });
+  }
+
+  // Payment Confirmation
+  document.getElementById('refusePaymentBtn')?.addEventListener('click', () => {
+    paymentConfirmationModal.style.display = 'none';
+    if (pendingPaymentHashtag && postInputEl) {
+      // Remove the hashtag from text
+      const text = postInputEl.innerText;
+      postInputEl.innerText = text.replace(new RegExp('#' + pendingPaymentHashtag, 'g'), '');
+      pendingPaymentHashtag = null;
+      placeCaretAtEnd(postInputEl);
+    } else if (pendingPaymentBackground) {
+      pendingPaymentBackground = null;
+      showToast("Background payment refused");
+    }
+  });
+
+  const hideEventsUnlockModal = () => {
+    if (eventsUnlockModal) {
+      eventsUnlockModal.style.display = 'none';
+    }
+    if (eventsUnlockModalStatus) {
+      eventsUnlockModalStatus.style.display = 'none';
+      eventsUnlockModalStatus.textContent = '';
+      eventsUnlockModalStatus.style.background = 'var(--bg-hover)';
+      eventsUnlockModalStatus.style.color = 'var(--text-secondary)';
+      eventsUnlockModalStatus.style.borderColor = 'var(--border-color)';
+    }
+    pendingEventsUnlockForm = null;
+  };
+
+  const setEventsUnlockStatus = (message, tone = 'neutral') => {
+    if (!eventsUnlockModalStatus) return;
+    if (!message) {
+      eventsUnlockModalStatus.style.display = 'none';
+      eventsUnlockModalStatus.textContent = '';
+      return;
+    }
+    const tones = {
+      success: {
+        background: 'rgba(16, 185, 129, 0.08)',
+        color: 'var(--text-primary)',
+        borderColor: 'rgba(16, 185, 129, 0.22)'
+      },
+      danger: {
+        background: 'rgba(239, 68, 68, 0.08)',
+        color: 'var(--text-primary)',
+        borderColor: 'rgba(239, 68, 68, 0.22)'
+      },
+      neutral: {
+        background: 'var(--bg-hover)',
+        color: 'var(--text-secondary)',
+        borderColor: 'var(--border-color)'
+      }
+    };
+    const style = tones[tone] || tones.neutral;
+    eventsUnlockModalStatus.style.display = 'block';
+    eventsUnlockModalStatus.textContent = message;
+    eventsUnlockModalStatus.style.background = style.background;
+    eventsUnlockModalStatus.style.color = style.color;
+    eventsUnlockModalStatus.style.borderColor = style.borderColor;
+  };
+
+  const openEventsUnlockModal = (form) => {
+    if (!eventsUnlockModal || !form) return;
+    pendingEventsUnlockForm = form;
+    const fee = Number(form.dataset.eventsUnlockFee || 0);
+    const isSettings = form.dataset.eventsUnlockContext === 'settings';
+    const titleText = isSettings
+      ? (eventsUnlockModalTitle?.dataset?.settingsTitle || eventsUnlockModalTitle?.textContent || 'Pay and start KYC')
+      : (eventsUnlockModalTitle?.textContent || 'Pay and start KYC');
+    if (eventsUnlockModalTitle) {
+      eventsUnlockModalTitle.textContent = titleText;
+    }
+    if (eventsUnlockModalFee) {
+      eventsUnlockModalFee.textContent = `$${Number.isFinite(fee) ? fee.toFixed(2) : '0.00'}`;
+    }
+    if (eventsUnlockModalText) {
+      const feeMissing = fee <= 0;
+      const locale = getPageLocale();
+      eventsUnlockModalText.textContent = feeMissing
+        ? (locale === 'fr'
+          ? 'Les frais ne sont pas encore configurés par les administrateurs. Le paiement ne peut pas encore être lancé.'
+          : locale === 'es'
+            ? 'La tarifa aún no ha sido configurada por el administrador. El pago no puede iniciarse todavía.'
+            : 'The admin fee has not been configured yet, so payment cannot be started right now.')
+        : (locale === 'fr'
+          ? 'Vous allez payer les frais administratifs, puis compléter la vérification KYC pour débloquer la création d’événements. Les demandes refusées ne sont pas remboursables.'
+          : locale === 'es'
+            ? 'Pagarás la tarifa del administrador y luego completarás la verificación KYC para desbloquear la creación de eventos. Las solicitudes rechazadas no son reembolsables.'
+            : 'You will pay the admin fee, then complete the KYC verification to unlock event creation. Refused requests are not refundable.');
+    }
+    if (confirmEventsUnlockModal) {
+      confirmEventsUnlockModal.disabled = false;
+      confirmEventsUnlockModal.style.opacity = '1';
+      confirmEventsUnlockModal.style.cursor = 'pointer';
+    }
+    setEventsUnlockStatus('', 'neutral');
+    eventsUnlockModal.style.display = 'flex';
+  };
+
+  document.querySelectorAll('form[data-events-unlock-form]').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      openEventsUnlockModal(form);
+    });
+  });
+
+  confirmEventsUnlockModal?.addEventListener('click', async () => {
+    if (!pendingEventsUnlockForm) return;
+    const form = pendingEventsUnlockForm;
+    const fee = Number(form.dataset.eventsUnlockFee || 0);
+    if (fee <= 0) {
+      setEventsUnlockStatus(
+        getPageLocale() === 'fr'
+          ? 'Les frais ne sont pas encore configurés par les administrateurs.'
+          : getPageLocale() === 'es'
+            ? 'La tarifa aún no ha sido configurada por el administrador.'
+            : 'The admin fee has not been configured yet.',
+        'danger'
+      );
+      return;
+    }
+
+    const originalHtml = confirmEventsUnlockModal.innerHTML;
+    confirmEventsUnlockModal.disabled = true;
+    confirmEventsUnlockModal.innerHTML = `<i data-lucide="loader-circle" class="animate-spin"></i><span>${getPageLocale() === 'fr' ? 'Traitement...' : getPageLocale() === 'es' ? 'Procesando...' : 'Processing...'}</span>`;
+    if (window.lucide?.createIcons) {
+      window.lucide.createIcons();
+    }
+    setEventsUnlockStatus(
+      getPageLocale() === 'fr'
+        ? 'Vérification du solde et du paiement en cours...'
+        : getPageLocale() === 'es'
+          ? 'Comprobando el saldo y procesando el pago...'
+          : 'Checking your balance and processing the payment...',
+      'neutral'
+    );
+
+    try {
+      const response = await fetch(form.action, {
+        method: form.method || 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: new FormData(form)
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data.success === false) {
+        setEventsUnlockStatus(data.message || (getPageLocale() === 'fr'
+          ? 'Le serveur a refusé le paiement.'
+          : getPageLocale() === 'es'
+            ? 'El servidor rechazó el pago.'
+            : 'The server rejected the payment.'), 'danger');
+        confirmEventsUnlockModal.disabled = false;
+        confirmEventsUnlockModal.innerHTML = originalHtml;
+        if (window.lucide?.createIcons) {
+          window.lucide.createIcons();
+        }
+        return;
+      }
+
+      setEventsUnlockStatus(data.message || (getPageLocale() === 'fr'
+        ? 'Paiement reçu. Redirection vers le KYC...'
+        : getPageLocale() === 'es'
+          ? 'Pago recibido. Redirigiendo al KYC...'
+          : 'Payment received. Redirecting to KYC...'), 'success');
+      const nextUrl = data.nextUrl || '/events/kyc';
+      setTimeout(() => {
+        window.location.href = nextUrl;
+      }, 700);
+    } catch (error) {
+      console.error('Unable to process events unlock payment:', error);
+      setEventsUnlockStatus(getPageLocale() === 'fr'
+        ? 'Impossible de traiter le paiement pour le moment.'
+        : getPageLocale() === 'es'
+          ? 'No se puede procesar el pago en este momento.'
+          : 'Unable to process the payment right now.', 'danger');
+      confirmEventsUnlockModal.disabled = false;
+      confirmEventsUnlockModal.innerHTML = originalHtml;
+      if (window.lucide?.createIcons) {
+        window.lucide.createIcons();
+      }
+    }
+  });
+
+  cancelEventsUnlockModal?.addEventListener('click', hideEventsUnlockModal);
+  closeEventsUnlockModal?.addEventListener('click', hideEventsUnlockModal);
+  eventsUnlockModal?.addEventListener('click', (event) => {
+    if (event.target === eventsUnlockModal) {
+      hideEventsUnlockModal();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && eventsUnlockModal?.style.display === 'flex') {
+      hideEventsUnlockModal();
+    }
+  });
+
+  document.getElementById('acceptPaymentBtn')?.addEventListener('click', () => {
+    paymentConfirmationModal.style.display = 'none';
+    if (pendingPaymentHashtag) {
+      const tagObj = knownHashtags[pendingPaymentHashtag];
+      acceptedPaidHashtags.push(tagObj);
+      pendingPaymentHashtag = null;
+      highlightHashtags();
+    } else if (pendingPaymentBackground) {
+      selectedBackground = pendingPaymentBackground;
+      pendingPaymentBackground = null;
+
+      // Highlight it in the UI grid
+      document.querySelectorAll('.bg-select-option').forEach(el => {
+        el.classList.remove('active');
+        el.style.borderColor = 'transparent';
+      });
+      const gridOption = Array.from(document.querySelectorAll('.bg-select-option')).find(el => el.style.backgroundImage.includes(selectedBackground.image_url));
+      if (gridOption) {
+        gridOption.classList.add('active');
+        gridOption.style.borderColor = 'var(--primary)';
+      }
+
+      updatePostInputPreview();
+      showToast("Premium background selected");
+    }
+  });
+
+  // Real-time Text Analysis & Suggestions
+  let typingTimer;
+  let openedByTyping = false;
+  let openedMentionByTyping = false;
+
+  if (postInputEl) {
+    postInputEl.addEventListener('input', () => {
+      activeHashtagInsertTarget = 'post';
+      // Toggle placeholder
+      const placeholder = postInputEl.nextElementSibling;
+      if (placeholder && placeholder.classList.contains('post-input-placeholder')) {
+        placeholder.style.display = postInputEl.innerText.trim() ? 'none' : 'block';
+      }
+
+      const caretPos = getCaretPosition(postInputEl);
+      const text = postInputEl.innerText;
+      const textBeforeCaret = text.substring(0, caretPos);
+
+      // 1. Check if user is typing a hashtag
+      const lastHashIndex = textBeforeCaret.lastIndexOf('#');
+      let isTypingHashtag = false;
+      let hashQuery = '';
+
+      if (lastHashIndex !== -1) {
+        const part = textBeforeCaret.substring(lastHashIndex);
+        if (/^#\w*$/.test(part)) {
+          isTypingHashtag = true;
+          hashQuery = part.substring(1).toLowerCase();
+        }
+      }
+
+      // 2. Check if user is typing a mention
+      const lastAtIndex = textBeforeCaret.lastIndexOf('@');
+      let isTypingMention = false;
+      let mentionQuery = '';
+
+      if (lastAtIndex !== -1) {
+        const part = textBeforeCaret.substring(lastAtIndex);
+        if (/^@\w*$/.test(part)) {
+          isTypingMention = true;
+          mentionQuery = part.substring(1).toLowerCase();
+        }
+      }
+
+      if (isTypingHashtag) {
+        hideAllPopovers();
+        hashtagListModal.style.display = 'flex';
+        openedByTyping = true;
+        loadHashtags(hashQuery);
+
+        const triggerBtn = document.querySelector('.post-opt-btn.hashtag');
+        requestAnimationFrame(() => {
+          positionPopover(hashtagListModal, triggerBtn);
+        });
+      } else if (isTypingMention) {
+        hideAllPopovers();
+        mentionModal.style.display = 'flex';
+        openedMentionByTyping = true;
+
+        const searchInput = document.getElementById('mentionSearchInput');
+        if (searchInput) {
+          searchInput.value = mentionQuery;
+        }
+        loadMentions(mentionQuery);
+
+        const triggerBtn = document.querySelector('.post-opt-btn.mention');
+        requestAnimationFrame(() => {
+          positionPopover(mentionModal, triggerBtn);
+        });
+      } else {
+        if (openedByTyping) {
+          hashtagListModal.style.display = 'none';
+          openedByTyping = false;
+        }
+        if (openedMentionByTyping) {
+          mentionModal.style.display = 'none';
+          openedMentionByTyping = false;
+        }
+      }
+
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(analyzeText, 500);
+    });
+  }
+
+  if (shortCaptionInput) {
+    shortCaptionInput.addEventListener('focus', () => {
+      activeHashtagInsertTarget = 'short';
+    });
+
+    shortCaptionInput.addEventListener('keydown', (event) => {
+      if (event.key !== '#') return;
+
+      activeHashtagInsertTarget = 'short';
+      hideAllPopovers();
+      hashtagListModal.style.display = 'flex';
+      openedByTyping = true;
+      loadHashtags('');
+
+      requestAnimationFrame(() => {
+        positionPopover(hashtagListModal, shortCaptionInput);
+      });
+    });
+
+    shortCaptionInput.addEventListener('input', () => {
+      activeHashtagInsertTarget = 'short';
+      const caretPos = Number(shortCaptionInput.selectionStart || 0);
+      const textBeforeCaret = (shortCaptionInput.value || '').substring(0, caretPos);
+      const lastHashIndex = textBeforeCaret.lastIndexOf('#');
+      let isTypingHashtag = false;
+      let hashQuery = '';
+
+      if (lastHashIndex !== -1) {
+        const part = textBeforeCaret.substring(lastHashIndex);
+        if (/^#\w*$/.test(part)) {
+          isTypingHashtag = true;
+          hashQuery = part.substring(1).toLowerCase();
+        }
+      }
+
+      if (isTypingHashtag) {
+        hideAllPopovers();
+        hashtagListModal.style.display = 'flex';
+        openedByTyping = true;
+        loadHashtags(hashQuery);
+
+        requestAnimationFrame(() => {
+          positionPopover(hashtagListModal, shortCaptionInput);
+        });
+      } else if (openedByTyping) {
+        hashtagListModal.style.display = 'none';
+        openedByTyping = false;
+      }
+    });
+  }
+
+  if (statusCaptionInput) {
+    statusCaptionInput.addEventListener('focus', () => {
+      activeHashtagInsertTarget = 'status';
+    });
+
+    statusCaptionInput.addEventListener('keydown', (event) => {
+      if (event.key !== '#') return;
+
+      activeHashtagInsertTarget = 'status';
+      hideAllPopovers();
+      hashtagListModal.style.display = 'flex';
+      openedByTyping = true;
+      loadHashtags('');
+
+      requestAnimationFrame(() => {
+        positionPopover(hashtagListModal, statusCaptionInput);
+      });
+    });
+
+    statusCaptionInput.addEventListener('input', () => {
+      activeHashtagInsertTarget = 'status';
+      const caretPos = Number(statusCaptionInput.selectionStart || 0);
+      const textBeforeCaret = (statusCaptionInput.value || '').substring(0, caretPos);
+      const lastHashIndex = textBeforeCaret.lastIndexOf('#');
+      let isTypingHashtag = false;
+      let hashQuery = '';
+
+      if (lastHashIndex !== -1) {
+        const part = textBeforeCaret.substring(lastHashIndex);
+        if (/^#\w*$/.test(part)) {
+          isTypingHashtag = true;
+          hashQuery = part.substring(1).toLowerCase();
+        }
+      }
+
+      if (isTypingHashtag) {
+        hideAllPopovers();
+        hashtagListModal.style.display = 'flex';
+        openedByTyping = true;
+        loadHashtags(hashQuery);
+
+        requestAnimationFrame(() => {
+          positionPopover(hashtagListModal, statusCaptionInput);
+        });
+      } else if (openedByTyping) {
+        hashtagListModal.style.display = 'none';
+        openedByTyping = false;
+      }
+    });
+  }
+
+  applyHashtagStylesToStaticContent();
+
+  async function analyzeText() {
+    if (!postInputEl) return;
+    const text = postInputEl.innerText;
+    const matches = text.match(/#(\w+)/g);
+    if (!matches) {
+      highlightHashtags();
+      return;
+    }
+
+    let needsHighlight = false;
+
+    for (let match of matches) {
+      const tagName = match.substring(1).toLowerCase();
+
+      if (!knownHashtags[tagName]) {
+        // Check server
+        try {
+          const res = await fetch('/api/hashtags/check?name=' + tagName);
+          const data = await res.json();
+          if (data.name) {
+            knownHashtags[tagName] = data;
+          } else {
+            knownHashtags[tagName] = { exists: false };
+          }
+        } catch (e) { console.error(e); }
+      }
+
+      const tagInfo = knownHashtags[tagName];
+      if (tagInfo && tagInfo.is_paid) {
+        const alreadyAccepted = acceptedPaidHashtags.find(t => t.name === tagName);
+        if (!alreadyAccepted && paymentConfirmationModal.style.display !== 'flex') {
+          pendingPaymentHashtag = tagName;
+          document.getElementById('paymentConfirmationText').innerHTML = `The hashtag <strong>#${tagName}</strong> is premium. It costs $0.10 to use. Do you accept this fee?`;
+          paymentConfirmationModal.style.display = 'flex';
+          return; // stop analysis until they decide
+        }
+      }
+      needsHighlight = true;
+    }
+
+    if (needsHighlight) {
+      highlightHashtags();
+    }
+  }
+
+  // Simple highlighter: saves caret, replaces html, restores caret
+  function highlightHashtags() {
+    if (!postInputEl) return;
+    const rawText = postInputEl.innerText;
+    const savedCaretPos = getCaretPosition(postInputEl);
+
+    // Replace hashtags
+    const newHtml = rawText.replace(/#(\w+)/g, (match, p1) => {
+      const tagName = p1.toLowerCase();
+      const tagInfo = knownHashtags[tagName];
+      if (tagInfo && tagInfo.exists !== false) {
+        if (tagInfo.is_paid) {
+          return `<span class="hashtag-paid">${match}</span>`;
+        } else {
+          return `<span class="hashtag-free">${match}</span>`;
+        }
+      }
+      return match; // Unknown hashtag, leave as is
+    });
+
+    if (postInputEl.innerHTML !== newHtml && newHtml !== rawText) {
+      postInputEl.innerHTML = newHtml;
+      setCaretPosition(postInputEl, savedCaretPos);
+    }
+  }
+
+  function getHashtagColorClass(tagName) {
+    const tagInfo = knownHashtags[String(tagName || '').toLowerCase()];
+    if (!tagInfo || tagInfo.exists === false) return '';
+    return tagInfo.is_paid ? 'hashtag-paid' : 'hashtag-free';
+  }
+
+  function renderHashtagRichText(text) {
+    const safeText = escapeHtml(text || '');
+    return safeText.replace(/#(\w+)/g, (match, tagName) => {
+      const className = getHashtagColorClass(tagName);
+      return className ? `<span class="${className}">${match}</span>` : match;
+    });
+  }
+
+  async function hydrateHashtagMetadataFromText(text) {
+    const matches = String(text || '').match(/#(\w+)/g) || [];
+    const uniqueTagNames = [...new Set(matches.map(match => match.substring(1).toLowerCase()))];
+    const missingTags = uniqueTagNames.filter(tagName => !knownHashtags[tagName]);
+
+    await Promise.all(missingTags.map(async (tagName) => {
+      try {
+        const res = await fetch('/api/hashtags/check?name=' + encodeURIComponent(tagName));
+        const data = await res.json();
+        knownHashtags[tagName] = data?.name ? data : { exists: false };
+      } catch (error) {
+        console.error('Failed to hydrate hashtag metadata:', tagName, error);
+        knownHashtags[tagName] = { exists: false };
+      }
+    }));
+  }
+
+  async function applyHashtagStylesToStaticContent() {
+    const textNodes = Array.from(document.querySelectorAll('.formatted-hashtag-text'));
+    if (!textNodes.length) return;
+
+    await Promise.all(textNodes.map(async (node) => {
+      const rawText = node.dataset.rawText || node.textContent || '';
+      node.dataset.rawText = rawText;
+      await hydrateHashtagMetadataFromText(rawText);
+      node.innerHTML = renderHashtagRichText(rawText);
+    }));
+  }
+
+  function renderChallengeBoardHtml(post, participants) {
+    const safeParticipants = Array.isArray(participants) ? participants : [];
+    const type = String(post.challenge_type || '').toLowerCase();
+    
+    if (type === 'beauty') {
+      const accepted = safeParticipants.filter(p => p.status === 'accepted');
+      const totalVotes = accepted.reduce((sum, p) => sum + Number(p.vote_count || 0), 0);
+      
+      let html = `<div class="beauty-challenge-board" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 0 18px 18px; width: calc(100% - 36px);">`;
+      
+      for (let i = 0; i < 2; i++) {
+        if (i < accepted.length) {
+          const candidate = accepted[i];
+          const votes = Number(candidate.vote_count || 0);
+          const percent = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+          html += `
+            <div class="beauty-candidate-card" style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="position: relative; aspect-ratio: 1; border-radius: 16px; overflow: hidden; border: 1px solid var(--border-color); background: var(--bg-hover);">
+                <img src="${candidate.photo_url || '/assets/avatar_placeholder.jpg'}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit !important; border: none !important; box-shadow: none !important;" class="challenge-poll-avatar">
+                <div class="challenge-beauty-user-badge">
+                  <img src="${candidate.avatar || '/assets/avatar_placeholder.jpg'}" alt="${escapeHtml(candidate.username || 'Utilisateur')}">
+                  <a href="/profile/u/${encodeURIComponent(candidate.username || '')}" class="challenge-beauty-user-link">@${escapeHtml(candidate.username || '')}</a>
+                </div>
+              </div>
+              <button type="button" class="challenge-poll-option" data-participant-user-id="${Number(candidate.user_id || 0)}" style="position: relative; width: 100%; height: 38px; border-radius: 19px; background: var(--bg-hover); border: 1px solid var(--border-color); overflow: visible; cursor: pointer; display: flex; align-items: center;">
+                <span class="challenge-poll-fill" style="width: ${percent}%; border-radius: inherit; position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, rgba(15, 118, 110, 0.18) 0%, rgba(20, 184, 166, 0.28) 55%, rgba(56, 189, 248, 0.24) 100%); transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);"></span>
+                <span style="position: absolute; left: 16px; font-size: 12px; font-weight: 700; color: var(--text-primary); z-index: 2;">Voter</span>
+                ${candidate.country_flag ? `<span class="challenge-poll-flag" style="position: absolute; top: -8px; transform: translateX(-50%); left: clamp(10px, ${percent}%, calc(100% - 10px)); z-index: 5; width: 20px; height: 20px; background: var(--bg-card); border: 1.5px solid #f97316; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);">${escapeHtml(candidate.country_flag)}</span>` : ''}
+                <span style="position: absolute; right: 16px; font-size: 12px; font-weight: 800; color: var(--text-primary); z-index: 2;">${percent}%</span>
+              </button>
+            </div>
+          `;
+        } else {
+          const pendingInvitation = safeParticipants.find(p => p.status === 'pending');
+          if (pendingInvitation && i === 1) {
+            html += `
+              <div class="beauty-candidate-card empty-slot" style="display: flex; flex-direction: column; justify-content: center; align-items: center; border: 2px dashed var(--border-color); border-radius: 16px; aspect-ratio: 1; text-align: center; padding: 16px; background: var(--bg-hover);">
+                <div style="background: rgba(249, 115, 22, 0.1); width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #f97316; margin-bottom: 8px;">
+                  <i data-lucide="clock" style="width: 20px; height: 20px;"></i>
+                </div>
+                <span style="font-size: 11px; font-weight: 700; color: var(--text-primary);">Invitation en attente</span>
+                <span style="font-size: 10px; color: var(--text-secondary);">@${escapeHtml(pendingInvitation.username || '')}</span>
+              </div>
+            `;
+          } else {
+            html += `
+              <div class="beauty-candidate-card empty-slot" style="display: flex; flex-direction: column; justify-content: center; align-items: center; border: 2px dashed var(--border-color); border-radius: 16px; aspect-ratio: 1; text-align: center; padding: 16px; background: var(--bg-hover);">
+                <div style="background: rgba(249, 115, 22, 0.1); width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #f97316; margin-bottom: 8px;">
+                  <i data-lucide="plus" style="width: 20px; height: 20px;"></i>
+                </div>
+                <span style="font-size: 11px; font-weight: 700; color: var(--text-primary);">En attente d'un candidat</span>
+              </div>
+            `;
+          }
+        }
+      }
+      html += `</div>`;
+      return html;
+    } else if (type === 'miss') {
+      const accepted = safeParticipants.filter((participant) => participant.status === 'accepted');
+      const totalVotes = accepted.reduce((sum, participant) => sum + Number(participant.vote_count || 0), 0);
+      const totalPages = Math.ceil(accepted.length / 2);
+      const missMaxVotes = accepted.reduce((max, p) => Math.max(max, Number(p.vote_count || 0)), 0);
+
+      let html = `<div class="challenge-miss-board" data-miss-total="${accepted.length}" data-miss-active-page="0">`;
+      html += `<div class="beauty-challenge-board" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 0 18px 18px; width: calc(100% - 36px);">`;
+
+      accepted.forEach((candidate, index) => {
+        const votes = Number(candidate.vote_count || 0);
+        const percent = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+        const pageIndex = Math.floor(index / 2);
+        const displayStyle = pageIndex === 0 ? 'display: flex;' : 'display: none;';
+        const isLeader = missMaxVotes > 0 && votes === missMaxVotes;
+        const crownHtml = isLeader
+          ? `<div style="position: absolute; top: 6px; right: 6px; z-index: 10; width: 28px; height: 28px; background: linear-gradient(135deg, #fbbf24, #f59e0b); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.6); border: 2px solid #fff;"><i data-lucide="crown" style="width: 14px; height: 14px; color: #fff;"></i></div>`
+          : '';
+        const flagHtml = candidate.country_flag
+          ? `<span class="challenge-poll-flag" style="position: absolute; top: -8px; transform: translateX(-50%); left: clamp(10px, ${percent}%, calc(100% - 10px)); z-index: 5; width: 20px; height: 20px; background: var(--bg-card); border: 1.5px solid #f97316; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);">${escapeHtml(candidate.country_flag)}</span>`
+          : '';
+
+        html += `
+          <div class="beauty-candidate-card" data-candidate-index="${index}" style="${displayStyle} flex-direction: column; gap: 8px;">
+            <div style="position: relative; aspect-ratio: 1; border-radius: 16px; overflow: hidden; border: 1px solid var(--border-color); background: var(--bg-hover);">
+              <img src="${candidate.photo_url || '/assets/avatar_placeholder.jpg'}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit !important; border: none !important; box-shadow: none !important;" class="challenge-poll-avatar">
+              ${crownHtml}
+              <div class="challenge-beauty-user-badge">
+                <img src="${candidate.avatar || '/assets/avatar_placeholder.jpg'}" alt="${escapeHtml(candidate.username || 'Utilisateur')}">
+                <a href="/profile/u/${encodeURIComponent(candidate.username || '')}" class="challenge-beauty-user-link">@${escapeHtml(candidate.username || '')}</a>
+              </div>
+            </div>
+            <button type="button" class="challenge-poll-option" data-participant-user-id="${Number(candidate.user_id || 0)}" style="position: relative; width: 100%; height: 38px; border-radius: 19px; background: var(--bg-hover); border: 1px solid var(--border-color); overflow: visible; cursor: pointer; display: flex; align-items: center;">
+              <span class="challenge-poll-fill" style="width: ${percent}%; border-radius: inherit; position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, rgba(15, 118, 110, 0.18) 0%, rgba(20, 184, 166, 0.28) 55%, rgba(56, 189, 248, 0.24) 100%); transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);"></span>
+              <span style="position: absolute; left: 16px; font-size: 12px; font-weight: 700; color: var(--text-primary); z-index: 2;">Voter</span>
+              ${flagHtml}
+              <span style="position: absolute; right: 16px; font-size: 12px; font-weight: 800; color: var(--text-primary); z-index: 2;">${percent}%</span>
+            </button>
+          </div>
+        `;
+      });
+
+      html += `</div>`;
+
+      if (accepted.length > 2) {
+        html += `
+          <div class="challenge-miss-nav" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 18px 16px;">
+            <button type="button" class="challenge-carousel-btn challenge-carousel-prev" aria-label="Voir la participante précédente"><i data-lucide="chevron-left"></i><span>Précédent</span></button>
+            <span class="challenge-miss-counter" style="font-size: 11px; font-weight: 800; color: var(--text-secondary);">Page 1 / ${totalPages} (${accepted.length} participantes)</span>
+            <button type="button" class="challenge-carousel-btn challenge-carousel-next" aria-label="Voir la participante suivante"><span>Suivant</span><i data-lucide="chevron-right"></i></button>
+          </div>
+        `;
+      }
+      html += `</div>`;
+      return html;
+    } else {
+      const totalVotes = safeParticipants.reduce((sum, participant) => sum + Number(participant.vote_count || 0), 0);
+      return `
+        <div class="challenge-poll-board">
+          <div class="challenge-poll-list">
+            ${safeParticipants.slice(0, 8).map((participant, index) => {
+              const votes = Number(participant.vote_count || 0);
+              const percent = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+              return `
+                <button type="button" class="challenge-poll-option" data-participant-user-id="${Number(participant.user_id || 0)}">
+                  <img class="challenge-poll-avatar" src="${participant.avatar || '/assets/avatar_placeholder.jpg'}" alt="${escapeHtml(participant.name || '')}">
+                  <div class="challenge-poll-track">
+                    <span class="challenge-poll-fill" style="width:${percent}%;"></span>
+                    <span class="challenge-poll-name">${escapeHtml(participant.name || `Option ${index + 1}`)}</span>
+                    <span class="challenge-poll-flag" style="--percent: ${percent}%;">${participant.country_flag ? `<span class="challenge-poll-flag" style="--percent: ${percent}%;">${escapeHtml(participant.country_flag)}</span>` : ''}</span>
+                    <span class="challenge-poll-percent">${percent}%</span>
+                  </div>
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  function renderChallengeCardHtml(post) {
+    if (!post?.challenge_type) return '';
+    const participants = Array.isArray(post.challenge_participants) ? post.challenge_participants : [];
+
+    const currentUserId = Number(window.currentUserId);
+    const isUserPending = participants.some(p => Number(p.user_id) === currentUserId && p.status === 'pending');
+    const hasUserJoined = participants.some(p => Number(p.user_id) === currentUserId && p.status === 'accepted');
+    const acceptedCount = participants.filter(p => p.status === 'accepted').length;
+
+    let actionsHtml = '';
+    if (post.challenge_type !== 'vote' && post.challenge_type !== 'miss') {
+      if (isUserPending) {
+        actionsHtml = `<button type="button" class="challenge-action-btn challenge-accept-btn" data-post-id="${post.id}">Accepter invitation</button>`;
+      } else if (post.challenge_entry_mode === 'open' && !hasUserJoined && acceptedCount < 2) {
+        actionsHtml = `<button type="button" class="challenge-action-btn challenge-join-btn" data-post-id="${post.id}">Participer</button>`;
+      }
+    }
+
+    let kickerIconHtml = '';
+    const type = String(post.challenge_type || '').toLowerCase();
+    if (type === 'beauty') {
+      kickerIconHtml = `<i data-lucide="sparkles" style="width: 14px; height: 14px; color: #f97316;"></i>`;
+    } else if (type === 'vote') {
+      kickerIconHtml = `<i data-lucide="thumbs-up" style="width: 14px; height: 14px; color: #3b82f6;"></i>`;
+    } else if (type === 'miss') {
+      kickerIconHtml = `<i data-lucide="crown" style="width: 14px; height: 14px; color: #eab308;"></i>`;
+    }
+
+    let countdownHtml = '';
+    if (post.challenge_end_date) {
+      countdownHtml = `
+        <span class="challenge-countdown-badge" data-end-date="${escapeHtml(String(post.challenge_end_date))}" style="font-size: 10px; font-weight: 700; color: #ef4444; background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
+          <i data-lucide="clock" style="width: 10px; height: 10px;"></i>
+          <span class="challenge-countdown-text">Calcul...</span>
+        </span>
+      `;
+    }
+
+    const cardHtml = `
+      <div class="challenge-post-card" data-challenge-post-id="${post.id}" data-challenge-type="${escapeHtml(post.challenge_type || '')}" data-challenge-entry-mode="${escapeHtml(post.challenge_entry_mode || 'open')}" data-challenge-vote-mode="${escapeHtml(post.challenge_vote_mode || 'free')}" data-challenge-vote-price="${Number(post.challenge_vote_price || 0).toFixed(2)}" data-challenge-end-date="${escapeHtml(post.challenge_end_date ? String(post.challenge_end_date) : '')}">
+        <div class="challenge-post-header">
+          <div>
+            <div class="challenge-post-kicker" style="display: flex; align-items: center; gap: 6px;">
+              ${kickerIconHtml}
+              <span>${escapeHtml(post.challenge_type)} challenge</span>
+            </div>
+            <div class="challenge-post-title">${escapeHtml(post.challenge_title || 'Challenge en cours')}</div>
+            <div class="challenge-post-meta" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <span>${post.challenge_vote_mode === 'paid' ? `Vote payant $${Number(post.challenge_vote_price || 0).toFixed(2)}` : 'Vote gratuit'}</span>
+              ${countdownHtml}
+            </div>
+          </div>
+          <span class="challenge-post-badge">${post.challenge_type === 'vote' ? 'Vote' : (post.challenge_entry_mode === 'invite_only' ? 'Invitation' : 'Ouvert')}</span>
+        </div>
+        <div class="challenge-org-board">
+          ${renderChallengeBoardHtml(post, participants)}
+        </div>
+        <div class="challenge-post-actions" style="display: ${actionsHtml ? 'flex' : 'none'};">
+          ${actionsHtml}
+        </div>
+      </div>
+    `;
+
+    setTimeout(() => {
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+    }, 50);
+
+    return cardHtml;
+  }
+
+  function getCaretPosition(element) {
+    let position = 0;
+    const isSupported = typeof window.getSelection !== "undefined";
+    if (isSupported) {
+      const selection = window.getSelection();
+      if (selection.rangeCount !== 0) {
+        const range = selection.getRangeAt(0);
+        const preCaretRange = range.cloneRange();
+        preCaretRange.selectNodeContents(element);
+        preCaretRange.setEnd(range.endContainer, range.endOffset);
+        position = preCaretRange.toString().length;
+      }
+    }
+    return position;
+  }
+
+  function setCaretPosition(element, position) {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    let charCount = 0;
+    let nodeStack = [element];
+    let node, foundStart = false;
+    let stop = false;
+
+    while (!stop && (node = nodeStack.pop())) {
+      if (node.nodeType === 3) {
+        const nextCharCount = charCount + node.length;
+        if (!foundStart && position >= charCount && position <= nextCharCount) {
+          range.setStart(node, position - charCount);
+          range.setEnd(node, position - charCount);
+          stop = true;
+        }
+        charCount = nextCharCount;
+      } else {
+        let i = node.childNodes.length;
+        while (i--) {
+          nodeStack.push(node.childNodes[i]);
+        }
+      }
+    }
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function placeCaretAtEnd(el) {
+    el.focus();
+    if (typeof window.getSelection !== "undefined" && typeof document.createRange !== "undefined") {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }
+
+  // Background loading and rendering logic
+  async function loadBackgrounds() {
+    const container = document.getElementById('bgGridContainer');
+    if (!container) return;
+
+    container.innerHTML = `
+    <div class="bg-select-option ${!selectedBackground ? 'active' : ''}" data-bg-none="true" style="aspect-ratio: 1; border-radius: 8px; border: 2px solid ${!selectedBackground ? 'var(--primary)' : 'transparent'}; display: flex; align-items: center; justify-content: center; cursor: pointer; background: var(--bg-hover);">
+      <i data-lucide="slash" style="width: 16px; height: 16px; color: var(--text-secondary);"></i>
+    </div>
+  `;
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+
+    let bgs = cachedBackgroundsList;
+    if (!bgs) {
+      try {
+        const res = await fetch('/api/backgrounds');
+        bgs = await res.json();
+        cachedBackgroundsList = bgs;
+      } catch (err) {
+        console.error('Failed to load backgrounds:', err);
+        return;
+      }
+    }
+
+    bgs.forEach(bg => {
+      const isSelected = selectedBackground && selectedBackground.id === bg.id;
+      const div = document.createElement('div');
+      div.className = `bg-select-option ${isSelected ? 'active' : ''}`;
+      div.style.backgroundImage = `url(${bg.image_url})`;
+      if (bg.is_paid) {
+        div.innerHTML = `<span class="bg-select-option-price-tag">$${parseFloat(bg.price).toFixed(2)}</span>`;
+      } else {
+        div.innerHTML = `<span class="bg-select-option-free-tag">Free</span>`;
+      }
+
+      div.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (bg.is_paid && (!selectedBackground || selectedBackground.id !== bg.id)) {
+          pendingPaymentBackground = bg;
+          document.getElementById('paymentConfirmationText').innerHTML = `This background is premium. It costs <strong>$${parseFloat(bg.price).toFixed(2)}</strong> to use. Do you accept this fee?`;
+          paymentConfirmationModal.style.display = 'flex';
+        } else {
+          document.querySelectorAll('.bg-select-option').forEach(el => {
+            el.classList.remove('active');
+            el.style.borderColor = 'transparent';
+          });
+          div.classList.add('active');
+          div.style.borderColor = 'var(--primary)';
+          selectedBackground = bg;
+          updatePostInputPreview();
+        }
+      });
+
+      container.appendChild(div);
+    });
+
+    container.querySelector('[data-bg-none="true"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.bg-select-option').forEach(el => {
+        el.classList.remove('active');
+        el.style.borderColor = 'transparent';
+      });
+      const noneBtn = container.querySelector('[data-bg-none="true"]');
+      noneBtn.classList.add('active');
+      noneBtn.style.borderColor = 'var(--primary)';
+      selectedBackground = null;
+      updatePostInputPreview();
+    });
+  }
+
+  function updatePostInputPreview() {
+    if (!postInputEl) return;
+
+    if (selectedBackground) {
+      postInputEl.classList.add('post-bg-container');
+      postInputEl.style.setProperty('--bg-text-size', selectedTextSize);
+      postInputEl.style.backgroundImage = `url(${selectedBackground.image_url})`;
+      postInputEl.style.backgroundSize = 'cover';
+      postInputEl.style.backgroundPosition = 'center';
+      postInputEl.style.color = selectedTextColor;
+      postInputEl.style.textAlign = selectedTextAlignment;
+      postInputEl.style.fontFamily = selectedTextFont;
+      postInputEl.style.fontSize = selectedTextSize;
+
+      postInputEl.style.display = 'flex';
+      postInputEl.style.flexDirection = 'column';
+
+      const alignMap = {
+        'left': 'flex-start',
+        'right': 'flex-end',
+        'center': 'center'
+      };
+      postInputEl.style.alignItems = alignMap[selectedTextAlignment] || 'center';
+
+      const posMap = {
+        'top': 'flex-start',
+        'center': 'center',
+        'bottom': 'flex-end'
+      };
+      postInputEl.style.justifyContent = posMap[selectedTextPosition] || 'center';
+
+      postInputEl.style.minHeight = '180px';
+      postInputEl.style.padding = '30px 20px';
+      postInputEl.style.borderRadius = '8px';
+      postInputEl.style.boxShadow = 'inset 0 0 0 1px var(--border-color)';
+      postInputEl.style.textShadow = '0 2px 4px rgba(0,0,0,0.6)';
+      postInputEl.style.fontWeight = '600';
+
+      document.getElementById('resetTextStyleBtn').style.display = 'flex';
+    } else {
+      postInputEl.classList.remove('post-bg-container');
+      postInputEl.style.removeProperty('--bg-text-size');
+      postInputEl.style.backgroundImage = '';
+      postInputEl.style.backgroundSize = '';
+      postInputEl.style.backgroundPosition = '';
+      postInputEl.style.color = '';
+      postInputEl.style.textAlign = '';
+      postInputEl.style.fontFamily = '';
+      postInputEl.style.fontSize = '';
+      postInputEl.style.display = '';
+      postInputEl.style.flexDirection = '';
+      postInputEl.style.alignItems = '';
+      postInputEl.style.justifyContent = '';
+      postInputEl.style.minHeight = '';
+      postInputEl.style.padding = '';
+      postInputEl.style.borderRadius = '';
+      postInputEl.style.boxShadow = '';
+      postInputEl.style.textShadow = '';
+      postInputEl.style.fontWeight = '';
+
+      document.getElementById('resetTextStyleBtn').style.display = 'none';
+    }
+  }
+
+  // Bind format controls inside DOMContentLoaded
+  const textColorPicker = document.getElementById('textColorPicker');
+  const textFontSelect = document.getElementById('textFontSelect');
+  const textSizeSelect = document.getElementById('textSizeSelect');
+
+  if (textColorPicker) {
+    textColorPicker.addEventListener('input', (e) => {
+      selectedTextColor = e.target.value;
+      updatePostInputPreview();
+    });
+  }
+
+  if (textFontSelect) {
+    textFontSelect.addEventListener('change', (e) => {
+      selectedTextFont = e.target.value;
+      updatePostInputPreview();
+    });
+  }
+
+  if (textSizeSelect) {
+    textSizeSelect.addEventListener('change', (e) => {
+      selectedTextSize = e.target.value;
+      updatePostInputPreview();
+    });
+  }
+
+  const setAlignActive = (align) => {
+    document.getElementById('alignLeftBtn')?.classList.remove('active');
+    document.getElementById('alignCenterBtn')?.classList.remove('active');
+    document.getElementById('alignRightBtn')?.classList.remove('active');
+
+    const alignLeft = document.getElementById('alignLeftBtn');
+    const alignCenter = document.getElementById('alignCenterBtn');
+    const alignRight = document.getElementById('alignRightBtn');
+
+    if (alignLeft) { alignLeft.style.color = ''; alignLeft.style.background = ''; }
+    if (alignCenter) { alignCenter.style.color = ''; alignCenter.style.background = ''; }
+    if (alignRight) { alignRight.style.color = ''; alignRight.style.background = ''; }
+
+    const activeBtn = document.getElementById(`align${align.charAt(0).toUpperCase() + align.slice(1)}Btn`);
+    if (activeBtn) {
+      activeBtn.classList.add('active');
+      activeBtn.style.color = 'var(--primary)';
+      activeBtn.style.background = 'var(--bg-hover)';
+    }
+  };
+
+  document.getElementById('alignLeftBtn')?.addEventListener('click', () => {
+    selectedTextAlignment = 'left';
+    setAlignActive('left');
+    updatePostInputPreview();
+  });
+  document.getElementById('alignCenterBtn')?.addEventListener('click', () => {
+    selectedTextAlignment = 'center';
+    setAlignActive('center');
+    updatePostInputPreview();
+  });
+  document.getElementById('alignRightBtn')?.addEventListener('click', () => {
+    selectedTextAlignment = 'right';
+    setAlignActive('right');
+    updatePostInputPreview();
+  });
+
+  const setPosActive = (pos) => {
+    document.getElementById('posTopBtn')?.classList.remove('active');
+    document.getElementById('posCenterBtn')?.classList.remove('active');
+    document.getElementById('posBottomBtn')?.classList.remove('active');
+
+    const posTop = document.getElementById('posTopBtn');
+    const posCenter = document.getElementById('posCenterBtn');
+    const posBottom = document.getElementById('posBottomBtn');
+
+    if (posTop) { posTop.style.color = ''; posTop.style.background = ''; }
+    if (posCenter) { posCenter.style.color = ''; posCenter.style.background = ''; }
+    if (posBottom) { posBottom.style.color = ''; posBottom.style.background = ''; }
+
+    const activeBtn = document.getElementById(`pos${pos.charAt(0).toUpperCase() + pos.slice(1)}Btn`);
+    if (activeBtn) {
+      activeBtn.classList.add('active');
+      activeBtn.style.color = 'var(--primary)';
+      activeBtn.style.background = 'var(--bg-hover)';
+    }
+  };
+
+  document.getElementById('posTopBtn')?.addEventListener('click', () => {
+    selectedTextPosition = 'top';
+    setPosActive('top');
+    updatePostInputPreview();
+  });
+  document.getElementById('posCenterBtn')?.addEventListener('click', () => {
+    selectedTextPosition = 'center';
+    setPosActive('center');
+    updatePostInputPreview();
+  });
+  document.getElementById('posBottomBtn')?.addEventListener('click', () => {
+    selectedTextPosition = 'bottom';
+    setPosActive('bottom');
+    updatePostInputPreview();
+  });
+
+  document.getElementById('resetTextStyleBtn')?.addEventListener('click', () => {
+    selectedBackground = null;
+    selectedTextColor = '#ffffff';
+    selectedTextAlignment = 'center';
+    selectedTextPosition = 'center';
+    selectedTextFont = "'Outfit', sans-serif";
+    selectedTextSize = '20px';
+
+    if (textColorPicker) textColorPicker.value = '#ffffff';
+    if (textFontSelect) textFontSelect.value = "'Outfit', sans-serif";
+    if (textSizeSelect) textSizeSelect.value = '20px';
+    setAlignActive('center');
+    setPosActive('center');
+
+    updatePostInputPreview();
+  });
+
+  // Bind custom post-create-error socket response
+  socket.on('post-create-error', (data) => {
+    showToast("Error: " + data.error);
+  });
+
+  // URL parameters check to auto-load views (like bookmarks or games)
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('view') === 'bookmarks') {
+    setTimeout(() => {
+      showBookmarksView();
+    }, 100);
+  } else if (urlParams.get('view') === 'games') {
+    setTimeout(() => {
+      showGamesView();
+    }, 100);
+  }
+
+  const kycCameraVideo = document.getElementById('kycCameraVideo');
+  const kycCameraCanvas = document.getElementById('kycCameraCanvas');
+  const kycSelfieImageData = document.getElementById('kycSelfieImageData');
+  const kycFaceMatchDistance = document.getElementById('kycFaceMatchDistance');
+  const kycDocumentInput = document.getElementById('kycDocument');
+  const kycForm = document.querySelector('form[action="/events/kyc"]');
+  const kycSelfiePreview = document.getElementById('kycSelfiePreview');
+  const kycStartCameraBtn = document.getElementById('kycStartCameraBtn');
+  const kycCaptureSelfieBtn = document.getElementById('kycCaptureSelfieBtn');
+  const kycRetakeSelfieBtn = document.getElementById('kycRetakeSelfieBtn');
+
+  let kycCameraStream = null;
+  let kycDocumentObjectUrl = null;
+  let kycFaceModelsPromise = null;
+  let kycComparisonPromise = null;
+
+  const stopKycCamera = () => {
+    if (!kycCameraStream) {
+      return;
+    }
+    kycCameraStream.getTracks().forEach((track) => track.stop());
+    kycCameraStream = null;
+    if (kycCameraVideo) {
+      kycCameraVideo.srcObject = null;
+    }
+  };
+
+  const revokeKycDocumentUrl = () => {
+    if (kycDocumentObjectUrl) {
+      URL.revokeObjectURL(kycDocumentObjectUrl);
+      kycDocumentObjectUrl = null;
+    }
+  };
+
+  const setKycPreviewHint = (message) => {
+    if (!kycSelfiePreview) {
+      return;
+    }
+    kycSelfiePreview.classList.remove('has-image');
+    kycSelfiePreview.innerHTML = `<span>${message}</span>`;
+  };
+
+  const startKycCamera = async () => {
+    if (!kycCameraVideo || !navigator.mediaDevices?.getUserMedia) {
+      if (kycSelfiePreview) {
+        setKycPreviewHint(kycSelfiePreview.dataset.cameraDenied || 'Camera access is required to capture your live selfie.');
+      }
+      return;
+    }
+
+    try {
+      stopKycCamera();
+      kycCameraStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+      kycCameraVideo.srcObject = kycCameraStream;
+      await kycCameraVideo.play();
+    } catch (error) {
+      console.error('Unable to start KYC camera:', error);
+      setKycPreviewHint(kycSelfiePreview?.dataset.cameraDenied || 'Camera access is required to capture your live selfie.');
+    }
+  };
+
+  const ensureKycFaceModels = async () => {
+    if (!window.faceapi) {
+      return false;
+    }
+
+    if (!kycFaceModelsPromise) {
+      kycFaceModelsPromise = Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri('/models/face-api'),
+        faceapi.nets.faceLandmark68Net.loadFromUri('/models/face-api'),
+        faceapi.nets.faceRecognitionNet.loadFromUri('/models/face-api')
+      ]).then(async () => {
+        if (faceapi?.tf?.setBackend) {
+          try {
+            await faceapi.tf.setBackend('cpu');
+            if (faceapi.tf.ready) {
+              await faceapi.tf.ready();
+            }
+          } catch (backendError) {
+            console.warn('Unable to prepare face-api backend:', backendError);
+          }
+        }
+        return true;
+      }).catch((error) => {
+        console.error('Unable to load face models:', error);
+        kycFaceModelsPromise = null;
+        return false;
+      });
+    }
+
+    return kycFaceModelsPromise;
+  };
+
+  const loadImageElement = (source) => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = source;
+  });
+
+  const updateKycFaceMatch = async () => {
+    if (!kycDocumentInput?.files?.length || !kycSelfieImageData?.value || !kycFaceMatchDistance) {
+      return null;
+    }
+
+    if (!window.faceapi) {
+      setKycPreviewHint(kycSelfiePreview?.dataset.faceUnavailable || 'Face verification is temporarily unavailable.');
+      return null;
+    }
+
+    if (kycComparisonPromise) {
+      return kycComparisonPromise;
+    }
+
+    kycComparisonPromise = (async () => {
+      try {
+        const modelsReady = await ensureKycFaceModels();
+        if (!modelsReady) {
+          setKycPreviewHint(kycSelfiePreview?.dataset.faceUnavailable || 'Face verification is temporarily unavailable.');
+          return null;
+        }
+
+        revokeKycDocumentUrl();
+        kycDocumentObjectUrl = URL.createObjectURL(kycDocumentInput.files[0]);
+
+        const [documentImage, selfieImage] = await Promise.all([
+          loadImageElement(kycDocumentObjectUrl),
+          loadImageElement(kycSelfieImageData.value)
+        ]);
+
+        const detectorOptions = new faceapi.TinyFaceDetectorOptions({
+          inputSize: 416,
+          scoreThreshold: 0.45
+        });
+
+        const [documentDetection, selfieDetection] = await Promise.all([
+          faceapi.detectSingleFace(documentImage, detectorOptions).withFaceLandmarks().withFaceDescriptor(),
+          faceapi.detectSingleFace(selfieImage, detectorOptions).withFaceLandmarks().withFaceDescriptor()
+        ]);
+
+        if (!documentDetection || !selfieDetection) {
+          if (kycFaceMatchDistance) {
+            kycFaceMatchDistance.value = '';
+          }
+          setKycPreviewHint(kycSelfiePreview?.dataset.faceMissing || 'A face could not be detected on the document or the selfie.');
+          return null;
+        }
+
+        const distance = faceapi.euclideanDistance(documentDetection.descriptor, selfieDetection.descriptor);
+        if (kycFaceMatchDistance) {
+          kycFaceMatchDistance.value = distance.toFixed(4);
+        }
+
+        if (distance > 0.45) {
+          setKycPreviewHint(kycSelfiePreview?.dataset.faceMismatch || 'The selfie does not match the document face.');
+        }
+
+        return distance;
+      } catch (error) {
+        console.error('Unable to compare KYC faces:', error);
+        if (kycFaceMatchDistance) {
+          kycFaceMatchDistance.value = '';
+        }
+        setKycPreviewHint(kycSelfiePreview?.dataset.faceUnavailable || 'Face verification is temporarily unavailable.');
+        return null;
+      }
+    })().finally(() => {
+      kycComparisonPromise = null;
+    });
+
+    return kycComparisonPromise;
+  };
+
+  const captureKycSelfie = () => {
+    if (!kycCameraVideo || !kycCameraCanvas || !kycSelfieImageData) {
+      return;
+    }
+
+    const width = kycCameraVideo.videoWidth || 1280;
+    const height = kycCameraVideo.videoHeight || 720;
+    if (!width || !height) {
+      setKycPreviewHint(kycSelfiePreview?.dataset.selfieHint || 'Start the camera, then capture a clear selfie.');
+      return;
+    }
+
+    kycCameraCanvas.width = width;
+    kycCameraCanvas.height = height;
+    const context = kycCameraCanvas.getContext('2d');
+    if (!context) {
+      return;
+    }
+
+    context.drawImage(kycCameraVideo, 0, 0, width, height);
+    const dataUrl = kycCameraCanvas.toDataURL('image/jpeg', 0.88);
+    kycSelfieImageData.value = dataUrl;
+
+    if (kycSelfiePreview) {
+      kycSelfiePreview.classList.add('has-image');
+      kycSelfiePreview.innerHTML = `<img src="${dataUrl}" alt="Captured selfie">`;
+    }
+
+    if (kycCaptureSelfieBtn) {
+      kycCaptureSelfieBtn.style.display = 'none';
+    }
+    if (kycRetakeSelfieBtn) {
+      kycRetakeSelfieBtn.style.display = 'inline-flex';
+    }
+
+    updateKycFaceMatch();
+  };
+
+  const retakeKycSelfie = () => {
+    if (kycSelfieImageData) {
+      kycSelfieImageData.value = '';
+    }
+    if (kycCaptureSelfieBtn) {
+      kycCaptureSelfieBtn.style.display = 'inline-flex';
+    }
+    if (kycRetakeSelfieBtn) {
+      kycRetakeSelfieBtn.style.display = 'none';
+    }
+    if (kycFaceMatchDistance) {
+      kycFaceMatchDistance.value = '';
+    }
+    setKycPreviewHint(kycSelfiePreview?.dataset.selfieHint || 'Start the camera, then capture a clear selfie so the AI can compare your face with the document.');
+  };
+
+  kycDocumentInput?.addEventListener('change', () => {
+    if (kycFaceMatchDistance) {
+      kycFaceMatchDistance.value = '';
+    }
+    updateKycFaceMatch();
+  });
+
+  kycForm?.addEventListener('submit', async (event) => {
+    if (!kycDocumentInput?.files?.length) {
+      event.preventDefault();
+      setKycPreviewHint(kycSelfiePreview?.dataset.documentMissing || 'Please upload your identity document.');
+      return;
+    }
+
+    if (!kycSelfieImageData?.value) {
+      event.preventDefault();
+      setKycPreviewHint(kycSelfiePreview?.dataset.selfieMissing || 'Please capture your live selfie.');
+      return;
+    }
+
+    event.preventDefault();
+    const submitBtn = kycForm.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.dataset.originalLabel = submitBtn.innerHTML;
+      submitBtn.innerHTML = `<i data-lucide="loader-circle" class="animate-spin"></i><span>${kycSelfiePreview?.dataset.faceAnalyzing || 'Checking the document and selfie now...'}</span>`;
+      if (window.lucide?.createIcons) {
+        window.lucide.createIcons();
+      }
+    }
+
+    try {
+      const distance = await updateKycFaceMatch();
+      if (!Number.isFinite(Number(distance))) {
+        setKycPreviewHint(kycSelfiePreview?.dataset.faceUnavailable || 'Face verification is temporarily unavailable.');
+        return;
+      }
+
+      if (Number(distance) > 0.6) {
+        setKycPreviewHint(kycSelfiePreview?.dataset.faceMismatch || 'The selfie does not match the document face.');
+        return;
+      }
+
+      kycForm.submit();
+    } catch (error) {
+      console.error('Unable to run KYC face comparison:', error);
+      setKycPreviewHint(kycSelfiePreview?.dataset.faceUnavailable || 'Face verification is temporarily unavailable.');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        if (submitBtn.dataset.originalLabel) {
+          submitBtn.innerHTML = submitBtn.dataset.originalLabel;
+          delete submitBtn.dataset.originalLabel;
+          if (window.lucide?.createIcons) {
+            window.lucide.createIcons();
+          }
+        }
+      }
+    }
+  });
+
+  kycStartCameraBtn?.addEventListener('click', startKycCamera);
+  kycCaptureSelfieBtn?.addEventListener('click', captureKycSelfie);
+  kycRetakeSelfieBtn?.addEventListener('click', retakeKycSelfie);
+
+  if (kycCameraVideo && kycSelfiePreview) {
+    setKycPreviewHint(kycSelfiePreview.dataset.selfieHint || 'Start the camera, then capture a clear selfie so the AI can compare your face with the document.');
+    startKycCamera();
+  }
+
+  window.addEventListener('beforeunload', () => {
+    revokeKycDocumentUrl();
+    stopKycCamera();
+  });
+
+  // --- Global Premium Photo Lightbox/Viewer ---
+  const openLightbox = (images, startIndex = 0) => {
+    let currentIndex = startIndex;
+
+    let lightbox = document.getElementById('globalLightbox');
+    if (!lightbox) {
+      lightbox = document.createElement('div');
+      lightbox.id = 'globalLightbox';
+      lightbox.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      `;
+
+      lightbox.innerHTML = `
+        <button id="lightboxClose" style="position: absolute; top: 24px; right: 24px; background: rgba(255,255,255,0.1); border: none; border-radius: 50%; width: 44px; height: 44px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; transition: all 0.2s; z-index: 10;"><i data-lucide="x"></i></button>
+        <button id="lightboxPrev" style="position: absolute; left: 24px; background: rgba(255,255,255,0.1); border: none; border-radius: 50%; width: 44px; height: 44px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; transition: all 0.2s; z-index: 10;"><i data-lucide="chevron-left"></i></button>
+        <img id="lightboxImg" style="max-width: 90%; max-height: 85%; object-fit: contain; border-radius: 8px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); transform: scale(0.95); transition: transform 0.3s ease;" alt="Lightbox image">
+        <button id="lightboxNext" style="position: absolute; right: 24px; background: rgba(255,255,255,0.1); border: none; border-radius: 50%; width: 44px; height: 44px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; transition: all 0.2s; z-index: 10;"><i data-lucide="chevron-right"></i></button>
+        <div id="lightboxCounter" style="position: absolute; bottom: 24px; color: rgba(255,255,255,0.8); font-size: 14px; font-weight: 600; background: rgba(0,0,0,0.4); padding: 6px 16px; border-radius: 20px; z-index: 10;"></div>
+      `;
+      document.body.appendChild(lightbox);
+
+      document.getElementById('lightboxClose').onclick = () => closeLightbox();
+      document.getElementById('lightboxPrev').onclick = () => navigateLightbox(-1);
+      document.getElementById('lightboxNext').onclick = () => navigateLightbox(1);
+
+      lightbox.onclick = (e) => {
+        if (e.target === lightbox) closeLightbox();
+      };
+
+      document.addEventListener('keydown', (e) => {
+        if (lightbox.style.opacity === '1') {
+          if (e.key === 'Escape') closeLightbox();
+          if (e.key === 'ArrowLeft') navigateLightbox(-1);
+          if (e.key === 'ArrowRight') navigateLightbox(1);
+        }
+      });
+    }
+
+    const imgEl = document.getElementById('lightboxImg');
+    const counterEl = document.getElementById('lightboxCounter');
+    const prevBtn = document.getElementById('lightboxPrev');
+    const nextBtn = document.getElementById('lightboxNext');
+
+    const updateImage = () => {
+      imgEl.style.transform = 'scale(0.95)';
+      imgEl.src = images[currentIndex];
+      imgEl.onload = () => {
+        imgEl.style.transform = 'scale(1)';
+      };
+      counterEl.textContent = `${currentIndex + 1} / ${images.length}`;
+
+      prevBtn.style.display = images.length > 1 ? 'flex' : 'none';
+      nextBtn.style.display = images.length > 1 ? 'flex' : 'none';
+
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+    };
+
+    const navigateLightbox = (dir) => {
+      currentIndex = (currentIndex + dir + images.length) % images.length;
+      updateImage();
+    };
+
+    const closeLightbox = () => {
+      lightbox.style.opacity = '0';
+      setTimeout(() => {
+        lightbox.style.display = 'none';
+      }, 300);
+    };
+
+    lightbox.style.display = 'flex';
+    lightbox.offsetHeight;
+    lightbox.style.opacity = '1';
+    updateImage();
+  };
+
+  document.addEventListener('click', (e) => {
+    const gridImg = e.target.closest('.post-images-grid img, .post-single-image img');
+    if (gridImg) {
+      const gridContainer = gridImg.closest('.post-images-grid, .post-single-image');
+      if (gridContainer) {
+        const imagesStr = gridContainer.getAttribute('data-images') || gridImg.src;
+        const images = imagesStr.split(',');
+        const clickedSrc = gridImg.getAttribute('src');
+        const clickedIdx = images.indexOf(clickedSrc);
+        openLightbox(images, clickedIdx >= 0 ? clickedIdx : 0);
+      }
+      return;
+    }
+
+    const pollAvatar = e.target.closest('.challenge-poll-avatar');
+    if (pollAvatar) {
+      e.stopPropagation();
+      const avatarSrc = pollAvatar.getAttribute('src');
+      if (avatarSrc) {
+        openLightbox([avatarSrc], 0);
+      }
+    }
+  });
+
+  // --- Header Search Bar Client-Side Filter ---
+  const headerSearchInput = document.querySelector('.search-bar input');
+  if (headerSearchInput) {
+    headerSearchInput.addEventListener('input', () => {
+      const query = headerSearchInput.value.trim().toLowerCase();
+      const postCards = document.querySelectorAll('#postsContainer .post-card');
+      postCards.forEach(card => {
+        const postContent = card.querySelector('.post-content');
+        const authorName = card.querySelector('.author-name');
+        const contentText = postContent ? postContent.textContent.toLowerCase() : '';
+        const authorText = authorName ? authorName.textContent.toLowerCase() : '';
+
+        if (contentText.includes(query) || authorText.includes(query)) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    });
+  }
+
+  // --- Shorts Desktop Wheel Navigation ---
+  let isScrollingReels = false;
+
+  const getClosestReelIndex = () => {
+    const reelsFeed = document.querySelector('.reels-feed');
+    if (!reelsFeed) return 0;
+    const cards = Array.from(reelsFeed.querySelectorAll('.reel-card'));
+    if (cards.length === 0) return 0;
+
+    let closestIndex = 0;
+    let minDistance = Infinity;
+    const feedRect = reelsFeed.getBoundingClientRect();
+
+    cards.forEach((card, index) => {
+      const rect = card.getBoundingClientRect();
+      const distance = Math.abs(rect.top - feedRect.top);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = index;
+      }
+    });
+
+    return closestIndex;
+  };
+
+  const scrollToReelIndex = (targetIndex) => {
+    const reelsFeed = document.querySelector('.reels-feed');
+    if (!reelsFeed) {
+      console.warn('scrollToReelIndex: .reels-feed not found');
+      return;
+    }
+    const cards = Array.from(reelsFeed.querySelectorAll('.reel-card'));
+    if (cards.length === 0) {
+      console.warn('scrollToReelIndex: no cards found');
+      return;
+    }
+
+    if (targetIndex < 0 || targetIndex >= cards.length) {
+      console.log('scrollToReelIndex: targetIndex out of bounds', targetIndex);
+      return;
+    }
+
+    isScrollingReels = true;
+
+    const targetCard = cards[targetIndex];
+    const computedStyleFeed = getComputedStyle(reelsFeed);
+    const paddingTop = parseFloat(computedStyleFeed.paddingTop) || 0;
+    const targetScrollTop = reelsFeed.scrollTop + (targetCard.getBoundingClientRect().top - (reelsFeed.getBoundingClientRect().top + paddingTop));
+
+    console.log('Shorts scrolling from index', getClosestReelIndex(), 'to', targetIndex, 'targetScrollTop:', targetScrollTop);
+
+    // Save and temporarily disable scroll snapping to avoid transition fights
+    const computedStyle = getComputedStyle(reelsFeed);
+    const originalSnapType = computedStyle.scrollSnapType || computedStyle.getPropertyValue('scroll-snap-type') || 'none';
+
+    reelsFeed.style.scrollSnapType = 'none';
+
+    // Assign top property. CSS scroll-behavior: smooth will animate it.
+    reelsFeed.scrollTop = targetScrollTop;
+
+    setTimeout(() => {
+      reelsFeed.style.scrollSnapType = originalSnapType;
+      isScrollingReels = false;
+    }, 750);
+  };
+
+  document.addEventListener('wheel', (e) => {
+    if (document.body.classList.contains('viewing-shorts')) {
+      const reelsFeed = e.target.closest('.reels-feed');
+      // Only intercept wheel events if inside the feed, but NOT inside the comments drawer
+      if (reelsFeed && !e.target.closest('.reel-comments-drawer')) {
+        e.preventDefault();
+
+        if (isScrollingReels) return;
+
+        // Ignore small scroll wheel increments to avoid trackpad momentum scrolljack drift
+        if (Math.abs(e.deltaY) < 18) return;
+
+        const scrollDirection = e.deltaY > 0 ? 1 : -1;
+        const closestIndex = getClosestReelIndex();
+        scrollToReelIndex(closestIndex + scrollDirection);
+      }
+    }
+  }, { passive: false });
+
+  // --- Shorts Keyboard Navigation ---
+  document.addEventListener('keydown', (e) => {
+    if (document.body.classList.contains('viewing-shorts')) {
+      // Ignore key events if the user is typing
+      const activeEl = document.activeElement;
+      if (activeEl && (
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.isContentEditable
+      )) {
+        return;
+      }
+
+      const reelsFeed = document.querySelector('.reels-feed');
+      if (reelsFeed) {
+        let direction = 0;
+        if (e.key === 'ArrowDown' || e.key === 'PageDown' || (e.key === ' ' && !e.shiftKey)) {
+          direction = 1;
+        } else if (e.key === 'ArrowUp' || e.key === 'PageUp' || (e.key === ' ' && e.shiftKey)) {
+          direction = -1;
+        }
+
+        if (direction !== 0) {
+          e.preventDefault();
+          if (isScrollingReels) return;
+          const closestIndex = getClosestReelIndex();
+          scrollToReelIndex(closestIndex + direction);
+        }
+      }
+    }
+  });
+
+  // --- Shorts Pointer Drag-to-Scroll (Desktop Grabbing / Swipe) ---
+  let isDraggingReel = false;
+  let startDragY = 0;
+  let currentDragDiff = 0;
+
+  document.addEventListener('pointerdown', (e) => {
+    if (!document.body.classList.contains('viewing-shorts')) return;
+    if (e.pointerType !== 'mouse') return; // Only track mouse drags on desktop
+
+    const reelsFeed = e.target.closest('.reels-feed');
+    if (!reelsFeed) return;
+
+    // Keep media clicks reserved for play/pause on desktop.
+    if (e.target.closest('.reel-video') ||
+      e.target.closest('.reel-action-btn') ||
+      e.target.closest('.reel-comments-drawer') ||
+      e.target.closest('input') ||
+      e.target.closest('button') ||
+      e.target.closest('a')) {
+      return;
+    }
+
+    isDraggingReel = true;
+    startDragY = e.clientY;
+    currentDragDiff = 0;
+
+    // Set cursor feedback
+    reelsFeed.classList.add('grabbing');
+
+    // Capture pointer events
+    try {
+      reelsFeed.setPointerCapture(e.pointerId);
+    } catch (err) {
+      console.log('setPointerCapture not supported or failed:', err);
+    }
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!isDraggingReel) return;
+    currentDragDiff = e.clientY - startDragY;
+  });
+
+  document.addEventListener('pointerup', (e) => {
+    if (!isDraggingReel) return;
+    isDraggingReel = false;
+
+    const reelsFeed = document.querySelector('.reels-feed');
+    if (reelsFeed) {
+      reelsFeed.classList.remove('grabbing');
+      try {
+        reelsFeed.releasePointerCapture(e.pointerId);
+      } catch (err) { }
+    }
+
+    const threshold = 70; // drag threshold in pixels
+    const dragDistance = Math.abs(currentDragDiff);
+
+    if (dragDistance > 10) {
+      wasReelDragging = true;
+      setTimeout(() => {
+        wasReelDragging = false;
+      }, 0);
+    }
+
+    if (dragDistance > threshold) {
+      const direction = currentDragDiff > 0 ? -1 : 1; // Drag down = scroll up (previous), Drag up = scroll down (next)
+      const closestIndex = getClosestReelIndex();
+      scrollToReelIndex(closestIndex + direction);
+    } else {
+      // Snap back to closest index
+      const closestIndex = getClosestReelIndex();
+      scrollToReelIndex(closestIndex);
+    }
+  });
+
+  document.addEventListener('pointerup', (e) => {
+    const tradeBtnAtPoint = getReelTradeButtonAtPoint(e.clientX, e.clientY);
+    if (!tradeBtnAtPoint) return;
+    if (e.target.closest('.reel-comments-drawer')) return;
+
+    requestReelTrade(tradeBtnAtPoint, e).catch((error) => {
+      console.error('Reel trade pointer detection error:', error);
+      showToast('Impossible d ouvrir la confirmation du trade.');
+    });
+  }, true);
+
+  document.addEventListener('pointercancel', (e) => {
+    if (!isDraggingReel) return;
+    isDraggingReel = false;
+
+    const reelsFeed = document.querySelector('.reels-feed');
+    if (reelsFeed) {
+      reelsFeed.classList.remove('grabbing');
+      try {
+        reelsFeed.releasePointerCapture(e.pointerId);
+      } catch (err) { }
+    }
+    const closestIndex = getClosestReelIndex();
+    scrollToReelIndex(closestIndex);
+  });
+
+  // --- Shorts Creation & Upload Handling ---
+  const shortCreateModal = document.getElementById('shortCreateModal');
+  const openShortCreateModalBtn = document.getElementById('openShortCreateModalBtn');
+  const openShortCreateBtns = document.querySelectorAll('[data-open-short-create]');
+  const closeShortCreateModal = document.getElementById('closeShortCreateModal');
+  const shortCreateForm = document.getElementById('shortCreateForm');
+
+  // Preview elements & variables
+  let previewAudio = null;
+  let voiceMediaRecorder = null;
+  let voiceAudioChunks = [];
+  let voiceRecordTimer = null;
+  let voiceStartTime = 0;
+  let voiceRecordedBlob = null;
+  let voicePreviewAudio = null;
+
+  // Helper formatting duration
+  const formatSeconds = (sec) => {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  // Get current active limit duration from radios
+  const getActiveLimitDuration = () => {
+    const checked = document.querySelector('input[name="audio_duration"]:checked');
+    return checked ? parseInt(checked.value, 10) : 30;
+  };
+
+  const updateVideoTrimHighlight = () => {
+    const slider = document.getElementById('shortVideoOffsetSlider');
+    const highlight = document.getElementById('shortVideoTrimHighlight');
+    const videoPreview = document.getElementById('shortVideoPreview');
+    if (slider && highlight && videoPreview && videoPreview.duration) {
+      const S = parseFloat(slider.value);
+      const D = videoPreview.duration;
+      const L = getActiveLimitDuration();
+
+      const leftPct = (S / D) * 100;
+      const widthPct = Math.min(100 - leftPct, (L / D) * 100);
+
+      highlight.style.left = leftPct + '%';
+      highlight.style.width = widthPct + '%';
+    }
+  };
+
+  const updateAudioTrimHighlight = () => {
+    const slider = document.getElementById('shortAudioOffsetSlider');
+    const highlight = document.getElementById('shortAudioTrimHighlight');
+    if (slider && highlight && previewAudio && previewAudio.duration) {
+      const S = parseFloat(slider.value);
+      const D = previewAudio.duration;
+      const L = getActiveLimitDuration();
+
+      const leftPct = (S / D) * 100;
+      const widthPct = Math.min(100 - leftPct, (L / D) * 100);
+
+      highlight.style.left = leftPct + '%';
+      highlight.style.width = widthPct + '%';
+    }
+  };
+
+  const compileShortBeforeUpload = async (type, files, durationLimit, mediaFit) => {
+    return new Promise(async (resolve, reject) => {
+      if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+        return reject(new Error("Votre navigateur ne supporte pas la compilation client de vidéos."));
+      }
+
+      let tempVideo = null;
+      let tempAudio = null;
+      let tempImage = null;
+      let totalDuration = durationLimit;
+      let isStopped = false;
+      let animationFrameId = null;
+      let recorder = null;
+
+      const updateProgress = (pct) => {
+        if (shortUploadStatus) {
+          shortUploadStatus.style.display = 'block';
+          shortUploadStatus.className = 'short-upload-status info';
+          shortUploadStatus.innerHTML = `
+            <div style="display: flex; justify-content: space-between; font-weight: 700;">
+              <span>Configuration du short...</span>
+              <span>${pct}%</span>
+            </div>
+            <div class="short-compilation-progress-bar">
+              <div class="short-compilation-progress-fill" style="width: ${pct}%;"></div>
+            </div>
+          `;
+        }
+      };
+
+      const cleanUp = () => {
+        isStopped = true;
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        if (tempVideo) {
+          tempVideo.pause();
+          tempVideo.src = "";
+          try { tempVideo.load(); } catch (e) { }
+          if (tempVideo.parentNode) {
+            tempVideo.parentNode.removeChild(tempVideo);
+          }
+        }
+        if (tempAudio) {
+          tempAudio.pause();
+          tempAudio.src = "";
+          try { tempAudio.load(); } catch (e) { }
+          if (tempAudio.parentNode) {
+            tempAudio.parentNode.removeChild(tempAudio);
+          }
+        }
+        if (audioContext && audioContext.state !== 'closed') {
+          audioContext.close();
+        }
+        if (recorder && recorder.state !== 'inactive') {
+          try { recorder.stop(); } catch (e) { }
+        }
+      };
+
+      let audioContext = null;
+      let destNode = null;
+
+      try {
+        // Setup Media Elements FIRST to read original dimensions & quality
+        if (type === 'video') {
+          if (!files.videoFile) return reject(new Error("Fichier vidéo manquant."));
+          tempVideo = document.createElement('video');
+          tempVideo.crossOrigin = 'anonymous';
+          tempVideo.src = URL.createObjectURL(files.videoFile);
+          tempVideo.muted = false;
+          tempVideo.volume = 1.0;
+          tempVideo.playsInline = true;
+
+          // Off-screen DOM attachment to prevent background playback suspension/throttling
+          tempVideo.style.position = 'fixed';
+          tempVideo.style.left = '-9999px';
+          tempVideo.style.top = '-9999px';
+          tempVideo.style.width = '100px';
+          tempVideo.style.height = '100px';
+          tempVideo.style.opacity = '0';
+          tempVideo.style.pointerEvents = 'none';
+          document.body.appendChild(tempVideo);
+
+          await new Promise((res, rej) => {
+            const onMetadata = () => {
+              const startOffset = files.videoOffset || 0;
+              let dur = tempVideo.duration;
+              if (!dur || isNaN(dur) || !isFinite(dur)) dur = durationLimit;
+              totalDuration = Math.min(Math.max(0.1, dur - startOffset), durationLimit);
+              res();
+            };
+            if (tempVideo.readyState >= 1) {
+              onMetadata();
+            } else {
+              tempVideo.onloadedmetadata = onMetadata;
+            }
+            tempVideo.onerror = () => rej(new Error("Erreur de chargement de la vidéo."));
+          });
+        } else if (type === 'image_audio') {
+          if (files.imageFile) {
+            tempImage = new Image();
+            tempImage.src = URL.createObjectURL(files.imageFile);
+            await new Promise((res) => {
+              tempImage.onload = res;
+              tempImage.onerror = res;
+            });
+          }
+          if (files.audioFile) {
+            tempAudio = new Audio();
+            tempAudio.src = URL.createObjectURL(files.audioFile);
+            tempAudio.muted = false;
+            tempAudio.volume = 1.0;
+
+            // Off-screen DOM attachment to prevent background playback suspension/throttling
+            tempAudio.style.position = 'fixed';
+            tempAudio.style.left = '-9999px';
+            tempAudio.style.top = '-9999px';
+            tempAudio.style.width = '100px';
+            tempAudio.style.height = '100px';
+            tempAudio.style.opacity = '0';
+            tempAudio.style.pointerEvents = 'none';
+            document.body.appendChild(tempAudio);
+
+            await new Promise((res, rej) => {
+              const onMetadata = () => {
+                const startOffset = files.audioOffset || 0;
+                let dur = tempAudio.duration;
+                if (!dur || isNaN(dur) || !isFinite(dur)) dur = durationLimit;
+                totalDuration = Math.min(Math.max(0.1, dur - startOffset), durationLimit);
+                res();
+              };
+              if (tempAudio.readyState >= 1) {
+                onMetadata();
+              } else {
+                tempAudio.onloadedmetadata = onMetadata;
+              }
+              tempAudio.onerror = () => rej(new Error("Erreur de chargement de l'audio."));
+            });
+          }
+        } else if (type === 'voice' || type === 'audio') {
+          if (files.audioFile) {
+            tempAudio = new Audio();
+            tempAudio.src = URL.createObjectURL(files.audioFile);
+            tempAudio.muted = false;
+            tempAudio.volume = 1.0;
+
+            // Off-screen DOM attachment to prevent background playback suspension/throttling
+            tempAudio.style.position = 'fixed';
+            tempAudio.style.left = '-9999px';
+            tempAudio.style.top = '-9999px';
+            tempAudio.style.width = '100px';
+            tempAudio.style.height = '100px';
+            tempAudio.style.opacity = '0';
+            tempAudio.style.pointerEvents = 'none';
+            document.body.appendChild(tempAudio);
+
+            await new Promise((res, rej) => {
+              const onMetadata = () => {
+                const startOffset = files.audioOffset || 0;
+                let dur = tempAudio.duration;
+                if (!dur || isNaN(dur) || !isFinite(dur)) dur = durationLimit;
+                totalDuration = Math.min(Math.max(0.1, dur - startOffset), durationLimit);
+                res();
+              };
+              if (tempAudio.readyState >= 1) {
+                onMetadata();
+              } else {
+                tempAudio.onloadedmetadata = onMetadata;
+              }
+              tempAudio.onerror = () => rej(new Error("Erreur de chargement du son."));
+            });
+          }
+        }
+
+        // Dynamically compute vertical 9:16 dimensions to preserve original quality and prevent watermark distortion
+        let origW = 540;
+        let origH = 960;
+        if (type === 'video' && tempVideo) {
+          origW = tempVideo.videoWidth || 540;
+          origH = tempVideo.videoHeight || 960;
+        } else if (type === 'image_audio' && tempImage) {
+          origW = tempImage.width || 540;
+          origH = tempImage.height || 960;
+        }
+
+        // Output canvas is always vertical 9:16, capped to 1280 height for a sharper watermark and cleaner export
+        const maxCompH = 1280;
+        const height = Math.round(Math.min(maxCompH, Math.max(origH, origW)) / 2) * 2;
+        const width = Math.round((height * 9 / 16) / 2) * 2;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+        }
+        const canvasStream = canvas.captureStream(30);
+
+        // Setup AudioContext for mixing
+        try {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            audioContext = new AudioContextClass();
+            destNode = audioContext.createMediaStreamDestination();
+
+            if (type === 'video' && tempVideo) {
+              const sourceNode = audioContext.createMediaElementSource(tempVideo);
+              sourceNode.connect(destNode);
+            } else if (tempAudio) {
+              const sourceNode = audioContext.createMediaElementSource(tempAudio);
+              sourceNode.connect(destNode);
+            }
+
+            const audioTracks = destNode.stream.getAudioTracks();
+            if (audioTracks.length > 0) {
+              canvasStream.addTrack(audioTracks[0]);
+            }
+          }
+        } catch (audioErr) {
+          console.warn("Audio Context init disabled/failed:", audioErr);
+        }
+
+        // Setup Watermark variables (proportional to dimensions to prevent tiny sizing)
+        const scaleFactor = width / 540;
+        const authorUsername = window.currentUsername || 'user';
+        const cleanUsername = String(authorUsername || 'user').trim().replace(/^@+/, '') || 'user';
+        const authorNameText = `@${cleanUsername.toLowerCase()}`;
+
+        // Font sizes (enlarged by ~30%)
+        const brandFontSize = Math.round(14 * scaleFactor);
+        const userFontSize = Math.round(11 * scaleFactor);
+
+        ctx.font = `bold ${brandFontSize}px 'Outfit', sans-serif`;
+        const brandTextWidth = ctx.measureText("WeShare").width;
+        const brandTotalWidth = brandTextWidth + Math.round(8 * scaleFactor);
+
+        ctx.font = `${userFontSize}px 'Outfit', sans-serif`;
+        const userTextWidth = ctx.measureText(authorNameText).width;
+
+        const maxContentWidth = Math.max(brandTotalWidth, userTextWidth);
+        const padding = Math.round(12 * scaleFactor);
+
+        const wWidth = maxContentWidth + (padding * 2);
+        const wHeight = Math.round(48 * scaleFactor); // Enlarged from 34
+        let wx = Math.round(30 * scaleFactor);
+        let wy = Math.round(60 * scaleFactor);
+        let vx = 1.0 * scaleFactor;
+        let vy = 0.7 * scaleFactor;
+
+        // Setup vinyl spinning or wave animation variables
+        let vinylRotation = 0;
+        let transitionStartCoords = null;
+        const startTime = Date.now();
+
+        const renderFrame = () => {
+          if (isStopped) return;
+
+          // Draw content
+          if (type === 'video' && tempVideo) {
+            const fitMode = mediaFit === 'contain' ? 'contain' : 'cover';
+            if (fitMode === 'cover') {
+              const scale = Math.max(width / origW, height / origH);
+              const drawW = origW * scale;
+              const drawH = origH * scale;
+              const drawX = (width - drawW) / 2;
+              const drawY = (height - drawH) / 2;
+              ctx.drawImage(tempVideo, drawX, drawY, drawW, drawH);
+            } else {
+              // contain
+              ctx.fillStyle = '#000000';
+              ctx.fillRect(0, 0, width, height);
+              const scale = Math.min(width / origW, height / origH);
+              const drawW = origW * scale;
+              const drawH = origH * scale;
+              const drawX = (width - drawW) / 2;
+              const drawY = (height - drawH) / 2;
+              ctx.drawImage(tempVideo, drawX, drawY, drawW, drawH);
+            }
+          } else if (type === 'image_audio' && tempImage) {
+            const fitMode = mediaFit === 'contain' ? 'contain' : 'cover';
+            if (fitMode === 'cover') {
+              const scale = Math.max(width / origW, height / origH);
+              const drawW = origW * scale;
+              const drawH = origH * scale;
+              const drawX = (width - drawW) / 2;
+              const drawY = (height - drawH) / 2;
+              ctx.drawImage(tempImage, drawX, drawY, drawW, drawH);
+            } else {
+              // contain
+              ctx.fillStyle = '#000000';
+              ctx.fillRect(0, 0, width, height);
+              const scale = Math.min(width / origW, height / origH);
+              const drawW = origW * scale;
+              const drawH = origH * scale;
+              const drawX = (width - drawW) / 2;
+              const drawY = (height - drawH) / 2;
+              ctx.drawImage(tempImage, drawX, drawY, drawW, drawH);
+            }
+          } else if (type === 'voice') {
+            // Render Voice gradient and voice waves
+            const grad = ctx.createLinearGradient(0, 0, width, height);
+            grad.addColorStop(0, '#4f46e5');
+            grad.addColorStop(1, '#06b6d4');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, width, height);
+
+            // Bouncing voice wave animation in center
+            const waveCount = 5;
+            const spacing = 16 * scaleFactor;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            const time = Date.now() * 0.005;
+            for (let i = 0; i < waveCount; i++) {
+              const h = (20 + Math.sin(time + i * 0.6) * 35) * scaleFactor;
+              const x = width / 2 + (i - 2) * spacing - (3 * scaleFactor);
+              const y = height / 2 - h / 2;
+              ctx.beginPath();
+              ctx.roundRect(x, y, 6 * scaleFactor, h, 3 * scaleFactor);
+              ctx.fill();
+            }
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = "bold " + Math.round(16 * scaleFactor) + "px 'Outfit', sans-serif";
+            ctx.textAlign = 'center';
+            ctx.fillText("VOICE NOTE SHORT", width / 2, height / 2 + Math.round(60 * scaleFactor));
+          } else if (type === 'audio') {
+            // Render Audio gradient and spinning vinyl
+            const grad = ctx.createLinearGradient(0, 0, width, height);
+            grad.addColorStop(0, '#1e1b4b');
+            grad.addColorStop(1, '#311042');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, width, height);
+
+            // Spinning Vinyl Disk
+            ctx.save();
+            ctx.translate(width / 2, height / 2 - Math.round(40 * scaleFactor));
+            ctx.rotate(vinylRotation);
+            vinylRotation += 0.02;
+
+            // Outer vinyl
+            ctx.fillStyle = '#0c0a09';
+            ctx.strokeStyle = '#292524';
+            ctx.lineWidth = 10 * scaleFactor;
+            ctx.beginPath();
+            ctx.arc(0, 0, 100 * scaleFactor, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Grooves
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(0, 0, 80, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(0, 0, 60, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Center sticker
+            ctx.fillStyle = '#8b5cf6';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, 30, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.restore();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = "bold 16px 'Outfit', sans-serif";
+            ctx.textAlign = 'center';
+            ctx.fillText("MUSIC SHORT", width / 2, height / 2 + 100);
+          }
+
+          // Render Watermark
+          let drawX = wx;
+          let drawY = wy;
+          const currentMedia = (type === 'video') ? tempVideo : tempAudio;
+          const startOffset = (type === 'video') ? (files.videoOffset || 0) : (files.audioOffset || 0);
+          const elapsed = currentMedia
+            ? Math.max(0, currentMedia.currentTime - startOffset)
+            : (Date.now() - startTime) / 1000;
+          const stopBouncingTime = 4.0;
+          const transitionDuration = 1.5;
+
+          if (elapsed >= stopBouncingTime) {
+            const targetX = Math.round(30 * scaleFactor); // Left aligned, same height
+            const targetY = height - wHeight - Math.round(140 * scaleFactor);
+            const t = Math.min(1, (elapsed - stopBouncingTime) / transitionDuration);
+            const easeT = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+            if (!transitionStartCoords) {
+              transitionStartCoords = { x: wx, y: wy };
+            }
+
+            drawX = transitionStartCoords.x + (targetX - transitionStartCoords.x) * easeT;
+            drawY = transitionStartCoords.y + (targetY - transitionStartCoords.y) * easeT;
+          } else {
+            transitionStartCoords = null;
+            wx += vx;
+            wy += vy;
+            if (wx < 15 || wx + wWidth > width - 15) vx = -vx;
+            if (wy < 15 || wy + wHeight > height - 15) vy = -vy;
+            drawX = wx;
+            drawY = wy;
+          }
+
+          drawX = Math.round(drawX);
+          drawY = Math.round(drawY);
+
+          ctx.save();
+          // Glow and subtle shadow
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+          ctx.shadowBlur = 8 * scaleFactor;
+
+          // Semitransparent card
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+          ctx.lineWidth = 1.2 * scaleFactor;
+
+          ctx.beginPath();
+          ctx.roundRect(drawX, drawY, wWidth, wHeight, 10 * scaleFactor);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.shadowBlur = 0; // Disable shadow for text
+
+          // Draw WeShare brand text
+          ctx.fillStyle = '#ffffff';
+          ctx.font = `bold ${brandFontSize}px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText("WeShare", Math.round(drawX + padding), Math.round(drawY + 16 * scaleFactor));
+
+          // Little glowing dot next to WeShare
+          ctx.fillStyle = '#06b6d4'; // Glowing cyan tone
+          ctx.shadowColor = '#06b6d4';
+          ctx.shadowBlur = 4 * scaleFactor;
+          ctx.beginPath();
+          ctx.arc(Math.round(drawX + padding + brandTextWidth + 5 * scaleFactor), Math.round(drawY + 16 * scaleFactor), Math.round(2.2 * scaleFactor), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0; // Reset shadow
+
+          // Username below brand text
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+          ctx.font = `${userFontSize}px 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
+          ctx.fillText(authorNameText, Math.round(drawX + padding), Math.round(drawY + 32 * scaleFactor));
+          ctx.restore();
+
+          // Update progress bar
+          const progressPct = Math.min(100, Math.floor((elapsed / totalDuration) * 100));
+          updateProgress(progressPct);
+
+          // Safety Watchdog to prevent infinite loop/freeze if rendering/playback stalls
+          const timeSinceStart = (Date.now() - startTime) / 1000;
+          if (timeSinceStart > totalDuration + 10) {
+            console.warn("Safety Watchdog triggered: compilation exceeded max time.");
+            if (recorder && recorder.state !== 'inactive') {
+              recorder.stop();
+            }
+            return;
+          }
+
+          if (elapsed >= totalDuration || (currentMedia && currentMedia.ended)) {
+            if (recorder && recorder.state !== 'inactive') {
+              recorder.stop();
+            }
+            return;
+          }
+
+          animationFrameId = requestAnimationFrame(renderFrame);
+        };
+
+        // MediaRecorder setup
+        const formats = [
+          { mime: 'video/mp4;codecs="avc1.42E01E,mp4a.40.2"', ext: 'mp4' },
+          { mime: 'video/mp4', ext: 'mp4' },
+          { mime: 'video/webm;codecs=vp9,opus', ext: 'webm' },
+          { mime: 'video/webm;codecs=vp8,opus', ext: 'webm' },
+          { mime: 'video/webm', ext: 'webm' }
+        ];
+        const selectedFormat = formats.find(f => MediaRecorder.isTypeSupported(f.mime));
+        if (!selectedFormat) {
+          throw new Error("Aucun format vidéo supporté par MediaRecorder sur votre navigateur.");
+        }
+
+        recorder = new MediaRecorder(canvasStream, {
+          mimeType: selectedFormat.mime,
+          videoBitsPerSecond: 14000000
+        });
+        const chunks = [];
+        recorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) chunks.push(ev.data);
+        };
+
+        recorder.onstop = () => {
+          cleanUp();
+          const compiledBlob = new Blob(chunks, { type: selectedFormat.mime });
+          resolve({ blob: compiledBlob, ext: selectedFormat.ext });
+        };
+
+        recorder.onerror = (recErr) => {
+          cleanUp();
+          reject(recErr);
+        };
+
+        // Start playing and recording
+        recorder.start();
+        if (type === 'video' && tempVideo) {
+          tempVideo.currentTime = files.videoOffset || 0;
+          await new Promise((res) => {
+            tempVideo.onseeked = res;
+            setTimeout(res, 300); // Fallback safety timeout
+          });
+          await tempVideo.play();
+        } else if (tempAudio) {
+          tempAudio.currentTime = files.audioOffset || 0;
+          await new Promise((res) => {
+            tempAudio.onseeked = res;
+            setTimeout(res, 300); // Fallback safety timeout
+          });
+          await tempAudio.play();
+        }
+        renderFrame();
+
+      } catch (err) {
+        cleanUp();
+        reject(err);
+      }
+    });
+  };
+
+  // Helper to pause all modal previews
+  const stopAllModalPreviews = () => {
+    if (previewAudio) {
+      previewAudio.pause();
+      const playBtn = document.getElementById('shortAudioPreviewBtn');
+      if (playBtn) {
+        playBtn.innerHTML = '<i data-lucide="play" style="width: 14px; height: 14px;"></i>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    }
+    if (voicePreviewAudio) {
+      voicePreviewAudio.pause();
+      const playBtn = document.getElementById('shortVoicePlayBtn');
+      if (playBtn) {
+        playBtn.innerHTML = '<i data-lucide="play" style="width: 16px; height: 16px; fill: white;"></i>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    }
+    const videoPreview = document.getElementById('shortVideoPreview');
+    if (videoPreview) {
+      videoPreview.pause();
+      const playBtn = document.getElementById('shortVideoPreviewBtn');
+      if (playBtn) {
+        playBtn.innerHTML = '<i data-lucide="play" style="width: 12px; height: 12px; fill: white;"></i>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    }
+  };
+
+  if (openShortCreateBtns.length > 0 && shortCreateModal) {
+    openShortCreateBtns.forEach((btn) => btn.addEventListener('click', () => {
+      shortCreateModal.style.display = 'flex';
+    }));
+  } else if (openShortCreateModalBtn && shortCreateModal) {
+    openShortCreateModalBtn.addEventListener('click', () => {
+      shortCreateModal.style.display = 'flex';
+    });
+  }
+
+  if (closeShortCreateModal && shortCreateModal) {
+    closeShortCreateModal.addEventListener('click', () => {
+      shortCreateModal.style.display = 'none';
+      stopAllModalPreviews();
+    });
+  }
+
+  // Close modal when clicking on overlay background
+  if (shortCreateModal) {
+    shortCreateModal.addEventListener('click', (e) => {
+      if (e.target === shortCreateModal) {
+        shortCreateModal.style.display = 'none';
+        stopAllModalPreviews();
+      }
+    });
+  }
+
+  // Tab switching logic
+  const tabBtns = document.querySelectorAll('.status-tab-btn[data-short-tab]');
+  const panels = {
+    video: document.getElementById('shortPanelVideo'),
+    image_audio: document.getElementById('shortPanelImageAudio'),
+    voice: document.getElementById('shortPanelVoice'),
+    audio: document.getElementById('shortPanelAudio')
+  };
+  const mediaTypeInput = document.getElementById('shortMediaTypeInput');
+  const audioSettingsSection = document.getElementById('shortAudioSettingsSection');
+  const mediaFitInput = document.getElementById('shortMediaFitInput');
+  const mediaFitSection = document.getElementById('shortMediaFitSection');
+  const mediaFitOptions = document.querySelectorAll('.short-fit-option');
+  const shortTradeToggle = document.getElementById('shortTradeToggle');
+  const shortTradeInput = document.getElementById('shortTradeInput');
+  const shortTradeInfo = document.getElementById('shortTradeInfo');
+  const shortUploadStatus = document.getElementById('shortUploadStatus');
+
+  const setShortUploadStatus = (message, type = 'error') => {
+    if (!shortUploadStatus) {
+      if (message) showToast(message);
+      return;
+    }
+    if (!message) {
+      shortUploadStatus.style.display = 'none';
+      shortUploadStatus.textContent = '';
+      shortUploadStatus.classList.remove('success');
+      return;
+    }
+    shortUploadStatus.textContent = message;
+    shortUploadStatus.style.display = 'block';
+    shortUploadStatus.classList.toggle('success', type === 'success');
+    showToast(message);
+  };
+
+  const applyShortMediaFit = () => {
+    const fit = mediaFitInput?.value === 'contain' ? 'contain' : 'cover';
+    const previewTargets = [
+      document.getElementById('shortVideoPreview'),
+      document.getElementById('shortImagePreview')
+    ];
+
+    previewTargets.forEach((target) => {
+      if (target) target.style.objectFit = fit;
+    });
+  };
+
+  mediaFitOptions.forEach((option) => {
+    option.addEventListener('click', () => {
+      const fit = option.getAttribute('data-fit-option') === 'contain' ? 'contain' : 'cover';
+      if (mediaFitInput) mediaFitInput.value = fit;
+
+      mediaFitOptions.forEach((item) => {
+        const isActive = item === option;
+        item.classList.toggle('active', isActive);
+        const input = item.querySelector('input[type="radio"]');
+        if (input) input.checked = isActive;
+      });
+
+      applyShortMediaFit();
+    });
+  });
+  applyShortMediaFit();
+
+  if (shortTradeToggle) {
+    shortTradeToggle.addEventListener('change', () => {
+      const isChecked = shortTradeToggle.checked;
+      if (shortTradeInput) shortTradeInput.value = isChecked ? '1' : '0';
+      if (shortTradeInfo) shortTradeInfo.style.display = isChecked ? 'block' : 'none';
+      syncShortTradeBalanceInfo(getShortTradeTokenBalance());
+      if (isChecked && getShortTradeTokenBalance() < 5) {
+        setShortUploadStatus(`${getShortTradeFundsMessage()} Ajoutez des tokens ou desactivez Trade Short pour publier.`);
+      } else {
+        setShortUploadStatus('');
+      }
+    });
+  }
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      stopAllModalPreviews();
+      const tabName = btn.getAttribute('data-short-tab');
+
+      // Update tab styles
+      tabBtns.forEach(b => {
+        b.classList.remove('active');
+        b.style.background = 'transparent';
+        b.style.color = 'var(--text-secondary)';
+        b.style.fontWeight = '600';
+      });
+      btn.classList.add('active');
+      btn.style.background = 'var(--primary-light)';
+      btn.style.color = 'var(--primary)';
+      btn.style.fontWeight = '700';
+
+      // Hide all panels, show the selected one
+      Object.keys(panels).forEach(key => {
+        if (panels[key]) panels[key].style.display = 'none';
+      });
+      if (panels[tabName]) panels[tabName].style.display = 'block';
+
+      // Update hidden input value
+      if (mediaTypeInput) mediaTypeInput.value = tabName;
+      if (mediaFitSection) {
+        mediaFitSection.style.display = (tabName === 'video' || tabName === 'image_audio') ? 'grid' : 'none';
+      }
+      applyShortMediaFit();
+
+      // Handle visibility of the audio trimmer settings
+      if (audioSettingsSection) {
+        if (tabName === 'image_audio') {
+          const audioInput = document.getElementById('shortAudioInput');
+          audioSettingsSection.style.display = (audioInput && audioInput.files.length > 0) ? 'flex' : 'none';
+        } else if (tabName === 'audio') {
+          const audioOnlyInput = document.getElementById('shortAudioOnlyInput');
+          audioSettingsSection.style.display = (audioOnlyInput && audioOnlyInput.files.length > 0) ? 'flex' : 'none';
+        } else {
+          audioSettingsSection.style.display = 'none';
+        }
+      }
+    });
+  });
+
+  // 1. Video File Input Change & Preview
+  const videoInput = document.getElementById('shortVideoInput');
+  const videoFilename = document.getElementById('shortVideoFilename');
+  const videoPreviewBox = document.getElementById('shortVideoPreviewBox');
+  const videoPreview = document.getElementById('shortVideoPreview');
+
+  if (videoInput) {
+    videoInput.addEventListener('change', () => {
+      const file = videoInput.files[0];
+      if (file) {
+        if (videoFilename) videoFilename.textContent = file.name;
+
+        // Auto-fill sound track name automatically
+        const soundNameInput = document.getElementById('shortSoundName');
+        if (soundNameInput) {
+          soundNameInput.value = file.name.replace(/\.[^/.]+$/, "");
+        }
+
+        if (videoPreview) {
+          videoPreview.src = URL.createObjectURL(file);
+          applyShortMediaFit();
+          if (videoPreviewBox) videoPreviewBox.style.display = 'block';
+        }
+      } else {
+        if (videoFilename) videoFilename.textContent = 'No file chosen';
+        if (videoPreviewBox) videoPreviewBox.style.display = 'none';
+        const trimSection = document.getElementById('shortVideoTrimSection');
+        if (trimSection) trimSection.style.display = 'none';
+      }
+    });
+  }
+
+  const shortVideoOffsetSlider = document.getElementById('shortVideoOffsetSlider');
+  const shortVideoOffsetLabel = document.getElementById('shortVideoOffsetLabel');
+
+  if (videoPreview) {
+    videoPreview.addEventListener('loadedmetadata', () => {
+      const trimSection = document.getElementById('shortVideoTrimSection');
+      const limit = getActiveLimitDuration();
+      const maxOffset = Math.max(0, videoPreview.duration - limit);
+
+      if (shortVideoOffsetSlider) {
+        shortVideoOffsetSlider.max = maxOffset;
+        shortVideoOffsetSlider.value = 0;
+      }
+      if (shortVideoOffsetLabel) {
+        const endVal = Math.min(videoPreview.duration, limit);
+        shortVideoOffsetLabel.textContent = `0:00 - ${formatSeconds(endVal)}`;
+      }
+      if (trimSection) {
+        trimSection.style.display = 'flex';
+      }
+      updateVideoTrimHighlight();
+    });
+
+    // Constrain video preview playback bounds via timeupdate loop
+    videoPreview.addEventListener('timeupdate', () => {
+      const limit = getActiveLimitDuration();
+      const start = parseFloat(shortVideoOffsetSlider?.value || 0);
+      if (videoPreview.currentTime < start) {
+        videoPreview.currentTime = start;
+      } else if (videoPreview.currentTime >= start + limit) {
+        videoPreview.currentTime = start;
+      }
+    });
+  }
+
+  if (shortVideoOffsetSlider) {
+    shortVideoOffsetSlider.addEventListener('input', () => {
+      const val = parseFloat(shortVideoOffsetSlider.value);
+      const limit = getActiveLimitDuration();
+      if (videoPreview) {
+        const endVal = Math.min(videoPreview.duration, val + limit);
+        if (shortVideoOffsetLabel) {
+          shortVideoOffsetLabel.textContent = `${formatSeconds(val)} - ${formatSeconds(endVal)}`;
+        }
+        videoPreview.currentTime = val;
+      }
+      updateVideoTrimHighlight();
+    });
+  }
+
+  const shortVideoPreviewBtn = document.getElementById('shortVideoPreviewBtn');
+  if (shortVideoPreviewBtn) {
+    shortVideoPreviewBtn.addEventListener('click', () => {
+      if (!videoPreview) return;
+      if (videoPreview.paused) {
+        videoPreview.play().then(() => {
+          shortVideoPreviewBtn.innerHTML = '<i data-lucide="pause" style="width: 12px; height: 12px; fill: white;"></i>';
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        });
+      } else {
+        videoPreview.pause();
+        shortVideoPreviewBtn.innerHTML = '<i data-lucide="play" style="width: 12px; height: 12px; fill: white;"></i>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    });
+  }
+
+  if (videoPreview) {
+    videoPreview.addEventListener('click', () => {
+      if (videoPreview.paused) {
+        videoPreview.play().then(() => {
+          if (shortVideoPreviewBtn) {
+            shortVideoPreviewBtn.innerHTML = '<i data-lucide="pause" style="width: 12px; height: 12px; fill: white;"></i>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+          }
+        });
+      } else {
+        videoPreview.pause();
+        if (shortVideoPreviewBtn) {
+          shortVideoPreviewBtn.innerHTML = '<i data-lucide="play" style="width: 12px; height: 12px; fill: white;"></i>';
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+      }
+    });
+  }
+
+  // 2. Image File Input Change & Preview
+  const imageInput = document.getElementById('shortImageInput');
+  const imageFilename = document.getElementById('shortImageFilename');
+  const imagePreviewBox = document.getElementById('shortImagePreviewBox');
+  const imagePreview = document.getElementById('shortImagePreview');
+
+  if (imageInput) {
+    imageInput.addEventListener('change', () => {
+      const file = imageInput.files[0];
+      if (file) {
+        if (imageFilename) imageFilename.textContent = file.name;
+        if (imagePreview) {
+          imagePreview.src = URL.createObjectURL(file);
+          applyShortMediaFit();
+          if (imagePreviewBox) imagePreviewBox.style.display = 'flex';
+        }
+      } else {
+        if (imageFilename) imageFilename.textContent = 'No image chosen';
+        if (imagePreviewBox) imagePreviewBox.style.display = 'none';
+      }
+    });
+  }
+
+  // Helper to load audio metadata and configure offset slider
+  const handleAudioFileSelection = (file, nameFieldId) => {
+    stopAllModalPreviews();
+    const nameLabel = document.getElementById(nameFieldId);
+    if (file) {
+      if (nameLabel) nameLabel.textContent = file.name;
+
+      // Auto-fill sound track name if empty
+      const soundNameInput = document.getElementById('shortSoundName');
+      if (soundNameInput && !soundNameInput.value.trim()) {
+        // Remove file extension
+        soundNameInput.value = file.name.replace(/\.[^/.]+$/, "");
+      }
+
+      if (!previewAudio) {
+        previewAudio = new Audio();
+      }
+      previewAudio.src = URL.createObjectURL(file);
+      previewAudio.addEventListener('loadedmetadata', () => {
+        const slider = document.getElementById('shortAudioOffsetSlider');
+        const offsetLabel = document.getElementById('shortAudioOffsetLabel');
+        const startTimeInput = document.getElementById('shortAudioStartTimeInput');
+
+        const limit = getActiveLimitDuration();
+        const maxOffset = Math.max(0, previewAudio.duration - limit);
+
+        if (slider) {
+          slider.max = Math.floor(maxOffset);
+          slider.value = 0;
+        }
+        if (offsetLabel) {
+          const endVal = Math.min(previewAudio.duration, limit);
+          offsetLabel.textContent = `0:00 - ${formatSeconds(endVal)}`;
+        }
+        if (startTimeInput) startTimeInput.value = '0';
+        if (audioSettingsSection) audioSettingsSection.style.display = 'flex';
+        updateAudioTrimHighlight();
+      });
+    } else {
+      if (nameLabel) nameLabel.textContent = 'No audio chosen';
+      if (audioSettingsSection) audioSettingsSection.style.display = 'none';
+    }
+  };
+
+  // Image + Audio Background track
+  const audioInput = document.getElementById('shortAudioInput');
+  if (audioInput) {
+    audioInput.addEventListener('change', () => {
+      handleAudioFileSelection(audioInput.files[0], 'shortAudioFilename');
+    });
+  }
+
+  // Audio Only track
+  const audioOnlyInput = document.getElementById('shortAudioOnlyInput');
+  if (audioOnlyInput) {
+    audioOnlyInput.addEventListener('change', () => {
+      handleAudioFileSelection(audioOnlyInput.files[0], 'shortAudioOnlyFilename');
+    });
+  }
+
+  // Update slider constraints when selected duration limit changes
+  const durationRadios = document.querySelectorAll('input[name="audio_duration"]');
+  durationRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      // Toggle display labels for radios visually
+      durationRadios.forEach(r => {
+        const label = r.closest('label');
+        if (label) {
+          label.style.background = 'var(--bg-hover)';
+          label.style.borderColor = 'var(--border-color)';
+          label.style.color = 'var(--text-primary)';
+        }
+      });
+      const checkedLabel = radio.closest('label');
+      if (checkedLabel) {
+        checkedLabel.style.background = 'var(--primary-light)';
+        checkedLabel.style.borderColor = 'var(--primary)';
+        checkedLabel.style.color = 'var(--primary)';
+      }
+
+      if (previewAudio && previewAudio.duration) {
+        const slider = document.getElementById('shortAudioOffsetSlider');
+        const startTimeInput = document.getElementById('shortAudioStartTimeInput');
+        const offsetLabel = document.getElementById('shortAudioOffsetLabel');
+        const limit = getActiveLimitDuration();
+        const maxOffset = Math.max(0, previewAudio.duration - limit);
+        if (slider) {
+          slider.max = Math.floor(maxOffset);
+          if (parseFloat(slider.value) > maxOffset) {
+            slider.value = Math.floor(maxOffset);
+          }
+          if (startTimeInput) startTimeInput.value = slider.value;
+          const val = parseFloat(slider.value);
+          const endVal = Math.min(previewAudio.duration, val + limit);
+          if (offsetLabel) {
+            offsetLabel.textContent = `${formatSeconds(val)} - ${formatSeconds(endVal)}`;
+          }
+        }
+        updateAudioTrimHighlight();
+      }
+
+      if (videoPreview && videoPreview.duration) {
+        const slider = document.getElementById('shortVideoOffsetSlider');
+        const offsetLabel = document.getElementById('shortVideoOffsetLabel');
+        const limit = getActiveLimitDuration();
+        const maxOffset = Math.max(0, videoPreview.duration - limit);
+        if (slider) {
+          slider.max = maxOffset;
+          if (parseFloat(slider.value) > maxOffset) {
+            slider.value = maxOffset;
+            videoPreview.currentTime = maxOffset;
+          }
+          const val = parseFloat(slider.value);
+          const endVal = Math.min(videoPreview.duration, val + limit);
+          if (offsetLabel) {
+            offsetLabel.textContent = `${formatSeconds(val)} - ${formatSeconds(endVal)}`;
+          }
+        }
+        updateVideoTrimHighlight();
+      }
+    });
+  });
+
+  // Handle visual active state styling for initially checked duration limit radio
+  const initCheckedRadio = document.querySelector('input[name="audio_duration"]:checked');
+  if (initCheckedRadio) {
+    const label = initCheckedRadio.closest('label');
+    if (label) {
+      label.style.background = 'var(--primary-light)';
+      label.style.borderColor = 'var(--primary)';
+      label.style.color = 'var(--primary)';
+    }
+  }
+
+  // Audio offset range slider input event
+  const offsetSlider = document.getElementById('shortAudioOffsetSlider');
+  const offsetLabel = document.getElementById('shortAudioOffsetLabel');
+  const startTimeInput = document.getElementById('shortAudioStartTimeInput');
+
+  if (offsetSlider) {
+    offsetSlider.addEventListener('input', () => {
+      const val = parseFloat(offsetSlider.value);
+      const limit = getActiveLimitDuration();
+      if (previewAudio) {
+        const endVal = Math.min(previewAudio.duration, val + limit);
+        if (offsetLabel) offsetLabel.textContent = `${formatSeconds(val)} - ${formatSeconds(endVal)}`;
+      } else {
+        if (offsetLabel) offsetLabel.textContent = formatSeconds(val);
+      }
+      if (startTimeInput) startTimeInput.value = val;
+      if (previewAudio) {
+        previewAudio.currentTime = val;
+      }
+      updateAudioTrimHighlight();
+    });
+  }
+
+  // Trimmer Preview Play/Pause button
+  const audioPreviewBtn = document.getElementById('shortAudioPreviewBtn');
+  if (audioPreviewBtn) {
+    audioPreviewBtn.addEventListener('click', () => {
+      if (!previewAudio) return;
+
+      if (previewAudio.paused) {
+        const start = parseFloat(offsetSlider?.value || 0);
+        previewAudio.currentTime = start;
+        previewAudio.play().then(() => {
+          audioPreviewBtn.innerHTML = '<i data-lucide="pause" style="width: 14px; height: 14px;"></i>';
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        });
+
+        // Loop / limit watcher
+        const checkLimit = () => {
+          const limit = getActiveLimitDuration();
+          if (previewAudio.currentTime >= start + limit || previewAudio.ended) {
+            previewAudio.pause();
+            audioPreviewBtn.innerHTML = '<i data-lucide="play" style="width: 14px; height: 14px;"></i>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            previewAudio.removeEventListener('timeupdate', checkLimit);
+          }
+        };
+        previewAudio.addEventListener('timeupdate', checkLimit);
+      } else {
+        previewAudio.pause();
+        audioPreviewBtn.innerHTML = '<i data-lucide="play" style="width: 14px; height: 14px;"></i>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    });
+  }
+
+  // 3. Voice Note mic recorder controls
+  const shortRecordBtn = document.getElementById('shortVoiceRecordBtn');
+  const shortVoiceTimerEl = document.getElementById('shortVoiceTimer');
+  const shortVoiceStatusEl = document.getElementById('shortVoiceStatus');
+  const shortVoicePlayerWrapperEl = document.getElementById('shortVoicePlayerWrapper');
+  const shortVoicePlayBtnEl = document.getElementById('shortVoicePlayBtn');
+  const shortVoicePlayTimelineEl = document.getElementById('shortVoicePlayTimeline');
+  const shortVoicePlayProgressEl = document.getElementById('shortVoicePlayProgress');
+  const shortVoicePlayTimeEl = document.getElementById('shortVoicePlayTime');
+
+  if (shortRecordBtn) {
+    shortRecordBtn.addEventListener('click', async () => {
+      // Toggle recording
+      if (!voiceMediaRecorder || voiceMediaRecorder.state === 'inactive') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          voiceAudioChunks = [];
+          voiceMediaRecorder = new MediaRecorder(stream);
+
+          voiceMediaRecorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) {
+              voiceAudioChunks.push(e.data);
+            }
+          };
+
+          voiceMediaRecorder.onstop = () => {
+            voiceRecordedBlob = new Blob(voiceAudioChunks, { type: 'audio/webm' });
+            if (voicePreviewAudio) {
+              voicePreviewAudio.src = URL.createObjectURL(voiceRecordedBlob);
+            } else {
+              voicePreviewAudio = new Audio(URL.createObjectURL(voiceRecordedBlob));
+
+              // Watch play progress
+              voicePreviewAudio.addEventListener('timeupdate', () => {
+                if (shortVoicePlayProgressEl && voicePreviewAudio.duration) {
+                  const pct = (voicePreviewAudio.currentTime / voicePreviewAudio.duration) * 100;
+                  shortVoicePlayProgressEl.style.width = `${pct}%`;
+                  if (shortVoicePlayTimeEl) {
+                    shortVoicePlayTimeEl.textContent = formatSeconds(voicePreviewAudio.currentTime);
+                  }
+                }
+              });
+
+              voicePreviewAudio.addEventListener('ended', () => {
+                if (shortVoicePlayBtnEl) {
+                  shortVoicePlayBtnEl.innerHTML = '<i data-lucide="play" style="width: 16px; height: 16px; fill: white;"></i>';
+                  if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+                if (shortVoicePlayProgressEl) shortVoicePlayProgressEl.style.width = '0%';
+              });
+            }
+
+            if (shortVoicePlayerWrapperEl) shortVoicePlayerWrapperEl.style.display = 'flex';
+
+            // Auto fill sound track name for Voice Note
+            const soundNameInput = document.getElementById('shortSoundName');
+            if (soundNameInput && !soundNameInput.value.trim()) {
+              soundNameInput.value = "Voice Note " + new Date().toLocaleDateString();
+            }
+
+            // Stop streams tracks
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          // Start recording
+          voiceMediaRecorder.start();
+          voiceStartTime = Date.now();
+          if (shortVoiceTimerEl) shortVoiceTimerEl.textContent = '00:00';
+          if (shortVoiceStatusEl) shortVoiceStatusEl.textContent = 'Recording... Click mic to stop';
+
+          shortRecordBtn.style.transform = 'scale(1.15)';
+          shortRecordBtn.style.background = '#ef4444';
+          shortRecordBtn.style.color = '#ffffff';
+
+          // Hide player from previous recordings
+          if (shortVoicePlayerWrapperEl) shortVoicePlayerWrapperEl.style.display = 'none';
+
+          const limit = getActiveLimitDuration();
+
+          // Live Timer
+          clearInterval(voiceRecordTimer);
+          voiceRecordTimer = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - voiceStartTime) / 1000);
+            if (shortVoiceTimerEl) {
+              const mins = Math.floor(elapsed / 60);
+              const secs = elapsed % 60;
+              shortVoiceTimerEl.textContent = `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+            }
+
+            // Enforce selected duration limit
+            if (elapsed >= limit) {
+              if (voiceMediaRecorder && voiceMediaRecorder.state === 'recording') {
+                shortRecordBtn.click();
+              }
+            }
+          }, 1000);
+
+        } catch (err) {
+          console.error("Microphone access failed", err);
+          showToast("Failed to access microphone. Please allow mic permissions.");
+        }
+      } else {
+        // Stop recording
+        voiceMediaRecorder.stop();
+        clearInterval(voiceRecordTimer);
+
+        shortRecordBtn.style.transform = 'scale(1)';
+        shortRecordBtn.style.background = 'white';
+        shortRecordBtn.style.color = '#f5576c';
+        if (shortVoiceStatusEl) shortVoiceStatusEl.textContent = 'Recording saved';
+      }
+    });
+  }
+
+  // Voice Note Play preview
+  if (shortVoicePlayBtnEl) {
+    shortVoicePlayBtnEl.addEventListener('click', () => {
+      if (!voicePreviewAudio) return;
+
+      if (voicePreviewAudio.paused) {
+        voicePreviewAudio.play().then(() => {
+          shortVoicePlayBtnEl.innerHTML = '<i data-lucide="pause" style="width: 16px; height: 16px; fill: white;"></i>';
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        });
+      } else {
+        voicePreviewAudio.pause();
+        shortVoicePlayBtnEl.innerHTML = '<i data-lucide="play" style="width: 16px; height: 16px; fill: white;"></i>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    });
+  }
+
+  // Timeline click seeking on Voice Note Playback
+  if (shortVoicePlayTimelineEl) {
+    shortVoicePlayTimelineEl.addEventListener('click', (e) => {
+      if (!voicePreviewAudio || !voicePreviewAudio.duration) return;
+      const rect = shortVoicePlayTimelineEl.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      voicePreviewAudio.currentTime = pct * voicePreviewAudio.duration;
+    });
+  }
+
+  // 4. Form Submit & Validation & AJAX Upload
+  if (shortCreateForm) {
+    shortCreateForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      setShortUploadStatus('');
+
+      const type = mediaTypeInput ? mediaTypeInput.value : 'video';
+
+      // Verification
+      if (type === 'video') {
+        if (!videoInput || videoInput.files.length === 0) {
+          setShortUploadStatus("Please choose a video file first.");
+          return;
+        }
+      } else if (type === 'image_audio') {
+        if (!imageInput || imageInput.files.length === 0) {
+          setShortUploadStatus("Please choose an image file first.");
+          return;
+        }
+        if (!audioInput || audioInput.files.length === 0) {
+          setShortUploadStatus("Please choose background audio track.");
+          return;
+        }
+      } else if (type === 'voice') {
+        if (!voiceRecordedBlob) {
+          setShortUploadStatus("Please record a voice note first.");
+          return;
+        }
+      } else if (type === 'audio') {
+        if (!audioOnlyInput || audioOnlyInput.files.length === 0) {
+          setShortUploadStatus("Please choose an audio file first.");
+          return;
+        }
+      }
+
+      if (shortTradeToggle?.checked && getShortTradeTokenBalance() < 5) {
+        syncShortTradeBalanceInfo(getShortTradeTokenBalance());
+        setShortUploadStatus(`${getShortTradeFundsMessage()} Ajoutez des tokens ou desactivez Trade Short pour publier.`);
+        return;
+      }
+
+      // Start compiling & uploading state
+      const submitBtn = document.getElementById('shortSubmitBtn');
+      const submitBtnText = submitBtn?.querySelector('span');
+      const submitBtnIcon = submitBtn?.querySelector('i');
+
+      const originalBtnText = submitBtnText ? submitBtnText.textContent : 'Upload Short';
+      if (submitBtn) submitBtn.disabled = true;
+      if (submitBtnText) submitBtnText.textContent = 'Configuring...';
+      if (submitBtnIcon) {
+        submitBtnIcon.setAttribute('data-lucide', 'loader-2');
+        submitBtnIcon.style.animation = 'spin 1s linear infinite';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+
+      // Stop previews
+      stopAllModalPreviews();
+
+      // Gather files for compilation
+      const filesObj = {};
+      if (type === 'video') {
+        filesObj.videoFile = videoInput.files[0];
+        filesObj.videoOffset = parseFloat(document.getElementById('shortVideoOffsetSlider')?.value || 0);
+      } else if (type === 'image_audio') {
+        filesObj.imageFile = imageInput.files[0];
+        filesObj.audioFile = audioInput.files[0];
+        filesObj.audioOffset = parseFloat(document.getElementById('shortAudioOffsetSlider')?.value || 0);
+      } else if (type === 'voice') {
+        filesObj.audioFile = voiceRecordedBlob;
+        filesObj.audioOffset = 0;
+      } else if (type === 'audio') {
+        filesObj.audioFile = audioOnlyInput.files[0];
+        filesObj.audioOffset = parseFloat(document.getElementById('shortAudioOffsetSlider')?.value || 0);
+      }
+
+      const duration = getActiveLimitDuration();
+      const fit = mediaFitInput?.value === 'contain' ? 'contain' : 'cover';
+
+      let compiledRes = null;
+      try {
+        compiledRes = await compileShortBeforeUpload(type, filesObj, duration, fit);
+      } catch (compErr) {
+        console.error("Compilation error:", compErr);
+        setShortUploadStatus("Error: " + compErr.message);
+        if (submitBtn) submitBtn.disabled = false;
+        if (submitBtnText) submitBtnText.textContent = originalBtnText;
+        if (submitBtnIcon) {
+          submitBtnIcon.setAttribute('data-lucide', 'send');
+          submitBtnIcon.style.animation = '';
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+        return;
+      }
+
+      // Compilation completed, start upload status
+      if (submitBtnText) submitBtnText.textContent = 'Uploading...';
+      if (shortUploadStatus) {
+        shortUploadStatus.style.display = 'block';
+        shortUploadStatus.className = 'short-upload-status success';
+        shortUploadStatus.textContent = 'Uploading compiled Short...';
+      }
+
+      const formData = new FormData();
+      formData.append('media_type', 'video'); // Force video type since it is compiled to video
+      formData.append('caption', document.getElementById('shortCaption')?.value || '');
+      formData.append('sound_name', document.getElementById('shortSoundName')?.value || 'Original Sound');
+      formData.append('audio_start_time', '0');
+      formData.append('audio_duration', duration);
+      formData.append('media_fit', fit);
+      formData.append('is_trade', shortTradeToggle?.checked ? '1' : '0');
+      formData.append('reel_video', compiledRes.blob, `short-${Date.now()}.${compiledRes.ext}`);
+
+      try {
+        const response = await fetch('/profile/reel/create', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+        if (response.ok && data.success) {
+          setShortUploadStatus("Short uploaded successfully!", 'success');
+          setTimeout(() => {
+            const isMobile = window.matchMedia('(max-width: 768px)').matches;
+            if (!isMobile) {
+              window.location.href = '/?view=shorts';
+            } else {
+              window.location.reload();
+            }
+          }, 1000);
+        } else {
+          if (Number.isFinite(Number(data.currentTokens))) {
+            syncShortTradeBalanceInfo(data.currentTokens);
+          }
+          const uploadError = Number.isFinite(Number(data.requiredTokens)) && Number.isFinite(Number(data.currentTokens))
+            ? `Trade Short demande ${Number(data.requiredTokens)} tokens. Solde disponible: ${Number(data.currentTokens)} tokens.`
+            : (data.error || "Failed to upload short");
+          setShortUploadStatus("Error: " + uploadError);
+          if (submitBtn) submitBtn.disabled = false;
+          if (submitBtnText) submitBtnText.textContent = originalBtnText;
+          if (submitBtnIcon) {
+            submitBtnIcon.setAttribute('data-lucide', 'send');
+            submitBtnIcon.style.animation = '';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+          }
+        }
+      } catch (err) {
+        console.error("Upload error", err);
+        setShortUploadStatus("Network error during upload.");
+        if (submitBtn) submitBtn.disabled = false;
+        if (submitBtnText) submitBtnText.textContent = originalBtnText;
+        if (submitBtnIcon) {
+          submitBtnIcon.setAttribute('data-lucide', 'send');
+          submitBtnIcon.style.animation = '';
+          if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+      }
+    });
+
+    const shortSubmitBtn = document.getElementById('shortSubmitBtn');
+    if (shortSubmitBtn) {
+      shortSubmitBtn.addEventListener('click', (event) => {
+        if (shortSubmitBtn.disabled) return;
+        if (event.defaultPrevented) return;
+        if (typeof shortCreateForm.requestSubmit === 'function') {
+          event.preventDefault();
+          shortCreateForm.requestSubmit();
+        }
+      });
+    }
+  }
+
+  // --- TikTok Swipe-Left to profile gesture and Profile hash nav highlight ---
+  const initTikTokInteractions = () => {
+    const reelsFeed = document.querySelector('.reels-feed');
+    if (reelsFeed) {
+      let startX = 0;
+      let startY = 0;
+      let startTime = 0;
+      let isSwiping = false;
+      let targetCard = null;
+
+      reelsFeed.addEventListener('pointerdown', (e) => {
+        const card = e.target.closest('.reel-card');
+        if (!card) return;
+
+        // Ignore interactive parts
+        if (e.target.closest('.reel-comments-drawer') ||
+          e.target.closest('.reel-actions-container') ||
+          e.target.closest('.reel-progress-container') ||
+          e.target.closest('input') ||
+          e.target.closest('button') ||
+          e.target.closest('a')) {
+          return;
+        }
+
+        targetCard = card;
+        startX = e.clientX;
+        startY = e.clientY;
+        startTime = Date.now();
+        isSwiping = true;
+
+        if (e.pointerType === 'mouse') {
+          card.style.userSelect = 'none';
+        }
+        card.style.touchAction = 'pan-y';
+      });
+
+      reelsFeed.addEventListener('pointermove', (e) => {
+        if (!isSwiping || !targetCard) return;
+
+        const currentX = e.clientX;
+        const currentY = e.clientY;
+        const diffX = currentX - startX;
+        const diffY = currentY - startY;
+
+        if (diffX < 0 && Math.abs(diffX) > Math.abs(diffY)) {
+          if (Math.abs(diffX) > 10) {
+            const dragX = Math.max(diffX, -150);
+            targetCard.style.transform = `translateX(${dragX}px)`;
+            targetCard.style.transition = 'none';
+          }
+        }
+      });
+
+      const resetSwipe = () => {
+        if (targetCard) {
+          targetCard.style.transform = '';
+          targetCard.style.transition = 'transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1)';
+        }
+        isSwiping = false;
+        targetCard = null;
+      };
+
+      reelsFeed.addEventListener('pointerup', (e) => {
+        if (!isSwiping || !targetCard) return;
+
+        const endX = e.clientX;
+        const endY = e.clientY;
+        const diffX = endX - startX;
+        const diffY = endY - startY;
+        const duration = Date.now() - startTime;
+
+        if (diffX < -70 && Math.abs(diffY) < 60 && duration < 500) {
+          const username = targetCard.getAttribute('data-author-username');
+          const userId = targetCard.getAttribute('data-user-id');
+          const reelId = targetCard.getAttribute('data-reel-id');
+
+          if (username) {
+            targetCard.style.transition = 'transform 0.3s cubic-bezier(0.165, 0.84, 0.44, 1)';
+            targetCard.style.transform = 'translateX(-100%)';
+
+            setTimeout(() => {
+              if (Number(userId) === Number(window.currentUserId)) {
+                window.location.href = `/profile#reel-${reelId}`;
+              } else {
+                window.location.href = `/profile/u/${username}#reel-${reelId}`;
+              }
+            }, 200);
+            isSwiping = false;
+            targetCard = null;
+            return;
+          }
+        }
+
+        resetSwipe();
+      });
+
+      reelsFeed.addEventListener('pointercancel', resetSwipe);
+
+      // Mobile touchmove event to prevent swipe-to-go-back native behaviour if dominant horizontal swipe
+      reelsFeed.addEventListener('touchmove', (e) => {
+        if (!isSwiping || !targetCard) return;
+        const touch = e.touches[0];
+        const diffX = touch.clientX - startX;
+        const diffY = touch.clientY - startY;
+        if (diffX < 0 && Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 10) {
+          if (e.cancelable) {
+            e.preventDefault();
+          }
+        }
+      }, { passive: false });
+    }
+
+    // Hash navigation on feed/shorts page
+    const handleHashNavigation = () => {
+      const hash = window.location.hash;
+      if (!hash) return;
+
+      if (hash.startsWith('#post-')) {
+        const postId = hash.replace('#post-', '');
+        const postCard = document.getElementById(`post-${postId}`);
+        if (postCard) {
+          postCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          postCard.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
+          postCard.style.boxShadow = '0 0 20px 4px var(--primary)';
+          postCard.style.borderColor = 'var(--primary)';
+          setTimeout(() => {
+            postCard.style.boxShadow = '';
+            postCard.style.borderColor = '';
+          }, 3000);
+        }
+      } else if (hash.startsWith('#reel-')) {
+        const reelId = hash.replace('#reel-', '');
+        const reelCard = document.getElementById(`reel-${reelId}`);
+        if (reelCard) {
+          // Switch view if not already in shorts
+          if (window.currentView !== 'shorts' && typeof showShortsView === 'function') {
+            showShortsView();
+          }
+          setTimeout(() => {
+            const cards = Array.from(document.querySelectorAll('.reels-feed .reel-card'));
+            const targetIndex = cards.indexOf(reelCard);
+            if (targetIndex !== -1 && typeof scrollToReelIndex === 'function') {
+              scrollToReelIndex(targetIndex);
+
+              reelCard.style.transition = 'box-shadow 0.3s ease';
+              reelCard.style.boxShadow = '0 0 25px 5px var(--primary)';
+              setTimeout(() => {
+                reelCard.style.boxShadow = '';
+              }, 3000);
+            }
+          }, 300);
+        }
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashNavigation);
+    setTimeout(handleHashNavigation, 300);
+  };
+
+  // Run on profile page to handle grid item clicks and landing on a specific hash
+  const initProfileInteractions = () => {
+    if (!document.querySelector('.profile-page-wrapper')) return;
+
+    // Grid clicks
+    document.addEventListener('click', (e) => {
+      const gridItem = e.target.closest('.grid-item');
+      if (!gridItem) return;
+
+      if (e.target.closest('form') || e.target.closest('button') || e.target.closest('a')) {
+        return;
+      }
+
+      const postId = gridItem.getAttribute('data-post-id');
+      const reelId = gridItem.getAttribute('data-reel-id');
+
+      if (postId) {
+        window.location.href = `/#post-${postId}`;
+      } else if (reelId) {
+        window.location.href = `/?view=shorts#reel-${reelId}`;
+      }
+    });
+
+    // Hash navigation on profile load
+    const handleProfileHashNavigation = () => {
+      const hash = window.location.hash;
+      if (!hash) return;
+
+      if (hash.startsWith('#reel-')) {
+        const reelId = hash.replace('#reel-', '');
+        const shortsTab = document.querySelector('.profile-tab[onclick*="shorts"]');
+        if (shortsTab && typeof switchGrid === 'function') {
+          switchGrid('shorts', shortsTab);
+        }
+        setTimeout(() => {
+          const gridItem = document.querySelector(`.grid-item[data-reel-id="${reelId}"]`);
+          if (gridItem) {
+            gridItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            gridItem.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
+            gridItem.style.boxShadow = '0 0 20px 4px var(--primary)';
+            gridItem.style.borderColor = 'var(--primary)';
+            setTimeout(() => {
+              gridItem.style.boxShadow = '';
+              gridItem.style.borderColor = '';
+            }, 3000);
+          }
+        }, 200);
+      } else if (hash.startsWith('#post-')) {
+        const postId = hash.replace('#post-', '');
+        const postsTab = document.querySelector('.profile-tab[onclick*="posts"]');
+        if (postsTab && typeof switchGrid === 'function') {
+          switchGrid('posts', postsTab);
+        }
+        setTimeout(() => {
+          const gridItem = document.querySelector(`.grid-item[data-post-id="${postId}"]`);
+          if (gridItem) {
+            gridItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            gridItem.style.transition = 'box-shadow 0.3s ease, border-color 0.3s ease';
+            gridItem.style.boxShadow = '0 0 20px 4px var(--primary)';
+            gridItem.style.borderColor = 'var(--primary)';
+            setTimeout(() => {
+              gridItem.style.boxShadow = '';
+              gridItem.style.borderColor = '';
+            }, 3000);
+          }
+        }, 200);
+      }
+    };
+
+    window.addEventListener('hashchange', handleProfileHashNavigation);
+    setTimeout(handleProfileHashNavigation, 300);
+
+    // Deposit flow
+    const depositBtn = document.getElementById('profile-deposit-btn');
+    const depositModal = document.getElementById('depositModal');
+    const setupStep = document.getElementById('deposit-step-setup');
+    const detailsStep = document.getElementById('deposit-step-details');
+    const walletForm = document.getElementById('walletSetupForm');
+    const walletInput = document.getElementById('walletSetupAddressInput');
+    const walletError = document.getElementById('walletSetupError');
+    const copyBtn = document.getElementById('depositCopyBtn');
+    
+    if (depositBtn && depositModal) {
+      depositBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        
+        // Reset steps
+        setupStep.style.display = 'none';
+        detailsStep.style.display = 'none';
+        walletError.style.display = 'none';
+        
+        openModal('depositModal');
+        
+        try {
+          const res = await fetch('/api/wallet/deposit-info');
+          const data = await res.json();
+          
+          if (!data.success) {
+            showToast('Erreur de chargement.');
+            closeModal('depositModal');
+            return;
+          }
+          
+          if (!data.userWallet) {
+            // Step 1: needs config
+            setupStep.style.display = 'block';
+          } else {
+            // Step 2: show details
+            showDepositDetails(data);
+          }
+        } catch (err) {
+          console.error(err);
+          showToast('Erreur de connexion.');
+          closeModal('depositModal');
+        }
+      });
+    }
+    
+    function showDepositDetails(data) {
+      setupStep.style.display = 'none';
+      detailsStep.style.display = 'block';
+      
+      const qrImg = document.getElementById('depositPlatformQr');
+      const platformAddrInput = document.getElementById('depositPlatformAddress');
+      const userWalletCode = document.getElementById('depositUserWalletDisplay');
+      
+      if (qrImg) qrImg.src = data.qrDataUrl;
+      if (platformAddrInput) platformAddrInput.value = data.platformWallet;
+      if (userWalletCode) userWalletCode.textContent = data.userWallet;
+      
+      // Reset tracker state
+      const badge = document.getElementById('depositStatusBadge');
+      const msg = document.getElementById('depositStatusMessage');
+      if (badge && msg) {
+        badge.innerHTML = `<span class="pulse-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3b82f6; animation: pulse 1.5s infinite;"></span> En attente...`;
+        msg.textContent = "En attente d'un transfert sur le réseau BSC...";
+        msg.style.color = 'var(--text-muted)';
+      }
+    }
+    
+    if (walletForm) {
+      walletForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        walletError.style.display = 'none';
+        const walletAddress = walletInput.value.trim();
+        
+        if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+          walletError.textContent = 'Adresse BEP-20 invalide (doit commencer par 0x et faire 42 caractères).';
+          walletError.style.display = 'block';
+          return;
+        }
+        
+        try {
+          const res = await fetch('/api/wallet/address', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ walletAddress })
+          });
+          
+          const data = await res.json();
+          if (data.success) {
+            showToast('Adresse configurée avec succès !');
+            
+            // Reload info to step 2
+            const infoRes = await fetch('/api/wallet/deposit-info');
+            const infoData = await infoRes.json();
+            if (infoData.success) {
+              showDepositDetails(infoData);
+            }
+          } else {
+            walletError.textContent = data.error || 'Erreur d\'enregistrement.';
+            walletError.style.display = 'block';
+          }
+        } catch (err) {
+          console.error(err);
+          walletError.textContent = 'Erreur serveur.';
+          walletError.style.display = 'block';
+        }
+      });
+    }
+    
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        const addr = document.getElementById('depositPlatformAddress');
+        if (addr) {
+          navigator.clipboard.writeText(addr.value).then(() => {
+            showToast('Adresse copiée !');
+            const icon = copyBtn.querySelector('i');
+            if (icon) {
+              icon.setAttribute('data-lucide', 'check');
+              if (window.lucide) window.lucide.createIcons();
+              setTimeout(() => {
+                icon.setAttribute('data-lucide', 'copy');
+                if (window.lucide) window.lucide.createIcons();
+              }, 2000);
+            }
+          }).catch(err => {
+            console.error('Copy failed', err);
+          });
+        }
+      });
+    }
+
+    // Withdrawal flow
+    const withdrawBtn = document.getElementById('profile-withdraw-btn');
+    const withdrawModal = document.getElementById('withdrawModal');
+    const withdrawStepPinSetup = document.getElementById('withdraw-step-pin-setup');
+    const withdrawStepForm = document.getElementById('withdraw-step-form');
+    const withdrawStepStatus = document.getElementById('withdraw-step-status');
+    
+    const pinSetupForm = document.getElementById('pinSetupForm');
+    const pinSetupInput = document.getElementById('pinSetupInput');
+    const pinSetupError = document.getElementById('pinSetupError');
+    
+    const withdrawSubmitForm = document.getElementById('withdrawSubmitForm');
+    const withdrawRecipientInput = document.getElementById('withdrawRecipientAddress');
+    const withdrawAmountInput = document.getElementById('withdrawAmountInput');
+    const withdrawPinInput = document.getElementById('withdrawPinInput');
+    const withdrawFormError = document.getElementById('withdrawFormError');
+    
+    const withdrawStatusIcon = document.getElementById('withdrawStatusIcon');
+    const withdrawStatusTitle = document.getElementById('withdrawStatusTitle');
+    const withdrawStatusDesc = document.getElementById('withdrawStatusDesc');
+    const withdrawCloseStatusBtn = document.getElementById('withdrawCloseStatusBtn');
+
+    if (withdrawBtn && withdrawModal) {
+      withdrawBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        
+        // Reset steps
+        withdrawStepPinSetup.style.display = 'none';
+        withdrawStepForm.style.display = 'none';
+        withdrawStepStatus.style.display = 'none';
+        pinSetupError.style.display = 'none';
+        withdrawFormError.style.display = 'none';
+        
+        openModal('withdrawModal');
+        
+        try {
+          const res = await fetch('/api/wallet/deposit-info');
+          const data = await res.json();
+          
+          if (!data.success) {
+            showToast('Erreur de chargement.');
+            closeModal('withdrawModal');
+            return;
+          }
+          
+          if (!data.userWallet) {
+            showToast('Veuillez configurer votre adresse de portefeuille (Deposit) avant de retirer.');
+            closeModal('withdrawModal');
+            setTimeout(() => {
+              if (depositBtn) depositBtn.click();
+            }, 500);
+            return;
+          }
+          
+          if (data.withdrawalBalance !== undefined) {
+            window.currentUserWithdrawalBalance = Number(data.withdrawalBalance);
+            const availableDisplay = document.getElementById('withdrawAvailableDisplay');
+            if (availableDisplay) {
+              availableDisplay.textContent = `$${Number(data.withdrawalBalance).toFixed(2)}`;
+            }
+          }
+          
+          if (data.minWithdrawalAmount !== undefined) {
+            window.minWithdrawalAmount = Number(data.minWithdrawalAmount);
+          }
+          if (data.withdrawalFeePercent !== undefined) {
+            window.withdrawalFeePercent = Number(data.withdrawalFeePercent);
+          }
+          
+          const freshWithdrawalBalance = data.withdrawalBalance !== undefined ? Number(data.withdrawalBalance) : (window.currentUserWithdrawalBalance || 0);
+          const isFreshWithdrawDisabled = freshWithdrawalBalance < (window.minWithdrawalAmount || 50);
+
+          const profileWithdrawBtnCheck = document.getElementById('profile-withdraw-btn');
+          const profileWithdrawWarningCheck = document.getElementById('profile-withdraw-warning');
+          const profileWithdrawWarningBalCheck = document.getElementById('profile-withdraw-warning-bal');
+
+          if (profileWithdrawBtnCheck) {
+            if (isFreshWithdrawDisabled) {
+              profileWithdrawBtnCheck.setAttribute('disabled', 'true');
+              profileWithdrawBtnCheck.style.cursor = 'not-allowed';
+              profileWithdrawBtnCheck.style.opacity = '0.5';
+              profileWithdrawBtnCheck.style.filter = 'grayscale(1)';
+            } else {
+              profileWithdrawBtnCheck.removeAttribute('disabled');
+              profileWithdrawBtnCheck.style.cursor = 'pointer';
+              profileWithdrawBtnCheck.style.opacity = '1';
+              profileWithdrawBtnCheck.style.filter = 'none';
+            }
+          }
+
+          if (profileWithdrawWarningCheck) {
+            profileWithdrawWarningCheck.style.display = isFreshWithdrawDisabled ? 'flex' : 'none';
+          }
+
+          if (profileWithdrawWarningBalCheck) {
+            profileWithdrawWarningBalCheck.textContent = freshWithdrawalBalance.toFixed(2);
+          }
+
+          if (isFreshWithdrawDisabled) {
+            showToast(`Le bouton de retrait est désactivé car votre solde de retrait ($${freshWithdrawalBalance.toFixed(2)}) est inférieur au montant minimum requis ($${Number(window.minWithdrawalAmount).toFixed(2)}).`);
+            closeModal('withdrawModal');
+            return;
+          }
+          
+          if (!data.hasPin) {
+            withdrawStepPinSetup.style.display = 'block';
+          } else {
+            withdrawRecipientInput.value = data.userWallet;
+            withdrawStepForm.style.display = 'block';
+          }
+        } catch (err) {
+          console.error(err);
+          showToast('Erreur de connexion.');
+          closeModal('withdrawModal');
+        }
+      });
+    }
+
+    if (pinSetupForm) {
+      pinSetupForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        pinSetupError.style.display = 'none';
+        const pin = pinSetupInput.value.trim();
+        
+        if (!/^\d{6}$/.test(pin)) {
+          pinSetupError.textContent = 'Le code secret de retrait doit contenir exactement 6 chiffres.';
+          pinSetupError.style.display = 'block';
+          return;
+        }
+        
+        try {
+          const res = await fetch('/api/wallet/setup-pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin })
+          });
+          
+          const data = await res.json();
+          if (data.success) {
+            showToast('Code secret enregistré avec succès !');
+            withdrawStepPinSetup.style.display = 'none';
+            
+            const infoRes = await fetch('/api/wallet/deposit-info');
+            const infoData = await infoRes.json();
+            if (infoData.success) {
+              withdrawRecipientInput.value = infoData.userWallet;
+              withdrawStepForm.style.display = 'block';
+            }
+          } else {
+            pinSetupError.textContent = data.error || 'Erreur d\'enregistrement.';
+            pinSetupError.style.display = 'block';
+          }
+        } catch (err) {
+          console.error(err);
+          pinSetupError.textContent = 'Erreur serveur.';
+          pinSetupError.style.display = 'block';
+        }
+      });
+    }
+
+    if (withdrawSubmitForm) {
+      withdrawSubmitForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        withdrawFormError.style.display = 'none';
+        
+        const amount = parseFloat(withdrawAmountInput.value);
+        const pin = withdrawPinInput.value.trim();
+        
+        if (isNaN(amount) || amount <= 0) {
+          withdrawFormError.textContent = 'Montant invalide.';
+          withdrawFormError.style.display = 'block';
+          return;
+        }
+        
+        if (amount > (window.currentUserWithdrawalBalance || 0)) {
+          withdrawFormError.textContent = 'Solde de retrait insuffisant.';
+          withdrawFormError.style.display = 'block';
+          return;
+        }
+        
+        if (!/^\d{6}$/.test(pin)) {
+          withdrawFormError.textContent = 'Le code secret de retrait doit contenir exactement 6 chiffres.';
+          withdrawFormError.style.display = 'block';
+          return;
+        }
+        
+        withdrawStepForm.style.display = 'none';
+        withdrawStepStatus.style.display = 'block';
+        withdrawCloseStatusBtn.style.display = 'none';
+        
+        withdrawStatusIcon.className = 'animate-spin';
+        withdrawStatusIcon.setAttribute('data-lucide', 'loader');
+        if (window.lucide) window.lucide.createIcons();
+        
+        const feePercent = Number(window.withdrawalFeePercent !== undefined ? window.withdrawalFeePercent : 30);
+        const feeFactor = feePercent / 100;
+        const netAmount = amount * (1 - feeFactor);
+
+        withdrawStatusTitle.textContent = 'Traitement en cours';
+        withdrawStatusDesc.textContent = `Votre transaction de retrait de ${amount.toFixed(2)} USDT (Somme reçue : ${netAmount.toFixed(2)} USDT après ${feePercent}% de frais) est en cours d'envoi sur la blockchain BSC...`;
+        
+        try {
+          const res = await fetch('/api/wallet/withdraw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount, pin })
+          });
+          
+          const data = await res.json();
+          if (!data.success) {
+            withdrawStatusIcon.className = '';
+            withdrawStatusIcon.setAttribute('data-lucide', 'x-circle');
+            withdrawStatusIcon.style.color = 'var(--danger)';
+            if (window.lucide) window.lucide.createIcons();
+            
+            withdrawStatusTitle.textContent = 'Retrait échoué';
+            withdrawStatusDesc.textContent = data.error || 'Erreur lors de la validation du retrait.';
+            withdrawCloseStatusBtn.style.display = 'block';
+          } else {
+            withdrawStatusDesc.textContent = `Demande de retrait de ${amount.toFixed(2)} USDT enregistrée (Somme reçue : ${netAmount.toFixed(2)} USDT après ${feePercent}% de frais). Signature et envoi de la transaction sur la blockchain BSC...`;
+          }
+        } catch (err) {
+          console.error(err);
+          withdrawStatusIcon.className = '';
+          withdrawStatusIcon.setAttribute('data-lucide', 'x-circle');
+          withdrawStatusIcon.style.color = 'var(--danger)';
+          if (window.lucide) window.lucide.createIcons();
+          
+          withdrawStatusTitle.textContent = 'Erreur';
+          withdrawStatusDesc.textContent = 'Impossible de contacter le serveur.';
+          withdrawCloseStatusBtn.style.display = 'block';
+        }
+      });
+    }
+
+    if (withdrawAmountInput) {
+      const calcBox = document.getElementById('withdrawCalcBox');
+      const feeDisplay = document.getElementById('withdrawFeeDisplay');
+      const netDisplay = document.getElementById('withdrawNetDisplay');
+      
+      withdrawAmountInput.addEventListener('input', () => {
+        const val = parseFloat(withdrawAmountInput.value);
+        if (isNaN(val) || val <= 0) {
+          if (calcBox) calcBox.style.display = 'none';
+          if (withdrawFormError) withdrawFormError.style.display = 'none';
+          return;
+        }
+        
+        if (val > (window.currentUserWithdrawalBalance || 0)) {
+          if (withdrawFormError) {
+            withdrawFormError.textContent = 'Le montant dépasse votre solde disponible.';
+            withdrawFormError.style.display = 'block';
+          }
+        } else {
+          if (withdrawFormError && withdrawFormError.textContent === 'Le montant dépasse votre solde disponible.') {
+            withdrawFormError.style.display = 'none';
+          }
+        }
+        
+        const feeValPercent = Number(window.withdrawalFeePercent !== undefined ? window.withdrawalFeePercent : 30);
+        const fee = val * (feeValPercent / 100);
+        const net = val - fee;
+        
+        if (feeDisplay) feeDisplay.textContent = `$${fee.toFixed(2)}`;
+        if (netDisplay) netDisplay.textContent = `$${net.toFixed(2)}`;
+        if (calcBox) calcBox.style.display = 'flex';
+      });
+    }
+
+    const historyBtn = document.getElementById('profile-history-btn');
+    const historyModal = document.getElementById('historyModal');
+    const depositsList = document.getElementById('history-deposits-list');
+    const withdrawalsList = document.getElementById('history-withdrawals-list');
+
+    if (historyBtn && historyModal) {
+      historyBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        openModal('historyModal');
+        switchHistoryTab('deposits'); // Default tab
+        await loadHistory();
+      });
+    }
+
+    window.switchHistoryTab = (tab) => {
+      const depBtn = document.getElementById('tab-deposits-btn');
+      const witBtn = document.getElementById('tab-withdrawals-btn');
+      const depList = document.getElementById('history-deposits-list');
+      const witList = document.getElementById('history-withdrawals-list');
+      
+      if (!depBtn || !witBtn || !depList || !witList) return;
+      
+      if (tab === 'deposits') {
+        depBtn.style.borderBottomColor = 'var(--primary)';
+        depBtn.style.color = 'var(--text-main)';
+        witBtn.style.borderBottomColor = 'transparent';
+        witBtn.style.color = 'var(--text-muted)';
+        depList.style.display = 'flex';
+        witList.style.display = 'none';
+      } else {
+        witBtn.style.borderBottomColor = 'var(--primary)';
+        witBtn.style.color = 'var(--text-main)';
+        depBtn.style.borderBottomColor = 'transparent';
+        depBtn.style.color = 'var(--text-muted)';
+        witList.style.display = 'flex';
+        depList.style.display = 'none';
+      }
+    };
+
+    async function loadHistory() {
+      if (depositsList) {
+        depositsList.innerHTML = `<div style="text-align: center; padding: 20px 0; color: var(--text-muted);"><i data-lucide="loader" class="animate-spin" style="margin: 0 auto 8px auto; width: 18px; height: 18px;"></i> Chargement...</div>`;
+      }
+      if (withdrawalsList) {
+        withdrawalsList.innerHTML = `<div style="text-align: center; padding: 20px 0; color: var(--text-muted);"><i data-lucide="loader" class="animate-spin" style="margin: 0 auto 8px auto; width: 18px; height: 18px;"></i> Chargement...</div>`;
+      }
+      if (window.lucide) window.lucide.createIcons();
+
+      try {
+        // Fetch deposits
+        const depRes = await fetch('/api/deposits/history');
+        const depData = await depRes.json();
+        
+        // Fetch withdrawals
+        const witRes = await fetch('/api/withdrawals/history');
+        const witData = await witRes.json();
+
+        // Render deposits
+        if (depositsList) {
+          if (depData.success && depData.deposits && depData.deposits.length > 0) {
+            depositsList.innerHTML = depData.deposits.map(d => {
+              const dateStr = new Date(d.created_at).toLocaleString('fr-FR');
+              const shortTx = d.tx_hash ? `${d.tx_hash.slice(0, 10)}...${d.tx_hash.slice(-8)}` : '-';
+              
+              let statusClass = 'market-status-badge--pending';
+              let statusText = 'En attente';
+              if (d.status === 'confirmed') {
+                statusClass = 'market-status-badge--completed';
+                statusText = 'Confirmé';
+              }
+
+              return `
+                <div style="padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 10px; display: flex; flex-direction: column; gap: 6px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; color: var(--success); font-size: 14px;">+${Number(d.amount_usdt).toFixed(2)} USDT</span>
+                    <span class="market-status-badge ${statusClass}" style="font-size: 11px; padding: 2px 8px; border-radius: 12px;">${statusText}</span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between;">
+                    <span>Date : ${dateStr}</span>
+                    <span>Confirmations : ${d.confirmations}/12</span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted); word-break: break-all; font-family: monospace; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                    <span>TX: ${shortTx}</span>
+                    <a href="https://bscscan.com/tx/${d.tx_hash}" target="_blank" style="color: var(--primary); text-decoration: none; display: inline-flex; align-items: center; gap: 2px;">Voir <i data-lucide="external-link" style="width: 10px; height: 10px;"></i></a>
+                  </div>
+                </div>
+              `;
+            }).join('');
+          } else {
+            depositsList.innerHTML = `<div style="text-align: center; padding: 20px 0; color: var(--text-muted);">Aucun dépôt enregistré.</div>`;
+          }
+        }
+
+        // Render withdrawals
+        if (withdrawalsList) {
+          if (witData.success && witData.withdrawals && witData.withdrawals.length > 0) {
+            withdrawalsList.innerHTML = witData.withdrawals.map(w => {
+              const dateStr = new Date(w.created_at).toLocaleString('fr-FR');
+              const shortTx = w.tx_hash ? `${w.tx_hash.slice(0, 10)}...${w.tx_hash.slice(-8)}` : '-';
+              
+              let statusClass = 'market-status-badge--pending';
+              let statusText = 'En attente';
+              if (w.status === 'completed') {
+                statusClass = 'market-status-badge--completed';
+                statusText = 'Terminé';
+              } else if (w.status === 'failed') {
+                statusClass = 'market-status-badge--disputed';
+                statusText = 'Échoué';
+              }
+
+              const txSection = w.tx_hash ? `
+                <div style="font-size: 11px; color: var(--text-muted); word-break: break-all; font-family: monospace; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>TX: ${shortTx}</span>
+                  <a href="https://bscscan.com/tx/${w.tx_hash}" target="_blank" style="color: var(--primary); text-decoration: none; display: inline-flex; align-items: center; gap: 2px;">Voir <i data-lucide="external-link" style="width: 10px; height: 10px;"></i></a>
+                </div>
+              ` : '';
+
+              const errSection = w.error_message ? `
+                <div style="font-size: 11px; color: var(--danger); padding: 4px; border: 1px solid rgba(239, 68, 68, 0.1); background: rgba(239, 68, 68, 0.05); border-radius: 6px;">
+                  Erreur : ${w.error_message}
+                </div>
+              ` : '';
+
+              const actualFeePercent = Number(w.amount_usdt) > 0 ? Math.round(((Number(w.amount_usdt) - Number(w.net_amount_usdt)) / Number(w.amount_usdt)) * 100) : 30;
+
+              return `
+                <div style="padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 10px; display: flex; flex-direction: column; gap: 6px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; color: var(--danger); font-size: 14px;">-${Number(w.amount_usdt).toFixed(2)} USDT</span>
+                    <span class="market-status-badge ${statusClass}" style="font-size: 11px; padding: 2px 8px; border-radius: 12px;">${statusText}</span>
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between;">
+                    <span>Date : ${dateStr}</span>
+                    <span>Reçu : ${Number(w.net_amount_usdt).toFixed(2)} USDT (frais ${actualFeePercent}%)</span>
+                  </div>
+                  ${txSection}
+                  ${errSection}
+                </div>
+              `;
+            }).join('');
+          } else {
+            withdrawalsList.innerHTML = `<div style="text-align: center; padding: 20px 0; color: var(--text-muted);">Aucun retrait enregistré.</div>`;
+          }
+        }
+
+        if (window.lucide) window.lucide.createIcons();
+      } catch (err) {
+        console.error(err);
+        if (depositsList) depositsList.innerHTML = `<div style="text-align: center; padding: 20px 0; color: var(--danger);">Erreur lors du chargement des dépôts.</div>`;
+        if (withdrawalsList) withdrawalsList.innerHTML = `<div style="text-align: center; padding: 20px 0; color: var(--danger);">Erreur lors du chargement des retraits.</div>`;
+      }
+    }
+  };
+
+  // --- Game Selection & Invite Modal Helper ---
+  const openGameRequestModal = (targetUserId, targetUserName, targetUserAvatar, targetUserOnline, targetUserPresence) => {
+    let modal = document.getElementById('gameRequestModal');
+    if (modal) modal.remove();
+
+    modal = document.createElement('div');
+    modal.id = 'gameRequestModal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; z-index: 9999; backdrop-filter: blur(8px); background: rgba(0,0,0,0.6);';
+
+    modal.innerHTML = `
+      <div class="modal-content animate-scale" style="max-width: 420px; width: 90%; padding: 0; overflow: hidden; background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: var(--shadow-lg); border-radius: 20px;">
+        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 24px; position: relative; color: white;">
+          <button class="modal-close-btn" type="button" style="position: absolute; right: 16px; top: 16px; color: rgba(255,255,255,0.8); background: rgba(0,0,0,0.2); border: none; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+            <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+          </button>
+          <div style="background: rgba(255,255,255,0.2); width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; backdrop-filter: blur(4px);">
+            <i data-lucide="gamepad-2" style="color: white; width: 22px; height: 22px;"></i>
+          </div>
+          <h3 style="margin: 0; color: white; font-size: 20px; font-weight: 700; font-family: 'Outfit', sans-serif;">Défier ${targetUserName}</h3>
+          <p style="margin: 4px 0 0 0; color: rgba(255,255,255,0.9); font-size: 13px;">Proposez une partie et fixez vos conditions.</p>
+        </div>
+
+        <form id="gameRequestForm" style="padding: 20px; display: flex; flex-direction: column; gap: 16px; color: var(--text-main);">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">Sélectionnez le jeu</label>
+            <select name="game" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 14px; outline: none;">
+              <option value="morpion">🎮 Morpion (Tic-Tac-Toe)</option>
+              <option value="connect4">🔴 Puissance 4</option>
+              <option value="tablefootball">⚽ Football Table</option>
+            </select>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">Mise de la partie</label>
+            <div style="display: flex; gap: 12px;">
+              <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; background: var(--bg-hover);">
+                <input type="radio" name="priceType" value="free" checked style="accent-color: var(--primary);">
+                <span style="font-size: 14px; font-weight: 500;">Gratuit</span>
+              </label>
+              <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; background: var(--bg-hover);">
+                <input type="radio" name="priceType" value="paid" style="accent-color: var(--primary);">
+                <span style="font-size: 14px; font-weight: 500;">Payant</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="gamePriceAmountWrapper" style="display: none; flex-direction: column; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">Montant de la mise ($)</label>
+            <input type="number" name="priceAmount" min="0.5" step="0.5" value="1.0" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 14px; outline: none;">
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary);">Temps pour répondre</label>
+            <select name="duration" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-dark); color: var(--text-main); font-size: 14px; outline: none;">
+              <option value="30">30 secondes</option>
+              <option value="60">60 secondes</option>
+              <option value="120">2 minutes</option>
+            </select>
+          </div>
+
+          <div style="display: flex; gap: 12px; margin-top: 10px;">
+            <button type="button" class="modal-cancel-btn" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-hover); color: var(--text-secondary); cursor: pointer; font-weight: 600;">Annuler</button>
+            <button type="submit" style="flex: 1; padding: 10px; border-radius: 8px; border: none; background: #10b981; color: white; cursor: pointer; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px;">
+              <i data-lucide="send" style="width: 15px; height: 15px;"></i>
+              <span>Envoyer</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    const priceRadios = modal.querySelectorAll('input[name="priceType"]');
+    const amountWrapper = modal.querySelector('#gamePriceAmountWrapper');
+    priceRadios.forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.value === 'paid') {
+          amountWrapper.style.display = 'flex';
+        } else {
+          amountWrapper.style.display = 'none';
+        }
+      });
+    });
+
+    const closeModal = () => modal.remove();
+    modal.querySelector('.modal-close-btn').addEventListener('click', closeModal);
+    modal.querySelector('.modal-cancel-btn').addEventListener('click', closeModal);
+
+    modal.querySelector('#gameRequestForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const game = formData.get('game');
+      const priceType = formData.get('priceType');
+      const priceAmount = priceType === 'paid' ? parseFloat(formData.get('priceAmount')) : 0;
+      const durationSeconds = parseInt(formData.get('duration'), 10);
+
+      sendGameInvitation(targetUserId, { game, priceType, priceAmount, durationSeconds });
+      closeModal();
+    });
+  };
+
+  const sendGameInvitation = (targetUserId, { game, priceType, priceAmount, durationSeconds }) => {
+    const inviteId = 'game_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+    const expiresAt = new Date(Date.now() + durationSeconds * 1000).toISOString();
+
+    const invitationPayload = {
+      type: "game_invitation",
+      game,
+      priceType,
+      priceAmount,
+      status: "pending",
+      expiresAt,
+      inviteId,
+      durationSeconds
+    };
+
+    const contentString = JSON.stringify(invitationPayload);
+
+    if (typeof socket !== 'undefined' && socket) {
+      socket.emit('chat-message', {
+        receiverId: Number(targetUserId),
+        content: contentString
+      });
+
+      socket.emit('game-invitation-notify', {
+        recipientId: Number(targetUserId),
+        game,
+        priceType,
+        priceAmount,
+        expiresAt,
+        inviteId
+      });
+
+      showToast("Invitation de jeu envoyée !");
+    }
+  };
+
+  const handleGameInvitationAction = (messageId, action) => {
+    if (typeof socket !== 'undefined' && socket) {
+      socket.emit('game-invitation-action', { messageId: Number(messageId), action });
+    }
+  };
+
+  // --- Game Request Event Listeners ---
+  document.addEventListener('click', (e) => {
+    const profileBtn = e.target.closest('.profile-game-request-btn');
+    if (profileBtn) {
+      e.preventDefault();
+      const contactId = profileBtn.dataset.userId;
+      const contactName = profileBtn.dataset.userName || 'Conversation';
+      const avatarUrl = profileBtn.dataset.userAvatar || '/assets/avatar_placeholder.jpg';
+      const isOnline = profileBtn.dataset.userOnline === '1';
+      const presenceText = profileBtn.dataset.userPresence || '';
+
+      openChatBox(contactId, contactName, avatarUrl, isOnline, presenceText);
+      openGameRequestModal(contactId, contactName, avatarUrl, isOnline, presenceText);
+      return;
+    }
+
+    const chatBtn = e.target.closest('.chat-game-request-btn');
+    if (chatBtn) {
+      e.preventDefault();
+      const contactId = chatBtn.dataset.contactId;
+      const contactName = chatBtn.dataset.contactName || 'Conversation';
+      const avatarUrl = chatBtn.dataset.contactAvatar || '/assets/avatar_placeholder.jpg';
+      const isOnline = chatBtn.dataset.contactOnline === '1';
+      const presenceText = chatBtn.dataset.contactPresence || '';
+
+      openGameRequestModal(contactId, contactName, avatarUrl, isOnline, presenceText);
+      return;
+    }
+
+    const ownGameBtn = e.target.closest('.profile-own-game-btn');
+    if (ownGameBtn) {
+      e.preventDefault();
+      showToast("Vous ne pouvez pas jouer avec vous-même !");
+      return;
+    }
+
+    const giftBtn = e.target.closest('.game-send-gift-btn');
+    if (giftBtn) {
+      e.preventDefault();
+      const slot = giftBtn.dataset.playerSlot;
+      if (activeGame) {
+        if (slot === 'p1' && activeGame.player1) {
+          openSendGiftModal(activeGame.player1);
+        } else if (slot === 'p2' && activeGame.player2) {
+          openSendGiftModal(activeGame.player2);
+        }
+      }
+      return;
+    }
+
+    const acceptBtn = e.target.closest('.game-accept-btn');
+    if (acceptBtn) {
+      e.preventDefault();
+      const messageId = acceptBtn.dataset.messageId;
+      handleGameInvitationAction(messageId, 'accept');
+      return;
+    }
+
+    const declineBtn = e.target.closest('.game-decline-btn');
+    if (declineBtn) {
+      e.preventDefault();
+      const messageId = declineBtn.dataset.messageId;
+      handleGameInvitationAction(messageId, 'decline');
+      return;
+    }
+
+    const joinBtn = e.target.closest('.game-join-btn');
+    if (joinBtn) {
+      e.preventDefault();
+      const gameId = joinBtn.dataset.gameId;
+      window.isRematchGame = false;
+
+      socket.emit('game-room-join', { gameId });
+      socket.emit('game-spectate-join', { gameId }, (res) => {
+        if (res && res.error) {
+          showToast(res.error);
+        } else if (res && res.game) {
+          const isPlayer = res.game.player1.id === window.currentUserId || (res.game.player2 && res.game.player2.id === window.currentUserId);
+          initActiveGame(res.game, !isPlayer);
+          showGamesView();
+        }
+      });
+      return;
+    }
+  });
+
+  if (typeof socket !== 'undefined' && socket) {
+    socket.on('game-invitation-updated', (data) => {
+      const { messageId, content } = data;
+      const wrapper = document.querySelector(`.chat-msg-wrapper[data-message-id="${messageId}"]`);
+      if (wrapper) {
+        const isOutgoing = wrapper.classList.contains('outgoing');
+        try {
+          const gameData = JSON.parse(content);
+          const card = wrapper.querySelector('.game-invite-card');
+          if (card) {
+            const newHtml = renderGameInvitationBubble(gameData, isOutgoing ? 'outgoing' : 'incoming', messageId);
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(newHtml, 'text/html');
+            const newCardEl = doc.querySelector('.game-invite-card');
+            if (newCardEl) {
+              card.replaceWith(newCardEl);
+              if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+          }
+        } catch (err) {
+          console.error('Error handling game-invitation-updated:', err);
+        }
+      }
+    });
+  }
+
+  // --- REAL-TIME GAMES CLIENT ENGINE ---
+  let activeGame = null;
+  let selectedGameType = null;
+
+  // Lobby lists
+  const gamesWaitingList = document.getElementById('gamesWaitingList');
+  const gamesPlayingList = document.getElementById('gamesPlayingList');
+
+  // Active game panels
+  const gamesLobby = document.getElementById('gamesLobby');
+  const activeGameArea = document.getElementById('activeGameArea');
+  const gameTurnStatus = document.getElementById('gameTurnStatus');
+
+  // Boards
+  const dominoBoardContainer = document.getElementById('dominoBoardContainer');
+  const dominoTable = document.getElementById('dominoTable');
+  const dominoPlayerHand = document.getElementById('dominoPlayerHand');
+  const boneyardCount = document.getElementById('boneyardCount');
+  const dominoDrawBtn = document.getElementById('dominoDrawBtn');
+  const dominoPassBtn = document.getElementById('dominoPassBtn');
+  const connectFourBoardContainer = document.getElementById('connectFourBoardContainer');
+  const connectFourGrid = document.getElementById('connectFourGrid');
+  const gomokuBoardContainer = document.getElementById('gomokuBoardContainer');
+  const gomokuBoard = document.getElementById('gomokuBoard');
+  const tableFootballBoardContainer = document.getElementById('tableFootballBoardContainer');
+  const tableFootballPhaseLabel = document.getElementById('tableFootballPhaseLabel');
+  const tableFootballSubLabel = document.getElementById('tableFootballSubLabel');
+  const tableFootballField = document.getElementById('tableFootballField');
+  const tableFootballActions = document.getElementById('tableFootballActions');
+  const tableFootballResult = document.getElementById('tableFootballResult');
+
+  // Setup Button
+  const startGameBtn = document.getElementById('startGameBtn');
+
+  // Spectators Modal
+  const spectatorsListModal = document.getElementById('spectatorsListModal');
+  const spectatorsListModalOverlay = document.getElementById('spectatorsListModalOverlay');
+  const closeSpectatorsListModal = document.getElementById('closeSpectatorsListModal');
+  const spectatorsListContainer = document.getElementById('spectatorsListContainer');
+  const spectatorCountText = document.getElementById('spectatorCountText');
+  const spectatorsListBtn = document.getElementById('spectatorsListBtn');
+  const gameConfirmModal = document.getElementById('gameConfirmModal');
+  const closeGameConfirmModal = document.getElementById('closeGameConfirmModal');
+  const gameConfirmModalTitle = document.getElementById('gameConfirmModalTitle');
+  const gameConfirmModalMessage = document.getElementById('gameConfirmModalMessage');
+  const gameConfirmCancelBtn = document.getElementById('gameConfirmCancelBtn');
+  const gameConfirmAcceptBtn = document.getElementById('gameConfirmAcceptBtn');
+
+  // Chat
+  const gameChatFeed = document.getElementById('gameChatFeed');
+  const gameChatForm = document.getElementById('gameChatForm');
+  const gameChatInput = document.getElementById('gameChatInput');
+  const gameSidePanel = document.getElementById('gameSidePanel');
+
+  // Buttons
+  const leaveGameBtn = document.getElementById('leaveGameBtn');
+  const forfeitGameBtn = document.getElementById('forfeitGameBtn');
+
+  // Map of human readable game types
+  const gameNames = {
+    domino: 'Domino',
+    connect4: 'Puissance 4',
+    gomoku: 'Gomoku',
+    tablefootball: 'Football Table'
+  };
+
+  // Games Lobby Tab Toggle Logic
+  const gamesTabBtns = document.querySelectorAll('.games-tab-btn');
+  gamesTabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabId = btn.getAttribute('data-game-tab');
+      gamesTabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      document.querySelectorAll('.games-tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+
+      if (tabId === 'setup') {
+        const pane = document.getElementById('gameTabSetup');
+        if (pane) pane.classList.add('active');
+      } else if (tabId === 'live') {
+        const pane = document.getElementById('gameTabLive');
+        if (pane) pane.classList.add('active');
+      }
+    });
+  });
+
+  // Custom Radio Label Styles Toggle for Game Lobby
+  const lobbyRadioLabels = document.querySelectorAll('.game-choice-option, .sub-choice-option');
+  lobbyRadioLabels.forEach(label => {
+    const radio = label.querySelector('input[type="radio"]');
+    if (radio) {
+      radio.addEventListener('change', () => {
+        const name = radio.getAttribute('name');
+        document.querySelectorAll(`input[name="${name}"]`).forEach(r => {
+          const parentLabel = r.closest('.game-choice-option, .sub-choice-option');
+          if (parentLabel) parentLabel.classList.remove('active');
+        });
+        label.classList.add('active');
+      });
+    }
+  });
+
+  // Available bots list
+  let availableBots = [];
+  let selectedBotId = null;
+
+  const loadBotsList = () => {
+    if (!socket || !socket.connected) return;
+    socket.emit('bots-list-get', (bots = []) => {
+      availableBots = bots;
+      if (bots.length > 0 && !selectedBotId) {
+        selectedBotId = bots[0].id;
+      }
+      renderBotsSelectionGrid();
+    });
+  };
+
+  const renderBotsSelectionGrid = () => {
+    const grid = document.getElementById('botsSelectionGrid');
+    if (!grid) return;
+
+    if (availableBots.length === 0) {
+      grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); font-size: 12px; padding: 10px;">Aucun robot disponible.</div>';
+      return;
+    }
+
+    const ranks = ["Grand Master", "Championne", "Expert", "Pro", "Challenger", "Elite", "Vétéran", "Stratège"];
+
+    grid.innerHTML = availableBots.map((bot, index) => {
+      const isSelected = selectedBotId === bot.id;
+      const winsCount = bot.wins || 0;
+      const botRank = ranks[index % ranks.length];
+      return `
+        <div class="bot-select-card ${isSelected ? 'active' : ''}" data-bot-id="${bot.id}">
+          <div class="bot-card-glow"></div>
+          <span class="bot-status-indicator online" title="Disponible"></span>
+          <div class="bot-avatar-wrapper">
+            <img src="${bot.avatar || '/assets/avatar_placeholder.jpg'}" alt="${escapeHtml(bot.name)}">
+          </div>
+          <div class="bot-info-container">
+            <div class="bot-select-card-name">${escapeHtml(bot.name)}</div>
+            <div class="bot-select-card-rank">${botRank}</div>
+            <div class="bot-select-card-wins">
+              <i data-lucide="trophy"></i>
+              <span>${winsCount} Victoire${winsCount > 1 ? 's' : ''}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    // Attach click listeners to cards
+    grid.querySelectorAll('.bot-select-card').forEach(card => {
+      card.addEventListener('click', () => {
+        selectedBotId = parseInt(card.getAttribute('data-bot-id'), 10);
+        renderBotsSelectionGrid();
+      });
+    });
+  };
+
+  // Toggle custom bet input visibility when mode changes
+  const setupModeRadios = document.querySelectorAll('input[name="setupMode"]');
+  const setupBetAmountWrapper = document.getElementById('setupBetAmountWrapper');
+  setupModeRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if (setupBetAmountWrapper) {
+        setupBetAmountWrapper.style.display = (radio.value === 'paid') ? 'block' : 'none';
+      }
+    });
+  });
+
+  // Toggle bot selection grid visibility when opponent changes
+  const setupOpponentRadios = document.querySelectorAll('input[name="setupOpponent"]');
+  const setupBotChoiceWrapper = document.getElementById('setupBotChoiceWrapper');
+  setupOpponentRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if (setupBotChoiceWrapper) {
+        if (radio.value === 'bot') {
+          setupBotChoiceWrapper.style.display = 'block';
+          loadBotsList();
+        } else {
+          setupBotChoiceWrapper.style.display = 'none';
+        }
+      }
+    });
+  });
+
+  // Start game emitter
+  if (startGameBtn) {
+    startGameBtn.addEventListener('click', () => {
+      const gameTypeRadio = document.querySelector('input[name="setupGameType"]:checked');
+      const opponentRadio = document.querySelector('input[name="setupOpponent"]:checked');
+      const modeRadio = document.querySelector('input[name="setupMode"]:checked');
+
+      if (!gameTypeRadio || !opponentRadio || !modeRadio) {
+        showToast("Veuillez sélectionner toutes les options de jeu.");
+        return;
+      }
+
+      const gameType = gameTypeRadio.value;
+      const opponentType = opponentRadio.value;
+      const entryMode = modeRadio.value;
+
+      let betAmount = 1.00;
+      if (entryMode === 'paid') {
+        const betInput = document.getElementById('setupBetAmount');
+        betAmount = betInput ? parseFloat(betInput.value || 1.00) : 1.00;
+        if (isNaN(betAmount) || betAmount < 0.10) {
+          showToast("La mise minimale pour une partie payante est de 0.10 $.");
+          return;
+        }
+      }
+
+      let opponentId = null;
+      if (opponentType === 'bot') {
+        if (!selectedBotId && availableBots.length > 0) {
+          selectedBotId = availableBots[0].id;
+        }
+        opponentId = selectedBotId ? `bot_${selectedBotId}` : null;
+      }
+
+      if (!socket || !socket.connected) {
+        showToast("Erreur de connexion en temps réel.");
+        return;
+      }
+
+      // Clear rematch flags to ensure a clean score reset
+      window.lastActiveGameInfo = null;
+      window.isRematchGame = false;
+
+      socket.emit('game-create', {
+        gameType,
+        opponentType,
+        entryMode,
+        betAmount,
+        opponentId
+      }, (res) => {
+        if (res && res.error) {
+          showToast(res.error);
+        } else if (res && res.game) {
+          initActiveGame(res.game);
+          showToast("Partie créée avec succès !");
+        }
+      });
+    });
+  }
+
+  // Load Lobby Lists from Server
+  const loadGamesLobby = () => {
+    if (!socket || !socket.connected) return;
+    socket.emit('games-list-get', (games = []) => {
+      renderLobbyLists(games);
+    });
+    // Load bots list if setup opponent is bot
+    const opponentRadio = document.querySelector('input[name="setupOpponent"]:checked');
+    if (opponentRadio && opponentRadio.value === 'bot') {
+      loadBotsList();
+    }
+  };
+
+  const renderLobbyLists = (games) => {
+    const waitingGames = games.filter(g => g.status === 'waiting');
+    const playingGames = games.filter(g => g.status === 'playing');
+
+    // Render waiting list
+    if (gamesWaitingList) {
+      if (waitingGames.length === 0) {
+        gamesWaitingList.innerHTML = `<div style="text-align: center; padding: 20px 0; color: var(--text-muted); font-size: 12px;">Aucune partie disponible pour le moment. Créez-en une pour attendre un adversaire !</div>`;
+      } else {
+        gamesWaitingList.innerHTML = waitingGames.map(game => {
+          const isOwner = game.player1.id === window.currentUserId;
+          const betLabel = game.mode === 'paid' ? `Payant (${parseFloat(game.betAmount || 0).toFixed(2)} $)` : 'Gratuit';
+          return `
+            <div class="game-list-item">
+              <div class="game-item-left">
+                <div class="avatar" style="width: 34px; height: 34px; border: 1.5px solid var(--primary);">
+                  <img src="${game.player1.avatar}" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <div class="game-item-details">
+                  <div class="game-item-title">${escapeHtml(game.player1.name)}</div>
+                  <span class="game-item-sub">${gameNames[game.gameType] || 'Jeu'} • ${betLabel}</span>
+                </div>
+              </div>
+              <div>
+                ${isOwner ? `
+                  <span class="game-item-btn-waiting">Attente...</span>
+                ` : `
+                  <button class="join-game-action-btn settings-primary-btn" data-game-id="${game.id}" style="height: 30px; font-size: 11.5px; padding: 0 14px; border-radius: 8px; font-weight: 700; background: var(--primary); color: white; border: none; cursor: pointer;">Rejoindre</button>
+                `}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Bind card and join buttons click
+        gamesWaitingList.querySelectorAll('.game-list-item').forEach(item => {
+          const btn = item.querySelector('.join-game-action-btn');
+          if (btn) {
+            item.addEventListener('click', (e) => {
+              if (e.target !== btn) {
+                btn.click();
+              }
+            });
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const gameId = btn.getAttribute('data-game-id');
+              
+              // Clear rematch flags to ensure a clean score reset
+              window.lastActiveGameInfo = null;
+              window.isRematchGame = false;
+
+              socket.emit('game-join', { gameId }, (res) => {
+                if (res && res.error) {
+                  showToast(res.error);
+                } else if (res && res.game) {
+                  initActiveGame(res.game);
+                  showToast("Vous avez rejoint la partie !");
+                }
+              });
+            });
+          }
+        });
+      }
+    }
+
+    // Render playing list
+    if (gamesPlayingList) {
+      if (playingGames.length === 0) {
+        gamesPlayingList.innerHTML = `<div class="games-list-empty">Aucun live en cours. Jouez contre un robot ou un autre joueur pour lancer le direct !</div>`;
+      } else {
+        gamesPlayingList.innerHTML = playingGames.map(game => {
+          const isPlayer = game.player1.id === window.currentUserId || (game.player2 && game.player2.id === window.currentUserId);
+          const p2Name = game.player2 ? game.player2.name : 'Robot';
+          const betLabel = game.mode === 'paid' ? `Payant (${parseFloat(game.betAmount || 0).toFixed(2)} $)` : 'Gratuit';
+          return `
+            <div class="game-list-item">
+              <div class="game-item-left">
+                <div class="game-item-vs-cluster">
+                  <img class="game-item-vs-avatar p1" src="${game.player1.avatar}">
+                  <span class="game-item-vs-text">vs</span>
+                  <img class="game-item-vs-avatar p2" src="${game.player2 ? game.player2.avatar : '/assets/avatar_placeholder.jpg'}">
+                </div>
+                <div class="game-item-details" style="margin-left: 4px;">
+                  <div class="game-item-title">${escapeHtml(game.player1.name)} vs ${escapeHtml(p2Name)}</div>
+                  <span class="game-item-sub">
+                    ${gameNames[game.gameType] || 'Jeu'} • 
+                    ${betLabel} • 
+                    <i data-lucide="eye" style="width: 10px; height: 10px; display: inline-block; vertical-align: middle;"></i> ${game.spectatorCount}
+                    ${game.startedAt ? ` • <span class="live-game-timer" data-started-at="${game.startedAt}" style="font-weight: 600; color: #b388ff;">00:00</span>` : ''}
+                  </span>
+                </div>
+              </div>
+              <div>
+                ${isPlayer ? `
+                  <button class="resume-game-action-btn settings-primary-btn" data-game-id="${game.id}" style="height: 30px; font-size: 11.5px; padding: 0 14px; border-radius: 8px; font-weight: 700; background: var(--primary); color: white; border: none; cursor: pointer;">Retour</button>
+                ` : `
+                  <button class="spectate-game-action-btn settings-primary-btn" data-game-id="${game.id}" style="height: 30px; font-size: 11.5px; padding: 0 14px; border-radius: 8px; font-weight: 700; background: #10b981; color: white; border: none; cursor: pointer;">Regarder</button>
+                `}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Bind card and action buttons click
+        gamesPlayingList.querySelectorAll('.game-list-item').forEach(item => {
+          const btn = item.querySelector('.resume-game-action-btn, .spectate-game-action-btn');
+          if (btn) {
+            item.addEventListener('click', (e) => {
+              if (e.target !== btn) {
+                btn.click();
+              }
+            });
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const gameId = btn.getAttribute('data-game-id');
+              
+              // Clear rematch flags to ensure a clean score reset
+              window.lastActiveGameInfo = null;
+              window.isRematchGame = false;
+
+              if (btn.classList.contains('spectate-game-action-btn')) {
+                socket.emit('game-spectate-join', { gameId }, (res) => {
+                  if (res && res.error) {
+                    showToast(res.error);
+                  } else if (res && res.game) {
+                    initActiveGame(res.game, true);
+                    showToast("Vous regardez la partie en direct !");
+                  }
+                });
+              } else {
+                socket.emit('game-room-join', { gameId });
+                socket.emit('game-spectate-join', { gameId }, (res) => {
+                  if (res && res.game) {
+                    initActiveGame(res.game, false);
+                  }
+                });
+              }
+            });
+          }
+        });
+      }
+    }
+  };
+
+  let audioCtx = null;
+  const getAudioContext = () => {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return audioCtx;
+  };
+
+  const playGameSound = (type) => {
+    try {
+      const ctx = getAudioContext();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const now = ctx.currentTime;
+
+      if (type === 'drop') {
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(600, now);
+        osc1.frequency.exponentialRampToValueAtTime(150, now + 0.05);
+        gain1.gain.setValueAtTime(0.25, now);
+        gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(150, now);
+        osc2.frequency.exponentialRampToValueAtTime(75, now + 0.15);
+        gain2.gain.setValueAtTime(0.35, now);
+        gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+
+        osc1.start(now);
+        osc1.stop(now + 0.06);
+        osc2.start(now);
+        osc2.stop(now + 0.16);
+
+      } else if (type === 'win') {
+        const notes = [261.63, 329.63, 392.00, 523.25, 659.25];
+        notes.forEach((freq, index) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + index * 0.08);
+          gain.gain.setValueAtTime(0.0, now + index * 0.08);
+          gain.gain.linearRampToValueAtTime(0.15, now + index * 0.08 + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.005, now + index * 0.08 + 0.35);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + index * 0.08);
+          osc.stop(now + index * 0.08 + 0.4);
+        });
+
+      } else if (type === 'lose') {
+        const baseNotes = [220.00, 207.65, 196.00, 146.83];
+        baseNotes.forEach((freq, index) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(350, now);
+
+          osc.frequency.setValueAtTime(freq, now + index * 0.15);
+          osc.frequency.linearRampToValueAtTime(freq * 0.82, now + index * 0.15 + 0.3);
+
+          gain.gain.setValueAtTime(0.0, now + index * 0.15);
+          gain.gain.linearRampToValueAtTime(0.12, now + index * 0.15 + 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + index * 0.15 + 0.4);
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(ctx.destination);
+
+          osc.start(now + index * 0.15);
+          osc.stop(now + index * 0.15 + 0.45);
+        });
+      }
+    } catch (e) {
+      console.warn("AudioContext playback failed:", e);
+    }
+  };
+
+  // Unlock AudioContext on first user gesture (click, keypress, touch) to bypass browser autoplay blocks
+  const unlockAudioContext = () => {
+    try {
+      const ctx = getAudioContext();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().then(() => {
+          console.log("AudioContext unlocked successfully via user gesture.");
+          cleanupUnlockListeners();
+        }).catch(err => {
+          console.warn("Failed to resume AudioContext:", err);
+        });
+      } else if (ctx && ctx.state === 'running') {
+        cleanupUnlockListeners();
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const cleanupUnlockListeners = () => {
+    document.removeEventListener('click', unlockAudioContext);
+    document.removeEventListener('keydown', unlockAudioContext);
+    document.removeEventListener('touchstart', unlockAudioContext);
+  };
+
+  document.addEventListener('click', unlockAudioContext);
+  document.addEventListener('keydown', unlockAudioContext);
+  document.addEventListener('touchstart', unlockAudioContext);
+
+  const showGameResultOverlay = (result) => {
+    const existing = document.getElementById('gameResultOverlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'gameResultOverlay';
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.zIndex = '9999';
+    overlay.style.display = 'flex';
+    overlay.style.flexDirection = 'column';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.background = 'rgba(0, 0, 0, 0.75)';
+    overlay.style.backdropFilter = 'blur(8px)';
+    overlay.style.transition = 'all 0.3s ease';
+
+    const isWin = result === 'win';
+    const isLose = result === 'lose';
+    const isDraw = result === 'draw';
+
+    let titleText = '';
+    let imgSrc = '';
+    let imgAlt = '';
+    let soundType = '';
+
+    if (isWin) {
+      titleText = 'Victoire !';
+      imgSrc = '/assets/winner_trophy.png';
+      imgAlt = 'Trophée de la victoire';
+      soundType = 'win';
+    } else if (isLose) {
+      titleText = 'Défaite !';
+      imgSrc = '/assets/loser_donkey.png';
+      imgAlt = 'Âne de la défaite';
+      soundType = 'lose';
+    } else {
+      titleText = 'Match Nul !';
+      soundType = 'drop';
+    }
+
+    if (soundType) {
+      playGameSound(soundType);
+    }
+
+    const card = document.createElement('div');
+    card.style.background = 'var(--bg-card, #1e293b)';
+    card.style.border = '1px solid var(--border-color, rgba(255, 255, 255, 0.1))';
+    card.style.borderRadius = '24px';
+    card.style.padding = '32px';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.alignItems = 'center';
+    card.style.gap = '20px';
+    card.style.maxWidth = '360px';
+    card.style.width = '90%';
+    card.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.5)';
+    card.style.textAlign = 'center';
+    card.style.animation = 'scaleInOverlay 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards';
+
+    if (!document.getElementById('overlay-animations')) {
+      const style = document.createElement('style');
+      style.id = 'overlay-animations';
+      style.textContent = `
+        @keyframes scaleInOverlay {
+          from { transform: scale(0.8); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const title = document.createElement('h2');
+    title.textContent = titleText;
+    title.style.margin = '0';
+    title.style.fontSize = '28px';
+    title.style.fontWeight = '800';
+    title.style.color = isWin ? '#fbbf24' : (isLose ? '#ef4444' : '#94a3b8');
+
+    card.appendChild(title);
+
+    if (imgSrc) {
+      const img = document.createElement('img');
+      img.src = imgSrc;
+      img.alt = imgAlt;
+      img.style.width = '180px';
+      img.style.height = '180px';
+      img.style.objectFit = 'contain';
+      img.style.border = 'none';
+      img.style.outline = 'none';
+      card.appendChild(img);
+    }
+
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.style.display = 'flex';
+    buttonsContainer.style.gap = '12px';
+    buttonsContainer.style.width = '100%';
+    buttonsContainer.style.marginTop = '10px';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Fermer';
+    closeBtn.style.flex = '1';
+    closeBtn.style.padding = '12px';
+    closeBtn.style.borderRadius = '12px';
+    closeBtn.style.border = '1px solid var(--border-color, rgba(255,255,255,0.1))';
+    closeBtn.style.background = 'var(--bg-hover, rgba(255,255,255,0.05))';
+    closeBtn.style.color = 'var(--text-main, #f8fafc)';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.style.fontWeight = '600';
+    closeBtn.style.fontSize = '14px';
+    closeBtn.style.transition = 'all 0.2s';
+    closeBtn.addEventListener('click', () => {
+      overlay.style.opacity = '0';
+      setTimeout(() => overlay.remove(), 300);
+    });
+
+    const replayBtn = document.createElement('button');
+    replayBtn.textContent = 'Rejouer';
+    replayBtn.style.flex = '1';
+    replayBtn.style.padding = '12px';
+    replayBtn.style.borderRadius = '12px';
+    replayBtn.style.border = 'none';
+    replayBtn.style.background = '#7c3aed';
+    replayBtn.style.color = '#ffffff';
+    replayBtn.style.cursor = 'pointer';
+    replayBtn.style.fontWeight = '600';
+    replayBtn.style.fontSize = '14px';
+    replayBtn.style.transition = 'all 0.2s';
+    replayBtn.addEventListener('click', () => {
+      overlay.remove();
+      replayGame();
+    });
+
+    buttonsContainer.appendChild(closeBtn);
+    
+    const isPlayer = activeGame && (activeGame.player1.id === window.currentUserId || (activeGame.player2 && activeGame.player2.id === window.currentUserId));
+    if (isPlayer && !window.isSpectatingActiveGame) {
+      buttonsContainer.appendChild(replayBtn);
+    }
+
+    card.appendChild(buttonsContainer);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+  };
+
+  const updateScoreboardDisplay = () => {
+    if (!activeGame) return;
+
+    const p1ScoreEl = document.getElementById('gamePlayer1Score');
+    const p2ScoreEl = document.getElementById('gamePlayer2Score');
+    if (!p1ScoreEl || !p2ScoreEl) return;
+
+    if (activeGame.gameType === 'tablefootball' && activeGame.tableFootballState?.scores) {
+      p1ScoreEl.textContent = String(activeGame.tableFootballState.scores[1] || 0);
+      p2ScoreEl.textContent = String(activeGame.tableFootballState.scores[2] || 0);
+      return;
+    }
+
+    const opponentKey = activeGame.opponentType === 'bot' ? 'bot' : (activeGame.player1.id === window.currentUserId ? (activeGame.player2 ? activeGame.player2.id : 'waiting') : activeGame.player1.id);
+    
+    let scores = { player: 0, opponent: 0 };
+    if (opponentKey !== 'waiting') {
+      const stored = localStorage.getItem(`game_scores_${window.currentUserId}_${opponentKey}_${activeGame.gameType}`);
+      if (stored) {
+        try {
+          scores = JSON.parse(stored);
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+    
+    const isPlayer1Me = activeGame.player1.id === window.currentUserId;
+    
+    if (isPlayer1Me) {
+      p1ScoreEl.textContent = scores.player;
+      p2ScoreEl.textContent = scores.opponent;
+    } else {
+      p1ScoreEl.textContent = scores.opponent;
+      p2ScoreEl.textContent = scores.player;
+    }
+  };
+
+  const updateStoredScore = (playerWon) => {
+    if (!activeGame) return;
+    const opponentKey = activeGame.opponentType === 'bot' ? 'bot' : (activeGame.player1.id === window.currentUserId ? (activeGame.player2 ? activeGame.player2.id : null) : activeGame.player1.id);
+    if (!opponentKey) return;
+    
+    const key = `game_scores_${window.currentUserId}_${opponentKey}_${activeGame.gameType}`;
+    let scores = { player: 0, opponent: 0 };
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      try {
+        scores = JSON.parse(stored);
+      } catch (e) {
+        // ignore
+      }
+    }
+    
+    if (playerWon) {
+      scores.player++;
+    } else {
+      scores.opponent++;
+    }
+    
+    localStorage.setItem(key, JSON.stringify(scores));
+    updateScoreboardDisplay();
+  };
+
+  const openSendGiftModal = (recipient) => {
+    if (!recipient) return;
+    
+    const existing = document.getElementById('sendGiftModal');
+    if (existing) existing.remove();
+    
+    const modal = document.createElement('div');
+    modal.id = 'sendGiftModal';
+    modal.style.position = 'fixed';
+    modal.style.inset = '0';
+    modal.style.zIndex = '10000';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.background = 'rgba(0, 0, 0, 0.7)';
+    modal.style.backdropFilter = 'blur(6px)';
+    modal.style.transition = 'all 0.3s';
+    
+    const card = document.createElement('div');
+    card.style.background = 'var(--bg-card, #1e293b)';
+    card.style.border = '1px solid var(--border-color, rgba(255, 255, 255, 0.1))';
+    card.style.borderRadius = '20px';
+    card.style.padding = '24px';
+    card.style.width = '320px';
+    card.style.boxShadow = 'var(--shadow-xl)';
+    card.style.textAlign = 'center';
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+    card.style.gap = '16px';
+    card.style.animation = 'scaleInOverlay 0.3s ease forwards';
+    
+    const title = document.createElement('h3');
+    title.textContent = `Envoyer un cadeau à ${recipient.name}`;
+    title.style.margin = '0';
+    title.style.fontSize = '18px';
+    title.style.fontWeight = '800';
+    title.style.color = 'var(--text-primary)';
+    
+    const description = document.createElement('p');
+    description.textContent = 'Entrez le montant en dollars ($) à envoyer depuis votre solde.';
+    description.style.margin = '0';
+    description.style.fontSize = '13px';
+    description.style.color = 'var(--text-secondary)';
+    
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0.50';
+    input.step = '0.50';
+    input.value = '1.00';
+    input.style.width = '100%';
+    input.style.padding = '10px 12px';
+    input.style.borderRadius = '8px';
+    input.style.border = '1px solid var(--border-color)';
+    input.style.background = 'var(--bg-dark)';
+    input.style.color = 'var(--text-main)';
+    input.style.fontSize = '14px';
+    input.style.textAlign = 'center';
+    input.style.outline = 'none';
+    
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.gap = '10px';
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Annuler';
+    cancelBtn.style.flex = '1';
+    cancelBtn.style.padding = '10px';
+    cancelBtn.style.borderRadius = '8px';
+    cancelBtn.style.border = '1px solid var(--border-color)';
+    cancelBtn.style.background = 'var(--bg-hover)';
+    cancelBtn.style.color = 'var(--text-main)';
+    cancelBtn.style.cursor = 'pointer';
+    cancelBtn.style.fontSize = '13.5px';
+    cancelBtn.style.fontWeight = '600';
+    cancelBtn.addEventListener('click', () => modal.remove());
+    
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'Envoyer 🎁';
+    confirmBtn.style.flex = '1';
+    confirmBtn.style.padding = '10px';
+    confirmBtn.style.borderRadius = '8px';
+    confirmBtn.style.border = 'none';
+    confirmBtn.style.background = '#eab308';
+    confirmBtn.style.color = '#000000';
+    confirmBtn.style.cursor = 'pointer';
+    confirmBtn.style.fontSize = '13.5px';
+    confirmBtn.style.fontWeight = '700';
+    
+    confirmBtn.addEventListener('click', () => {
+      const amount = parseFloat(input.value);
+      if (isNaN(amount) || amount <= 0) {
+        showToast("Veuillez saisir un montant valide supérieure à 0.");
+        return;
+      }
+      
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Envoi...';
+      
+      socket.emit('game-send-gift', {
+        gameId: activeGame.id,
+        recipientId: recipient.id,
+        amount: amount
+      }, (res) => {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Envoyer 🎁';
+        if (res && res.error) {
+          showToast(res.error);
+        } else {
+          showToast(`Cadeau de ${amount.toFixed(2)} $ envoyé avec succès !`);
+          modal.remove();
+        }
+      });
+    });
+    
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+    
+    card.appendChild(title);
+    card.appendChild(description);
+    card.appendChild(input);
+    card.appendChild(actions);
+    modal.appendChild(card);
+    
+    document.body.appendChild(modal);
+  };
+
+  // Switch to Play View & Initialize Game board
+  const initActiveGame = (game, isSpectating = false) => {
+    activeGame = game;
+    window.isSpectatingActiveGame = isSpectating;
+    // Reset scores for new game sessions (non-rematch)
+    let isRematch = false;
+    const opponentKey = game.opponentType === 'bot' 
+      ? 'bot' 
+      : (game.player1.id === window.currentUserId ? (game.player2 ? game.player2.id : 'waiting') : game.player1.id);
+      
+    if (opponentKey !== 'waiting' && !isSpectating) {
+      if (window.isRematchGame === true) {
+        isRematch = true;
+      } else if (window.lastActiveGameInfo) {
+        const timeDiff = Date.now() - window.lastActiveGameInfo.finishedAt;
+        if (window.lastActiveGameInfo.gameType === game.gameType &&
+            window.lastActiveGameInfo.opponentKey === opponentKey &&
+            timeDiff < 300000) {
+          isRematch = true;
+        }
+      }
+      
+      // If it is NOT a rematch, clear/reset the scoreboard score for this combination
+      if (!isRematch) {
+        const scoreKey = `game_scores_${window.currentUserId}_${opponentKey}_${game.gameType}`;
+        localStorage.setItem(scoreKey, JSON.stringify({ player: 0, opponent: 0 }));
+      }
+    }
+    
+    // Reset the rematch flag
+    window.isRematchGame = false;
+
+    updateScoreboardDisplay();
+
+    if (gamesLobby) gamesLobby.style.display = 'none';
+    if (activeGameArea) activeGameArea.style.display = 'grid';
+
+    // Set headers
+    const titleEl = document.getElementById('activeGameTitle');
+    const subEl = document.getElementById('activeGameSub');
+    if (titleEl) titleEl.textContent = `${gameNames[game.gameType] || 'Jeu'} en Direct`;
+    if (subEl) subEl.textContent = game.mode === 'paid' ? `Mode Payant (${parseFloat(game.betAmount || 0).toFixed(2)} $)` : 'Mode Gratuit';
+
+    const timerEl = document.getElementById('activeGameTimer');
+    if (timerEl) {
+      if (game.status === 'playing' && game.startedAt) {
+        timerEl.style.display = 'inline-flex';
+      } else {
+        timerEl.style.display = 'none';
+      }
+    }
+
+    // Player 1 Card
+    const p1NameEl = document.getElementById('gamePlayer1Name');
+    const p1AvatarEl = document.getElementById('gamePlayer1Avatar');
+    if (p1NameEl) p1NameEl.textContent = game.player1.name;
+    if (p1AvatarEl) p1AvatarEl.src = game.player1.avatar;
+
+    const p1WinsEl = document.getElementById('gamePlayer1Wins');
+    if (p1WinsEl) {
+      p1WinsEl.style.display = 'none'; // Only bots show wins on the live scoreboard cards
+    }
+
+    // Player 2 Card
+    const p2NameEl = document.getElementById('gamePlayer2Name');
+    const p2AvatarEl = document.getElementById('gamePlayer2Avatar');
+    if (p2NameEl) p2NameEl.textContent = game.player2 ? game.player2.name : 'Attente...';
+    if (p2AvatarEl) p2AvatarEl.src = game.player2 ? game.player2.avatar : '/assets/avatar_placeholder.jpg';
+
+    const p2WinsEl = document.getElementById('gamePlayer2Wins');
+    if (p2WinsEl) {
+      if (game.player2 && game.player2.isBot) {
+        const count = game.player2.wins || 0;
+        p2WinsEl.querySelector('span').textContent = `${count} Victoire${count > 1 ? 's' : ''}`;
+        p2WinsEl.style.display = 'block';
+      } else {
+        p2WinsEl.style.display = 'none';
+      }
+    }
+
+    // Show/hide gift buttons dynamically for spectators
+    const isSpectator = window.isSpectatingActiveGame || (game.player1.id !== window.currentUserId && (!game.player2 || game.player2.id !== window.currentUserId));
+    const sendGiftP1Btn = document.getElementById('sendGiftP1Btn');
+    const sendGiftP2Btn = document.getElementById('sendGiftP2Btn');
+    if (sendGiftP1Btn && sendGiftP2Btn) {
+      if (isSpectator) {
+        sendGiftP1Btn.style.display = 'inline-flex';
+        if (game.player2 && !game.player2.isBot && game.opponentType === 'player') {
+          sendGiftP2Btn.style.display = 'inline-flex';
+        } else {
+          sendGiftP2Btn.style.display = 'none';
+        }
+      } else {
+        sendGiftP1Btn.style.display = 'none';
+        sendGiftP2Btn.style.display = 'none';
+      }
+    }
+
+    // Show/Hide Forfeit Button
+    if (forfeitGameBtn) {
+      const isPlayer = game.player1.id === window.currentUserId || (game.player2 && game.player2.id === window.currentUserId);
+      forfeitGameBtn.style.display = (isPlayer && !isSpectating && game.status === 'playing') ? 'block' : 'none';
+    }
+
+    // Spectator counter update
+    if (spectatorCountText) {
+      const count = game.spectators.length;
+      spectatorCountText.textContent = `${count} Spectateur${count > 1 ? 's' : ''}`;
+    }
+
+    // Spectators popover content clear
+    if (spectatorsListContainer) {
+      renderSpectatorsList(game.spectators);
+    }
+
+    // Update player symbol badges in scoreboard based on active game type
+    const p1Badge = document.querySelector('.scoreboard-player.p1 .player-symbol-badge');
+    const p2Badge = document.getElementById('gamePlayer2SymbolLabel');
+    if (p1Badge && p2Badge) {
+      if (game.gameType === 'connect4') {
+        p1Badge.textContent = 'Pions Rouges';
+        p2Badge.textContent = 'Pions Jaunes';
+        p1Badge.style.display = 'inline-block';
+        p2Badge.style.display = 'inline-block';
+      } else if (game.gameType === 'gomoku') {
+        p1Badge.textContent = 'Pions Noirs';
+        p2Badge.textContent = 'Pions Blancs';
+        p1Badge.style.display = 'inline-block';
+        p2Badge.style.display = 'inline-block';
+      } else if (game.gameType === 'tablefootball') {
+        p1Badge.textContent = 'Attaque / Défense';
+        p2Badge.textContent = 'Attaque / Défense';
+        p1Badge.style.display = 'inline-block';
+        p2Badge.style.display = 'inline-block';
+      } else {
+        p1Badge.style.display = 'none';
+        p2Badge.style.display = 'none';
+      }
+    }
+
+    // Hide all board containers first
+    if (dominoBoardContainer) dominoBoardContainer.style.display = 'none';
+    if (connectFourBoardContainer) connectFourBoardContainer.style.display = 'none';
+    if (gomokuBoardContainer) gomokuBoardContainer.style.display = 'none';
+    if (tableFootballBoardContainer) tableFootballBoardContainer.style.display = 'none';
+
+    // Initialize corresponding board
+    if (game.gameType === 'domino') {
+      if (dominoBoardContainer) {
+        dominoBoardContainer.style.display = 'block';
+        buildDominoBoard();
+      }
+    } else if (game.gameType === 'connect4') {
+      if (connectFourBoardContainer) {
+        connectFourBoardContainer.style.display = 'flex';
+        buildConnectFourBoard();
+      }
+    } else if (game.gameType === 'gomoku') {
+      if (gomokuBoardContainer) {
+        gomokuBoardContainer.style.display = 'block';
+        buildGomokuBoard();
+      }
+    } else if (game.gameType === 'tablefootball') {
+      if (tableFootballBoardContainer) {
+        tableFootballBoardContainer.style.display = 'block';
+        buildTableFootballBoard();
+      }
+    }
+
+    if (gameChatFeed) {
+      gameChatFeed.innerHTML = `<div style="text-align: center; color: var(--text-muted); font-style: italic; font-size: 11px;">Le chat est ouvert ! Envoyez des encouragements en direct.</div>`;
+    }
+
+    // Update Turn Indicator
+    updateTurnIndicator();
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  const replayGame = () => {
+    if (!activeGame) return;
+    
+    // Set rematch flag to true for continuation of scores
+    window.isRematchGame = true;
+
+    const gameType = activeGame.gameType;
+    const opponentType = activeGame.opponentType;
+    const entryMode = activeGame.mode;
+    const betAmount = activeGame.betAmount || 0;
+
+    if (opponentType === 'player') {
+      let opponentId = null;
+      if (activeGame.player1 && Number(activeGame.player1.id) !== Number(window.currentUserId)) {
+        opponentId = activeGame.player1.id;
+      } else if (activeGame.player2 && Number(activeGame.player2.id) !== Number(window.currentUserId)) {
+        opponentId = activeGame.player2.id;
+      }
+      if (opponentId) {
+        sendGameInvitation(opponentId, {
+          game: gameType,
+          priceType: entryMode,
+          priceAmount: betAmount,
+          durationSeconds: 60
+        });
+        return;
+      }
+    }
+
+    socket.emit('game-create', {
+      gameType,
+      opponentType,
+      entryMode,
+      betAmount,
+      opponentId: activeGame.player2 ? activeGame.player2.id : null
+    }, (res) => {
+      if (res && res.error) {
+        showToast(res.error);
+      } else if (res && res.game) {
+        initActiveGame(res.game);
+        showToast("Nouvelle partie démarrée !");
+      }
+    });
+  };
+
+  // Turn status updates
+  const updateTurnIndicator = () => {
+    if (!activeGame) return;
+
+    // Highlight turn rings on scoreboard
+    const p1El = document.querySelector('.scoreboard-player.p1');
+    const p2El = document.querySelector('.scoreboard-player.p2');
+    if (p1El) p1El.classList.remove('player-turn-active');
+    if (p2El) p2El.classList.remove('player-turn-active');
+
+    if (activeGame.status === 'playing') {
+      if (activeGame.currentPlayer === 1 && p1El) {
+        p1El.classList.add('player-turn-active');
+      } else if (activeGame.currentPlayer === 2 && p2El) {
+        p2El.classList.add('player-turn-active');
+      }
+    }
+
+    if (activeGame.status === 'waiting') {
+      gameTurnStatus.textContent = "En attente d'un adversaire...";
+      gameTurnStatus.className = 'game-turn-status-bar waiting';
+      gameTurnStatus.removeAttribute('style');
+      return;
+    }
+    if (activeGame.status === 'finished') {
+      gameTurnStatus.removeAttribute('style');
+      gameTurnStatus.innerHTML = '';
+
+      const textSpan = document.createElement('span');
+      if (activeGame.winner === 'draw') {
+        textSpan.textContent = "Partie terminée : Match nul !";
+        gameTurnStatus.className = 'game-turn-status-bar finished-draw';
+      } else {
+        const winnerName = activeGame.winner === activeGame.player1.id ? activeGame.player1.name : (activeGame.player2 ? activeGame.player2.name : 'Robot');
+        textSpan.textContent = `Partie terminée : Victoire de ${winnerName} !`;
+        gameTurnStatus.className = 'game-turn-status-bar finished-win';
+      }
+      gameTurnStatus.appendChild(textSpan);
+
+      const isPlayer = activeGame.player1.id === window.currentUserId || (activeGame.player2 && activeGame.player2.id === window.currentUserId);
+      if (isPlayer && !window.isSpectatingActiveGame) {
+        const replayBtn = document.createElement('button');
+        replayBtn.id = 'gameReplayBtn';
+        replayBtn.className = 'game-replay-btn';
+        replayBtn.innerHTML = '<i data-lucide="refresh-cw" style="width: 12px; height: 12px;"></i> Rejouer';
+        replayBtn.addEventListener('click', replayGame);
+        gameTurnStatus.appendChild(replayBtn);
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+      return;
+    }
+
+    const activePlayer = activeGame.currentPlayer === 1 ? activeGame.player1 : activeGame.player2;
+    const isMyTurn = activePlayer && activePlayer.id === window.currentUserId && !window.isSpectatingActiveGame;
+    
+    const getSymbolLabel = (playerSymbol, gameType) => {
+      if (gameType === 'domino') return '';
+      if (gameType === 'connect4') {
+        return playerSymbol === 1 ? ' (Rouge)' : ' (Jaune)';
+      }
+      if (gameType === 'gomoku') {
+        return playerSymbol === 1 ? ' (Noir)' : ' (Blanc)';
+      }
+      if (gameType === 'tablefootball') {
+        return ' (Terrain)';
+      }
+      return '';
+    };
+
+    gameTurnStatus.removeAttribute('style');
+    if (isMyTurn) {
+      const symbolText = getSymbolLabel(activePlayer.symbol, activeGame.gameType);
+      gameTurnStatus.textContent = `C'est à votre tour de jouer !${symbolText}`;
+      gameTurnStatus.className = 'game-turn-status-bar my-turn';
+    } else {
+      const activePlayerName = activePlayer ? activePlayer.name : 'Robot AI';
+      const symbolText = getSymbolLabel(activePlayer.symbol, activeGame.gameType);
+      gameTurnStatus.textContent = `Tour de : ${activePlayerName}${symbolText}`;
+      gameTurnStatus.className = 'game-turn-status-bar opponent-turn';
+    }
+  };
+
+  // --- BOARD BUILDERS & RENDERING ---
+
+  // 1. DOMINOES
+  let selectedTileIndex = null;
+  const getDominoImgHtml = (v1, v2, vertical = false) => {
+    const num1 = Math.min(v1, v2);
+    const num2 = Math.max(v1, v2);
+    const src = `/assets/dominoes/tile_${num1}_${num2}.svg`;
+
+    let rotation = 0;
+    if (!vertical) {
+      if (v1 > v2) {
+        rotation = 180;
+      }
+    } else {
+      if (v1 <= v2) {
+        rotation = 90;
+      } else {
+        rotation = 270;
+      }
+    }
+
+    const style = `display: block; width: 100%; height: 100%; border-radius: inherit; transform: rotate(${rotation}deg); pointer-events: none;`;
+    return `<img src="${src}" alt="[${v1}|${v2}]" style="${style}">`;
+  };
+
+  const createTileEl = (tile, index, isClickable = false, forceVertical = null) => {
+    const [v1, v2] = tile;
+    const tileDiv = document.createElement('div');
+    
+    const isDouble = v1 === v2;
+    const vertical = forceVertical !== null ? forceVertical : isDouble;
+    
+    tileDiv.className = `domino-tile${vertical ? ' double' : ''}${isClickable ? ' playable' : ''}`;
+    if (isClickable) {
+      tileDiv.dataset.index = index;
+    }
+
+    tileDiv.innerHTML = getDominoImgHtml(v1, v2, vertical);
+    return tileDiv;
+  };
+
+  const calculateDominoPath = (table, tableWidth, showIndicators, selectedTileMatchesLeft, selectedTileMatchesRight) => {
+    const L_limit = 35; // marge gauche
+    const R_limit = tableWidth - 35; // marge droite
+
+    let cx = L_limit + 30; // initial x
+    let cy = 50; // initial y (centre de la ligne 0)
+    let currentDir = 'right';
+    let nextHorizontalDir = 'left';
+
+    const positions = [];
+
+    for (let i = 0; i < table.length; i++) {
+      const tile = table[i];
+      const isDouble = tile[0] === tile[1];
+
+      // Récupération des dimensions selon la direction et si c'est un double
+      let w, h;
+      if (currentDir === 'right' || currentDir === 'left') {
+        w = isDouble ? 30 : 60;
+        h = isDouble ? 60 : 30;
+      } else { // 'down'
+        w = isDouble ? 60 : 30;
+        h = isDouble ? 30 : 60;
+      }
+
+      // Vérification des limites pour changer de direction
+      if (currentDir === 'right') {
+        let prev_w = i > 0 ? positions[i-1].width : 0;
+        let next_cx = i > 0 ? (positions[i-1].cx + prev_w / 2 + w / 2) : cx;
+        if (next_cx + w / 2 > R_limit) {
+          currentDir = 'down';
+          w = isDouble ? 60 : 30;
+          h = isDouble ? 30 : 60;
+        }
+      } else if (currentDir === 'left') {
+        let prev_w = i > 0 ? positions[i-1].width : 0;
+        let next_cx = i > 0 ? (positions[i-1].cx - prev_w / 2 - w / 2) : cx;
+        if (next_cx - w / 2 < L_limit) {
+          currentDir = 'down';
+          w = isDouble ? 60 : 30;
+          h = isDouble ? 30 : 60;
+        }
+      } else if (currentDir === 'down') {
+        // Après un tournant vers le bas, on repart à l'horizontal dans le sens opposé
+        currentDir = nextHorizontalDir;
+        w = isDouble ? 30 : 60;
+        h = isDouble ? 60 : 30;
+      }
+
+      // Calcul des coordonnées du centre
+      if (i > 0) {
+        const prev = positions[i-1];
+        if (currentDir === 'right') {
+          cx = prev.cx + prev.width / 2 + w / 2;
+          cy = prev.cy;
+        } else if (currentDir === 'left') {
+          cx = prev.cx - prev.width / 2 - w / 2;
+          cy = prev.cy;
+        } else if (currentDir === 'down') {
+          cx = prev.cx;
+          cy = prev.cy + prev.height / 2 + h / 2;
+          nextHorizontalDir = (prev.flow === 'right') ? 'left' : 'right';
+        }
+      } else {
+        cx = L_limit + w / 2;
+        cy = 50;
+      }
+
+      positions.push({
+        cx,
+        cy,
+        width: w,
+        height: h,
+        flow: currentDir,
+        isDouble
+      });
+    }
+
+    // Calcul des positions des indicateurs de pose
+    let leftIndicatorPos = null;
+    let rightIndicatorPos = null;
+
+    if (table.length > 0) {
+      const first = positions[0];
+      const last = positions[positions.length - 1];
+
+      if (showIndicators && selectedTileMatchesLeft) {
+        let ind_cx = first.cx;
+        let ind_cy = first.cy;
+        const offset = 55;
+        if (first.flow === 'right') {
+          ind_cx = first.cx - first.width / 2 - offset;
+        } else if (first.flow === 'left') {
+          ind_cx = first.cx + first.width / 2 + offset;
+        } else if (first.flow === 'down') {
+          ind_cy = first.cy - first.height / 2 - offset;
+        }
+        leftIndicatorPos = { cx: ind_cx, cy: ind_cy };
+      }
+
+      if (showIndicators && selectedTileMatchesRight) {
+        let ind_cx = last.cx;
+        let ind_cy = last.cy;
+        const offset = 55;
+        if (last.flow === 'right') {
+          ind_cx = last.cx + last.width / 2 + offset;
+        } else if (last.flow === 'left') {
+          ind_cx = last.cx - last.width / 2 - offset;
+        } else if (last.flow === 'down') {
+          ind_cy = last.cy + last.height / 2 + offset;
+        }
+        rightIndicatorPos = { cx: ind_cx, cy: ind_cy };
+      }
+    }
+
+    // Bounding Box
+    let allCoordsX = [];
+    let allCoordsY = [];
+
+    positions.forEach(p => {
+      allCoordsX.push(p.cx - p.width / 2);
+      allCoordsX.push(p.cx + p.width / 2);
+      allCoordsY.push(p.cy - p.height / 2);
+      allCoordsY.push(p.cy + p.height / 2);
+    });
+
+    if (leftIndicatorPos) {
+      allCoordsX.push(leftIndicatorPos.cx - 60);
+      allCoordsX.push(leftIndicatorPos.cx + 60);
+      allCoordsY.push(leftIndicatorPos.cy - 25);
+      allCoordsY.push(leftIndicatorPos.cy + 25);
+    }
+    if (rightIndicatorPos) {
+      allCoordsX.push(rightIndicatorPos.cx - 60);
+      allCoordsX.push(rightIndicatorPos.cx + 60);
+      allCoordsY.push(rightIndicatorPos.cy - 25);
+      allCoordsY.push(rightIndicatorPos.cy + 25);
+    }
+
+    let minX = allCoordsX.length > 0 ? Math.min(...allCoordsX) : 0;
+    let maxX = allCoordsX.length > 0 ? Math.max(...allCoordsX) : tableWidth;
+    let minY = allCoordsY.length > 0 ? Math.min(...allCoordsY) : 0;
+    let maxY = allCoordsY.length > 0 ? Math.max(...allCoordsY) : 100;
+
+    // Centrage horizontal
+    const contentWidth = maxX - minX;
+    const shiftX = (tableWidth - contentWidth) / 2 - minX;
+
+    positions.forEach(p => {
+      p.cx += shiftX;
+    });
+    if (leftIndicatorPos) leftIndicatorPos.cx += shiftX;
+    if (rightIndicatorPos) rightIndicatorPos.cx += shiftX;
+
+    // Ajustement vertical (Y commence à 30px du haut)
+    const shiftY = 30 - minY;
+    positions.forEach(p => {
+      p.cy += shiftY;
+    });
+    if (leftIndicatorPos) leftIndicatorPos.cy += shiftY;
+    if (rightIndicatorPos) rightIndicatorPos.cy += shiftY;
+
+    maxY += shiftY;
+
+    return {
+      positions,
+      leftIndicatorPos,
+      rightIndicatorPos,
+      height: maxY + 30
+    };
+  };
+
+  const buildDominoBoard = () => {
+    if (!dominoBoardContainer || !dominoTable || !dominoPlayerHand || !boneyardCount) return;
+
+    // Render Boneyard Count
+    const bCount = typeof activeGame.boneyardCount !== 'undefined' ? activeGame.boneyardCount : activeGame.boneyard.length;
+    boneyardCount.textContent = `Pioche : ${bCount}`;
+
+    // Get active hand and details
+    const isP1 = activeGame.player1.id === window.currentUserId;
+    const myHand = isP1 ? activeGame.player1Hand : activeGame.player2Hand;
+    const isMyTurn = activeGame.status === 'playing' && 
+                     ((activeGame.currentPlayer === 1 && isP1) || (activeGame.currentPlayer === 2 && !isP1)) && 
+                     !window.isSpectatingActiveGame;
+
+    // Draw / Pass buttons state
+    if (dominoDrawBtn && dominoPassBtn) {
+      dominoDrawBtn.style.display = 'none';
+      dominoPassBtn.style.display = 'none';
+
+      if (isMyTurn) {
+        // Check if player has legal moves
+        const left = activeGame.leftEnd;
+        const right = activeGame.rightEnd;
+        
+        const hasMoves = myHand && myHand.some(t => left === null || right === null || t[0] === left || t[1] === left || t[0] === right || t[1] === right);
+
+        if (!hasMoves) {
+          if (bCount > 0) {
+            dominoDrawBtn.style.display = 'inline-block';
+            dominoDrawBtn.removeAttribute('disabled');
+          } else {
+            dominoPassBtn.style.display = 'inline-block';
+            dominoPassBtn.removeAttribute('disabled');
+          }
+        }
+      }
+    }
+
+    // Render table
+    dominoTable.innerHTML = '';
+    
+    const left = activeGame.leftEnd;
+    const right = activeGame.rightEnd;
+
+    const showIndicators = isMyTurn && selectedTileIndex !== null;
+    let selectedTileMatchesLeft = false;
+    let selectedTileMatchesRight = false;
+
+    if (showIndicators && myHand && myHand[selectedTileIndex]) {
+      const tile = myHand[selectedTileIndex];
+      if (left === null || right === null) {
+        selectedTileMatchesLeft = true;
+      } else {
+        if (tile[0] === left || tile[1] === left) selectedTileMatchesLeft = true;
+        if (tile[0] === right || tile[1] === right) selectedTileMatchesRight = true;
+      }
+    }
+
+    // Calcul de la largeur réelle pour le tracé serpentin
+    const wrapperWidth = dominoTable.parentElement ? dominoTable.parentElement.clientWidth : 0;
+    const tableWidth = wrapperWidth > 0 ? (wrapperWidth - 48) : 800;
+
+    const pathData = calculateDominoPath(
+      activeGame.table || [],
+      tableWidth,
+      showIndicators,
+      selectedTileMatchesLeft,
+      selectedTileMatchesRight
+    );
+
+    // Ajuster la hauteur de la table
+    dominoTable.style.height = pathData.height + 'px';
+
+    // Rendu de l'indicateur gauche si nécessaire
+    if (showIndicators && selectedTileMatchesLeft && selectedTileMatchesRight && pathData.leftIndicatorPos) {
+      const leftIndicator = document.createElement('div');
+      leftIndicator.className = 'domino-table-indicator left-indicator';
+      leftIndicator.style.left = pathData.leftIndicatorPos.cx + 'px';
+      leftIndicator.style.top = pathData.leftIndicatorPos.cy + 'px';
+      leftIndicator.innerHTML = '<i data-lucide="arrow-left-circle"></i><span>Placer à gauche</span>';
+      leftIndicator.addEventListener('click', () => {
+        socket.emit('game-move', { gameId: activeGame.id, r: selectedTileIndex, c: 'left' });
+        selectedTileIndex = null;
+      });
+      dominoTable.appendChild(leftIndicator);
+    }
+
+    // Rendu des dominos sur la table
+    if (activeGame.table && activeGame.table.length > 0) {
+      activeGame.table.forEach((tile, idx) => {
+        const isLastPlayed = activeGame.lastMove && 
+                             activeGame.lastMove.gameType === 'domino' && 
+                             activeGame.lastMove.index === idx;
+        const p = pathData.positions[idx];
+        const tileEl = createTileEl(tile, null, false, p ? p.width < p.height : null);
+        if (isLastPlayed) {
+          tileEl.classList.add('last-played');
+        }
+        if (p) {
+          tileEl.style.left = p.cx + 'px';
+          tileEl.style.top = p.cy + 'px';
+          tileEl.style.width = p.width + 'px';
+          tileEl.style.height = p.height + 'px';
+          if (p.width < p.height) {
+            tileEl.classList.add('vertical');
+          }
+          if (p.flow === 'left') {
+            tileEl.style.flexDirection = 'row-reverse';
+          } else if (p.flow === 'right') {
+            tileEl.style.flexDirection = 'row';
+          } else if (p.flow === 'down') {
+            tileEl.style.flexDirection = 'column';
+          }
+        }
+
+        dominoTable.appendChild(tileEl);
+      });
+    } else {
+      const emptyMsg = document.createElement('div');
+      emptyMsg.className = 'domino-empty-table-msg';
+      emptyMsg.textContent = 'La table est vide. Posez un domino pour démarrer !';
+      emptyMsg.style.position = 'absolute';
+      emptyMsg.style.left = '50%';
+      emptyMsg.style.top = '50%';
+      emptyMsg.style.transform = 'translate(-50%, -50%)';
+      dominoTable.appendChild(emptyMsg);
+    }
+
+    // Rendu de l'indicateur droit si nécessaire
+    if (showIndicators && selectedTileMatchesLeft && selectedTileMatchesRight && pathData.rightIndicatorPos) {
+      const rightIndicator = document.createElement('div');
+      rightIndicator.className = 'domino-table-indicator right-indicator';
+      rightIndicator.style.left = pathData.rightIndicatorPos.cx + 'px';
+      rightIndicator.style.top = pathData.rightIndicatorPos.cy + 'px';
+      rightIndicator.innerHTML = '<span>Placer à droite</span><i data-lucide="arrow-right-circle"></i>';
+      rightIndicator.addEventListener('click', () => {
+        socket.emit('game-move', { gameId: activeGame.id, r: selectedTileIndex, c: 'right' });
+        selectedTileIndex = null;
+      });
+      dominoTable.appendChild(rightIndicator);
+    }
+
+    // Render Player Hand
+    dominoPlayerHand.innerHTML = '';
+    if (myHand && myHand.length > 0) {
+      myHand.forEach((tile, index) => {
+        const isSelected = selectedTileIndex === index;
+        const tileEl = createTileEl(tile, index, isMyTurn);
+        if (isSelected) {
+          tileEl.classList.add('selected');
+        }
+
+        if (isMyTurn) {
+          tileEl.addEventListener('click', () => {
+            if (isSelected) {
+              selectedTileIndex = null;
+              buildDominoBoard();
+            } else {
+              const tileMatchesLeft = left === null || tile[0] === left || tile[1] === left;
+              const tileMatchesRight = right === null || tile[0] === right || tile[1] === right;
+
+              if (left === null || right === null) {
+                // Table empty, play immediately
+                socket.emit('game-move', { gameId: activeGame.id, r: index, c: 'left' });
+                selectedTileIndex = null;
+              } else if (tileMatchesLeft && tileMatchesRight) {
+                // Matches both, let player choose side
+                selectedTileIndex = index;
+                buildDominoBoard();
+              } else if (tileMatchesLeft) {
+                // Play left
+                socket.emit('game-move', { gameId: activeGame.id, r: index, c: 'left' });
+                selectedTileIndex = null;
+              } else if (tileMatchesRight) {
+                // Play right
+                socket.emit('game-move', { gameId: activeGame.id, r: index, c: 'right' });
+                selectedTileIndex = null;
+              } else {
+                showToast("Ce domino ne correspond à aucune extrémité !");
+              }
+            }
+          });
+        }
+        dominoPlayerHand.appendChild(tileEl);
+      });
+    } else {
+      if (window.isSpectatingActiveGame) {
+        dominoPlayerHand.innerHTML = `<div class="hand-spectating-msg">Vous observez le match en direct.</div>`;
+      } else {
+        dominoPlayerHand.innerHTML = `<div class="hand-spectating-msg">Pas de dominos dans votre main.</div>`;
+      }
+    }
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  };
+
+  // Redimensionnement automatique pour recalculer le serpent
+  window.addEventListener('resize', () => {
+    if (activeGame && activeGame.gameType === 'domino' && window.currentView === 'game') {
+      buildDominoBoard();
+    }
+  });
+
+  // 2. CONNECT FOUR
+  const buildConnectFourBoard = () => {
+    if (!connectFourGrid) return;
+    connectFourGrid.innerHTML = '';
+
+    const dropBtns = document.querySelectorAll('.c4-drop-btn');
+    const isMyTurn = () => {
+      if (window.isSpectatingActiveGame || activeGame.status !== 'playing') return false;
+      const activePlayer = activeGame.currentPlayer === 1 ? activeGame.player1 : activeGame.player2;
+      return activePlayer && activePlayer.id === window.currentUserId;
+    };
+
+    dropBtns.forEach(btn => {
+      const newBtn = btn.cloneNode(true);
+      btn.replaceWith(newBtn);
+      
+      newBtn.addEventListener('click', () => {
+        if (!isMyTurn()) return;
+        const col = parseInt(newBtn.getAttribute('data-col'), 10);
+        if (activeGame.board[0][col] !== 0) {
+          showToast("Cette colonne est pleine !");
+          return;
+        }
+        socket.emit('game-move', { gameId: activeGame.id, r: 0, c: col });
+      });
+    });
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    // Populate grid (6 rows x 7 cols)
+    for (let r = 0; r < 6; r++) {
+      for (let c = 0; c < 7; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'c4-cell';
+        cell.dataset.row = r;
+        cell.dataset.col = c;
+
+        const isLastPlayed = activeGame.lastMove && 
+                             activeGame.lastMove.gameType === 'connect4' && 
+                             activeGame.lastMove.r === r && 
+                             activeGame.lastMove.c === c;
+        if (isLastPlayed) {
+          cell.classList.add('last-played');
+        }
+
+        const val = activeGame.board[r][c];
+        if (val === 1) {
+          const disc = document.createElement('div');
+          disc.className = 'c4-disc player1';
+          if (isLastPlayed) {
+            disc.classList.add('new-disc');
+          }
+          cell.appendChild(disc);
+        } else if (val === 2) {
+          const disc = document.createElement('div');
+          disc.className = 'c4-disc player2';
+          if (isLastPlayed) {
+            disc.classList.add('new-disc');
+          }
+          cell.appendChild(disc);
+        }
+
+        connectFourGrid.appendChild(cell);
+      }
+    }
+  };
+
+  // 3. GOMOKU
+  const buildGomokuBoard = () => {
+    if (!gomokuBoard) return;
+    gomokuBoard.innerHTML = '';
+
+    for (let r = 0; r < 15; r++) {
+      for (let c = 0; c < 15; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'gomoku-cell';
+        cell.dataset.row = r;
+        cell.dataset.col = c;
+
+        const preview = document.createElement('div');
+        preview.className = 'stone-preview';
+        cell.appendChild(preview);
+
+        const val = activeGame.board[r][c];
+        if (val === 1) {
+          cell.classList.add('has-stone');
+          const stone = document.createElement('div');
+          stone.className = 'gomoku-stone black';
+          cell.appendChild(stone);
+        } else if (val === 2) {
+          cell.classList.add('has-stone');
+          const stone = document.createElement('div');
+          stone.className = 'gomoku-stone white';
+          cell.appendChild(stone);
+        }
+
+        const isLastPlayed = activeGame.lastMove && 
+                             activeGame.lastMove.gameType === 'gomoku' && 
+                             activeGame.lastMove.r === r && 
+                             activeGame.lastMove.c === c;
+        if (isLastPlayed) {
+          cell.classList.add('last-played');
+        }
+
+        cell.addEventListener('click', () => {
+          if (window.isSpectatingActiveGame || activeGame.status !== 'playing') return;
+          const activePlayer = activeGame.currentPlayer === 1 ? activeGame.player1 : activeGame.player2;
+          if (activePlayer.id !== window.currentUserId) return;
+          if (activeGame.board[r][c] !== 0) return;
+
+          socket.emit('game-move', { gameId: activeGame.id, r, c });
+        });
+
+        gomokuBoard.appendChild(cell);
+      }
+    }
+  };
+
+  const buildTableFootballBoard = () => {
+    if (!tableFootballBoardContainer || !tableFootballField || !tableFootballActions || !activeGame?.tableFootballState) return;
+    const state = activeGame.tableFootballState;
+    const isMyTurn = !window.isSpectatingActiveGame
+      && activeGame.status === 'playing'
+      && ((activeGame.currentPlayer === 1 && activeGame.player1.id === window.currentUserId)
+        || (activeGame.currentPlayer === 2 && activeGame.player2?.id === window.currentUserId));
+    const isAttacking = activeGame.currentPlayer === state.attacker;
+
+    if (tableFootballPhaseLabel) {
+      tableFootballPhaseLabel.textContent = state.phase === 'attack' ? 'Phase d attaque' : 'Phase de défense';
+    }
+    if (tableFootballSubLabel) {
+      tableFootballSubLabel.textContent = state.phase === 'attack'
+        ? 'Choisissez un couloir pour tirer vers le but adverse.'
+        : 'Choisissez un couloir pour tenter l arrêt du tir.';
+    }
+
+    const shotLane = state.lastPlay?.type === 'shot' ? state.lastPlay.shotLane : state.pendingShotLane;
+    const blockLane = state.lastPlay?.type === 'shot' ? state.lastPlay.blockLane : null;
+
+    const goalSlotsHtml = Array.from({ length: 5 }, (_, lane) => `
+      <div class="table-football-goal-slot ${shotLane === lane ? 'active' : ''} ${blockLane === lane ? 'blocked' : ''}"></div>
+    `).join('');
+
+    tableFootballField.innerHTML = `
+      <div class="table-football-goal">${goalSlotsHtml}</div>
+      <div class="table-football-center">
+        <div class="table-football-ball">⚽</div>
+      </div>
+      <div class="table-football-goal">${goalSlotsHtml}</div>
+    `;
+
+    tableFootballActions.innerHTML = '';
+    Array.from({ length: 5 }, (_, lane) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'table-football-lane-btn';
+      btn.textContent = `Couloir ${lane + 1}`;
+      btn.disabled = !isMyTurn;
+      btn.addEventListener('click', () => {
+        if (!isMyTurn) return;
+        socket.emit('game-move', { gameId: activeGame.id, r: 0, c: lane });
+      });
+      tableFootballActions.appendChild(btn);
+    });
+
+    if (tableFootballResult) {
+      if (state.lastPlay?.type === 'shot') {
+        const attackerName = state.lastPlay.attacker === 1 ? activeGame.player1.name : activeGame.player2?.name;
+        tableFootballResult.textContent = state.lastPlay.goal
+          ? `But pour ${attackerName} sur le couloir ${state.lastPlay.shotLane + 1}.`
+          : `Arrêt sur le couloir ${state.lastPlay.blockLane + 1}.`;
+      } else {
+        tableFootballResult.textContent = isMyTurn
+          ? (isAttacking ? 'Vous êtes en attaque.' : 'Vous êtes en défense.')
+          : 'Attendez le choix de votre adversaire.';
+      }
+    }
+  };
+
+  // Highlight winning cells/stones on board
+  const highlightWinner = (winningStones) => {
+    if (!winningStones) return;
+    winningStones.forEach(pos => {
+      const r = typeof pos.r !== 'undefined' ? pos.r : pos[0];
+      const c = typeof pos.c !== 'undefined' ? pos.c : pos[1];
+      
+      if (activeGame.gameType === 'domino') {
+        // No grid cells for domino
+      } else if (activeGame.gameType === 'connect4') {
+        const cell = connectFourGrid.querySelector(`.c4-cell[data-row="${r}"][data-col="${c}"]`);
+        if (cell) {
+          const disc = cell.querySelector('.c4-disc');
+          if (disc) disc.style.boxShadow = '0 0 16px #10b981';
+        }
+      } else if (activeGame.gameType === 'gomoku') {
+        const cell = gomokuBoard.querySelector(`.gomoku-cell[data-row="${r}"][data-col="${c}"]`);
+        if (cell) {
+          const stone = cell.querySelector('.gomoku-stone');
+          if (stone) stone.classList.add('winning');
+        }
+      }
+    });
+  };
+
+  // Spectators List Modal Bindings
+  const renderSpectatorsList = (spectators = []) => {
+    if (!spectatorsListContainer) return;
+    if (spectators.length === 0) {
+      spectatorsListContainer.innerHTML = `<div class="spectators-empty">Aucun spectateur pour le moment.</div>`;
+    } else {
+      spectatorsListContainer.innerHTML = spectators.map(s => `
+        <div class="spectator-list-item">
+          <div class="avatar" style="width: 32px; height: 32px;">
+            <img src="${s.avatar}" style="width: 100%; height: 100%; object-fit: cover;">
+          </div>
+          <div>
+            <div style="font-size: 12.5px; font-weight: 800; color: var(--text-primary); text-align: left;">${escapeHtml(s.name)}</div>
+            <span style="font-size: 10px; color: var(--text-secondary); display: block; text-align: left;">@${escapeHtml(s.username)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  };
+
+  const openSpectatorsList = () => {
+    if (spectatorsListModal) spectatorsListModal.style.display = 'block';
+    if (spectatorsListModalOverlay) spectatorsListModalOverlay.style.display = 'block';
+  };
+
+  const closeSpectatorsList = () => {
+    if (spectatorsListModal) spectatorsListModal.style.display = 'none';
+    if (spectatorsListModalOverlay) spectatorsListModalOverlay.style.display = 'none';
+  };
+
+  let gameConfirmResolver = null;
+  let lastGameConfirmFocus = null;
+
+  if (gameConfirmModal && gameConfirmModal.parentElement !== document.body) {
+    console.log('[trade-modal] moving gameConfirmModal to document.body', {
+      previousParent: gameConfirmModal.parentElement?.id || gameConfirmModal.parentElement?.className || gameConfirmModal.parentElement?.tagName
+    });
+    document.body.appendChild(gameConfirmModal);
+  }
+
+  const closeGameConfirmDialog = (confirmed = false) => {
+    if (!gameConfirmModal) return;
+    gameConfirmModal.style.display = 'none';
+    gameConfirmModal.setAttribute('aria-hidden', 'true');
+    const resolver = gameConfirmResolver;
+    gameConfirmResolver = null;
+    if (lastGameConfirmFocus && typeof lastGameConfirmFocus.focus === 'function') {
+      lastGameConfirmFocus.focus();
+    }
+    lastGameConfirmFocus = null;
+    if (resolver) resolver(confirmed);
+  };
+
+  const openGameConfirmDialog = ({ title, message, confirmLabel = 'Confirmer' }) => new Promise((resolve) => {
+    if (!gameConfirmModal || !gameConfirmModalTitle || !gameConfirmModalMessage || !gameConfirmAcceptBtn) {
+      console.warn('[trade-modal] modal elements missing, fallback to window.confirm', {
+        hasModal: !!gameConfirmModal,
+        hasTitle: !!gameConfirmModalTitle,
+        hasMessage: !!gameConfirmModalMessage,
+        hasAcceptBtn: !!gameConfirmAcceptBtn
+      });
+      resolve(window.confirm(message));
+      return;
+    }
+
+    console.log('[trade-modal] modal elements found, displaying modal', {
+      title,
+      confirmLabel,
+      modalDisplayBefore: gameConfirmModal.style.display,
+      ariaHiddenBefore: gameConfirmModal.getAttribute('aria-hidden')
+    });
+    gameConfirmResolver = resolve;
+    lastGameConfirmFocus = document.activeElement;
+    gameConfirmModalTitle.textContent = title || "Confirmer l'action";
+    gameConfirmModalMessage.textContent = message || 'Voulez-vous continuer ?';
+    gameConfirmAcceptBtn.textContent = confirmLabel;
+    gameConfirmModal.style.display = 'flex';
+    gameConfirmModal.setAttribute('aria-hidden', 'false');
+    console.log('[trade-modal] modal display updated', {
+      modalDisplayAfter: gameConfirmModal.style.display,
+      ariaHiddenAfter: gameConfirmModal.getAttribute('aria-hidden')
+    });
+    setTimeout(() => gameConfirmAcceptBtn.focus(), 0);
+  });
+
+  if (spectatorsListBtn) spectatorsListBtn.addEventListener('click', openSpectatorsList);
+  if (closeSpectatorsListModal) closeSpectatorsListModal.addEventListener('click', closeSpectatorsList);
+  if (spectatorsListModalOverlay) spectatorsListModalOverlay.addEventListener('click', closeSpectatorsList);
+  if (closeGameConfirmModal) closeGameConfirmModal.addEventListener('click', () => closeGameConfirmDialog(false));
+  if (gameConfirmCancelBtn) gameConfirmCancelBtn.addEventListener('click', () => closeGameConfirmDialog(false));
+  if (gameConfirmAcceptBtn) gameConfirmAcceptBtn.addEventListener('click', () => closeGameConfirmDialog(true));
+  if (gameConfirmModal) {
+    gameConfirmModal.addEventListener('click', (event) => {
+      if (event.target === gameConfirmModal) {
+        closeGameConfirmDialog(false);
+      }
+    });
+  }
+  document.addEventListener('keydown', (event) => {
+    if (!gameConfirmModal || gameConfirmModal.style.display !== 'flex') return;
+    if (event.key === 'Escape') {
+      closeGameConfirmDialog(false);
+    }
+  });
+
+  // Leave active game area
+  const performLeaveGame = async () => {
+    if (!activeGame) return;
+    
+    if (window.isSpectatingActiveGame) {
+      socket.emit('game-spectate-leave', { gameId: activeGame.id });
+    } else if (activeGame.status === 'playing') {
+      const confirmed = await openGameConfirmDialog({
+        title: 'Abandonner la partie ?',
+        message: 'Voulez-vous vraiment abandonner la partie ? Cela sera comptabilise comme une defaite.',
+        confirmLabel: 'Abandonner'
+      });
+      if (!confirmed) {
+        return;
+      }
+      socket.emit('game-forfeit', { gameId: activeGame.id });
+    }
+
+    activeGame = null;
+    window.isSpectatingActiveGame = false;
+
+    if (activeGameArea) activeGameArea.style.display = 'none';
+    if (gamesLobby) gamesLobby.style.display = 'flex';
+
+    loadGamesLobby();
+  };
+
+  if (leaveGameBtn) leaveGameBtn.addEventListener('click', performLeaveGame);
+  if (forfeitGameBtn) forfeitGameBtn.addEventListener('click', async () => {
+    if (!activeGame) return;
+    const confirmed = await openGameConfirmDialog({
+      title: 'Declarer forfait ?',
+      message: 'Voulez-vous vraiment declarer forfait ?',
+      confirmLabel: 'Declarer forfait'
+    });
+    if (confirmed) {
+      socket.emit('game-forfeit', { gameId: activeGame.id });
+    }
+  });
+
+  if (dominoDrawBtn) {
+    dominoDrawBtn.addEventListener('click', () => {
+      if (!activeGame) return;
+      socket.emit('game-draw', { gameId: activeGame.id }, (res) => {
+        if (res && res.error) {
+          showToast(res.error);
+        }
+      });
+    });
+  }
+
+  if (dominoPassBtn) {
+    dominoPassBtn.addEventListener('click', () => {
+      if (!activeGame) return;
+      socket.emit('game-pass', { gameId: activeGame.id }, (res) => {
+        if (res && res.error) {
+          showToast(res.error);
+        }
+      });
+    });
+  }
+
+  // Game Live Chat message submission
+  if (gameChatForm) {
+    gameChatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!gameChatInput || !activeGame) return;
+      const content = gameChatInput.value.trim();
+      if (!content) return;
+
+      socket.emit('game-chat-message', { gameId: activeGame.id, content });
+      gameChatInput.value = '';
+    });
+  }
+
+  // --- SOCKET LISTENERS FOR REAL-TIME PLAY ---
+  if (socket) {
+    socket.on('game-list-updated', (games) => {
+      if (window.currentView === 'games' && gamesLobby && gamesLobby.style.display !== 'none') {
+        renderLobbyLists(games);
+      }
+    });
+
+    socket.on('game-started', (game) => {
+      if (activeGame && activeGame.id === game.id) {
+        initActiveGame(game, window.isSpectatingActiveGame);
+        showToast("La partie a commencé !");
+      }
+    });
+
+    socket.on('game-state-updated', (data) => {
+      const { game, botMove } = data;
+      if (activeGame && activeGame.id === game.id) {
+        activeGame = game;
+        
+        const p2NameEl = document.getElementById('gamePlayer2Name');
+        const p2AvatarEl = document.getElementById('gamePlayer2Avatar');
+        if (p2NameEl && game.player2) p2NameEl.textContent = game.player2.name;
+        if (p2AvatarEl && game.player2) p2AvatarEl.src = game.player2.avatar;
+
+        // Show/hide gift buttons dynamically for spectators
+        const isSpectator = window.isSpectatingActiveGame || (game.player1.id !== window.currentUserId && (!game.player2 || game.player2.id !== window.currentUserId));
+        const sendGiftP1Btn = document.getElementById('sendGiftP1Btn');
+        const sendGiftP2Btn = document.getElementById('sendGiftP2Btn');
+        if (sendGiftP1Btn && sendGiftP2Btn) {
+          if (isSpectator) {
+            sendGiftP1Btn.style.display = 'inline-flex';
+            if (game.player2 && !game.player2.isBot && game.opponentType === 'player') {
+              sendGiftP2Btn.style.display = 'inline-flex';
+            } else {
+              sendGiftP2Btn.style.display = 'none';
+            }
+          } else {
+            sendGiftP1Btn.style.display = 'none';
+            sendGiftP2Btn.style.display = 'none';
+          }
+        }
+
+        // Render board
+        if (game.gameType === 'domino') {
+          buildDominoBoard();
+        } else if (game.gameType === 'connect4') {
+          buildConnectFourBoard();
+        } else if (game.gameType === 'gomoku') {
+          buildGomokuBoard();
+        } else if (game.gameType === 'tablefootball') {
+          buildTableFootballBoard();
+        }
+
+        if (game.lastMove) {
+          playGameSound('drop');
+        }
+
+        if (forfeitGameBtn) {
+          const isPlayer = game.player1.id === window.currentUserId || (game.player2 && game.player2.id === window.currentUserId);
+          forfeitGameBtn.style.display = (isPlayer && !window.isSpectatingActiveGame && game.status === 'playing') ? 'block' : 'none';
+        }
+
+        updateTurnIndicator();
+        updateScoreboardDisplay();
+      }
+    });
+
+    socket.on('game-over', (data) => {
+      const { winnerId, winningStones, isForfeit } = data;
+      if (activeGame) {
+        activeGame.status = 'finished';
+        activeGame.winner = winnerId;
+
+        // Save last active game info for rematch detection
+        const opponentKey = activeGame.opponentType === 'bot' 
+          ? 'bot' 
+          : (activeGame.player1.id === window.currentUserId ? (activeGame.player2 ? activeGame.player2.id : null) : activeGame.player1.id);
+        
+        if (opponentKey) {
+          window.lastActiveGameInfo = {
+            opponentKey,
+            gameType: activeGame.gameType,
+            finishedAt: Date.now()
+          };
+        }
+        
+        if (forfeitGameBtn) forfeitGameBtn.style.display = 'none';
+
+        updateTurnIndicator();
+        highlightWinner(winningStones);
+
+        const isPlayer = activeGame.player1.id === window.currentUserId || (activeGame.player2 && activeGame.player2.id === window.currentUserId);
+
+        if (winnerId === 'draw') {
+          showToast("Match nul !");
+          if (isPlayer && !window.isSpectatingActiveGame) {
+            showGameResultOverlay('draw');
+          }
+        } else if (winnerId === window.currentUserId) {
+          showToast("Victoire ! Vous avez gagné !");
+          if (isPlayer && !window.isSpectatingActiveGame) {
+            updateStoredScore(true);
+            showGameResultOverlay('win');
+          }
+        } else {
+          showToast("Partie terminée.");
+          if (isPlayer && !window.isSpectatingActiveGame) {
+            updateStoredScore(false);
+            showGameResultOverlay('lose');
+          }
+        }
+      }
+    });
+
+    socket.on('game-spectators-updated', (data) => {
+      const { count, spectators } = data;
+      if (activeGame) {
+        activeGame.spectators = spectators;
+        if (spectatorCountText) {
+          spectatorCountText.textContent = `${count} Spectateur${count > 1 ? 's' : ''}`;
+        }
+        renderSpectatorsList(spectators);
+      }
+    });
+
+    socket.on('game-chat-received', (msg) => {
+      if (!activeGame || !gameChatFeed) return;
+      
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'game-chat-msg-item';
+
+      const isMe = msg.senderId === window.currentUserId;
+      const isSystem = msg.isSystem;
+
+      if (isSystem) {
+        msgDiv.innerHTML = `
+          <div style="width: 100%; box-sizing: border-box; text-align: center; margin: 6px 0; font-size: 12px; font-weight: 700; color: #fbbf24; background: rgba(251, 191, 36, 0.08); border: 1px dashed rgba(251, 191, 36, 0.25); padding: 8px 12px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>${escapeHtml(msg.content)}</span>
+          </div>
+        `;
+      } else {
+        msgDiv.innerHTML = `
+          <div class="avatar" style="width: 26px; height: 26px; flex-shrink: 0;">
+            <img src="${msg.avatar}" style="width: 100%; height: 100%; object-fit: cover;">
+          </div>
+          <div class="game-chat-msg-bubble" style="background: ${isMe ? 'var(--primary-light)' : 'var(--bg-hover)'}; border-color: ${isMe ? 'rgba(24, 119, 242, 0.12)' : 'var(--border-color)'};">
+            <strong style="color: ${isMe ? 'var(--primary)' : 'var(--text-primary)'}; font-size: 11px;">${escapeHtml(msg.senderName)}</strong>
+            <div style="color: var(--text-primary); margin-top: 2px; line-height: 1.35;">${escapeHtml(msg.content)}</div>
+          </div>
+        `;
+      }
+
+      const defaultMsg = gameChatFeed.querySelector('.game-chat-empty');
+      if (defaultMsg) defaultMsg.remove();
+
+      gameChatFeed.appendChild(msgDiv);
+      gameChatFeed.scrollTop = gameChatFeed.scrollHeight;
+    });
+
+    socket.on('game-gift-received', (data) => {
+      showToast(`🎁 Vous avez reçu un cadeau de ${data.amount.toFixed(2)} $ de la part de ${data.senderName} !`);
+      playGameSound('win');
+    });
+  }
+
+  const showGamesView = () => {
+    if (feedMainContent && shortsSection && mobileMessagesSection && gamesSection) {
+      const storiesWrapper = document.querySelector('.stories-wrapper');
+      const createPostCard = document.querySelector('.create-post-card');
+      const postsContainer = document.getElementById('postsContainer');
+      if (storiesWrapper) storiesWrapper.style.display = 'none';
+      if (createPostCard) createPostCard.style.display = 'none';
+      if (postsContainer) postsContainer.style.display = 'none';
+      
+      shortsSection.style.display = 'none';
+      mobileMessagesSection.style.display = 'none';
+      if (marketSection) marketSection.style.display = 'none';
+      feedMainContent.style.display = 'none';
+      gamesSection.style.display = 'flex';
+
+      document.body.classList.remove('viewing-shorts');
+      document.body.classList.remove('viewing-messages');
+      document.body.classList.remove('viewing-market');
+      document.body.classList.add('viewing-games');
+      window.currentView = 'games';
+      updateNavActiveStates('games');
+
+      // Reset views
+      if (activeGameArea) activeGameArea.style.display = 'none';
+      if (gamesLobby) gamesLobby.style.display = 'flex';
+
+      loadGamesLobby();
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.location.href = '/?view=games';
+    }
+  };
+
+  const marketOfferForm = document.getElementById('marketOfferForm');
+  const marketOpenCreateBtn = document.getElementById('marketOpenCreateBtn');
+  const marketTopbarMenu = document.getElementById('marketTopbarMenu');
+  const marketHomeView = document.getElementById('marketHomeView');
+  const marketCreatePanel = document.getElementById('marketCreatePanel');
+  const marketOrdersPanel = document.getElementById('marketOrdersPanel');
+  const marketOrderDetailPanel = document.getElementById('marketOrderDetailPanel');
+  const marketMyOffersPanel = document.getElementById('marketMyOffersPanel');
+  const marketOrdersBackBtn = document.getElementById('marketOrdersBackBtn');
+  const marketOrderDetailBackBtn = document.getElementById('marketOrderDetailBackBtn');
+  const marketOrderDetailTitle = document.getElementById('marketOrderDetailTitle');
+  const marketOrderDetailSubtitle = document.getElementById('marketOrderDetailSubtitle');
+  const marketOrderDetailMainTitle = document.getElementById('marketOrderDetailMainTitle');
+  const marketOrderDetailMeta = document.getElementById('marketOrderDetailMeta');
+  const marketOrderDetailStatus = document.getElementById('marketOrderDetailStatus');
+  const marketOrderDetailRole = document.getElementById('marketOrderDetailRole');
+  const marketOrderDetailTotal = document.getElementById('marketOrderDetailTotal');
+  const marketOrderDetailPayments = document.getElementById('marketOrderDetailPayments');
+  const marketOrderDetailAccountBox = document.getElementById('marketOrderDetailAccountBox');
+  const marketOrderDetailAccount = document.getElementById('marketOrderDetailAccount');
+  const marketOrderDetailNoteBox = document.getElementById('marketOrderDetailNoteBox');
+  const marketOrderDetailNote = document.getElementById('marketOrderDetailNote');
+  const marketOrderDetailActions = document.getElementById('marketOrderDetailActions');
+  const marketOrderDetailChatTitle = document.getElementById('marketOrderDetailChatTitle');
+  const marketOrderDetailMessages = document.getElementById('marketOrderDetailMessages');
+  const marketOrderDetailChatInput = document.getElementById('marketOrderDetailChatInput');
+  const marketOrderDetailProofInput = document.getElementById('marketOrderDetailProofInput');
+  const marketOrderDetailProofName = document.getElementById('marketOrderDetailProofName');
+  const marketOrderDetailSendBtn = document.getElementById('marketOrderDetailSendBtn');
+  const marketTradeModal = document.getElementById('marketTradeModal');
+  const marketPayModal = document.getElementById('marketPayModal');
+  const marketReleaseModal = document.getElementById('marketReleaseModal');
+  const marketTradeModalTitle = document.getElementById('marketTradeModalTitle');
+  const marketTradeModalSubtitle = document.getElementById('marketTradeModalSubtitle');
+  const marketTradeModalCounterparty = document.getElementById('marketTradeModalCounterparty');
+  const marketTradeModalPrice = document.getElementById('marketTradeModalPrice');
+  const marketTradeModalLimits = document.getElementById('marketTradeModalLimits');
+  const marketTradeModalPayment = document.getElementById('marketTradeModalPayment');
+  const marketTradeAmountInput = document.getElementById('marketTradeAmountInput');
+  const marketTradeModalTotal = document.getElementById('marketTradeModalTotal');
+  const marketTradeModalTermsBox = document.getElementById('marketTradeModalTermsBox');
+  const marketTradeModalTerms = document.getElementById('marketTradeModalTerms');
+  const marketTradeModalCloseBtn = document.getElementById('marketTradeModalCloseBtn');
+  const marketTradeModalCancelBtn = document.getElementById('marketTradeModalCancelBtn');
+  const marketTradeModalConfirmBtn = document.getElementById('marketTradeModalConfirmBtn');
+  const marketPayModalCloseBtn = document.getElementById('marketPayModalCloseBtn');
+  const marketPayModalCancelBtn = document.getElementById('marketPayModalCancelBtn');
+  const marketPayModalConfirmBtn = document.getElementById('marketPayModalConfirmBtn');
+  const marketPayNoteInput = document.getElementById('marketPayNoteInput');
+  const marketReleaseModalCloseBtn = document.getElementById('marketReleaseModalCloseBtn');
+  const marketReleaseModalCancelBtn = document.getElementById('marketReleaseModalCancelBtn');
+  const marketReleaseModalConfirmBtn = document.getElementById('marketReleaseModalConfirmBtn');
+  // New action modals
+  const marketCloseOfferModal   = document.getElementById('marketCloseOfferModal');
+  const marketCloseOfferModalCloseBtn   = document.getElementById('marketCloseOfferModalCloseBtn');
+  const marketCloseOfferModalCancelBtn  = document.getElementById('marketCloseOfferModalCancelBtn');
+  const marketCloseOfferModalConfirmBtn = document.getElementById('marketCloseOfferModalConfirmBtn');
+  const marketCancelOrderModal   = document.getElementById('marketCancelOrderModal');
+  const marketCancelOrderModalCloseBtn   = document.getElementById('marketCancelOrderModalCloseBtn');
+  const marketCancelOrderModalCancelBtn  = document.getElementById('marketCancelOrderModalCancelBtn');
+  const marketCancelOrderModalConfirmBtn = document.getElementById('marketCancelOrderModalConfirmBtn');
+  const marketCancelOrderReasonInput     = document.getElementById('marketCancelOrderReasonInput');
+  const marketDisputeOrderModal   = document.getElementById('marketDisputeOrderModal');
+  const marketDisputeOrderModalCloseBtn   = document.getElementById('marketDisputeOrderModalCloseBtn');
+  const marketDisputeOrderModalCancelBtn  = document.getElementById('marketDisputeOrderModalCancelBtn');
+  const marketDisputeOrderModalConfirmBtn = document.getElementById('marketDisputeOrderModalConfirmBtn');
+  const marketDisputeOrderReasonInput     = document.getElementById('marketDisputeOrderReasonInput');
+  let activeMarketCloseOfferId  = null;
+  let activeMarketCancelOrderId = null;
+  let activeMarketDisputeOrderId = null;
+  const marketOfferTypeSelect = document.getElementById('marketOfferTypeSelect');
+  const marketPriceInput = document.getElementById('marketPriceInput');
+  const marketHeaderCurrencySelect = document.getElementById('marketHeaderCurrencySelect');
+  const marketCurrencySelect = document.getElementById('marketCurrencySelect');
+  const marketCreateBalanceStrip = document.getElementById('marketCreateBalanceStrip');
+  const marketTotalAmountInput = document.getElementById('marketTotalAmountInput');
+  const marketTotalAmountHelper = document.getElementById('marketTotalAmountHelper');
+  const marketMinAmountInput = document.getElementById('marketMinAmountInput');
+  const marketMaxAmountInput = document.getElementById('marketMaxAmountInput');
+  const marketMinAmountConvertedText = document.getElementById('marketMinAmountConvertedText');
+  const marketMaxAmountConvertedText = document.getElementById('marketMaxAmountConvertedText');
+  const marketWithdrawalBalanceText = document.getElementById('marketWithdrawalBalanceText');
+  const marketOfferTypeNoteText = document.getElementById('marketOfferTypeNoteText');
+  const marketUsdRateRow = document.getElementById('marketUsdRateRow');
+  const marketUsdRateInput = document.getElementById('marketUsdRateInput');
+  const marketComputedPricePreview = document.getElementById('marketComputedPricePreview');
+  const marketCurrencyTexts = Array.from(document.querySelectorAll('[data-market-currency-text]'));
+  const marketModeTabs = Array.from(document.querySelectorAll('.market-mode-tab'));
+  const marketAssetTabs = Array.from(document.querySelectorAll('.market-asset-tab'));
+  const marketOfferCards = Array.from(document.querySelectorAll('.market-mobile-offer-card'));
+  const marketManagedPanels = {
+    create: marketCreatePanel,
+    offers: marketMyOffersPanel
+  };
+  let activeMarketAsset = 'USDT';
+  let activeMarketTradeOffer = null;
+  let activeMarketPayOrderId = null;
+  let activeMarketReleaseOrderId = null;
+  let activeMarketOrderDetail = null;
+  const marketOrderChatState = new Map();
+
+  const parseSafeFloat = (val) => {
+    if (val === null || val === undefined) return 0;
+    const clean = String(val).replace(/,/g, '.').trim();
+    const parsed = parseFloat(clean);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const reloadToMarketView = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('view', 'market');
+    window.location.href = url.pathname + url.search;
+  };
+
+  const callMarketApi = async (url, options = {}) => {
+    const method = options.method || 'POST';
+    const isFormData = options.body instanceof FormData;
+    const shouldSendBody = !['GET', 'HEAD'].includes(method.toUpperCase()) && typeof options.body !== 'undefined';
+    const response = await fetch(url, {
+      method,
+      headers: isFormData || !shouldSendBody ? undefined : { 'Content-Type': 'application/json' },
+      body: !shouldSendBody
+        ? undefined
+        : (isFormData ? options.body : JSON.stringify(options.body || {})),
+      credentials: 'same-origin'
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Operation P2P impossible.');
+    }
+    return data;
+  };
+
+  const syncMarketCurrencyDisplay = (source = null) => {
+    const currencyCode = String(
+      source?.value
+      || marketHeaderCurrencySelect?.value
+      || marketCurrencySelect?.value
+      || 'USD'
+    ).trim().toUpperCase();
+
+    if (marketHeaderCurrencySelect && marketHeaderCurrencySelect.value !== currencyCode) {
+      marketHeaderCurrencySelect.value = currencyCode;
+    }
+    if (marketCurrencySelect && marketCurrencySelect.value !== currencyCode) {
+      marketCurrencySelect.value = currencyCode;
+    }
+    marketCurrencyTexts.forEach((node) => {
+      node.textContent = currencyCode;
+    });
+    syncMarketConvertedLimitTexts();
+  };
+
+  const syncMarketWithdrawalBalance = (balanceValue, options = {}) => {
+    const asset = activeMarketAsset || 'USDT';
+    const numericBalance = Math.max(0, Number(balanceValue || 0));
+    const formattedBalance = asset === 'TOKEN' ? numericBalance.toFixed(4).replace(/\.?0+$/, '') : numericBalance.toFixed(2);
+    const isSellOffer = (marketOfferTypeSelect?.value || 'buy') === 'sell';
+
+    if (asset === 'TOKEN') {
+      window.currentUserTokenBalance = numericBalance;
+    } else {
+      window.currentUserWithdrawalBalance = numericBalance;
+    }
+
+    if (marketWithdrawalBalanceText) {
+      marketWithdrawalBalanceText.textContent = `${formattedBalance} ${asset}`;
+    }
+
+    if (!marketTotalAmountInput) return;
+
+    if (isSellOffer) {
+      marketTotalAmountInput.min = numericBalance > 0 ? (asset === 'TOKEN' ? '0.0001' : '0.01') : '0';
+      marketTotalAmountInput.max = formattedBalance;
+    } else {
+      marketTotalAmountInput.min = asset === 'TOKEN' ? '0.0001' : '0.01';
+      marketTotalAmountInput.removeAttribute('max');
+    }
+
+    const previousBalance = parseSafeFloat(marketTotalAmountInput.dataset.lastBalance);
+    const currentValue = parseSafeFloat(marketTotalAmountInput.value);
+    const shouldAutofill = isSellOffer && (
+      options.force === true
+      || !marketTotalAmountInput.value
+      || currentValue === previousBalance
+      || currentValue > numericBalance
+    );
+
+    marketTotalAmountInput.dataset.lastBalance = formattedBalance;
+
+    if (shouldAutofill) {
+      marketTotalAmountInput.value = formattedBalance;
+    }
+
+    syncMarketAmountLimits({ fallbackToBalance: shouldAutofill || options.force === true });
+  };
+
+  const syncMarketAmountLimits = (options = {}) => {
+    if (!marketTotalAmountInput || !marketMaxAmountInput) return;
+
+    const totalAmount = parseSafeFloat(marketTotalAmountInput.value);
+    const asset = activeMarketAsset || 'USDT';
+    const withdrawalBalance = Math.max(0, Number((asset === 'TOKEN' ? window.currentUserTokenBalance : window.currentUserWithdrawalBalance) || 0));
+    const isSellOffer = (marketOfferTypeSelect?.value || 'buy') === 'sell';
+    const effectiveLimit = isSellOffer
+      ? Math.min(totalAmount || withdrawalBalance, withdrawalBalance)
+      : totalAmount;
+    const formattedLimit = asset === 'TOKEN' ? effectiveLimit.toFixed(4).replace(/\.?0+$/, '') : effectiveLimit.toFixed(2);
+
+    marketMaxAmountInput.min = effectiveLimit > 0 ? (asset === 'TOKEN' ? '0.0001' : '0.01') : '0';
+    if (isSellOffer) {
+      marketMaxAmountInput.max = formattedLimit;
+    } else {
+      if (totalAmount > 0) {
+        marketMaxAmountInput.max = formattedLimit;
+      } else {
+        marketMaxAmountInput.removeAttribute('max');
+      }
+    }
+
+    const currentMax = parseSafeFloat(marketMaxAmountInput.value);
+    const maxVal = marketMaxAmountInput.value;
+    if (options.fallbackToBalance === true || (maxVal !== "" && currentMax > effectiveLimit)) {
+      if (isSellOffer || (totalAmount > 0)) {
+        marketMaxAmountInput.value = formattedLimit;
+      }
+    }
+
+    validateMarketLimits();
+    syncMarketConvertedLimitTexts();
+  };
+
+  const updateAssetLayoutState = () => {
+    const isToken = activeMarketAsset === 'TOKEN';
+    if (marketUsdRateRow) {
+      marketUsdRateRow.style.display = isToken ? 'grid' : 'none';
+    }
+    if (marketPriceInput) {
+      if (isToken) {
+        marketPriceInput.readOnly = true;
+        marketPriceInput.setAttribute('aria-readonly', 'true');
+        marketPriceInput.classList.add('is-readonly');
+        marketPriceInput.placeholder = 'Calculé automatiquement';
+      } else {
+        marketPriceInput.readOnly = false;
+        marketPriceInput.removeAttribute('aria-readonly');
+        marketPriceInput.classList.remove('is-readonly');
+        marketPriceInput.placeholder = '1.00';
+      }
+    }
+    // Update label text
+    const labelSpan = marketPriceInput?.closest('.market-field')?.querySelector('span');
+    if (labelSpan) {
+      const currencyCode = marketCurrencySelect?.value || 'USD';
+      labelSpan.innerHTML = isToken 
+        ? `Prix 1 <span data-market-asset-label>Token</span> (${currencyCode} - Calculé)`
+        : `Prix 1 <span data-market-asset-label>USDT</span> (${currencyCode})`;
+    }
+  };
+
+  const syncMarketOfferTypeFormState = () => {
+    if (!marketOfferTypeSelect || !marketTotalAmountInput) return;
+
+    const isSellOffer = marketOfferTypeSelect.value === 'sell';
+    const asset = activeMarketAsset || 'USDT';
+
+    updateAssetLayoutState();
+    calculateTokenPriceFromUsdRate();
+
+    marketTotalAmountInput.readOnly = isSellOffer;
+    marketTotalAmountInput.setAttribute('aria-readonly', isSellOffer ? 'true' : 'false');
+    marketTotalAmountInput.classList.toggle('is-readonly', isSellOffer);
+
+    if (marketCreateBalanceStrip) {
+      marketCreateBalanceStrip.style.display = isSellOffer ? '' : 'none';
+    }
+
+    const balanceLabel = document.getElementById('marketCreateBalanceLabel');
+    if (balanceLabel) {
+      balanceLabel.textContent = isSellOffer
+        ? (asset === 'TOKEN' ? 'Solde de Token disponible' : 'Compte de retrait disponible')
+        : 'Solde disponible';
+    }
+
+    if (marketTotalAmountHelper) {
+      marketTotalAmountHelper.textContent = isSellOffer
+        ? (asset === 'TOKEN' ? 'Auto rempli depuis votre solde de Token en temps reel et non modifiable.' : 'Auto rempli depuis votre compte de retrait en temps reel et non modifiable.')
+        : `Entrez la quantite ${asset} que vous voulez acheter. Les vendeurs pourront vous vendre cette quantite ou moins.`;
+    }
+
+    if (marketOfferTypeNoteText) {
+      marketOfferTypeNoteText.innerHTML = isSellOffer
+        ? (asset === 'TOKEN' ? 'les annonces <strong>sell</strong> bloquent les fonds depuis votre <strong>solde de Token</strong>, puis les credits arrivent sur le <strong>solde de Token</strong> du destinataire.' : 'les annonces <strong>sell</strong> bloquent les fonds depuis votre <strong>compte de retrait</strong>, puis les credits arrivent sur le <strong>compte de depot</strong>.')
+        : `les annonces <strong>buy</strong> servent a demander une quantite de ${asset} a acheter. Aucun blocage n est fait au moment de la creation.`;
+    }
+
+    if (isSellOffer) {
+      // Real-time fetch of user balances when type is Sell
+      fetch('/api/users/balance')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.success) {
+            const bal = asset === 'TOKEN' ? (data.tokenBalance ?? 0) : (data.withdrawalBalance ?? 0);
+            syncMarketWithdrawalBalance(bal, { force: true });
+          } else {
+            const bal = asset === 'TOKEN' ? (window.currentUserTokenBalance ?? 0) : (window.currentUserWithdrawalBalance ?? 0);
+            syncMarketWithdrawalBalance(bal, { force: true });
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to fetch balance in real-time:', err);
+          const bal = asset === 'TOKEN' ? (window.currentUserTokenBalance ?? 0) : (window.currentUserWithdrawalBalance ?? 0);
+          syncMarketWithdrawalBalance(bal, { force: true });
+        });
+    } else {
+      marketTotalAmountInput.value = '';
+      if (marketMaxAmountInput) {
+        marketMaxAmountInput.value = '';
+        marketMaxAmountInput.removeAttribute('max');
+      }
+      marketTotalAmountInput.removeAttribute('max');
+      const bal = asset === 'TOKEN' ? (window.currentUserTokenBalance ?? 0) : (window.currentUserWithdrawalBalance ?? 0);
+      syncMarketWithdrawalBalance(bal);
+    }
+  };
+
+  const syncMarketConvertedLimitTexts = () => {
+    const currencyCode = String(
+      marketHeaderCurrencySelect?.value
+      || marketCurrencySelect?.value
+      || 'USD'
+    ).trim().toUpperCase();
+
+    const price = parseSafeFloat(marketPriceInput?.value);
+    const minAmount = parseSafeFloat(marketMinAmountInput?.value);
+    const maxAmount = parseSafeFloat(marketMaxAmountInput?.value);
+
+    if (marketMinAmountConvertedText) {
+      marketMinAmountConvertedText.textContent = `${currencyCode} ${(minAmount * price).toFixed(2)}`;
+    }
+    if (marketMaxAmountConvertedText) {
+      marketMaxAmountConvertedText.textContent = `${currencyCode} ${(maxAmount * price).toFixed(2)}`;
+    }
+  };
+
+  const validateMarketLimits = () => {
+    if (!marketMinAmountInput || !marketMaxAmountInput) return true;
+    const minVal = parseSafeFloat(marketMinAmountInput.value);
+    const maxVal = parseSafeFloat(marketMaxAmountInput.value);
+    const totalVal = parseSafeFloat(marketTotalAmountInput?.value || 0);
+
+    const isMinHigherThanMax = (maxVal > 0 && minVal > maxVal) || (totalVal > 0 && minVal > totalVal);
+
+    marketMinAmountInput.classList.toggle('is-invalid', isMinHigherThanMax);
+    marketMaxAmountInput.classList.toggle('is-invalid', isMinHigherThanMax);
+
+    return !isMinHigherThanMax;
+  };
+
+  const calculateTokenPriceFromUsdRate = () => {
+    if (!marketUsdRateInput || !marketPriceInput) return;
+    const rate = parseSafeFloat(marketUsdRateInput.value);
+    
+    if (rate > 0) {
+      const tokenPriceUsd = Number(window.tokenPriceUsd || 0.1);
+      const computedPrice = rate * tokenPriceUsd;
+      marketPriceInput.value = computedPrice.toFixed(4).replace(/\.?0+$/, '');
+      if (marketComputedPricePreview) {
+        marketComputedPricePreview.textContent = computedPrice.toFixed(2);
+      }
+    } else {
+      marketPriceInput.value = '';
+      if (marketComputedPricePreview) {
+        marketComputedPricePreview.textContent = '0.00';
+      }
+    }
+    syncMarketConvertedLimitTexts();
+  };
+
+  const setMarketSubview = (view) => {
+    if (marketHomeView) {
+      marketHomeView.hidden = view !== 'home';
+    }
+    if (marketOrdersPanel) {
+      const shouldShowOrders = view === 'orders';
+      marketOrdersPanel.classList.toggle('market-managed-panel-open', shouldShowOrders);
+      marketOrdersPanel.classList.toggle('market-managed-panel-collapsed', !shouldShowOrders);
+    }
+    if (marketOrderDetailPanel) {
+      const shouldShowOrderDetail = view === 'order-detail';
+      marketOrderDetailPanel.classList.toggle('market-managed-panel-open', shouldShowOrderDetail);
+      marketOrderDetailPanel.classList.toggle('market-managed-panel-collapsed', !shouldShowOrderDetail);
+    }
+  };
+
+  const applyMarketModeFilter = (mode) => {
+    if (marketModeTabs.length) {
+      marketModeTabs.forEach((tab) => {
+        tab.classList.toggle('is-active', tab.dataset.marketMode === mode);
+      });
+    }
+
+    if (marketAssetTabs.length) {
+      marketAssetTabs.forEach((tab) => {
+        tab.classList.toggle('is-active', tab.dataset.marketAsset === activeMarketAsset);
+      });
+    }
+
+    if (!marketOfferCards.length) return;
+
+    const expectedOfferType = mode === 'buy' ? 'sell' : 'buy';
+    let visibleCount = 0;
+
+    marketOfferCards.forEach((card) => {
+      const offerType = card.dataset.marketOfferType || '';
+      const cardAsset = card.dataset.marketAsset || '';
+      const shouldShow = (offerType === expectedOfferType) && (cardAsset === activeMarketAsset);
+
+      card.classList.toggle('is-hidden-by-mode', !shouldShow);
+      const userMeta = card.querySelector('.market-user-meta');
+      if (userMeta) {
+        const username = card.dataset.marketUsername || '';
+        const roleLabel = offerType === 'sell' ? 'Seller desk' : 'Buyer desk';
+        userMeta.textContent = `@${username} • ${roleLabel}`;
+      }
+      const actionBtn = card.querySelector('.market-take-offer-btn');
+      if (actionBtn) {
+        actionBtn.textContent = mode === 'buy' ? 'Buy' : 'Sell';
+      }
+      if (shouldShow) visibleCount += 1;
+    });
+
+    const emptyState = document.querySelector('#marketSection .market-empty-state');
+    if (emptyState) {
+      emptyState.style.display = visibleCount === 0 ? '' : 'none';
+    }
+  };
+
+  const closeMarketTradeModal = () => {
+    if (!marketTradeModal) return;
+    marketTradeModal.hidden = true;
+    activeMarketTradeOffer = null;
+    if (marketTradeAmountInput) {
+      marketTradeAmountInput.value = '';
+    }
+  };
+
+  const closeMarketPayModal = () => {
+    if (!marketPayModal) return;
+    marketPayModal.hidden = true;
+    activeMarketPayOrderId = null;
+    if (marketPayNoteInput) {
+      marketPayNoteInput.value = '';
+    }
+  };
+
+  const openMarketPayModal = (orderId) => {
+    if (!marketPayModal) return;
+    activeMarketPayOrderId = Number(orderId || 0);
+    if (marketPayNoteInput) {
+      marketPayNoteInput.value = '';
+    }
+    marketPayModal.hidden = false;
+  };
+
+  const closeMarketReleaseModal = () => {
+    if (!marketReleaseModal) return;
+    marketReleaseModal.hidden = true;
+    activeMarketReleaseOrderId = null;
+  };
+
+  const openMarketReleaseModal = (orderId) => {
+    if (!marketReleaseModal) return;
+    activeMarketReleaseOrderId = Number(orderId || 0);
+    marketReleaseModal.hidden = false;
+  };
+
+  // --- Close Offer modal ---
+  const closeMarketCloseOfferModal = () => {
+    if (!marketCloseOfferModal) return;
+    marketCloseOfferModal.hidden = true;
+    activeMarketCloseOfferId = null;
+  };
+  const openMarketCloseOfferModal = (offerId) => {
+    if (!marketCloseOfferModal) return;
+    activeMarketCloseOfferId = Number(offerId || 0);
+    marketCloseOfferModal.hidden = false;
+  };
+
+  // --- Cancel Order modal ---
+  const closeMarketCancelOrderModal = () => {
+    if (!marketCancelOrderModal) return;
+    marketCancelOrderModal.hidden = true;
+    if (marketCancelOrderReasonInput) marketCancelOrderReasonInput.value = '';
+    activeMarketCancelOrderId = null;
+  };
+  const openMarketCancelOrderModal = (orderId) => {
+    if (!marketCancelOrderModal) return;
+    activeMarketCancelOrderId = Number(orderId || 0);
+    if (marketCancelOrderReasonInput) marketCancelOrderReasonInput.value = '';
+    marketCancelOrderModal.hidden = false;
+  };
+
+  // --- Dispute Order modal ---
+  const closeMarketDisputeOrderModal = () => {
+    if (!marketDisputeOrderModal) return;
+    marketDisputeOrderModal.hidden = true;
+    if (marketDisputeOrderReasonInput) marketDisputeOrderReasonInput.value = '';
+    activeMarketDisputeOrderId = null;
+  };
+  const openMarketDisputeOrderModal = (orderId) => {
+    if (!marketDisputeOrderModal) return;
+    activeMarketDisputeOrderId = Number(orderId || 0);
+    if (marketDisputeOrderReasonInput) marketDisputeOrderReasonInput.value = '';
+    marketDisputeOrderModal.hidden = false;
+  };
+
+  const updateMarketTradeModalTotals = () => {
+    if (!activeMarketTradeOffer || !marketTradeAmountInput || !marketTradeModalTotal) return;
+    const amount = parseSafeFloat(marketTradeAmountInput.value);
+    const totalValue = amount * parseSafeFloat(activeMarketTradeOffer.price);
+    const exceedsMax = amount > parseSafeFloat(activeMarketTradeOffer.maxAmount);
+    marketTradeAmountInput.classList.toggle('is-invalid', exceedsMax);
+    marketTradeModalTotal.textContent = `${activeMarketTradeOffer.currencyCode} ${totalValue.toFixed(2)}`;
+  };
+
+  const openMarketTradeModal = (button) => {
+    if (!button || !marketTradeModal) return;
+
+    const offerType = button.dataset.offerType || 'sell';
+    const assetCode = button.dataset.assetCode || 'USDT';
+    const currencyCode = button.dataset.currencyCode || 'USD';
+    const minAmount = parseSafeFloat(button.dataset.minAmount);
+    const maxAmount = parseSafeFloat(button.dataset.maxAmount);
+    const availableAmount = parseSafeFloat(button.dataset.availableAmount);
+    const price = parseSafeFloat(button.dataset.price);
+    const userName = button.dataset.userName || button.dataset.username || 'ce trader';
+    const paymentMethod = button.dataset.paymentMethod || 'Aucun paiement precise';
+    const paymentAccountName = button.dataset.paymentAccountName || '';
+    const paymentAccountNumber = button.dataset.paymentAccountNumber || '';
+    const terms = String(button.dataset.terms || '').trim();
+    const actionLabel = String(button.textContent || '').trim() || (offerType === 'sell' ? 'Buy' : 'Sell');
+    const maxSelectable = Math.min(maxAmount || availableAmount, availableAmount);
+    const suggested = minAmount > 0 ? minAmount : maxSelectable;
+    const paymentDetails = [paymentMethod, paymentAccountName, paymentAccountNumber].filter(Boolean).join(' • ');
+
+    activeMarketTradeOffer = {
+      offerId: button.dataset.offerId,
+      offerType,
+      assetCode,
+      currencyCode,
+      minAmount,
+      maxAmount: maxSelectable,
+      availableAmount,
+      price,
+      actionLabel
+    };
+
+    if (marketTradeModalTitle) marketTradeModalTitle.textContent = `${actionLabel} ${assetCode}`;
+    if (marketTradeModalSubtitle) marketTradeModalSubtitle.textContent = `Confirmez votre ordre avec ${userName}.`;
+    if (marketTradeModalCounterparty) marketTradeModalCounterparty.textContent = userName;
+    if (marketTradeModalPrice) {
+      marketTradeModalPrice.textContent = `${currencyCode} ${price.toFixed(assetCode === 'TOKEN' ? 4 : 2).replace(/\.?0+$/, '')}`;
+    }
+    if (marketTradeModalLimits) {
+      marketTradeModalLimits.textContent = `${currencyCode} ${(minAmount * price).toFixed(2)} - ${currencyCode} ${(maxSelectable * price).toFixed(2)}`;
+    }
+    if (marketTradeModalPayment) marketTradeModalPayment.textContent = paymentDetails || 'Aucun paiement precise';
+    if (marketTradeAmountInput) {
+      const isToken = assetCode === 'TOKEN';
+      marketTradeAmountInput.setAttribute('step', isToken ? '0.0001' : '0.01');
+      marketTradeAmountInput.min = minAmount > 0 ? String(minAmount) : (isToken ? '0.0001' : '0.01');
+      marketTradeAmountInput.max = String(maxSelectable);
+      marketTradeAmountInput.value = suggested > 0 ? (isToken ? suggested.toFixed(4).replace(/\.?0+$/, '') : suggested.toFixed(2)) : '';
+      marketTradeAmountInput.classList.remove('is-invalid');
+    }
+    if (marketTradeModalTermsBox && marketTradeModalTerms) {
+      marketTradeModalTermsBox.style.display = terms ? '' : 'none';
+      marketTradeModalTerms.textContent = terms;
+    }
+    if (marketTradeModalConfirmBtn) {
+      marketTradeModalConfirmBtn.textContent = `${actionLabel} maintenant`;
+    }
+
+    updateMarketTradeModalTotals();
+    marketTradeModal.hidden = false;
+  };
+
+  const fetchMarketOrderMessages = async (orderId) => {
+    const response = await callMarketApi(`/api/p2p/orders/${orderId}/messages`, { method: 'GET' });
+    return Array.isArray(response.messages) ? response.messages : [];
+  };
+
+  const renderMarketOrderMessages = (messages = []) => {
+    const messagesBox = marketOrderDetailMessages;
+    if (!messagesBox) return;
+
+    if (!messages.length) {
+      messagesBox.innerHTML = '<div class="market-order-chat-empty">Aucun message pour le moment.</div>';
+      return;
+    }
+
+    messagesBox.innerHTML = messages.map((message) => {
+      const isMine = Number(message.sender_user_id) === Number(window.currentUserId);
+      const createdAt = message.created_at
+        ? new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : '';
+      const bubbleParts = [];
+      if (message.content) {
+        bubbleParts.push(`<div>${escapeHtml(message.content)}</div>`);
+      }
+      if (message.image_url) {
+        const altLabel = escapeHtml(message.image_name || 'Preuve');
+        bubbleParts.push(`<a href="${escapeHtml(message.image_url)}" target="_blank" rel="noopener noreferrer"><img src="${escapeHtml(message.image_url)}" alt="${altLabel}" class="market-order-chat-proof-image"></a>`);
+      }
+
+      return `
+        <div class="market-order-chat-message ${isMine ? 'is-me' : ''}">
+          <div class="market-order-chat-bubble">${bubbleParts.join('')}</div>
+          <div class="market-order-chat-bubble-meta">
+            <span>${escapeHtml(message.sender_name || 'Utilisateur')}</span>
+            <span>${escapeHtml(createdAt)}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    messagesBox.scrollTop = messagesBox.scrollHeight;
+  };
+
+  const openMarketOrderDetail = async (trigger) => {
+    if (!trigger) return;
+    const orderId = Number(trigger.dataset.orderId || 0);
+    if (!orderId) return;
+
+    const status = String(trigger.dataset.status || '');
+    const counterpartyName = trigger.dataset.counterpartyName || 'Utilisateur';
+    const countryFlag = trigger.dataset.countryFlag || '';
+    const isBuyer = trigger.dataset.isBuyer === '1';
+    const isSeller = trigger.dataset.isSeller === '1';
+    const totalPrice = Number(trigger.dataset.totalPrice || 0);
+    const currencyCode = trigger.dataset.currencyCode || 'USD';
+    const paymentMethods = trigger.dataset.paymentMethods || 'Non precise';
+    const paymentAccountName = trigger.dataset.paymentAccountName || '';
+    const paymentAccountNumber = trigger.dataset.paymentAccountNumber || '';
+    const paymentNote = trigger.dataset.paymentNote || '';
+    const orderLabel = trigger.dataset.offerType === 'sell' ? 'Achat' : 'Vente';
+    const amount = Number(trigger.dataset.amount || 0);
+    const assetCode = trigger.dataset.assetCode || 'USDT';
+
+    activeMarketOrderDetail = {
+      orderId,
+      counterpartyName
+    };
+
+    if (marketOrderDetailTitle) marketOrderDetailTitle.textContent = `Ordre #${orderId}`;
+    if (marketOrderDetailSubtitle) marketOrderDetailSubtitle.textContent = `Gerez votre transaction avec ${counterpartyName}.`;
+    if (marketOrderDetailMainTitle) marketOrderDetailMainTitle.textContent = `Ordre #${orderId} • ${orderLabel} ${amount.toFixed(2)} ${assetCode}`;
+    if (marketOrderDetailMeta) marketOrderDetailMeta.textContent = `Avec ${counterpartyName} ${countryFlag}`;
+    if (marketOrderDetailStatus) {
+      marketOrderDetailStatus.textContent = status || '-';
+      marketOrderDetailStatus.className = `market-status-pill is-${status}`;
+    }
+    if (marketOrderDetailRole) marketOrderDetailRole.textContent = isBuyer ? 'Acheteur' : (isSeller ? 'Vendeur' : '-');
+    if (marketOrderDetailTotal) marketOrderDetailTotal.textContent = `${currencyCode} ${totalPrice.toFixed(2)}`;
+    if (marketOrderDetailPayments) marketOrderDetailPayments.textContent = paymentMethods;
+    if (marketOrderDetailAccountBox && marketOrderDetailAccount) {
+      const accountDetails = [paymentAccountName, paymentAccountNumber].filter(Boolean).join(' • ');
+      marketOrderDetailAccount.textContent = accountDetails;
+      marketOrderDetailAccountBox.hidden = !accountDetails;
+    }
+    if (marketOrderDetailNoteBox && marketOrderDetailNote) {
+      marketOrderDetailNote.textContent = paymentNote;
+      marketOrderDetailNoteBox.hidden = !paymentNote;
+    }
+    if (marketOrderDetailChatTitle) {
+      marketOrderDetailChatTitle.textContent = `Discussion avec ${counterpartyName}`;
+    }
+    if (marketOrderDetailActions) {
+      const actions = [];
+      if (status === 'pending_payment' && isBuyer) {
+        actions.push(`<button type="button" class="market-primary-btn market-order-action-btn" data-order-id="${orderId}" data-action="pay">J ai paye</button>`);
+        actions.push(`<button type="button" class="market-secondary-btn market-order-action-btn" data-order-id="${orderId}" data-action="cancel">Annuler</button>`);
+      } else if (status === 'paid' && isSeller) {
+        actions.push(`<button type="button" class="market-primary-btn market-order-action-btn" data-order-id="${orderId}" data-action="release">Liberer les fonds</button>`);
+      } else if (['pending_payment', 'paid'].includes(status)) {
+        actions.push(`<button type="button" class="market-secondary-btn market-order-action-btn" data-order-id="${orderId}" data-action="dispute">Litige</button>`);
+      }
+      marketOrderDetailActions.innerHTML = actions.join('');
+    }
+
+    if (marketOrderDetailChatInput) marketOrderDetailChatInput.value = '';
+    if (marketOrderDetailProofInput) marketOrderDetailProofInput.value = '';
+    if (marketOrderDetailProofName) marketOrderDetailProofName.textContent = 'Aucune image';
+
+    try {
+      const messages = await fetchMarketOrderMessages(orderId);
+      marketOrderChatState.set(orderId, messages);
+      renderMarketOrderMessages(messages);
+      setMarketSubview('order-detail');
+    } catch (error) {
+      showToast(error.message || 'Impossible de charger la conversation P2P.');
+    }
+  };
+
+  const sendMarketOrderMessage = async () => {
+    const numericOrderId = Number(activeMarketOrderDetail?.orderId || 0);
+    const input = marketOrderDetailChatInput;
+    const proofInput = marketOrderDetailProofInput;
+    const proofName = marketOrderDetailProofName;
+    const sendBtn = marketOrderDetailSendBtn;
+
+    if (!numericOrderId || !input || !proofInput) return;
+
+    const content = String(input.value || '').trim();
+    const file = proofInput.files && proofInput.files[0] ? proofInput.files[0] : null;
+
+    if (!content && !file) {
+      showToast('Ajoutez un message ou une image de preuve.');
+      return;
+    }
+
+    const originalLabel = sendBtn ? sendBtn.textContent : '';
+
+    try {
+      if (sendBtn) {
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Envoi...';
+      }
+
+      let imageUrl = null;
+      let imageName = null;
+      if (file) {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const uploadResponse = await fetch('/api/p2p/orders/upload-proof', {
+          method: 'POST',
+          body: formData,
+          credentials: 'same-origin'
+        });
+        const uploadData = await uploadResponse.json().catch(() => ({}));
+        if (!uploadResponse.ok || !uploadData.success) {
+          throw new Error(uploadData.error || 'Impossible d envoyer la preuve image.');
+        }
+        imageUrl = uploadData.imageUrl;
+        imageName = uploadData.imageName;
+      }
+
+      await new Promise((resolve, reject) => {
+        socket.emit('p2p-order-message-send', {
+          orderId: numericOrderId,
+          content,
+          imageUrl,
+          imageName
+        }, (response) => {
+          if (!response || response.success === false) {
+            reject(new Error(response?.error || 'Impossible d envoyer le message P2P.'));
+            return;
+          }
+          resolve(response);
+        });
+      });
+
+      input.value = '';
+      proofInput.value = '';
+      if (proofName) proofName.textContent = 'Aucune image';
+    } catch (error) {
+      showToast(error.message || 'Impossible d envoyer le message P2P.');
+    } finally {
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = originalLabel || 'Envoyer';
+      }
+    }
+  };
+
+  const closeMarketMenu = () => {
+    if (!marketTopbarMenu) return;
+    marketTopbarMenu.hidden = true;
+  };
+
+  const toggleMarketMenu = () => {
+    if (!marketTopbarMenu) return;
+    marketTopbarMenu.hidden = !marketTopbarMenu.hidden;
+  };
+
+  const closeAllMarketPanels = () => {
+    activeMarketOrderDetail = null;
+    Object.values(marketManagedPanels).forEach((panel) => {
+      if (!panel) return;
+      panel.classList.remove('market-managed-panel-open', 'market-create-panel-open');
+      panel.classList.add('market-managed-panel-collapsed');
+      if (panel === marketCreatePanel) {
+        panel.classList.add('market-create-panel-collapsed');
+      }
+    });
+    if (marketOrdersPanel) {
+      marketOrdersPanel.classList.remove('market-managed-panel-open');
+      marketOrdersPanel.classList.add('market-managed-panel-collapsed');
+    }
+    if (marketOrderDetailPanel) {
+      marketOrderDetailPanel.classList.remove('market-managed-panel-open');
+      marketOrderDetailPanel.classList.add('market-managed-panel-collapsed');
+    }
+    setMarketSubview('home');
+  };
+
+  const openMarketPanel = (panelKey) => {
+    if (panelKey === 'orders') {
+      closeAllMarketPanels();
+      closeMarketMenu();
+      setMarketSubview('orders');
+      return;
+    }
+
+    const panel = marketManagedPanels[panelKey];
+    if (!panel) return;
+
+    const isAlreadyOpen = panel.classList.contains('market-managed-panel-open')
+      || panel.classList.contains('market-create-panel-open');
+
+    closeAllMarketPanels();
+    closeMarketMenu();
+
+    if (isAlreadyOpen) {
+      return;
+    }
+
+    panel.classList.remove('market-managed-panel-collapsed', 'market-create-panel-collapsed');
+    panel.classList.add('market-managed-panel-open');
+
+    if (panel === marketCreatePanel) {
+      panel.classList.add('market-create-panel-open');
+      syncMarketOfferTypeFormState();
+    }
+    setMarketSubview('home');
+  };
+
+  if (marketOpenCreateBtn && marketTopbarMenu) {
+    marketOpenCreateBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleMarketMenu();
+    });
+  }
+
+  if (marketHeaderCurrencySelect) {
+    marketHeaderCurrencySelect.addEventListener('change', () => syncMarketCurrencyDisplay(marketHeaderCurrencySelect));
+  }
+
+  if (marketCurrencySelect) {
+    marketCurrencySelect.addEventListener('change', () => syncMarketCurrencyDisplay(marketCurrencySelect));
+  }
+
+  if (marketHeaderCurrencySelect || marketCurrencySelect) {
+    syncMarketCurrencyDisplay();
+  }
+
+  if (marketOfferTypeSelect) {
+    marketOfferTypeSelect.addEventListener('change', () => {
+      syncMarketOfferTypeFormState();
+    });
+  }
+
+  if (marketTotalAmountInput) {
+    marketTotalAmountInput.addEventListener('input', () => {
+      marketTotalAmountInput.dataset.lastBalance = marketTotalAmountInput.dataset.lastBalance || marketTotalAmountInput.value;
+      syncMarketAmountLimits();
+    });
+  }
+
+  if (marketMaxAmountInput) {
+    marketMaxAmountInput.addEventListener('input', () => {
+      const isSellOffer = (marketOfferTypeSelect?.value || 'buy') === 'sell';
+      const asset = activeMarketAsset || 'USDT';
+      const totalAmount = parseSafeFloat(marketTotalAmountInput?.value);
+      const balance = parseSafeFloat(asset === 'TOKEN' ? window.currentUserTokenBalance : window.currentUserWithdrawalBalance);
+      const limit = isSellOffer ? balance : totalAmount;
+      const currentMax = parseSafeFloat(marketMaxAmountInput.value);
+
+      if (isSellOffer) {
+        if (currentMax > limit) {
+          marketMaxAmountInput.value = asset === 'TOKEN' ? limit.toFixed(4).replace(/\.?0+$/, '') : limit.toFixed(2);
+        }
+      } else {
+        if (totalAmount > 0 && currentMax > totalAmount) {
+          marketMaxAmountInput.value = asset === 'TOKEN' ? totalAmount.toFixed(4).replace(/\.?0+$/, '') : totalAmount.toFixed(2);
+        }
+      }
+      validateMarketLimits();
+      syncMarketConvertedLimitTexts();
+    });
+  }
+
+  if (marketMinAmountInput) {
+    marketMinAmountInput.addEventListener('input', () => {
+      validateMarketLimits();
+      syncMarketConvertedLimitTexts();
+    });
+  }
+
+  if (marketPriceInput) {
+    marketPriceInput.addEventListener('input', syncMarketConvertedLimitTexts);
+  }
+
+  if (marketUsdRateInput) {
+    marketUsdRateInput.addEventListener('input', calculateTokenPriceFromUsdRate);
+  }
+
+  if (marketCurrencySelect) {
+    marketCurrencySelect.addEventListener('change', () => {
+      updateAssetLayoutState();
+      calculateTokenPriceFromUsdRate();
+    });
+  }
+
+  if (typeof window.currentUserWithdrawalBalance !== 'undefined') {
+    syncMarketWithdrawalBalance(window.currentUserWithdrawalBalance, { force: true });
+  }
+
+  syncMarketOfferTypeFormState();
+  setMarketSubview('home');
+  syncMarketConvertedLimitTexts();
+
+  if (marketTradeAmountInput) {
+    marketTradeAmountInput.addEventListener('input', updateMarketTradeModalTotals);
+  }
+
+  if (marketTradeModalCloseBtn) {
+    marketTradeModalCloseBtn.addEventListener('click', closeMarketTradeModal);
+  }
+
+  if (marketTradeModalCancelBtn) {
+    marketTradeModalCancelBtn.addEventListener('click', closeMarketTradeModal);
+  }
+
+  if (marketPayModalCloseBtn) {
+    marketPayModalCloseBtn.addEventListener('click', closeMarketPayModal);
+  }
+
+  if (marketPayModalCancelBtn) {
+    marketPayModalCancelBtn.addEventListener('click', closeMarketPayModal);
+  }
+
+  if (marketReleaseModalCloseBtn) {
+    marketReleaseModalCloseBtn.addEventListener('click', closeMarketReleaseModal);
+  }
+
+  if (marketReleaseModalCancelBtn) {
+    marketReleaseModalCancelBtn.addEventListener('click', closeMarketReleaseModal);
+  }
+
+  // Close Offer modal listeners
+  if (marketCloseOfferModalCloseBtn)  marketCloseOfferModalCloseBtn.addEventListener('click',  closeMarketCloseOfferModal);
+  if (marketCloseOfferModalCancelBtn) marketCloseOfferModalCancelBtn.addEventListener('click', closeMarketCloseOfferModal);
+  if (marketCloseOfferModalConfirmBtn) {
+    marketCloseOfferModalConfirmBtn.addEventListener('click', async () => {
+      if (!activeMarketCloseOfferId) return;
+      const offerId = activeMarketCloseOfferId;
+      const originalLabel = marketCloseOfferModalConfirmBtn.textContent;
+      try {
+        marketCloseOfferModalConfirmBtn.disabled = true;
+        marketCloseOfferModalConfirmBtn.textContent = 'Fermeture...';
+        await callMarketApi(`/api/p2p/offers/${offerId}/close`, { body: {} });
+        closeMarketCloseOfferModal();
+        showToast('Annonce P2P fermee.');
+        reloadToMarketView();
+      } catch (error) {
+        showToast(error.message || 'Impossible de fermer cette annonce.');
+      } finally {
+        marketCloseOfferModalConfirmBtn.disabled = false;
+        marketCloseOfferModalConfirmBtn.textContent = originalLabel;
+      }
+    });
+  }
+
+  // Cancel Order modal listeners
+  if (marketCancelOrderModalCloseBtn)  marketCancelOrderModalCloseBtn.addEventListener('click',  closeMarketCancelOrderModal);
+  if (marketCancelOrderModalCancelBtn) marketCancelOrderModalCancelBtn.addEventListener('click', closeMarketCancelOrderModal);
+  if (marketCancelOrderModalConfirmBtn) {
+    marketCancelOrderModalConfirmBtn.addEventListener('click', async () => {
+      if (!activeMarketCancelOrderId) return;
+      const orderId = activeMarketCancelOrderId;
+      const reason = marketCancelOrderReasonInput ? marketCancelOrderReasonInput.value.trim() : '';
+      const originalLabel = marketCancelOrderModalConfirmBtn.textContent;
+      try {
+        marketCancelOrderModalConfirmBtn.disabled = true;
+        marketCancelOrderModalConfirmBtn.textContent = 'Annulation...';
+        await callMarketApi(`/api/p2p/orders/${orderId}/cancel`, { body: { cancel_reason: reason } });
+        closeMarketCancelOrderModal();
+        showToast('Ordre annule.');
+        reloadToMarketView();
+      } catch (error) {
+        showToast(error.message || 'Impossible d annuler cet ordre.');
+      } finally {
+        marketCancelOrderModalConfirmBtn.disabled = false;
+        marketCancelOrderModalConfirmBtn.textContent = originalLabel;
+      }
+    });
+  }
+
+  // Dispute Order modal listeners
+  if (marketDisputeOrderModalCloseBtn)  marketDisputeOrderModalCloseBtn.addEventListener('click',  closeMarketDisputeOrderModal);
+  if (marketDisputeOrderModalCancelBtn) marketDisputeOrderModalCancelBtn.addEventListener('click', closeMarketDisputeOrderModal);
+  if (marketDisputeOrderModalConfirmBtn) {
+    marketDisputeOrderModalConfirmBtn.addEventListener('click', async () => {
+      if (!activeMarketDisputeOrderId) return;
+      const orderId = activeMarketDisputeOrderId;
+      const note = marketDisputeOrderReasonInput ? marketDisputeOrderReasonInput.value.trim() : '';
+      if (!note) {
+        showToast('Veuillez decrire le probleme avant d ouvrir le litige.');
+        return;
+      }
+      const originalLabel = marketDisputeOrderModalConfirmBtn.textContent;
+      try {
+        marketDisputeOrderModalConfirmBtn.disabled = true;
+        marketDisputeOrderModalConfirmBtn.textContent = 'Ouverture...';
+        await callMarketApi(`/api/p2p/orders/${orderId}/dispute`, { body: { payment_note: note } });
+        closeMarketDisputeOrderModal();
+        showToast('Litige P2P ouvert.');
+        reloadToMarketView();
+      } catch (error) {
+        showToast(error.message || 'Impossible d ouvrir le litige.');
+      } finally {
+        marketDisputeOrderModalConfirmBtn.disabled = false;
+        marketDisputeOrderModalConfirmBtn.textContent = originalLabel;
+      }
+    });
+  }
+
+  if (marketTradeModalConfirmBtn) {
+    marketTradeModalConfirmBtn.addEventListener('click', async () => {
+      if (!activeMarketTradeOffer || !marketTradeAmountInput) return;
+
+      const amount = parseSafeFloat(marketTradeAmountInput.value);
+      const minAmount = parseSafeFloat(activeMarketTradeOffer.minAmount);
+      const maxAmount = parseSafeFloat(activeMarketTradeOffer.maxAmount);
+
+      if (amount < minAmount || amount > maxAmount) {
+        const isToken = activeMarketTradeOffer.assetCode === 'TOKEN';
+        const formattedMin = isToken ? minAmount.toFixed(4).replace(/\.?0+$/, '') : minAmount.toFixed(2);
+        const formattedMax = isToken ? maxAmount.toFixed(4).replace(/\.?0+$/, '') : maxAmount.toFixed(2);
+        showToast(`Le montant doit rester entre ${formattedMin} et ${formattedMax} ${activeMarketTradeOffer.assetCode}.`);
+        return;
+      }
+
+      const originalLabel = marketTradeModalConfirmBtn.textContent;
+
+      try {
+        marketTradeModalConfirmBtn.disabled = true;
+        marketTradeModalConfirmBtn.textContent = 'Confirmation...';
+
+        await callMarketApi(`/api/p2p/offers/${activeMarketTradeOffer.offerId}/order`, {
+          body: { amount }
+        });
+
+        closeMarketTradeModal();
+        showToast('Ordre P2P cree avec succes.');
+        reloadToMarketView();
+      } catch (error) {
+        showToast(error.message || 'Impossible de creer cet ordre P2P.');
+      } finally {
+        marketTradeModalConfirmBtn.disabled = false;
+        marketTradeModalConfirmBtn.textContent = originalLabel;
+      }
+    });
+  }
+
+  if (marketPayModalConfirmBtn) {
+    marketPayModalConfirmBtn.addEventListener('click', async () => {
+      const orderId = Number(activeMarketPayOrderId || 0);
+      if (!orderId) return;
+
+      const originalLabel = marketPayModalConfirmBtn.textContent;
+
+      try {
+        marketPayModalConfirmBtn.disabled = true;
+        marketPayModalConfirmBtn.textContent = 'Confirmation...';
+
+        await callMarketApi(`/api/p2p/orders/${orderId}/pay`, {
+          body: { payment_note: String(marketPayNoteInput?.value || '').trim() }
+        });
+
+        closeMarketPayModal();
+        showToast('Paiement confirme.');
+        reloadToMarketView();
+      } catch (error) {
+        showToast(error.message || 'Impossible de confirmer ce paiement.');
+      } finally {
+        marketPayModalConfirmBtn.disabled = false;
+        marketPayModalConfirmBtn.textContent = originalLabel;
+      }
+    });
+  }
+
+  if (marketReleaseModalConfirmBtn) {
+    marketReleaseModalConfirmBtn.addEventListener('click', async () => {
+      const orderId = Number(activeMarketReleaseOrderId || 0);
+      if (!orderId) return;
+
+      const originalLabel = marketReleaseModalConfirmBtn.textContent;
+
+      try {
+        marketReleaseModalConfirmBtn.disabled = true;
+        marketReleaseModalConfirmBtn.textContent = 'Liberation...';
+
+        await callMarketApi(`/api/p2p/orders/${orderId}/release`, { body: {} });
+
+        closeMarketReleaseModal();
+        showToast('Fonds liberes avec succes.');
+        reloadToMarketView();
+      } catch (error) {
+        showToast(error.message || 'Impossible de liberer cet ordre.');
+      } finally {
+        marketReleaseModalConfirmBtn.disabled = false;
+        marketReleaseModalConfirmBtn.textContent = originalLabel;
+      }
+    });
+  }
+
+  if (marketOrdersBackBtn) {
+    marketOrdersBackBtn.addEventListener('click', () => {
+      closeAllMarketPanels();
+    });
+  }
+
+  if (marketOrderDetailBackBtn) {
+    marketOrderDetailBackBtn.addEventListener('click', () => {
+      activeMarketOrderDetail = null;
+      setMarketSubview('orders');
+    });
+  }
+
+  if (marketOrderDetailSendBtn) {
+    marketOrderDetailSendBtn.addEventListener('click', async () => {
+      await sendMarketOrderMessage();
+    });
+  }
+
+  if (marketOrderDetailProofInput) {
+    marketOrderDetailProofInput.addEventListener('change', () => {
+      if (marketOrderDetailProofName) {
+        marketOrderDetailProofName.textContent = marketOrderDetailProofInput.files?.[0]?.name || 'Aucune image';
+      }
+    });
+  }
+
+  socket.on('p2p-order-message-received', (payload) => {
+    const orderId = Number(payload?.orderId || payload?.message?.order_id || 0);
+    const message = payload?.message;
+    if (!orderId || !message) return;
+
+    const nextMessages = marketOrderChatState.get(orderId) || [];
+    if (!nextMessages.some((entry) => Number(entry.id) === Number(message.id))) {
+      nextMessages.push(message);
+      marketOrderChatState.set(orderId, nextMessages);
+    }
+
+    if (Number(activeMarketOrderDetail?.orderId || 0) === orderId) {
+      renderMarketOrderMessages(nextMessages);
+    }
+  });
+
+  if (marketModeTabs.length) {
+    marketModeTabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const mode = tab.dataset.marketMode === 'sell' ? 'sell' : 'buy';
+        applyMarketModeFilter(mode);
+      });
+    });
+  }
+
+  if (marketAssetTabs.length) {
+    marketAssetTabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        activeMarketAsset = tab.dataset.marketAsset || 'USDT';
+        
+        // Update hidden input in the form
+        const assetCodeInput = document.getElementById('marketAssetCodeInput');
+        if (assetCodeInput) {
+          assetCodeInput.value = activeMarketAsset;
+        }
+
+        // Update form labels
+        document.querySelectorAll('[data-market-asset-label]').forEach((lbl) => {
+          lbl.textContent = activeMarketAsset;
+        });
+
+        // Set inputs step & min attributes dynamically
+        const stepVal = activeMarketAsset === 'TOKEN' ? '0.0001' : '0.01';
+        if (marketTotalAmountInput) {
+          marketTotalAmountInput.setAttribute('step', stepVal);
+          marketTotalAmountInput.setAttribute('min', stepVal);
+        }
+        if (marketMaxAmountInput) {
+          marketMaxAmountInput.setAttribute('step', stepVal);
+          marketMaxAmountInput.setAttribute('min', stepVal);
+        }
+        if (marketMinAmountInput) {
+          marketMinAmountInput.setAttribute('step', stepVal);
+          marketMinAmountInput.setAttribute('min', stepVal);
+        }
+
+        // Re-apply filters
+        const activeModeTab = marketModeTabs.find(t => t.classList.contains('is-active'));
+        const mode = activeModeTab?.dataset.marketMode || 'buy';
+        applyMarketModeFilter(mode);
+
+        // Re-sync the balance in real-time for the new asset!
+        syncMarketOfferTypeFormState();
+      });
+    });
+  }
+
+  applyMarketModeFilter('buy');
+
+  if (marketOfferForm) {
+    marketOfferForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      
+      if (!validateMarketLimits()) {
+        const minVal = parseSafeFloat(marketMinAmountInput?.value);
+        const maxVal = parseSafeFloat(marketMaxAmountInput?.value);
+        const totalVal = parseSafeFloat(marketTotalAmountInput?.value || 0);
+        
+        if (maxVal > 0 && minVal > maxVal) {
+          showToast("Le montant minimum ne peut pas être supérieur au montant maximum.");
+        } else if (totalVal > 0 && minVal > totalVal) {
+          showToast("Le montant minimum ne peut pas être supérieur au montant total de l'annonce.");
+        }
+        return;
+      }
+
+      const submitBtn = marketOfferForm.querySelector('button[type="submit"]');
+      const originalLabel = submitBtn ? submitBtn.innerHTML : '';
+
+      try {
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Publication...';
+        }
+
+        const formData = new FormData(marketOfferForm);
+        await callMarketApi('/api/p2p/offers', {
+          body: {
+            offer_type: formData.get('offer_type'),
+            asset_code: formData.get('asset_code'),
+            currency_code: formData.get('currency_code'),
+            price: String(formData.get('price') || '').replace(/,/g, '.'),
+            usd_rate: String(formData.get('usd_rate') || '').replace(/,/g, '.'),
+            total_amount: String(formData.get('total_amount') || '').replace(/,/g, '.'),
+            min_amount: String(formData.get('min_amount') || '').replace(/,/g, '.'),
+            max_amount: String(formData.get('max_amount') || '').replace(/,/g, '.'),
+            payment_methods: formData.get('payment_methods'),
+            payment_account_name: formData.get('payment_account_name'),
+            payment_account_number: formData.get('payment_account_number'),
+            terms: formData.get('terms')
+          }
+        });
+
+        showToast('Annonce P2P publiee avec succes.');
+        reloadToMarketView();
+      } catch (error) {
+        showToast(error.message || 'Impossible de publier l annonce P2P.');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalLabel;
+        }
+      }
+    });
+  }
+
+  document.addEventListener('click', async (event) => {
+    if (marketTradeModal && !marketTradeModal.hidden && event.target === marketTradeModal) {
+      closeMarketTradeModal();
+      return;
+    }
+
+    if (marketPayModal && !marketPayModal.hidden && event.target === marketPayModal) {
+      closeMarketPayModal();
+      return;
+    }
+
+    if (marketReleaseModal && !marketReleaseModal.hidden && event.target === marketReleaseModal) {
+      closeMarketReleaseModal();
+      return;
+    }
+
+    if (marketCloseOfferModal && !marketCloseOfferModal.hidden && event.target === marketCloseOfferModal) {
+      closeMarketCloseOfferModal();
+      return;
+    }
+
+    if (marketCancelOrderModal && !marketCancelOrderModal.hidden && event.target === marketCancelOrderModal) {
+      closeMarketCancelOrderModal();
+      return;
+    }
+
+    if (marketDisputeOrderModal && !marketDisputeOrderModal.hidden && event.target === marketDisputeOrderModal) {
+      closeMarketDisputeOrderModal();
+      return;
+    }
+
+    const menuTriggerBtn = event.target.closest('#marketOpenCreateBtn');
+    if (!menuTriggerBtn && marketTopbarMenu && !marketTopbarMenu.hidden && !event.target.closest('#marketTopbarMenu')) {
+      closeMarketMenu();
+    }
+
+    const marketMenuItem = event.target.closest('[data-market-panel-target]');
+    if (marketMenuItem) {
+      event.preventDefault();
+      openMarketPanel(marketMenuItem.dataset.marketPanelTarget);
+      return;
+    }
+
+    const closeMarketPanelBtn = event.target.closest('[data-market-close-panel]');
+    if (closeMarketPanelBtn) {
+      event.preventDefault();
+      closeAllMarketPanels();
+      return;
+    }
+
+    const takeOfferBtn = event.target.closest('.market-take-offer-btn');
+    if (takeOfferBtn) {
+      event.preventDefault();
+      openMarketTradeModal(takeOfferBtn);
+      return;
+    }
+
+    const openOrderDetailBtn = event.target.closest('.market-order-open-detail-btn');
+    if (openOrderDetailBtn) {
+      event.preventDefault();
+      await openMarketOrderDetail(openOrderDetailBtn);
+      return;
+    }
+
+    const closeOfferBtn = event.target.closest('.market-close-offer-btn');
+    if (closeOfferBtn) {
+      event.preventDefault();
+      openMarketCloseOfferModal(closeOfferBtn.dataset.offerId);
+      return;
+    }
+
+    const orderActionBtn = event.target.closest('.market-order-action-btn');
+    if (!orderActionBtn) return;
+
+    event.preventDefault();
+    const orderId = orderActionBtn.dataset.orderId;
+    const action = orderActionBtn.dataset.action;
+
+    try {
+      if (action === 'pay') {
+        openMarketPayModal(orderId);
+        return;
+      } else if (action === 'release') {
+        openMarketReleaseModal(orderId);
+        return;
+      } else if (action === 'cancel') {
+        openMarketCancelOrderModal(orderId);
+        return;
+      } else if (action === 'dispute') {
+        openMarketDisputeOrderModal(orderId);
+        return;
+      }
+
+      reloadToMarketView();
+    } catch (error) {
+      showToast(error.message || 'Action P2P impossible.');
+    }
+  });
+
+  initTikTokInteractions();
+  initProfileInteractions();
+
+  // Live games timer update loop
+  setInterval(() => {
+    document.querySelectorAll('.live-game-timer').forEach(el => {
+      const startedAt = parseInt(el.getAttribute('data-started-at'), 10);
+      if (startedAt) {
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+        if (elapsed >= 0) {
+          const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+          const s = String(elapsed % 60).padStart(2, '0');
+          el.textContent = `${m}:${s}`;
+        }
+      }
+    });
+
+    // Also update active game timer if playing
+    if (activeGame && activeGame.status === 'playing' && activeGame.startedAt) {
+      const activeTimerText = document.querySelector('#activeGameTimer .timer-text');
+      if (activeTimerText) {
+        const elapsed = Math.floor((Date.now() - activeGame.startedAt) / 1000);
+        if (elapsed >= 0) {
+          const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+          const s = String(elapsed % 60).padStart(2, '0');
+          activeTimerText.textContent = `${m}:${s}`;
+        }
+      }
+    }
+
+    // Update challenge countdown timers
+    document.querySelectorAll('.challenge-countdown-badge').forEach((badge) => {
+      const endDateStr = badge.dataset.endDate;
+      if (!endDateStr) return;
+      const endDate = new Date(endDateStr);
+      const now = new Date();
+      const timeDiff = endDate.getTime() - now.getTime();
+      
+      const textEl = badge.querySelector('.challenge-countdown-text');
+      if (!textEl) return;
+      
+      if (timeDiff <= 0) {
+        textEl.textContent = 'Terminé';
+        badge.style.color = '#6b7280';
+        badge.style.background = 'rgba(107, 114, 128, 0.1)';
+        
+        const card = badge.closest('.challenge-post-card');
+        if (card) {
+          card.querySelectorAll('.challenge-poll-option').forEach((btn) => {
+            if (!btn.disabled) {
+              btn.disabled = true;
+              btn.style.opacity = '0.6';
+              btn.style.cursor = 'not-allowed';
+              const labelSpan = btn.querySelector('span:not(.challenge-poll-fill):not(.challenge-poll-flag):not(.challenge-poll-percent)');
+              if (labelSpan && labelSpan.textContent.trim() === 'Voter') {
+                labelSpan.textContent = 'Terminé';
+              }
+            }
+          });
+        }
+      } else {
+        const totalSecs = Math.floor(timeDiff / 1000);
+        const days = Math.floor(totalSecs / 86400);
+        const hours = Math.floor((totalSecs % 86400) / 3600);
+        const mins = Math.floor((totalSecs % 3600) / 60);
+        const secs = totalSecs % 60;
+        
+        let diffStr = '';
+        if (days > 0) {
+          diffStr = `${days}j ${hours}h`;
+        } else if (hours > 0) {
+          diffStr = `${hours}h ${mins}m`;
+        } else if (mins > 0) {
+          diffStr = `${mins}m ${secs}s`;
+        } else {
+          diffStr = `${secs}s`;
+        }
+        textEl.textContent = diffStr;
+      }
+    });
+  }, 1000);
+
+  // --- YouTube Live Integration ---
+  const ytPlayers = {};
+
+  if (!window.onYouTubeIframeAPIReady) {
+    window.onYouTubeIframeAPIReady = function() {
+      console.log("YouTube Iframe API is ready.");
+    };
+  }
+
+  window.initYouTubePlayer = function(postId, youtubeId) {
+    const frameId = `youtube-player-${postId}`;
+    if (!document.getElementById(frameId)) return;
+
+    if (typeof YT === 'undefined' || !YT.Player) {
+      setTimeout(() => window.initYouTubePlayer(postId, youtubeId), 200);
+      return;
+    }
+
+    try {
+      ytPlayers[postId] = new YT.Player(frameId, {
+        events: {
+          'onStateChange': function(event) {
+            const btn = document.querySelector(`.play-pause-btn[data-post-id="${postId}"]`);
+            if (!btn) return;
+            const playIcon = btn.querySelector('.play-icon');
+            const pauseIcon = btn.querySelector('.pause-icon');
+            if (event.data === YT.PlayerState.PLAYING) {
+              if (playIcon) playIcon.style.display = 'none';
+              if (pauseIcon) pauseIcon.style.display = 'block';
+            } else {
+              if (playIcon) playIcon.style.display = 'block';
+              if (pauseIcon) pauseIcon.style.display = 'none';
+            }
+          }
+        }
+      });
+    } catch (e) {
+      console.error("Error initializing YouTube Player for post", postId, e);
+    }
+  };
+
+  document.addEventListener('click', (e) => {
+    const playPauseBtn = e.target.closest('.play-pause-btn');
+    if (playPauseBtn) {
+      const postId = playPauseBtn.dataset.postId;
+      const player = ytPlayers[postId];
+      if (player && typeof player.getPlayerState === 'function') {
+        const state = player.getPlayerState();
+        if (state === YT.PlayerState.PLAYING) {
+          player.pauseVideo();
+        } else {
+          player.playVideo();
+        }
+      } else {
+        const frame = document.getElementById(`youtube-player-${postId}`);
+        if (frame) {
+          const container = frame.parentElement;
+          const ytId = container?.dataset.youtubeId;
+          if (ytId) {
+            window.initYouTubePlayer(postId, ytId);
+            setTimeout(() => {
+              const p = ytPlayers[postId];
+              if (p && typeof p.playVideo === 'function') p.playVideo();
+            }, 300);
+          }
+        }
+      }
+      return;
+    }
+
+    const unlockBtn = e.target.closest('.unlock-live-btn');
+    if (unlockBtn) {
+      const postId = unlockBtn.dataset.postId;
+      const price = parseFloat(unlockBtn.dataset.price);
+      if (confirm(`Voulez-vous débloquer cette diffusion en direct pour ${price.toFixed(2)}$ ?`)) {
+        socket.emit('unlock-live-stream', { postId });
+      }
+      return;
+    }
+
+    const endBtn = e.target.closest('.end-live-btn');
+    if (endBtn) {
+      const postId = endBtn.dataset.postId;
+      if (confirm("Voulez-vous vraiment terminer et supprimer cette diffusion ?")) {
+        socket.emit('end-live-stream', { postId });
+      }
+      return;
+    }
+  });
+
+  socket.on('live-stream-unlocked', (data) => {
+    const { postId, liveUrl, balance } = data;
+    const container = document.getElementById(`live-player-container-${postId}`);
+    if (!container) return;
+
+    const balanceEl = document.querySelector('.wallet-balance');
+    if (balanceEl) {
+      balanceEl.textContent = `${parseFloat(balance).toFixed(2)}$`;
+    }
+
+    const parent = container.parentElement;
+    const ytId = getYouTubeId(liveUrl);
+    
+    parent.innerHTML = `
+      <div class="post-live-shell" data-youtube-id="${ytId}" id="live-player-container-${postId}" style="position: relative; border-radius: 12px; overflow: hidden; background: #000; aspect-ratio: 16/9;">
+        <iframe id="youtube-player-${postId}" 
+                src="https://www.youtube.com/embed/${ytId}?enablejsapi=1&controls=0&autoplay=0&rel=0" 
+                frameborder="0" 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                allowfullscreen
+                style="width: 100%; height: 100%; border-radius: 12px; display: block;">
+        </iframe>
+        <div class="custom-live-controls" style="position: absolute; bottom: 12px; left: 12px; right: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; z-index: 10; pointer-events: auto;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" class="live-control-btn play-pause-btn" data-post-id="${postId}" aria-label="Play/Pause" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); border-radius: 50%; width: 36px; height: 36px; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(8px); transition: all 0.2s;">
+              <i data-lucide="play" class="play-icon" style="width: 16px; height: 16px;"></i>
+              <i data-lucide="pause" class="pause-icon" style="width: 16px; height: 16px; display: none;"></i>
+            </button>
+            <span class="live-badge-overlay" style="background: #ef4444; color: white; font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 6px; letter-spacing: 0.05em; display: flex; align-items: center; gap: 4px;">
+              <span style="width: 6px; height: 6px; background: white; border-radius: 50%; display: inline-block; animation: pulse 1.5s infinite;"></span> LIVE
+            </span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+    
+    window.initYouTubePlayer(postId, ytId);
+    showToast("Diffusion débloquée avec succès !");
+  });
+
+  socket.on('live-stream-ended', (data) => {
+    const { postId } = data;
+    const postEl = document.querySelector(`.feed-card[data-post-id="${postId}"]`) || document.getElementById(`post-${postId}`);
+    if (postEl) {
+      postEl.style.transition = 'all 0.5s ease';
+      postEl.style.opacity = '0';
+      postEl.style.transform = 'scale(0.9)';
+      setTimeout(() => {
+        postEl.remove();
+        showToast("La diffusion s'est terminée.");
+      }, 500);
+    }
+  });
+
+  socket.on('live-stream-error', (data) => {
+    showToast(data.message || "Erreur de diffusion.");
+  });
+
+  setTimeout(() => {
+    document.querySelectorAll('.post-live-shell').forEach(shell => {
+      const containerId = shell.id;
+      const postId = containerId.replace('live-player-container-', '');
+      const ytId = shell.dataset.youtubeId;
+      if (postId && ytId) {
+        window.initYouTubePlayer(postId, ytId);
+      }
+    });
+  }, 1000);
+});

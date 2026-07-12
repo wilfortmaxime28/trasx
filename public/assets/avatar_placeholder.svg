@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150" width="150" height="150">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="75" cy="75" r="75" fill="url(#bgGrad)" />
+  <!-- Person silhouette - head -->
+  <circle cx="75" cy="58" r="24" fill="rgba(255,255,255,0.85)" />
+  <!-- Person silhouette - body -->
+  <ellipse cx="75" cy="115" rx="38" ry="28" fill="rgba(255,255,255,0.85)" />
+</svg>

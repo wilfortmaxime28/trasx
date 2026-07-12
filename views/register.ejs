@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="<%= typeof locale !== 'undefined' ? locale : 'en' %>" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title><%= tText("TrasX - Register") %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css?v=<%= Date.now() %>">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/css/intlTelInput.css">
+</head>
+<body class="auth-page auth-page-register">
+  <main class="auth-shell auth-shell-centered">
+    <section class="auth-card auth-card-register">
+      <div class="auth-card-panel auth-card-panel-form">
+        <div class="auth-card-inner">
+          <div class="auth-brand-lockup">
+            <div class="auth-brand-icon" aria-label="TrasX">W</div>
+            <div>
+              <div class="auth-brand-name">TrasX</div>
+              <div class="auth-brand-tag"><%= tText("Create your profile") %></div>
+            </div>
+          </div>
+
+          <div class="auth-heading-block">
+            <h1 class="auth-heading"><%= tText("Create your Account") %></h1>
+            <p class="auth-subheading"><%= tText("Complete the steps below to join the platform.") %></p>
+          </div>
+
+          <% if (error) { %>
+            <div class="auth-alert error"><%= error %></div>
+          <% } %>
+
+          <div class="auth-alert warning">
+            <strong><%= tText("Important:") %></strong>
+            <%= tText("Use real and consistent information. Incorrect data may lead to account suspension.") %>
+          </div>
+
+          <div class="auth-stepper" aria-label="<%= tText('Registration steps') %>">
+            <button type="button" class="auth-step-pill is-active" data-register-step-indicator="1">
+              <span>1</span>
+              <small><%= tText("Identity") %></small>
+            </button>
+            <button type="button" class="auth-step-pill" data-register-step-indicator="2">
+              <span>2</span>
+              <small><%= tText("Contact") %></small>
+            </button>
+            <button type="button" class="auth-step-pill" data-register-step-indicator="3">
+              <span>3</span>
+              <small><%= tText("Security") %></small>
+            </button>
+          </div>
+
+          <form class="auth-form auth-form-stepped" action="/auth/register" method="POST" id="registerForm" novalidate>
+            <section class="auth-form-step is-active" data-register-step="1">
+              <div class="auth-form-step-head">
+                <h2><%= tText("Personal information") %></h2>
+                <p><%= tText("Tell us who you are.") %></p>
+              </div>
+
+              <div class="auth-form-grid">
+                <div class="auth-field">
+                  <label for="first_name"><%= tText("First Name") %></label>
+                  <label class="auth-input-wrap" for="first_name">
+                    <span class="auth-input-icon">A</span>
+                    <input id="first_name" type="text" name="first_name" required placeholder="<%= tText('John') %>" autocomplete="given-name">
+                  </label>
+                </div>
+                <div class="auth-field">
+                  <label for="last_name"><%= tText("Last Name") %></label>
+                  <label class="auth-input-wrap" for="last_name">
+                    <span class="auth-input-icon">A</span>
+                    <input id="last_name" type="text" name="last_name" required placeholder="<%= tText('Doe') %>" autocomplete="family-name">
+                  </label>
+                </div>
+              </div>
+
+              <div class="auth-field">
+                <label for="username"><%= tText("Username") %></label>
+                <label class="auth-input-wrap" for="username">
+                  <span class="auth-input-icon">@</span>
+                  <input id="username" type="text" name="username" required placeholder="<%= tText('johndoe123') %>" autocomplete="username">
+                </label>
+                <div class="auth-feedback" id="usernameFeedback"></div>
+                <div class="auth-suggestions" id="usernameSuggestions"></div>
+              </div>
+
+              <div class="auth-field">
+                <label for="dob"><%= tText("Date of Birth") %></label>
+                <label class="auth-input-wrap" for="dob">
+                  <span class="auth-input-icon">◷</span>
+                  <input id="dob" type="date" name="dob" required>
+                </label>
+              </div>
+            </section>
+
+            <section class="auth-form-step" data-register-step="2" hidden>
+              <div class="auth-form-step-head">
+                <h2><%= tText("Contact details") %></h2>
+                <p><%= tText("Add your reachable information.") %></p>
+              </div>
+
+              <div class="auth-field">
+                <label for="email"><%= tText("Email") %></label>
+                <label class="auth-input-wrap" for="email">
+                  <span class="auth-input-icon">✉</span>
+                  <input id="email" type="email" name="email" required placeholder="<%= tText('john@example.com') %>" autocomplete="email">
+                </label>
+              </div>
+
+              <div class="auth-field">
+                <label for="phone"><%= tText("Phone Number") %></label>
+                <div class="auth-phone-wrap">
+                  <input type="tel" id="phone" required>
+                </div>
+                <div class="auth-feedback" id="phoneFeedback"></div>
+                <input type="hidden" name="phone" id="hidden_phone">
+                <input type="hidden" name="country" id="hidden_country">
+              </div>
+            </section>
+
+            <section class="auth-form-step" data-register-step="3" hidden>
+              <div class="auth-form-step-head">
+                <h2><%= tText("Secure your account") %></h2>
+                <p><%= tText("Choose your password and confirm the rules.") %></p>
+              </div>
+
+              <div class="auth-field">
+                <label for="password"><%= tText("Password") %></label>
+                <label class="auth-input-wrap" for="password">
+                  <span class="auth-input-icon">•</span>
+                  <input id="password" type="password" name="password" required placeholder="<%= tText('••••••••') %>" autocomplete="new-password">
+                  <button type="button" class="password-toggle-btn" style="background: none; border: none; padding: 0 18px; cursor: pointer; color: #98a3b6; display: flex; align-items: center; justify-content: center; height: 100%; outline: none; flex-shrink: 0;" onclick="togglePasswordVisibility(this)" aria-label="Toggle password visibility">
+                    <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-3.7-3.7"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                  </button>
+                </label>
+              </div>
+
+              <div class="auth-terms auth-terms-card">
+                <input type="checkbox" name="terms" id="terms" required>
+                <label for="terms">
+                  <%= tText("I accept the") %>
+                  <a href="/auth/terms" target="_blank" rel="noreferrer"><%= tText("Terms and Conditions") %></a>
+                  <%= tText("and confirm that my registration details are accurate.") %>
+                </label>
+              </div>
+            </section>
+
+            <div class="auth-step-actions">
+              <button type="button" class="auth-secondary-btn auth-secondary-btn-muted" id="registerPrevBtn" disabled>
+                <%= tText("Back") %>
+              </button>
+              <button type="button" class="auth-submit auth-submit-solid" id="registerNextBtn" style="display:none">
+                <%= tText("Continue") %>
+              </button>
+              <button type="submit" class="auth-submit auth-submit-solid" id="registerSubmitBtn" style="display:none">
+                <%= tText("Create my account") %>
+              </button>
+            </div>
+          </form>
+
+          <p class="auth-switch-copy">
+            <%= tText("Already have an account?") %>
+            <a href="/auth/login"><%= tText("Log in") %></a>
+          </p>
+        </div>
+      </div>
+
+      <div class="auth-card-panel auth-card-panel-visual">
+        <div class="auth-visual-surface auth-visual-surface-register">
+          <div class="auth-visual-orbit auth-visual-orbit-one"></div>
+          <div class="auth-visual-orbit auth-visual-orbit-two"></div>
+          <div class="auth-visual-badge auth-visual-badge-star">✦</div>
+          <div class="auth-visual-badge auth-visual-badge-chat">⌁</div>
+          <div class="auth-visual-badge auth-visual-badge-user">☺</div>
+
+          <div class="auth-visual-card auth-visual-card-stacked auth-visual-card-back"></div>
+          <div class="auth-visual-card auth-visual-card-stacked auth-visual-card-front">
+            <div class="auth-visual-card-top">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div class="auth-visual-profile-block">
+              <div class="auth-visual-profile-avatar"></div>
+              <div class="auth-visual-profile-copy">
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+            <div class="auth-visual-stats-grid">
+              <div></div>
+              <div></div>
+              <div></div>
+            </div>
+            <div class="auth-visual-progress">
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+
+          <div class="auth-visual-copy">
+            <h2><%= tText("Join a Secure & Verified Network") %></h2>
+            <p><%= tText("Create your profile, unlock real-time chats, participate in events, exchange securely in our P2P market, and link your BSC wallet.") %></p>
+            <div class="auth-visual-dots">
+              <span></span>
+              <span class="is-active"></span>
+              <span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/intlTelInput.min.js"></script>
+  <script>
+    console.log('[Register] Script starting...');
+
+    const phoneInput = document.querySelector('#phone');
+    let iti;
+    try {
+      if (typeof window.intlTelInput === 'function') {
+        iti = window.intlTelInput(phoneInput, {
+          initialCountry: 'us',
+          dropdownContainer: document.body,
+          utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/utils.js',
+        });
+        console.log('[Register] intlTelInput initialized OK');
+      } else {
+        console.warn('[Register] intlTelInput not loaded - CDN failed. Using fallback validation.');
+      }
+    } catch (e) {
+      console.error('[Register] Failed to initialize intlTelInput:', e);
+    }
+
+    const phoneFeedback = document.getElementById('phoneFeedback');
+    const registerForm = document.getElementById('registerForm');
+    const stepPanels = Array.from(document.querySelectorAll('[data-register-step]'));
+    const stepIndicators = Array.from(document.querySelectorAll('[data-register-step-indicator]'));
+    const prevBtn = document.getElementById('registerPrevBtn');
+    const nextBtn = document.getElementById('registerNextBtn');
+    const submitBtn = document.getElementById('registerSubmitBtn');
+
+    // --- CRITICAL: Declare these BEFORE validateCurrentStep uses them ---
+    const usernameInput = document.getElementById('username');
+    const firstNameInput = document.getElementById('first_name');
+    const lastNameInput = document.getElementById('last_name');
+    const usernameFeedback = document.getElementById('usernameFeedback');
+    const usernameSuggestions = document.getElementById('usernameSuggestions');
+    const dobInput = document.getElementById('dob');
+
+    let activeStep = 1;
+    let timeout = null;
+
+    console.log('[Register] Elements loaded:', {
+      registerForm: !!registerForm,
+      nextBtn: !!nextBtn,
+      prevBtn: !!prevBtn,
+      submitBtn: !!submitBtn,
+      usernameInput: !!usernameInput,
+      phoneInput: !!phoneInput,
+      dobInput: !!dobInput,
+      stepPanels: stepPanels.length
+    });
+
+    function checkPhone() {
+      const val = phoneInput.value.trim();
+      console.log('[Register] checkPhone() called, val:', val);
+      if (val === '') {
+        phoneFeedback.className = 'auth-feedback';
+        phoneFeedback.textContent = '';
+        return false;
+      }
+
+      const phoneRegex = /^[+]?[0-9\s\-()]{5,20}$/;
+
+      if (iti && typeof iti.isValidNumber === 'function') {
+        try {
+          if (iti.isValidNumber()) {
+            phoneFeedback.textContent = <%- JSON.stringify(tText('Valid phone number for the selected country.')) %>;
+            phoneFeedback.className = 'auth-feedback success';
+            console.log('[Register] checkPhone() => true (iti valid)');
+            return true;
+          }
+          console.log('[Register] iti.isValidNumber() returned false, trying regex fallback');
+        } catch (e) {
+          console.warn('[Register] intlTelInput validation threw error, using fallback regex:', e);
+        }
+      }
+
+      // Fallback: basic format check so we don't block registration
+      if (phoneRegex.test(val)) {
+        phoneFeedback.textContent = '';
+        phoneFeedback.className = 'auth-feedback';
+        console.log('[Register] checkPhone() => true (regex fallback)');
+        return true;
+      }
+
+      phoneFeedback.textContent = <%- JSON.stringify(tText('Please enter a valid phone number.')) %>;
+      phoneFeedback.className = 'auth-feedback error';
+      console.log('[Register] checkPhone() => false');
+      return false;
+    }
+
+    function checkAge() {
+      if (!dobInput) return;
+      const dobVal = dobInput.value;
+      if (!dobVal) {
+        dobInput.setCustomValidity('');
+        return;
+      }
+      const parts = dobVal.split('-');
+      if (parts.length !== 3) {
+        dobInput.setCustomValidity('');
+        return;
+      }
+      const birthYear = parseInt(parts[0], 10);
+      const birthMonth = parseInt(parts[1], 10) - 1;
+      const birthDay = parseInt(parts[2], 10);
+
+      const today = new Date();
+      let age = today.getFullYear() - birthYear;
+      if (today.getMonth() < birthMonth || (today.getMonth() === birthMonth && today.getDate() < birthDay)) {
+        age--;
+      }
+
+      if (age < 18) {
+        dobInput.setCustomValidity(<%- JSON.stringify(tText('You must be at least 18 years old to register.')) %>);
+        console.log('[Register] checkAge() => under 18, age:', age);
+      } else {
+        dobInput.setCustomValidity('');
+      }
+    }
+
+    if (dobInput) {
+      const today = new Date();
+      const eighteenYearsAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+      const yyyy = eighteenYearsAgo.getFullYear();
+      const mm = String(eighteenYearsAgo.getMonth() + 1).padStart(2, '0');
+      const dd = String(eighteenYearsAgo.getDate()).padStart(2, '0');
+      dobInput.max = `${yyyy}-${mm}-${dd}`;
+      dobInput.addEventListener('change', checkAge);
+      dobInput.addEventListener('input', checkAge);
+    }
+
+    function setStep(step) {
+      console.log('[Register] setStep() called, step:', step);
+      activeStep = step;
+      stepPanels.forEach((panel) => {
+        const panelStep = Number(panel.getAttribute('data-register-step'));
+        const isActive = panelStep === activeStep;
+        panel.hidden = !isActive;
+        panel.classList.toggle('is-active', isActive);
+      });
+      stepIndicators.forEach((indicator) => {
+        const indicatorStep = Number(indicator.getAttribute('data-register-step-indicator'));
+        indicator.classList.toggle('is-active', indicatorStep === activeStep);
+        indicator.classList.toggle('is-complete', indicatorStep < activeStep);
+      });
+      prevBtn.disabled = activeStep === 1;
+      // Use style.display for bulletproof show/hide (CSS can override the `hidden` attribute)
+      const isLastStep = activeStep === stepPanels.length;
+      nextBtn.style.display = isLastStep ? 'none' : '';
+      submitBtn.style.display = isLastStep ? '' : 'none';
+      console.log('[Register] setStep() done. isLastStep:', isLastStep, '=> nextBtn:', nextBtn.style.display, 'submitBtn:', submitBtn.style.display);
+    }
+
+    function validateCurrentStep() {
+      console.log('[Register] validateCurrentStep() called, activeStep:', activeStep);
+
+      if (activeStep === 1 && typeof checkAge === 'function') {
+        checkAge();
+      }
+
+      const currentPanel = stepPanels.find((panel) => Number(panel.getAttribute('data-register-step')) === activeStep);
+      if (!currentPanel) {
+        console.log('[Register] validateCurrentStep() => no panel found, returning true');
+        return true;
+      }
+
+      const fields = Array.from(currentPanel.querySelectorAll('input[required]'));
+      console.log('[Register] Fields to validate:', fields.map(f => ({ id: f.id, type: f.type, value: f.value, valid: f.checkValidity() })));
+
+      for (const field of fields) {
+        if (field.type === 'checkbox') {
+          if (!field.checked) {
+            console.log('[Register] Checkbox not checked:', field.id);
+            field.reportValidity();
+            field.focus();
+            return false;
+          }
+          continue;
+        }
+        if (!field.value.trim()) {
+          console.log('[Register] Empty required field:', field.id);
+          field.reportValidity();
+          field.focus();
+          return false;
+        }
+        if (!field.checkValidity()) {
+          console.log('[Register] Invalid field:', field.id, 'customValidity:', field.validationMessage);
+          field.reportValidity();
+          field.focus();
+          return false;
+        }
+      }
+
+      if (activeStep === 1) {
+        const username = usernameInput.value.trim();
+        console.log('[Register] Step 1 username check:', username);
+        if (username.length < 3) {
+          usernameFeedback.className = 'auth-feedback error';
+          usernameFeedback.textContent = <%- JSON.stringify(tText('Username must be at least 3 characters.')) %>;
+          usernameFeedback.style.display = 'block';
+          usernameInput.focus();
+          return false;
+        }
+        if (username.includes('@')) {
+          usernameFeedback.className = 'auth-feedback error';
+          usernameFeedback.textContent = <%- JSON.stringify(tText('Username cannot resemble an email address.')) %>;
+          usernameFeedback.style.display = 'block';
+          usernameInput.focus();
+          return false;
+        }
+      }
+
+      if (activeStep === 2) {
+        const phoneResult = checkPhone();
+        console.log('[Register] Step 2 phone check result:', phoneResult);
+        return phoneResult;
+      }
+
+      console.log('[Register] validateCurrentStep() => true');
+      return true;
+    }
+
+    prevBtn.addEventListener('click', () => {
+      console.log('[Register] prevBtn clicked, activeStep:', activeStep);
+      try {
+        if (activeStep > 1) {
+          setStep(activeStep - 1);
+        }
+      } catch (err) {
+        console.error('[Register] Error in prevBtn click handler:', err);
+      }
+    });
+
+    nextBtn.addEventListener('click', () => {
+      console.log('[Register] nextBtn clicked, activeStep:', activeStep);
+      try {
+        const valid = validateCurrentStep();
+        console.log('[Register] validateCurrentStep result:', valid);
+        if (!valid) return;
+        if (activeStep < stepPanels.length) {
+          setStep(activeStep + 1);
+        }
+      } catch (err) {
+        console.error('[Register] Error in nextBtn click handler:', err);
+        alert('Une erreur est survenue lors de la transition : ' + err.message);
+      }
+    });
+
+    phoneInput.addEventListener('keyup', checkPhone);
+    phoneInput.addEventListener('change', checkPhone);
+    phoneInput.addEventListener('countrychange', checkPhone);
+
+    usernameInput.addEventListener('input', function () {
+      clearTimeout(timeout);
+      usernameSuggestions.innerHTML = '';
+      const username = this.value.trim();
+
+      if (username.length < 3) {
+        usernameFeedback.className = 'auth-feedback error';
+        usernameFeedback.textContent = <%- JSON.stringify(tText('Username must be at least 3 characters.')) %>;
+        usernameFeedback.style.display = 'block';
+        return;
+      }
+
+      if (username.includes('@')) {
+        usernameFeedback.className = 'auth-feedback error';
+        usernameFeedback.textContent = <%- JSON.stringify(tText('Username cannot resemble an email address.')) %>;
+        usernameFeedback.style.display = 'block';
+        return;
+      }
+
+      usernameFeedback.className = 'auth-feedback';
+      usernameFeedback.textContent = <%- JSON.stringify(tText('Checking availability...')) %>;
+      usernameFeedback.style.display = 'block';
+      usernameFeedback.style.color = 'var(--text-secondary)';
+
+      timeout = setTimeout(async () => {
+        try {
+          const fn = firstNameInput.value.trim();
+          const ln = lastNameInput.value.trim();
+          const res = await fetch(`/auth/check-username?username=${encodeURIComponent(username)}&first_name=${encodeURIComponent(fn)}&last_name=${encodeURIComponent(ln)}`);
+          const data = await res.json();
+
+          usernameFeedback.style.color = '';
+
+          if (data.available) {
+            usernameFeedback.textContent = <%- JSON.stringify(tText('Username is available!')) %>;
+            usernameFeedback.className = 'auth-feedback success';
+          } else {
+            usernameFeedback.textContent = <%- JSON.stringify(tText('Username is already taken.')) %>;
+            usernameFeedback.className = 'auth-feedback error';
+
+            if (data.suggestions && data.suggestions.length > 0) {
+              const span = document.createElement('span');
+              span.textContent = <%- JSON.stringify(tText('Suggestions:')) %> + ' ';
+              usernameSuggestions.appendChild(span);
+
+              data.suggestions.forEach((sug) => {
+                const chip = document.createElement('div');
+                chip.className = 'auth-suggestion-chip';
+                chip.textContent = sug;
+                chip.onclick = () => {
+                  usernameInput.value = sug;
+                  usernameInput.dispatchEvent(new Event('input'));
+                };
+                usernameSuggestions.appendChild(chip);
+              });
+            }
+          }
+        } catch (e) {
+          console.error(e);
+          usernameFeedback.className = 'auth-feedback';
+        }
+      }, 500);
+    });
+
+    registerForm.addEventListener('submit', function (e) {
+      console.log('[Register] Form submit triggered');
+      try {
+        if (!validateCurrentStep()) {
+          console.log('[Register] Submit blocked by validateCurrentStep()');
+          e.preventDefault();
+          return;
+        }
+
+        const hiddenPhone = document.getElementById('hidden_phone');
+        const hiddenCountry = document.getElementById('hidden_country');
+        const val = phoneInput.value.trim();
+        const phoneRegex = /^[+]?[0-9\s\-()]{5,20}$/;
+
+        if (iti && typeof iti.isValidNumber === 'function') {
+          let isValid = false;
+          try {
+            isValid = iti.isValidNumber();
+          } catch (err) {
+            console.warn('[Register] iti.isValidNumber() threw error:', err);
+          }
+
+          if (!isValid && !phoneRegex.test(val)) {
+            e.preventDefault();
+            console.log('[Register] Submit blocked: invalid phone');
+            phoneFeedback.textContent = <%- JSON.stringify(tText('Please enter a valid phone number with the correct country code.')) %>;
+            phoneFeedback.className = 'auth-feedback error';
+            setStep(2);
+            phoneInput.focus();
+            return;
+          }
+
+          try { hiddenPhone.value = iti.getNumber(); } catch (err) { hiddenPhone.value = val; }
+          try {
+            const countryData = iti.getSelectedCountryData();
+            hiddenCountry.value = (countryData && countryData.name) ? countryData.name : '';
+          } catch (err) { hiddenCountry.value = ''; }
+        } else {
+          if (!phoneRegex.test(val)) {
+            e.preventDefault();
+            phoneFeedback.textContent = <%- JSON.stringify(tText('Please enter a valid phone number.')) %>;
+            phoneFeedback.className = 'auth-feedback error';
+            setStep(2);
+            phoneInput.focus();
+            return;
+          }
+          hiddenPhone.value = val;
+          hiddenCountry.value = '';
+        }
+
+        console.log('[Register] Form submission proceeding to server...');
+      } catch (err) {
+        e.preventDefault();
+        console.error('[Register] Critical error during submit:', err);
+        alert('Une erreur est survenue lors de la validation : ' + err.message);
+      }
+    });
+
+    setStep(1);
+    console.log('[Register] Initialization complete. Ready.');
+
+    window.togglePasswordVisibility = function(btn) {
+      const container = btn.closest('.auth-input-wrap');
+      const input = container.querySelector('input');
+      const eyeOpen = btn.querySelector('.eye-open');
+      const eyeClosed = btn.querySelector('.eye-closed');
+      if (input.type === 'password') {
+        input.type = 'text';
+        eyeOpen.style.display = 'none';
+        eyeClosed.style.display = 'block';
+      } else {
+        input.type = 'password';
+        eyeOpen.style.display = 'block';
+        eyeClosed.style.display = 'none';
+      }
+    };
+  </script>
+</body>
+</html>
