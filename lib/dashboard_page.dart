@@ -10186,6 +10186,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     bool? nameMatched;
     bool? dobMatched;
     int faceMatchScore = 0;
+    bool isCancelled = false;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textCol = isDark ? Colors.white : Colors.black;
@@ -10212,6 +10213,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                     Uri.parse('https://trasx.com/api/users/${widget.userId}'),
                     headers: {'Content-Type': 'application/json', 'x-user-id': '${widget.userId}'},
                   );
+                  if (isCancelled) return;
                   if (response.statusCode == 200) {
                     final data = jsonDecode(response.body);
                     userFirstName = data['first_name'] ?? "Inconnu";
@@ -10224,6 +10226,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                     throw Exception("Erreur de récupération des informations.");
                   }
                 } catch (e) {
+                  if (isCancelled) return;
                   setDialogState(() {
                     verificationError = "Impossible de récupérer les données de votre compte.";
                     currentStep = 4;
@@ -10234,6 +10237,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                 // ── Step 1: Upload selfie + document → OCR + server face match ─
                 try {
                   final bytes = await selfieFile.readAsBytes();
+                  if (isCancelled) return;
                   final base64Image = base64Encode(bytes);
                   final selfieDataUrl = "data:image/jpeg;base64,$base64Image";
 
@@ -10250,8 +10254,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                     contentType: MediaType('image', 'jpeg'),
                   ));
 
+                  if (isCancelled) return;
                   final streamedResponse = await request.send();
+                  if (isCancelled) return;
                   final responseBody = await streamedResponse.stream.bytesToString();
+                  if (isCancelled) return;
                   final resData = jsonDecode(responseBody);
 
                   final details = resData['details'] as Map<String, dynamic>? ?? {};
@@ -10269,13 +10276,16 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                     return;
                   }
 
+                  if (isCancelled) return;
                   setDialogState(() => currentStep = 2);
                   await Future.delayed(const Duration(milliseconds: 600));
 
+                  if (isCancelled) return;
                   // ── Step 2: Show name/DOB concordance result ──────────────────
                   setDialogState(() => currentStep = 3);
                   await Future.delayed(const Duration(milliseconds: 600));
 
+                  if (isCancelled) return;
                   // ── Step 3: Show face match result ────────────────────────────
                   setDialogState(() {
                     currentStep = 4;
@@ -10283,6 +10293,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                   });
                   _fetchBalances(); // refresh KYC status
                 } catch (e) {
+                  if (isCancelled) return;
                   setDialogState(() {
                     currentStep = 4;
                     verificationError = "Erreur de connexion lors du téléversement.";
@@ -10302,9 +10313,31 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        "Analyse de sécurité par IA",
-                        style: TextStyle(color: textCol, fontSize: 18, fontWeight: FontWeight.bold),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              "Analyse de sécurité par IA",
+                              style: TextStyle(color: textCol, fontSize: 17, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          if (currentStep < 4)
+                            GestureDetector(
+                              onTap: () {
+                                isCancelled = true;
+                                Navigator.pop(context);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: textCol.withValues(alpha: 0.08),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(Icons.close_rounded, color: textCol, size: 16),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       Text(
