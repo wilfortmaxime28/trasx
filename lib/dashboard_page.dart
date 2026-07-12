@@ -3554,13 +3554,7 @@ class _ReelThumbnailState extends State<ReelThumbnail> {
     }
 
     if (_controller == null || !_isInitialized) {
-      return const Center(
-        child: SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white30),
-        ),
-      );
+      return Container(color: Colors.white10);
     }
     return SizedBox.expand(
       child: FittedBox(
@@ -3577,7 +3571,8 @@ class _ReelThumbnailState extends State<ReelThumbnail> {
 
 class PostVideoPlayer extends StatefulWidget {
   final String videoUrl;
-  const PostVideoPlayer({super.key, required this.videoUrl});
+  final String? thumbnailUrl;
+  const PostVideoPlayer({super.key, required this.videoUrl, this.thumbnailUrl});
 
   @override
   State<PostVideoPlayer> createState() => _PostVideoPlayerState();
@@ -3686,13 +3681,26 @@ class _PostVideoPlayerState extends State<PostVideoPlayer> {
         }
       },
       child: !_isInitialized
-          ? const Center(
-              child: SizedBox(
-                width: 30,
-                height: 30,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFC13584)),
-              ),
-            )
+          ? (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty
+              ? CachedNetworkImage(
+                  imageUrl: widget.thumbnailUrl!.startsWith('http')
+                      ? widget.thumbnailUrl!
+                      : 'https://trasx.com${widget.thumbnailUrl!.startsWith('/') ? widget.thumbnailUrl! : '/${widget.thumbnailUrl!}'}',
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  placeholder: (context, url) => Container(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF121212)
+                        : const Color(0xFFFAFAFA),
+                  ),
+                )
+              : Container(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF121212)
+                      : const Color(0xFFFAFAFA),
+                  height: 300,
+                  alignment: Alignment.center,
+                ))
           : Stack(
               alignment: Alignment.center,
               children: [
@@ -4205,7 +4213,10 @@ class _FeedCardState extends State<FeedCard> {
           
           // 2. Media Content (100% full screen width edge-to-edge)
           if (isVideo)
-            PostVideoPlayer(videoUrl: widget.imageUrl!)
+            PostVideoPlayer(
+              videoUrl: widget.imageUrl!,
+              thumbnailUrl: widget.thumbnailUrl,
+            )
           else if (displayUrl != null && displayUrl.isNotEmpty)
             CachedNetworkImage(
               imageUrl: displayUrl.startsWith('http') ? displayUrl : 'https://trasx.com${displayUrl.startsWith('/') ? displayUrl : '/$displayUrl'}',
