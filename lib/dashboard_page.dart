@@ -3140,7 +3140,9 @@ class _DashboardPageState extends State<DashboardPage> {
           textPrimaryColor,
           onTap: () {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const SecuritySettingsPage()),
+              MaterialPageRoute(
+                builder: (context) => SecuritySettingsPage(isDarkMode: _isDarkMode),
+              ),
             );
           },
         ),
@@ -3151,7 +3153,9 @@ class _DashboardPageState extends State<DashboardPage> {
           textPrimaryColor,
           onTap: () {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const WalletSettingsPage()),
+              MaterialPageRoute(
+                builder: (context) => WalletSettingsPage(isDarkMode: _isDarkMode),
+              ),
             );
           },
         ),
@@ -3182,7 +3186,9 @@ class _DashboardPageState extends State<DashboardPage> {
           textPrimaryColor,
           onTap: () {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const SupportSettingsPage()),
+              MaterialPageRoute(
+                builder: (context) => SupportSettingsPage(isDarkMode: _isDarkMode),
+              ),
             );
           },
         ),
@@ -7767,7 +7773,8 @@ Widget buildPremiumAvatar(String? avatarUrl, String displayName, {double radius 
 // 1. SECURITY & PASSWORD SETTINGS PAGE
 // ==========================================
 class SecuritySettingsPage extends StatefulWidget {
-  const SecuritySettingsPage({super.key});
+  final bool isDarkMode;
+  const SecuritySettingsPage({super.key, required this.isDarkMode});
 
   @override
   State<SecuritySettingsPage> createState() => _SecuritySettingsPageState();
@@ -7817,12 +7824,13 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = widget.isDarkMode;
     final textPrimaryColor = isDark ? Colors.white : Colors.black;
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final bgColor = isDark ? const Color(0xFF000000) : const Color(0xFFF9F9F9);
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFF9F9F9),
+      backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -7836,117 +7844,119 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Modifier le mot de passe",
-                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              _buildPasswordField(
-                controller: _currentPasswordController,
-                label: "Mot de passe actuel",
-                obscure: _obscureCurrent,
-                onToggle: () => setState(() => _obscureCurrent = !_obscureCurrent),
-                validator: (val) => val == null || val.isEmpty ? "Veuillez entrer votre mot de passe actuel." : null,
-                isDark: isDark,
-              ),
-              const SizedBox(height: 12),
-              _buildPasswordField(
-                controller: _newPasswordController,
-                label: "Nouveau mot de passe",
-                obscure: _obscureNew,
-                onToggle: () => setState(() => _obscureNew = !_obscureNew),
-                validator: (val) {
-                  if (val == null || val.isEmpty) return "Veuillez entrer un nouveau mot de passe.";
-                  if (val.length < 6) return "Le mot de passe doit faire au moins 6 caractères.";
-                  return null;
-                },
-                isDark: isDark,
-              ),
-              const SizedBox(height: 12),
-              _buildPasswordField(
-                controller: _confirmPasswordController,
-                label: "Confirmer le nouveau mot de passe",
-                obscure: _obscureConfirm,
-                onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                validator: (val) {
-                  if (val == null || val.isEmpty) return "Veuillez confirmer votre mot de passe.";
-                  if (val != _newPasswordController.text) return "Les mots de passe ne correspondent pas.";
-                  return null;
-                },
-                isDark: isDark,
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isUpdating ? null : _submitUpdate,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFC13584), // Gradient color
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
-                  ),
-                  child: _isUpdating
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text(
-                          "Enregistrer les modifications",
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Modifier le mot de passe",
+                  style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-              ),
-              const SizedBox(height: 36),
-              const Divider(color: Colors.white10),
-              const SizedBox(height: 12),
-              Text(
-                "Sécurité supplémentaire",
-                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
+                const SizedBox(height: 16),
+                _buildPasswordField(
+                  controller: _currentPasswordController,
+                  label: "Mot de passe actuel",
+                  obscure: _obscureCurrent,
+                  onToggle: () => setState(() => _obscureCurrent = !_obscureCurrent),
+                  validator: (val) => val == null || val.isEmpty ? "Veuillez entrer votre mot de passe actuel." : null,
+                  isDark: isDark,
                 ),
-                child: SwitchListTile(
-                  title: Text(
-                    "Double authentification (2FA)",
-                    style: TextStyle(color: textPrimaryColor, fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: const Text(
-                    "Protégez votre compte avec une vérification supplémentaire.",
-                    style: TextStyle(color: Colors.white54, fontSize: 11),
-                  ),
-                  value: _is2FAEnabled,
-                  activeColor: const Color(0xFFC13584),
-                  onChanged: (val) {
-                    setState(() {
-                      _is2FAEnabled = val;
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(val
-                            ? 'Double authentification activée.'
-                            : 'Double authentification désactivée.'),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
+                const SizedBox(height: 12),
+                _buildPasswordField(
+                  controller: _newPasswordController,
+                  label: "Nouveau mot de passe",
+                  obscure: _obscureNew,
+                  onToggle: () => setState(() => _obscureNew = !_obscureNew),
+                  validator: (val) {
+                    if (val == null || val.isEmpty) return "Veuillez entrer un nouveau mot de passe.";
+                    if (val.length < 6) return "Le mot de passe doit faire au moins 6 caractères.";
+                    return null;
                   },
+                  isDark: isDark,
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                _buildPasswordField(
+                  controller: _confirmPasswordController,
+                  label: "Confirmer le nouveau mot de passe",
+                  obscure: _obscureConfirm,
+                  onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  validator: (val) {
+                    if (val == null || val.isEmpty) return "Veuillez confirmer votre mot de passe.";
+                    if (val != _newPasswordController.text) return "Les mots de passe ne correspondent pas.";
+                    return null;
+                  },
+                  isDark: isDark,
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _isUpdating ? null : _submitUpdate,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFC13584), // Gradient color
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: _isUpdating
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text(
+                            "Enregistrer les modifications",
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 36),
+                Divider(color: isDark ? Colors.white10 : Colors.black12),
+                const SizedBox(height: 12),
+                Text(
+                  "Sécurité supplémentaire",
+                  style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
+                  ),
+                  child: SwitchListTile(
+                    title: Text(
+                      "Double authentification (2FA)",
+                      style: TextStyle(color: textPrimaryColor, fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(
+                      "Protégez votre compte avec une vérification supplémentaire.",
+                      style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 11),
+                    ),
+                    value: _is2FAEnabled,
+                    activeColor: const Color(0xFFC13584),
+                    onChanged: (val) {
+                      setState(() {
+                        _is2FAEnabled = val;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(val
+                              ? 'Double authentification activée.'
+                              : 'Double authentification désactivée.'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -7965,7 +7975,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
       controller: controller,
       obscureText: obscure,
       validator: validator,
-      style: const TextStyle(color: Colors.white, fontSize: 14),
+      style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 14),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 13),
@@ -7978,7 +7988,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
         suffixIcon: IconButton(
           icon: Icon(
             obscure ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-            color: Colors.white60,
+            color: isDark ? Colors.white60 : Colors.black54,
             size: 20,
           ),
           onPressed: onToggle,
@@ -7992,7 +8002,8 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
 // 2. WALLET SETTINGS PAGE
 // ==========================================
 class WalletSettingsPage extends StatefulWidget {
-  const WalletSettingsPage({super.key});
+  final bool isDarkMode;
+  const WalletSettingsPage({super.key, required this.isDarkMode});
 
   @override
   State<WalletSettingsPage> createState() => _WalletSettingsPageState();
@@ -8010,12 +8021,14 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = widget.isDarkMode;
     final textPrimaryColor = isDark ? Colors.white : Colors.black;
+    final textSecondaryColor = isDark ? Colors.white54 : Colors.black54;
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final bgColor = isDark ? const Color(0xFF000000) : const Color(0xFFF9F9F9);
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFF9F9F9),
+      backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -8029,209 +8042,214 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Wallet Premium Card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Wallet Premium Card (always styled with white text on dark gradient background for premium look)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFC13584).withValues(alpha: 0.3),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    )
+                  ],
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFC13584).withValues(alpha: 0.3),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  )
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "SOLDE TRASX",
-                        style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1),
-                      ),
-                      Icon(Icons.stars_rounded, color: Colors.white70, size: 24),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    "250 💎",
-                    style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    "\$25.00 USD",
-                    style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 24),
-                  const Text(
-                    "ADRESSE DE RETRAIT (BSC)",
-                    style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.5),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _bscAddressController.text,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "SOLDE TRASX",
+                          style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1),
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.copy_rounded, color: Colors.white70, size: 16),
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: _bscAddressController.text));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Adresse copiée !'), duration: Duration(seconds: 1)),
-                          );
-                        },
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: cardColor,
-                      foregroundColor: textPrimaryColor,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      elevation: 0,
-                      side: BorderSide(color: textPrimaryColor.withValues(alpha: 0.08)),
+                        Icon(Icons.stars_rounded, color: Colors.white70, size: 24),
+                      ],
                     ),
-                    icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-                    label: const Text("Déposer", style: TextStyle(fontWeight: FontWeight.bold)),
-                    onPressed: () {
-                      _showDepositDialog(context);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFC13584),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      elevation: 0,
+                    const SizedBox(height: 12),
+                    const Text(
+                      "250 💎",
+                      style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
                     ),
-                    icon: const Icon(Icons.send_rounded, size: 18),
-                    label: const Text("Retirer", style: TextStyle(fontWeight: FontWeight.bold)),
-                    onPressed: () {
-                      _showWithdrawDialog(context);
-                    },
-                  ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      "\$25.00 USD",
+                      style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      "ADRESSE DE RETRAIT (BSC)",
+                      style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.5),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _bscAddressController.text,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace'),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.copy_rounded, color: Colors.white70, size: 16),
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: _bscAddressController.text));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Adresse copiée !'), duration: Duration(seconds: 1)),
+                            );
+                          },
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            Text(
-              "Adresse BSC liée",
-              style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
               ),
-              child: Row(
+              const SizedBox(height: 24),
+              Row(
                 children: [
                   Expanded(
-                    child: _isEditingAddress
-                        ? TextField(
-                            controller: _bscAddressController,
-                            style: TextStyle(color: textPrimaryColor, fontSize: 13, fontFamily: 'monospace'),
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              contentPadding: EdgeInsets.symmetric(vertical: 8),
-                              border: InputBorder.none,
-                            ),
-                          )
-                        : Text(
-                            _bscAddressController.text,
-                            style: TextStyle(color: textPrimaryColor, fontSize: 13, fontFamily: 'monospace'),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: cardColor,
+                        foregroundColor: textPrimaryColor,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 0,
+                        side: BorderSide(color: textPrimaryColor.withValues(alpha: 0.08)),
+                      ),
+                      icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                      label: const Text("Déposer", style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () {
+                        _showDepositDialog(context);
+                      },
+                    ),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        if (_isEditingAddress) {
-                          // save
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Adresse BSC enregistrée.')),
-                          );
-                        }
-                        _isEditingAddress = !_isEditingAddress;
-                      });
-                    },
-                    child: Text(
-                      _isEditingAddress ? "Sauver" : "Modifier",
-                      style: const TextStyle(color: Color(0xFF3897F0), fontWeight: FontWeight.bold, fontSize: 13),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFC13584),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 0,
+                      ),
+                      icon: const Icon(Icons.send_rounded, size: 18),
+                      label: const Text("Retirer", style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () {
+                        _showWithdrawDialog(context);
+                      },
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 32),
-            Text(
-              "Historique des Transactions",
-              style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            _buildTransactionItem(
-              title: "Achat de Live Unlock",
-              subtitle: "Post #429 par @john_doe",
-              amount: "-20 💎",
-              date: "Aujourd'hui, 14:32",
-              isPositive: false,
-              cardColor: cardColor,
-              textPrimaryColor: textPrimaryColor,
-            ),
-            _buildTransactionItem(
-              title: "Dépôt BSC",
-              subtitle: "Via NowPayments",
-              amount: "+100 💎",
-              date: "Hier, 18:15",
-              isPositive: true,
-              cardColor: cardColor,
-              textPrimaryColor: textPrimaryColor,
-            ),
-            _buildTransactionItem(
-              title: "Gain Challenge",
-              subtitle: "Hashtag #freestyle",
-              amount: "+150 💎",
-              date: "10 Juil, 12:00",
-              isPositive: true,
-              cardColor: cardColor,
-              textPrimaryColor: textPrimaryColor,
-            ),
-          ],
+              const SizedBox(height: 32),
+              Text(
+                "Adresse BSC liée",
+                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _isEditingAddress
+                          ? TextField(
+                              controller: _bscAddressController,
+                              style: TextStyle(color: textPrimaryColor, fontSize: 13, fontFamily: 'monospace'),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(vertical: 8),
+                                border: InputBorder.none,
+                              ),
+                            )
+                          : Text(
+                              _bscAddressController.text,
+                              style: TextStyle(color: textPrimaryColor, fontSize: 13, fontFamily: 'monospace'),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          if (_isEditingAddress) {
+                            // save
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Adresse BSC enregistrée.')),
+                            );
+                          }
+                          _isEditingAddress = !_isEditingAddress;
+                        });
+                      },
+                      child: Text(
+                        _isEditingAddress ? "Sauver" : "Modifier",
+                        style: const TextStyle(color: Color(0xFF3897F0), fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+              Text(
+                "Historique des Transactions",
+                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              _buildTransactionItem(
+                title: "Achat de Live Unlock",
+                subtitle: "Post #429 par @john_doe",
+                amount: "-20 💎",
+                date: "Aujourd'hui, 14:32",
+                isPositive: false,
+                cardColor: cardColor,
+                textPrimaryColor: textPrimaryColor,
+                textSecondaryColor: textSecondaryColor,
+              ),
+              _buildTransactionItem(
+                title: "Dépôt BSC",
+                subtitle: "Via NowPayments",
+                amount: "+100 💎",
+                date: "Hier, 18:15",
+                isPositive: true,
+                cardColor: cardColor,
+                textPrimaryColor: textPrimaryColor,
+                textSecondaryColor: textSecondaryColor,
+              ),
+              _buildTransactionItem(
+                title: "Gain Challenge",
+                subtitle: "Hashtag #freestyle",
+                amount: "+150 💎",
+                date: "10 Juil, 12:00",
+                isPositive: true,
+                cardColor: cardColor,
+                textPrimaryColor: textPrimaryColor,
+                textSecondaryColor: textSecondaryColor,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -8297,6 +8315,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     required bool isPositive,
     required Color cardColor,
     required Color textPrimaryColor,
+    required Color textSecondaryColor,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -8329,7 +8348,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                 children: [
                   Text(title, style: TextStyle(color: textPrimaryColor, fontSize: 13, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 2),
-                  Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                  Text(subtitle, style: TextStyle(color: textSecondaryColor, fontSize: 11)),
                 ],
               ),
             ],
@@ -8346,7 +8365,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(date, style: const TextStyle(color: Colors.white54, fontSize: 10)),
+              Text(date, style: TextStyle(color: textSecondaryColor, fontSize: 10)),
             ],
           ),
         ],
@@ -8376,12 +8395,13 @@ class _LanguageSettingsPageState extends State<LanguageSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = widget.isDarkMode;
     final textPrimaryColor = isDark ? Colors.white : Colors.black;
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final bgColor = isDark ? const Color(0xFF000000) : const Color(0xFFF9F9F9);
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFF9F9F9),
+      backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -8395,87 +8415,89 @@ class _LanguageSettingsPageState extends State<LanguageSettingsPage> {
         ),
         centerTitle: true,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "Langue de l'application",
-              style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Langue de l'application",
+                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
               ),
-              child: Column(
-                children: [
-                  RadioListTile<String>(
-                    title: Text("Français", style: TextStyle(color: textPrimaryColor, fontSize: 14)),
-                    secondary: const Text("🇫🇷", style: TextStyle(fontSize: 20)),
-                    value: "fr",
-                    groupValue: _selectedLanguage,
-                    activeColor: const Color(0xFFC13584),
-                    onChanged: (val) {
-                      setState(() {
-                        _selectedLanguage = val!;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Langue changée en Français.')),
-                      );
-                    },
-                  ),
-                  const Divider(height: 1, color: Colors.white10),
-                  RadioListTile<String>(
-                    title: Text("English", style: TextStyle(color: textPrimaryColor, fontSize: 14)),
-                    secondary: const Text("🇬🇧", style: TextStyle(fontSize: 20)),
-                    value: "en",
-                    groupValue: _selectedLanguage,
-                    activeColor: const Color(0xFFC13584),
-                    onChanged: (val) {
-                      setState(() {
-                        _selectedLanguage = val!;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Language changed to English.')),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 32),
-            Text(
-              "Thème d'affichage",
-              style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
-              ),
-              child: SwitchListTile(
-                title: Text(
-                  "Mode Sombre",
-                  style: TextStyle(color: textPrimaryColor, fontSize: 14, fontWeight: FontWeight.w600),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
                 ),
-                subtitle: const Text(
-                  "Activer l'affichage avec des couleurs sombres.",
-                  style: TextStyle(color: Colors.white54, fontSize: 11),
+                child: Column(
+                  children: [
+                    RadioListTile<String>(
+                      title: Text("Français", style: TextStyle(color: textPrimaryColor, fontSize: 14)),
+                      secondary: const Text("🇫🇷", style: TextStyle(fontSize: 20)),
+                      value: "fr",
+                      groupValue: _selectedLanguage,
+                      activeColor: const Color(0xFFC13584),
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedLanguage = val!;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Langue changée en Français.')),
+                        );
+                      },
+                    ),
+                    Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
+                    RadioListTile<String>(
+                      title: Text("English", style: TextStyle(color: textPrimaryColor, fontSize: 14)),
+                      secondary: const Text("🇬🇧", style: TextStyle(fontSize: 20)),
+                      value: "en",
+                      groupValue: _selectedLanguage,
+                      activeColor: const Color(0xFFC13584),
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedLanguage = val!;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Language changed to English.')),
+                        );
+                      },
+                    ),
+                  ],
                 ),
-                value: widget.isDarkMode,
-                activeColor: const Color(0xFFC13584),
-                onChanged: (val) {
-                  widget.onThemeChanged(val);
-                },
               ),
-            ),
-          ],
+              const SizedBox(height: 32),
+              Text(
+                "Thème d'affichage",
+                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
+                ),
+                child: SwitchListTile(
+                  title: Text(
+                    "Mode Sombre",
+                    style: TextStyle(color: textPrimaryColor, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    "Activer l'affichage avec des couleurs sombres.",
+                    style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 11),
+                  ),
+                  value: widget.isDarkMode,
+                  activeColor: const Color(0xFFC13584),
+                  onChanged: (val) {
+                    widget.onThemeChanged(val);
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -8486,7 +8508,8 @@ class _LanguageSettingsPageState extends State<LanguageSettingsPage> {
 // 4. CUSTOMER SUPPORT SETTINGS PAGE
 // ==========================================
 class SupportSettingsPage extends StatefulWidget {
-  const SupportSettingsPage({super.key});
+  final bool isDarkMode;
+  const SupportSettingsPage({super.key, required this.isDarkMode});
 
   @override
   State<SupportSettingsPage> createState() => _SupportSettingsPageState();
@@ -8554,12 +8577,14 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = widget.isDarkMode;
     final textPrimaryColor = isDark ? Colors.white : Colors.black;
+    final textSecondaryColor = isDark ? Colors.white54 : Colors.black54;
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final bgColor = isDark ? const Color(0xFF000000) : const Color(0xFFF9F9F9);
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF000000) : const Color(0xFFF9F9F9),
+      backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -8573,118 +8598,122 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Contactez le support TRASX",
-                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                "Remplissez le formulaire ci-dessous pour ouvrir un ticket d'aide.",
-                style: TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              const SizedBox(height: 20),
-              // Dropdown Subject selector
-              DropdownButtonFormField<String>(
-                value: _selectedSubject,
-                dropdownColor: cardColor,
-                style: TextStyle(color: textPrimaryColor, fontSize: 13),
-                decoration: InputDecoration(
-                  labelText: "Sujet de votre demande",
-                  labelStyle: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 13),
-                  filled: true,
-                  fillColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Contactez le support TRASX",
+                  style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  "Remplissez le formulaire ci-dessous pour ouvrir un ticket d'aide.",
+                  style: TextStyle(color: textSecondaryColor, fontSize: 12),
+                ),
+                const SizedBox(height: 20),
+                // Dropdown Subject selector
+                DropdownButtonFormField<String>(
+                  value: _selectedSubject,
+                  dropdownColor: cardColor,
+                  style: TextStyle(color: textPrimaryColor, fontSize: 13),
+                  decoration: InputDecoration(
+                    labelText: "Sujet de votre demande",
+                    labelStyle: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 13),
+                    filled: true,
+                    fillColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  items: _subjects.map((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    setState(() {
+                      _selectedSubject = val!;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                // Description TextFormField
+                TextFormField(
+                  controller: _descriptionController,
+                  maxLines: 6,
+                  validator: (val) => val == null || val.trim().isEmpty ? "Veuillez détailler votre problème." : null,
+                  style: TextStyle(color: textPrimaryColor, fontSize: 14),
+                  decoration: InputDecoration(
+                    labelText: "Description de votre demande",
+                    alignLabelWithHint: true,
+                    labelStyle: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 13),
+                    filled: true,
+                    fillColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
-                items: _subjects.map((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
-                  );
-                }).toList(),
-                onChanged: (val) {
-                  setState(() {
-                    _selectedSubject = val!;
-                  });
-                },
-              ),
-              const SizedBox(height: 16),
-              // Description TextFormField
-              TextFormField(
-                controller: _descriptionController,
-                maxLines: 6,
-                validator: (val) => val == null || val.trim().isEmpty ? "Veuillez détailler votre problème." : null,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                decoration: InputDecoration(
-                  labelText: "Description de votre demande",
-                  alignLabelWithHint: true,
-                  labelStyle: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 13),
-                  filled: true,
-                  fillColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _isSending ? null : _sendSupportTicket,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFC13584),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: _isSending
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text(
+                            "Envoyer ma demande",
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isSending ? null : _sendSupportTicket,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFC13584),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
-                  ),
-                  child: _isSending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text(
-                          "Envoyer ma demande",
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        ),
+                const SizedBox(height: 36),
+                Divider(color: isDark ? Colors.white10 : Colors.black12),
+                const SizedBox(height: 20),
+                Text(
+                  "Autres moyens de contact",
+                  style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
                 ),
-              ),
-              const SizedBox(height: 36),
-              const Divider(color: Colors.white10),
-              const SizedBox(height: 20),
-              Text(
-                "Autres moyens de contact",
-                style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              _buildContactTile(
-                icon: Icons.email_rounded,
-                title: "Par Email",
-                subtitle: "support@trasx.com",
-                onTap: () => launchUrl(Uri.parse("mailto:support@trasx.com")),
-                cardColor: cardColor,
-                textPrimaryColor: textPrimaryColor,
-              ),
-              _buildContactTile(
-                icon: Icons.chat_rounded,
-                title: "Canal Telegram",
-                subtitle: "@trasx_support",
-                onTap: () => launchUrl(Uri.parse("https://t.me/trasx_support")),
-                cardColor: cardColor,
-                textPrimaryColor: textPrimaryColor,
-              ),
-            ],
+                const SizedBox(height: 12),
+                _buildContactTile(
+                  icon: Icons.email_rounded,
+                  title: "Par Email",
+                  subtitle: "support@trasx.com",
+                  onTap: () => launchUrl(Uri.parse("mailto:support@trasx.com")),
+                  cardColor: cardColor,
+                  textPrimaryColor: textPrimaryColor,
+                  textSecondaryColor: textSecondaryColor,
+                ),
+                _buildContactTile(
+                  icon: Icons.chat_rounded,
+                  title: "Canal Telegram",
+                  subtitle: "@trasx_support",
+                  onTap: () => launchUrl(Uri.parse("https://t.me/trasx_support")),
+                  cardColor: cardColor,
+                  textPrimaryColor: textPrimaryColor,
+                  textSecondaryColor: textSecondaryColor,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -8698,6 +8727,7 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
     required VoidCallback onTap,
     required Color cardColor,
     required Color textPrimaryColor,
+    required Color textSecondaryColor,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -8709,8 +8739,8 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
       child: ListTile(
         leading: Icon(icon, color: const Color(0xFFC13584)),
         title: Text(title, style: TextStyle(color: textPrimaryColor, fontSize: 13, fontWeight: FontWeight.bold)),
-        subtitle: Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 11)),
-        trailing: const Icon(Icons.open_in_new_rounded, color: Colors.white30, size: 16),
+        subtitle: Text(subtitle, style: TextStyle(color: textSecondaryColor, fontSize: 11)),
+        trailing: Icon(Icons.open_in_new_rounded, color: textSecondaryColor.withValues(alpha: 0.5), size: 16),
         onTap: onTap,
       ),
     );
