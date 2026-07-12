@@ -17,30 +17,28 @@ const { createWorker } = require('tesseract.js');
 const fs = require('fs');
 const path = require('path');
 
-// ── Keyword lists per document type ──────────────────────────────────────────
+// ── Strict keyword lists per document type to avoid false positives ──────────
 
 const PASSPORT_KEYWORDS = [
   'PASSPORT', 'PASSEPORT', 'PASAPORTE', 'PASSAPORTE',
-  'REPUBLIC', 'REPUBLIQUE', 'REPÚBLICA',
-  'P<', '<<',                          // MRZ markers
+  'RÉPUBLIQUE FRANÇAISE', 'REPUBLIQUE FRANCAISE', 'REPUBLIQUE DE', 'REPUBLIC OF',
   'NATIONALITY', 'NATIONALITÉ', 'NATIONALITE',
   'GIVEN NAMES', 'PRÉNOMS', 'PRENOMS',
-  'SURNAME', 'NOM', 'DATE OF BIRTH',
+  'SURNAME', 'DATE OF BIRTH', 'DATE DE NAISSANCE'
 ];
 
 const ID_CARD_KEYWORDS = [
   "CARTE NATIONALE D'IDENTITE", "CARTE D'IDENTITE", 'NATIONAL IDENTITY',
   'IDENTITY CARD', 'ID CARD', 'CARTE IDENTITE',
-  'CEDULA', 'DOCUMENTO', 'AUSWEIS',
-  'PERSONAL ID', 'TARJETA',
+  'CEDULA DE IDENTIDAD', 'DOCUMENTO NACIONAL DE IDENTIDAD', 'PERSONALAUSWEIS',
+  'TARJETA DE IDENTIDAD',
 ];
 
 const LICENSE_KEYWORDS = [
-  'PERMIS DE CONDUIRE', "PERMIS DE CONDUIRE",
+  'PERMIS DE CONDUIRE',
   'DRIVING LICENCE', 'DRIVER LICENSE', "DRIVER'S LICENSE",
   'DRIVING LICENSE', 'LICENCIA DE CONDUCIR',
   'FÜHRERSCHEIN', 'RIJBEWIJS', 'PERMESSO DI GUIDA',
-  'CATEGORIES', 'CATÉGORIES',
 ];
 
 // Generic identity markers present on most official documents
@@ -49,18 +47,7 @@ const GENERIC_IDENTITY_KEYWORDS = [
   'EXPIRY DATE', "DATE D'EXPIRATION", 'DATE D\'EXPIRY',
   'PLACE OF BIRTH', 'LIEU DE NAISSANCE',
   'ISSUED BY', 'DÉLIVRÉ PAR',
-  'SEX', 'SEXE', 'GENDER',
-  'SIGNATURE', 'HEIGHT', 'TAILLE',
-  // MRZ patterns — reliable marker for machine-readable travel documents
-  'IDCAN', 'IDFRA', 'IDUSA', 'IDBEL', 'IDCHE', 'IDDEU', 'IDGBR',
-];
-
-// Combined set for fast lookup
-const ALL_KEYWORDS = [
-  ...PASSPORT_KEYWORDS,
-  ...ID_CARD_KEYWORDS,
-  ...LICENSE_KEYWORDS,
-  ...GENERIC_IDENTITY_KEYWORDS,
+  'SURNAME / NOM', 'GIVEN NAMES / PRÉNOMS'
 ];
 
 // ── Tesseract quick-scan worker (singleton) ────────────────────────────────
@@ -121,8 +108,15 @@ async function checkIsIdentityDocument(imagePath) {
       tessedit_pageseg_mode: '11',  // PSM 11 = sparse text, much faster
     });
 
-    const normalized = String(text || '').toUpperCase().replace(/\n/g, ' ');
-    console.log('[DocTypeCheck] Quick-scan text (first 200 chars):', normalized.slice(0, 200));
+    // Normalize text: remove accents, normalize whitespace, uppercase
+    const normalized = String(text || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/\n/g, ' ')
+      .replace(/\s+/g, ' ');
+
+    console.log('[DocTypeCheck] Quick-scan text (first 250 chars):', normalized.slice(0, 250));
 
     // Step 3: Keyword matching
     let docType = null;
@@ -134,17 +128,21 @@ async function checkIsIdentityDocument(imagePath) {
     } else if (LICENSE_KEYWORDS.some(kw => normalized.includes(kw))) {
       docType = 'driving_license';
     } else if (GENERIC_IDENTITY_KEYWORDS.some(kw => normalized.includes(kw))) {
-      // Looks like an official document even if type is ambiguous
       docType = 'identity_document';
     }
 
-    // Also detect MRZ pattern: two lines of 30/44 chars matching [A-Z0-9<]
+    // Strict MRZ Detection: must contain at least 2 '<' characters inside a word of at least 15 characters
     if (!docType) {
-      const mrzPattern = /[A-Z0-9<]{20,}/g;
-      const mrzMatches = normalized.match(mrzPattern) || [];
-      if (mrzMatches.length >= 1) {
-        docType = 'mrz_document'; // MRZ found, it's a travel/ID document
-        console.log('[DocTypeCheck] MRZ pattern detected.');
+      const mrzPattern = /[A-Z0-9<]{15,}/g;
+      const candidates = normalized.match(mrzPattern) || [];
+      for (const cand of candidates) {
+        // Count number of '<' in the candidate string
+        const angleCount = (cand.match(/</g) || []).length;
+        if (angleCount >= 2) {
+          docType = 'mrz_document';
+          console.log('[DocTypeCheck] Real MRZ pattern detected in word:', cand);
+          break;
+        }
       }
     }
 
@@ -164,9 +162,12 @@ async function checkIsIdentityDocument(imagePath) {
   } finally {
     // Clean up temp thumbnail
     if (thumbPath) {
-      fs.unlink(thumbPath, () => {});
+      try {
+        fs.unlinkSync(thumbPath);
+      } catch (e) {}
     }
   }
 }
 
 module.exports = { checkIsIdentityDocument };
+
