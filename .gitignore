@@ -60,3 +60,9 @@ database.sqlite
 
 # Scripts temporaires
 scratch/
+
+# Configuration Google Services (contient des clés api)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+**/google-services.json
+**/GoogleService-Info.plist
