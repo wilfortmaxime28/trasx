@@ -7516,12 +7516,16 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                             },
                           ),
               ),
-              const Divider(height: 1),
+              Divider(
+                height: 1,
+                thickness: 0.5,
+                color: isDark ? Colors.white10 : Colors.black12,
+              ),
               if (_selectedUserIds.isEmpty)
                 // Horizontal scrolling row of Action Buttons (Instagram-style)
                 Container(
-                  height: 105,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  height: 96,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -7581,7 +7585,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
               else
                 // Message input & Envoyer Button Panel
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
                   color: isDark ? const Color(0xFF121212) : Colors.white,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -7598,14 +7602,14 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                             fontFamily: 'Montserrat',
                           ),
                           border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 8.0),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 4.0),
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
                       // Envoyer Button
                       SizedBox(
                         width: double.infinity,
-                        height: 48,
+                        height: 42,
                         child: ElevatedButton(
                           onPressed: _isSending ? null : _sendToSelectedUsers,
                           style: ElevatedButton.styleFrom(
@@ -7629,7 +7633,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                                   'Envoyer',
                                   style: TextStyle(
                                     color: Colors.white,
-                                    fontSize: 16,
+                                    fontSize: 15,
                                     fontWeight: FontWeight.bold,
                                     fontFamily: 'Montserrat',
                                   ),
