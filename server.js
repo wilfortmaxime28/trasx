@@ -4257,6 +4257,28 @@ app.post('/api/wallet/setup-pin', requireAuth, async (req, res) => {
   }
 });
 
+app.post('/api/wallet/test-credit', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    const { amount, type } = req.body;
+    const amountVal = parseFloat(amount);
+    if (isNaN(amountVal)) {
+      return res.status(400).json({ success: false, error: 'Montant invalide.' });
+    }
+    
+    let column = 'deposit_account_balance';
+    if (type === 'withdrawal') column = 'withdrawal_account_balance';
+    else if (type === 'bonus') column = 'bonus_account_balance';
+    else if (type === 'token') column = 'token_balance';
+
+    await db.query(`UPDATE users SET ${column} = ${column} + ? WHERE id = ?`, [amountVal, userId]);
+    res.json({ success: true, message: 'Compte mis à jour avec succès.' });
+  } catch (err) {
+    console.error('Error crediting wallet:', err);
+    res.status(500).json({ success: false, error: 'Erreur lors du crédit.' });
+  }
+});
+
 app.post('/api/wallet/withdraw', requireAuth, async (req, res) => {
   const connection = await db.getConnection();
   try {
