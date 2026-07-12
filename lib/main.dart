@@ -109,8 +109,10 @@ class _MyAppState extends State<MyApp> {
       ),
       home: widget.isLoggedIn ? const DashboardPage() : const OnboardingPage(),
       builder: (context, child) {
-        // Safearea wrapping for all screens globally
-        return Container(
+        // Safearea wrapping for all screens globally with smooth background theme animation
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
           color: _isDarkMode ? const Color(0xFF000000) : const Color(0xFFF9F9F9),
           child: SafeArea(
             top: true,

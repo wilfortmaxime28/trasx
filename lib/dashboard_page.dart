@@ -8027,6 +8027,12 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
   List<Map<String, dynamic>> _transactions = [];
   Timer? _pollingTimer;
 
+  // Real-time Database limits and verification state
+  double _minWithdrawalAmount = 50.0;
+  bool _hasPassedKyc = false;
+  String _kycStatus = 'none'; // 'approved', 'pending', 'rejected', 'none'
+  bool _isSubmittingKyc = false;
+
   @override
   void initState() {
     super.initState();
@@ -8128,6 +8134,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
   Future<void> _fetchBalances() async {
     if (widget.userId <= 0) return;
     try {
+      // 1. Fetch user accounts
       final response = await http.get(
         Uri.parse('https://trasx.com/api/users/${widget.userId}'),
         headers: {
@@ -8147,8 +8154,27 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
           });
         }
       }
+
+      // 2. Fetch withdrawal settings & KYC state in parallel
+      final infoResponse = await http.get(
+        Uri.parse('https://trasx.com/api/wallet/deposit-info'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.userId}',
+        },
+      );
+      if (infoResponse.statusCode == 200) {
+        final infoData = jsonDecode(infoResponse.body);
+        if (mounted) {
+          setState(() {
+            _minWithdrawalAmount = double.tryParse(infoData['minWithdrawalAmount']?.toString() ?? '50.0') ?? 50.0;
+            _hasPassedKyc = infoData['hasPassedKyc'] ?? false;
+            _kycStatus = infoData['kycStatus'] ?? 'none';
+          });
+        }
+      }
     } catch (e) {
-      debugPrint("Error fetching balances: $e");
+      debugPrint("Error fetching balances or wallet limits: $e");
     }
   }
 
@@ -8382,7 +8408,55 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                   isDark: isDark,
                   actionColor: textPrimaryColor,
                   outlineButton: true,
+                  isEnabled: _withdrawalBalance >= _minWithdrawalAmount && _hasPassedKyc,
                 ),
+
+                // Withdrawal activation checks & alerts
+                if (_withdrawalBalance < _minWithdrawalAmount) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12, top: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0x15FFB000),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0x30FFB000)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline_rounded, color: Color(0xFFFFB000), size: 16),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            "Le bouton de retrait sera activé dès que vous aurez atteint le montant minimum de \$${_minWithdrawalAmount.toStringAsFixed(2)} USD.",
+                            style: TextStyle(color: isDark ? Colors.white.withValues(alpha: 0.87) : Colors.black87, fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else if (!_hasPassedKyc) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12, top: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0x15FE2C55),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0x30FE2C55)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded, color: Color(0xFFFE2C55), size: 16),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            "Montant minimum atteint, mais vous devez valider votre KYC pour pouvoir retirer.",
+                            style: TextStyle(color: isDark ? Colors.white.withValues(alpha: 0.87) : Colors.black87, fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
 
                 // 3. Bonus Account
                 _buildAccountTile(
@@ -8429,6 +8503,61 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                   isDark: isDark,
                   actionColor: const Color(0xFF00D2FF),
                   outlineButton: true,
+                ),
+
+                const SizedBox(height: 24),
+                Text(
+                  "Validation de compte",
+                  style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "Statut de votre KYC",
+                            style: TextStyle(color: textPrimaryColor, fontSize: 13, fontWeight: FontWeight.bold),
+                          ),
+                          _buildKycStatusBadge(_kycStatus),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _getKycStatusDescription(_kycStatus),
+                        style: TextStyle(color: textSecondaryColor, fontSize: 11),
+                      ),
+                      if (_kycStatus == 'none' || _kycStatus == 'rejected') ...[
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 40,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFE2C55),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              elevation: 0,
+                            ),
+                            onPressed: () => _showKycUploadSheet(context),
+                            child: Text(
+                              _kycStatus == 'rejected' ? "Re-soumettre mon KYC" : "Passer mon KYC",
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
 
                 const SizedBox(height: 24),
@@ -8557,6 +8686,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     required bool isDark,
     required Color actionColor,
     bool outlineButton = false,
+    bool isEnabled = true,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -8600,15 +8730,21 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
           ),
           const SizedBox(width: 8),
           ElevatedButton(
-            onPressed: onAction,
+            onPressed: isEnabled ? onAction : null,
             style: ElevatedButton.styleFrom(
-              backgroundColor: outlineButton ? Colors.transparent : actionColor,
-              foregroundColor: outlineButton ? textPrimaryColor : Colors.white,
+              backgroundColor: isEnabled
+                  ? (outlineButton ? Colors.transparent : actionColor)
+                  : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+              foregroundColor: isEnabled
+                  ? (outlineButton ? textPrimaryColor : Colors.white)
+                  : textSecondaryColor.withValues(alpha: 0.3),
               elevation: 0,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: outlineButton ? BorderSide(color: textSecondaryColor.withValues(alpha: 0.3)) : BorderSide.none,
+                side: outlineButton
+                    ? BorderSide(color: isEnabled ? textSecondaryColor.withValues(alpha: 0.3) : textSecondaryColor.withValues(alpha: 0.1))
+                    : BorderSide.none,
               ),
             ),
             child: Text(
@@ -9346,6 +9482,304 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
         );
       },
     );
+  }
+
+  void _showKycUploadSheet(BuildContext context) {
+    File? selfieImage;
+    File? identityDocument;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textCol = isDark ? Colors.white : Colors.black;
+    final subCol = isDark ? Colors.white54 : Colors.black54;
+    final cardBg = isDark ? const Color(0xFF161618) : Colors.white;
+    final borderCol = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08);
+    final scaffoldBg = isDark ? const Color(0xFF000000) : const Color(0xFFF8F8F9);
+    final picker = ImagePicker();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: scaffoldBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 12,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: borderCol.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            "Validation de l'identité (KYC)",
+                            style: TextStyle(color: textCol, fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.close_rounded, color: textCol),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Pour activer les retraits, veuillez soumettre une photo d'identité et un selfie de vérification.",
+                      style: TextStyle(color: subCol, fontSize: 12),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 1. Selfie Image Selector
+                    Text(
+                      "1. Selfie de vérification",
+                      style: TextStyle(color: textCol, fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () async {
+                        final photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
+                        if (photo != null) {
+                          setSheetState(() {
+                            selfieImage = File(photo.path);
+                          });
+                        }
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: cardBg,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: borderCol),
+                        ),
+                        child: selfieImage == null
+                            ? Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.camera_alt_rounded, color: Color(0xFFFE2C55), size: 32),
+                                  const SizedBox(height: 8),
+                                  Text("Prendre un selfie de face", style: TextStyle(color: textCol, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              )
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(15),
+                                child: Image.file(selfieImage!, fit: BoxFit.cover),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // 2. Identity Document Selector
+                    Text(
+                      "2. Pièce d'identité (Recto/Verso)",
+                      style: TextStyle(color: textCol, fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () async {
+                        final doc = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+                        if (doc != null) {
+                          setSheetState(() {
+                            identityDocument = File(doc.path);
+                          });
+                        }
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: cardBg,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: borderCol),
+                        ),
+                        child: identityDocument == null
+                            ? Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.badge_rounded, color: Color(0xFFFE2C55), size: 32),
+                                  const SizedBox(height: 8),
+                                  Text("Sélectionner mon document d'identité", style: TextStyle(color: textCol, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              )
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(15),
+                                child: Image.file(identityDocument!, fit: BoxFit.cover),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+
+                    // Submit Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFE2C55),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                          elevation: 0,
+                        ),
+                        onPressed: (_isSubmittingKyc || selfieImage == null || identityDocument == null)
+                            ? null
+                            : () async {
+                                setSheetState(() => _isSubmittingKyc = true);
+                                Navigator.pop(context);
+                                await _submitKyc(selfieImage!, identityDocument!);
+                              },
+                        child: _isSubmittingKyc
+                            ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                            : const Text("Soumettre ma demande de KYC", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _submitKyc(File selfieFile, File docFile) async {
+    setState(() {
+      _isSubmittingKyc = true;
+    });
+    try {
+      final bytes = await selfieFile.readAsBytes();
+      final base64Image = base64Encode(bytes);
+      final selfieDataUrl = "data:image/jpeg;base64,$base64Image";
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://trasx.com/api/wallet/withdraw-kyc'),
+      );
+      request.headers['x-user-id'] = '${widget.userId}';
+      request.fields['selfie_image_data'] = selfieDataUrl;
+
+      request.files.add(await http.MultipartFile.fromPath(
+        'identity_document',
+        docFile.path,
+        contentType: MediaType('image', 'jpeg'),
+      ));
+
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+      final resData = jsonDecode(responseBody);
+
+      if (response.statusCode == 200 && resData['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("KYC soumis avec succès !"),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _fetchBalances(); // refresh KYC status
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(resData['error'] ?? "Erreur lors de la soumission du KYC."),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Erreur de connexion lors de la soumission."),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmittingKyc = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildKycStatusBadge(String status) {
+    Color badgeColor;
+    String label;
+    IconData icon;
+
+    switch (status) {
+      case 'approved':
+        badgeColor = Colors.green;
+        label = "Validé";
+        icon = Icons.check_circle_outline_rounded;
+        break;
+      case 'pending':
+        badgeColor = Colors.orange;
+        label = "En attente";
+        icon = Icons.hourglass_empty_rounded;
+        break;
+      case 'rejected':
+        badgeColor = Colors.red;
+        label = "Refusé";
+        icon = Icons.error_outline_rounded;
+        break;
+      default:
+        badgeColor = Colors.grey;
+        label = "Non soumis";
+        icon = Icons.info_outline_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: badgeColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: badgeColor.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: badgeColor, size: 14),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(color: badgeColor, fontSize: 11, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getKycStatusDescription(String status) {
+    switch (status) {
+      case 'approved':
+        return "Votre identité a été vérifiée avec succès. Le retrait est entièrement disponible.";
+      case 'pending':
+        return "Vos documents de vérification sont en cours d'examen par notre équipe. Cela prend généralement moins de 24h.";
+      case 'rejected':
+        return "Votre demande de KYC a été refusée car les documents étaient flous ou invalides. Veuillez soumettre à nouveau.";
+      default:
+        return "Pour des raisons réglementaires et de sécurité, vous devez soumettre un justificatif d'identité avant de pouvoir effectuer un retrait.";
+    }
   }
 
   Future<void> _submitRealWithdrawal(double amount, String pin) async {
