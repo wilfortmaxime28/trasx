@@ -17,6 +17,7 @@ const { buildMessageInboxSections } = require('../utils/messageInbox');
 const { getNumberSetting } = require('../utils/appSettings');
 const { createTranslator, normalizeLocale } = require('../utils/i18n');
 const { evaluateEventKycSubmission, compareFacesOnServer, documentHasFace } = require('../utils/kycAi');
+const { checkIsIdentityDocument } = require('../utils/docTypeCheck');
 const { isoFromDateObject, normalizeDateToIso } = require('../utils/dateUtils');
 const presence = require('../utils/presence');
 
@@ -813,7 +814,18 @@ class EventsController {
           error: 'Le document soumis ne contient pas de photo de visage. Veuillez soumettre une pièce d\'identité valide (passeport, carte d\'identité, permis de conduire).'
         });
       }
-      console.log('[KYC] Face detected in document. Proceeding with full verification...');
+      console.log('[KYC] Face detected in document. Running quick scan document type validation...');
+
+      // ── Fast document type check: reject immediately if not a passport, ID card, or driver's license ──
+      const docCheckResult = await checkIsIdentityDocument(req.file.path);
+      if (!docCheckResult.isIdentityDoc) {
+        console.log('[KYC] Document rejected: Not an identity document.', docCheckResult.reason);
+        return res.status(400).json({
+          success: false,
+          error: 'Le document soumis ne semble pas être un document d\'identité officiel (passeport, carte d\'identité nationale, ou permis de conduire). Veuillez soumettre une photo claire et lisible de votre pièce d\'identité.'
+        });
+      }
+      console.log(`[KYC] Document type pre-check passed (${docCheckResult.docType}). Proceeding with full OCR...`);
 
       console.log('[KYC] Extracting OCR from uploaded document...');
       const ocrText = await extractOcrTextFromImage(req.file.path);

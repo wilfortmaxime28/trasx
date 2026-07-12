@@ -3965,6 +3965,7 @@ app.post('/api/deposits/create', requireAuth, async (req, res) => {
 
 const KycRequest = require('./models/KycRequest');
 const { evaluateEventKycSubmission, compareFacesOnServer, documentHasFace } = require('./utils/kycAi');
+const { checkIsIdentityDocument } = require('./utils/docTypeCheck');
 const { createWorker } = require('tesseract.js');
 const TESSERACT_ENG_PATH = path.dirname(require.resolve('@tesseract.js-data/eng/package.json')) + '/4.0.0';
 let withdrawOcrWorkerPromise = null;
@@ -4151,7 +4152,18 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
         error: 'Le document soumis ne contient pas de photo de visage. Veuillez soumettre une pièce d\'identité valide (passeport, carte d\'identité, permis de conduire).'
       });
     }
-    console.log('[WithdrawKYC] Face detected in document. Proceeding with OCR and verification...');
+    console.log('[WithdrawKYC] Face detected in document. Running quick scan document type validation...');
+
+    // ── Fast document type check: reject immediately if not a passport, ID card, or driver's license ──
+    const docCheckResult = await checkIsIdentityDocument(req.file.path);
+    if (!docCheckResult.isIdentityDoc) {
+      console.log('[WithdrawKYC] Document rejected: Not an identity document.', docCheckResult.reason);
+      return res.status(400).json({
+        success: false,
+        error: 'Le document soumis ne semble pas être un document d\'identité officiel (passeport, carte d\'identité nationale, ou permis de conduire). Veuillez soumettre une photo claire et lisible de votre pièce d\'identité.'
+      });
+    }
+    console.log(`[WithdrawKYC] Document type pre-check passed (${docCheckResult.docType}). Proceeding with full OCR...`);
 
     const ocrText = await extractWithdrawOcrText(req.file.path);
     const savedSelfie = await saveWithdrawSelfie(selfieImageData, withdrawKycSelfieDir, `selfie-${currentUserId}`);
