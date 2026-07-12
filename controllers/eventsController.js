@@ -16,7 +16,7 @@ const { sendEventTicketEmail } = require('../utils/mailer');
 const { buildMessageInboxSections } = require('../utils/messageInbox');
 const { getNumberSetting } = require('../utils/appSettings');
 const { createTranslator, normalizeLocale } = require('../utils/i18n');
-const { evaluateEventKycSubmission, compareFacesOnServer } = require('../utils/kycAi');
+const { evaluateEventKycSubmission, compareFacesOnServer, documentHasFace } = require('../utils/kycAi');
 const { isoFromDateObject, normalizeDateToIso } = require('../utils/dateUtils');
 const presence = require('../utils/presence');
 
@@ -802,6 +802,18 @@ class EventsController {
         country: submission.country,
         dob: submission.dob || null
       });
+
+      // ── Fast pre-check: reject immediately if the document has no face photo ──
+      console.log('[KYC] Running fast face pre-check on document...');
+      const docHasFace = await documentHasFace(req.file.path);
+      if (!docHasFace) {
+        console.log('[KYC] Document rejected: no face detected in image.');
+        return res.status(400).json({
+          success: false,
+          error: 'Le document soumis ne contient pas de photo de visage. Veuillez soumettre une pièce d\'identité valide (passeport, carte d\'identité, permis de conduire).'
+        });
+      }
+      console.log('[KYC] Face detected in document. Proceeding with full verification...');
 
       console.log('[KYC] Extracting OCR from uploaded document...');
       const ocrText = await extractOcrTextFromImage(req.file.path);

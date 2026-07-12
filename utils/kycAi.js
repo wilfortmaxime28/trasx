@@ -335,6 +335,34 @@ async function compareFacesOnServer(selfiePath, docPath) {
   }
 }
 
+
+/**
+ * Fast pre-check: detects whether the document image contains a face.
+ * Uses only TinyFaceDetector (no landmarks/descriptor) at a small input size
+ * so it completes in <1s even on slow hardware.
+ * Returns true if a face is found, false otherwise.
+ */
+async function documentHasFace(docPath) {
+  let docTensor;
+  try {
+    await ensureModelsLoaded();
+    docTensor = await imageToTensor(docPath);
+    // Smaller inputSize = faster detection, sufficient for a quick check
+    const detectorOptions = new faceapi.TinyFaceDetectorOptions({
+      inputSize: 224,
+      scoreThreshold: 0.35
+    });
+    const detection = await faceapi.detectSingleFace(docTensor, detectorOptions);
+    return !!detection;
+  } catch (err) {
+    console.error('[documentHasFace] Error during quick face check:', err);
+    // On error, don't block the user — let the full pipeline decide
+    return true;
+  } finally {
+    if (docTensor) docTensor.dispose();
+  }
+}
+
 module.exports = {
   evaluateEventKycSubmission,
   normalizeText,
@@ -344,5 +372,6 @@ module.exports = {
   scoreFromFaceDistance,
   extractDateCandidatesFromText,
   chooseDobCandidateFromText,
-  compareFacesOnServer
+  compareFacesOnServer,
+  documentHasFace
 };

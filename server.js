@@ -3964,7 +3964,7 @@ app.post('/api/deposits/create', requireAuth, async (req, res) => {
 });
 
 const KycRequest = require('./models/KycRequest');
-const { evaluateEventKycSubmission, compareFacesOnServer } = require('./utils/kycAi');
+const { evaluateEventKycSubmission, compareFacesOnServer, documentHasFace } = require('./utils/kycAi');
 const { createWorker } = require('tesseract.js');
 const TESSERACT_ENG_PATH = path.dirname(require.resolve('@tesseract.js-data/eng/package.json')) + '/4.0.0';
 let withdrawOcrWorkerPromise = null;
@@ -4140,6 +4140,19 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
     };
 
     console.log(`[WithdrawKYC] Starting verification for user ${currentUserId}`);
+
+    // ── Fast pre-check: reject immediately if the document has no face photo ──
+    console.log('[WithdrawKYC] Running fast face pre-check on document...');
+    const docHasFace = await documentHasFace(req.file.path);
+    if (!docHasFace) {
+      console.log('[WithdrawKYC] Document rejected: no face detected.');
+      return res.status(400).json({
+        success: false,
+        error: 'Le document soumis ne contient pas de photo de visage. Veuillez soumettre une pièce d\'identité valide (passeport, carte d\'identité, permis de conduire).'
+      });
+    }
+    console.log('[WithdrawKYC] Face detected in document. Proceeding with OCR and verification...');
+
     const ocrText = await extractWithdrawOcrText(req.file.path);
     const savedSelfie = await saveWithdrawSelfie(selfieImageData, withdrawKycSelfieDir, `selfie-${currentUserId}`);
     
