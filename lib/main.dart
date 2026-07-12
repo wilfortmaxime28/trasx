@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'onboarding_page.dart';
@@ -24,7 +25,7 @@ void main() async {
 
 class MyApp extends StatefulWidget {
   final bool isLoggedIn;
-  final bool initialDarkMode;
+  final bool? initialDarkMode;
   
   const MyApp({
     super.key,
@@ -50,7 +51,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    _isDarkMode = widget.initialDarkMode;
+    _isDarkMode = widget.initialDarkMode ?? true;
   }
 
   void toggleTheme(bool value) async {
@@ -63,6 +64,17 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Dynamic overlay styling to prevent default OS blur/gradients on notches
+    final overlayStyle = SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: _isDarkMode ? Brightness.light : Brightness.dark,
+      statusBarBrightness: _isDarkMode ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: _isDarkMode ? const Color(0xFF000000) : const Color(0xFFF9F9F9),
+      systemNavigationBarIconBrightness: _isDarkMode ? Brightness.light : Brightness.dark,
+      systemNavigationBarDividerColor: Colors.transparent,
+    );
+    SystemChrome.setSystemUIOverlayStyle(overlayStyle);
+
     return MaterialApp(
       title: 'TrasX',
       debugShowCheckedModeBanner: false,
@@ -70,6 +82,9 @@ class _MyAppState extends State<MyApp> {
       theme: ThemeData(
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFF9F9F9),
+        appBarTheme: const AppBarTheme(
+          systemOverlayStyle: SystemUiOverlayStyle.dark,
+        ),
         fontFamily: 'Montserrat',
         colorScheme: const ColorScheme.light(
           primary: Colors.black,
@@ -81,6 +96,9 @@ class _MyAppState extends State<MyApp> {
       darkTheme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF000000),
+        appBarTheme: const AppBarTheme(
+          systemOverlayStyle: SystemUiOverlayStyle.light,
+        ),
         fontFamily: 'Montserrat',
         colorScheme: const ColorScheme.dark(
           primary: Colors.white,

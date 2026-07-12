@@ -8260,30 +8260,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     }
   }
 
-  Future<void> _triggerTestCredit(double amount, String type) async {
-    try {
-      final response = await http.post(
-        Uri.parse('https://trasx.com/api/wallet/test-credit'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '${widget.userId}',
-        },
-        body: jsonEncode({
-          'amount': amount,
-          'type': type,
-        }),
-      );
-      if (response.statusCode == 200) {
-        _fetchBalances();
-        _fetchTransactions();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Compte crédité de ${amount.toStringAsFixed(2)} $type !')),
-        );
-      }
-    } catch (e) {
-      debugPrint("Error performing test credit: $e");
-    }
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -9155,55 +9132,6 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                               SizedBox(
                                 width: double.infinity,
                                 height: 44,
-                                child: OutlinedButton(
-                                  style: OutlinedButton.styleFrom(
-                                    side: BorderSide(color: borderCol),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-                                  ),
-                                  onPressed: isLoading
-                                      ? null
-                                      : () async {
-                                          setSheetState(() => isLoading = true);
-                                          try {
-                                            final double priceAmount = (double.tryParse('${paymentData!['priceAmount']}') ?? 10.0);
-                                            final response = await http.post(
-                                              Uri.parse('https://trasx.com/api/wallet/test-credit'),
-                                              headers: {
-                                                'Content-Type': 'application/json',
-                                                'x-user-id': '${widget.userId}',
-                                              },
-                                              body: jsonEncode({
-                                                'amount': priceAmount,
-                                                'type': 'deposit',
-                                              }),
-                                            );
-                                            if (response.statusCode == 200) {
-                                              setSheetState(() {
-                                                depositStatus = 'confirmed';
-                                                isLoading = false;
-                                              });
-                                              _fetchBalances();
-                                              _fetchTransactions();
-                                            } else {
-                                              setSheetState(() => isLoading = false);
-                                            }
-                                          } catch (e) {
-                                            setSheetState(() => isLoading = false);
-                                          }
-                                        },
-                                  child: isLoading
-                                      ? const CircularProgressIndicator(color: Color(0xFFFE2C55), strokeWidth: 2)
-                                      : Text(
-                                          "Mode Démo (Crédit Instantané)",
-                                          style: TextStyle(color: textCol, fontWeight: FontWeight.bold, fontSize: 13),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-
-                              SizedBox(
-                                width: double.infinity,
-                                height: 44,
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFFFE2C55),
@@ -9242,79 +9170,181 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     final amountController = TextEditingController();
     final pinController = TextEditingController();
     final formKey = GlobalKey<FormState>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textCol = isDark ? Colors.white : Colors.black;
+    final subCol = isDark ? Colors.white54 : Colors.black54;
+    final cardBg = isDark ? const Color(0xFF161618) : Colors.white;
+    final borderCol = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08);
+    final scaffoldBg = isDark ? const Color(0xFF000000) : const Color(0xFFF8F8F9);
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Retirer des fonds"),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "Solde disponible : \$${_withdrawalBalance.toStringAsFixed(2)}",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                validator: (val) {
-                  final parsed = double.tryParse(val ?? '');
-                  if (parsed == null || parsed <= 0) return "Montant invalide";
-                  if (parsed > _withdrawalBalance) return "Solde insuffisant";
-                  if (parsed < 50) return "Minimum requis: 50 \$";
-                  return null;
-                },
-                decoration: const InputDecoration(
-                  labelText: "Montant à retirer (\$)",
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: pinController,
-                keyboardType: TextInputType.number,
-                obscureText: true,
-                maxLength: 6,
-                validator: (val) => (val ?? '').length != 6 ? "PIN requis (6 chiffres)" : null,
-                decoration: const InputDecoration(
-                  labelText: "PIN secret de retrait",
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Annuler"),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
-            onPressed: () {
-              final amt = double.tryParse(amountController.text) ?? 0.0;
-              if (amt > 0 && amt <= _withdrawalBalance) {
-                Navigator.pop(context);
-                _triggerTestCredit(-amt, 'withdrawal');
-              }
-            },
-            child: const Text("Démo (Instant)", style: TextStyle(color: Colors.white)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFE2C55)),
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(context);
-                _submitRealWithdrawal(double.parse(amountController.text), pinController.text);
-              }
-            },
-            child: const Text("Retirer", style: TextStyle(color: Colors.white)),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: scaffoldBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 12,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: borderCol.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "Faire un retrait",
+                            style: TextStyle(color: textCol, fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close_rounded, color: textCol),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: cardBg,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: borderCol),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              "Solde disponible pour retrait",
+                              style: TextStyle(color: subCol, fontSize: 13),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              "\$${_withdrawalBalance.toStringAsFixed(2)}",
+                              style: TextStyle(color: textCol, fontSize: 28, fontWeight: FontWeight.w800),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        "Montant à retirer (USD)",
+                        style: TextStyle(color: textCol, fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: amountController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: TextStyle(color: textCol, fontWeight: FontWeight.bold),
+                        validator: (val) {
+                          final parsed = double.tryParse(val ?? '');
+                          if (parsed == null || parsed <= 0) return "Montant invalide";
+                          if (parsed > _withdrawalBalance) return "Solde insuffisant";
+                          if (parsed < 50) return "Le minimum requis est de \$50 USD";
+                          return null;
+                        },
+                        decoration: InputDecoration(
+                          hintText: "Minimum 50.00",
+                          hintStyle: TextStyle(color: subCol),
+                          filled: true,
+                          fillColor: cardBg,
+                          prefixIcon: Icon(Icons.attach_money_rounded, color: subCol),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: borderCol),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFFE2C55), width: 2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        "PIN secret de retrait",
+                        style: TextStyle(color: textCol, fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: pinController,
+                        keyboardType: TextInputType.number,
+                        obscureText: true,
+                        maxLength: 6,
+                        style: TextStyle(color: textCol, fontWeight: FontWeight.bold),
+                        validator: (val) => (val ?? '').length != 6 ? "PIN requis (6 chiffres)" : null,
+                        decoration: InputDecoration(
+                          hintText: "PIN (6 chiffres)",
+                          hintStyle: TextStyle(color: subCol),
+                          filled: true,
+                          fillColor: cardBg,
+                          counterText: "",
+                          prefixIcon: Icon(Icons.lock_outline_rounded, color: subCol),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: borderCol),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFFE2C55), width: 2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFE2C55),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                            elevation: 0,
+                          ),
+                          onPressed: () {
+                            if (formKey.currentState!.validate()) {
+                              Navigator.pop(context);
+                              _submitRealWithdrawal(
+                                double.parse(amountController.text),
+                                pinController.text,
+                              );
+                            }
+                          },
+                          child: const Text(
+                            "Confirmer le retrait",
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
