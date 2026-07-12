@@ -8796,7 +8796,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
 
                       if (paymentData == null) ...[
                         Text(
-                          "Choisissez l'actif à envoyer puis générez une nouvelle adresse de paiement. Montant minimum : 6.00 USD.",
+                          "Choisissez l'actif à envoyer puis générez une nouvelle adresse de paiement. Montant minimum : 18.84 USD.",
                           style: TextStyle(color: subCol, fontSize: 12),
                         ),
                         const SizedBox(height: 20),
@@ -8912,13 +8912,14 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
 
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [10, 25, 50, 100].map((amt) {
+                          children: [18.84, 25.0, 50.0, 100.0].map((amt) {
+                            final labelStr = amt == 18.84 ? "18.84" : "${amt.toInt()}";
                             return Expanded(
                               child: Container(
                                 margin: const EdgeInsets.symmetric(horizontal: 4),
                                 child: ActionChip(
                                   label: Text(
-                                    "\$$amt",
+                                    "\$$labelStr",
                                     style: TextStyle(color: textCol, fontSize: 12, fontWeight: FontWeight.bold),
                                   ),
                                   backgroundColor: cardBg,
@@ -8926,13 +8927,27 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                   onPressed: () {
                                     setSheetState(() {
-                                      amountController.text = amt.toDouble().toStringAsFixed(2);
+                                      amountController.text = amt.toStringAsFixed(2);
                                     });
                                   },
                                 ),
                               ),
                             );
                           }).toList(),
+                        ),
+                        const SizedBox(height: 12),
+
+                        Row(
+                          children: [
+                            const Icon(Icons.info_outline_rounded, color: Colors.blue, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "Le montant saisi est le montant exact qui sera crédité sur votre compte après confirmation.",
+                                style: TextStyle(color: subCol, fontSize: 11),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 24),
 
@@ -8958,9 +8973,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                 ? null
                                 : () async {
                                     final amt = double.tryParse(amountController.text) ?? 0.0;
-                                    if (amt < 6.0) {
+                                    if (amt < 18.84) {
                                       setSheetState(() {
-                                        errorMessage = "Le montant de dépôt minimum est de 6.00 USD.";
+                                        errorMessage = "Le montant de dépôt minimum est de 18.84 USD.";
                                       });
                                       return;
                                     }
@@ -9472,7 +9487,7 @@ class _LanguageSettingsPageState extends State<LanguageSettingsPage> {
                     "Activer l'affichage avec des couleurs sombres.",
                     style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 11),
                   ),
-                  value: widget.isDarkMode,
+                  value: isDark,
                   activeColor: const Color(0xFFC13584),
                   onChanged: (val) {
                     widget.onThemeChanged(val);
