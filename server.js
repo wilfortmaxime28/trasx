@@ -2637,7 +2637,7 @@ app.post('/api/posts/:postId/shares', requireAuth, async (req, res) => {
   try {
     const currentUserId = req.session.userId || req.headers['x-user-id'];
     const postId = parseInt(req.params.postId, 10);
-    const { channel = 'social', platform = null, recipientUserId = null } = req.body || {};
+    const { channel = 'social', platform = null, recipientUserId = null, message = null } = req.body || {};
 
     if (!currentUserId || !postId) {
       return res.status(400).json({ error: 'Invalid share data.' });
@@ -2665,7 +2665,10 @@ app.post('/api/posts/:postId/shares', requireAuth, async (req, res) => {
       const recipientUser = await User.getById(numericReceiverId);
       
       if (recipientUser) {
-        const messageContent = `Regardez cette publication sur TRASX ! ${shareUrl}`;
+        let messageContent = `Regardez cette publication sur TRASX ! ${shareUrl}`;
+        if (message && String(message).trim().length > 0) {
+          messageContent = `${String(message).trim()}\n\n${shareUrl}`;
+        }
         
         // 1. Create chat message in database
         const messageId = await Message.create(currentUserId, numericReceiverId, messageContent, {

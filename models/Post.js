@@ -94,6 +94,11 @@ async function ensurePostSchema() {
           FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
         )
       `);
+      // Migration: Ensure bookmarks has created_at column if it was created on an older schema
+      const [bookmarkCols] = await db.query("SHOW COLUMNS FROM bookmarks LIKE 'created_at'");
+      if (!bookmarkCols || bookmarkCols.length === 0) {
+        await db.query("ALTER TABLE bookmarks ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+      }
       await db.query(`
         CREATE TABLE IF NOT EXISTS live_unlocks (
           user_id INT NOT NULL,
@@ -813,6 +818,8 @@ class Post {
         p.challenge_creator_share_percent,
         p.challenge_participant_share_percent,
         p.challenge_end_date,
+        p.created_at,
+        p.thumbnail_url,
         p.allow_download,
         p.is_live,
         p.live_url,
@@ -843,7 +850,13 @@ class Post {
       ORDER BY b.created_at DESC
     `;
     const [rows] = await db.query(query, [userId, userId, userId, userId]);
-    return rows;
+    return rows.map(row => ({
+      ...row,
+      is_liked: !!row.is_liked,
+      is_bookmarked: !!row.is_bookmarked,
+      is_live_unlocked: !!row.is_live_unlocked,
+      is_author_following: !!row.is_author_following
+    }));
   }
 }
 
