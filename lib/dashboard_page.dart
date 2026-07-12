@@ -26,6 +26,7 @@ import 'services/feed_cache_service.dart';
 import 'widgets/feed_skeleton.dart';
 import 'onboarding_page.dart';
 import 'main.dart';
+import 'kyc_camera_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -10019,277 +10020,135 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     );
   }
 
-  void _showLivenessChallenge(BuildContext context, Function(File selfieFile) onChallengeSuccess) async {
-    final picker = ImagePicker();
-    // First, let them take the selfie with the camera
-    final XFile? photo = await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
-    if (photo == null) return;
-    final selfieFile = File(photo.path);
-
-    // Show the interactive liveness overlay over the captured image to verify liveness
-    int currentChallenge = 0; // 0: Blink eyes, 1: Turn head left/right, 2: Done
-    double progress = 0.0;
-    Timer? challengeTimer;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            // Start a timer to simulate liveness capture for each step
-            if (challengeTimer == null) {
-              challengeTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-                setDialogState(() {
-                  progress += 0.04;
-                  if (progress >= 1.0) {
-                    progress = 0.0;
-                    currentChallenge++;
-                    if (currentChallenge >= 2) {
-                      timer.cancel();
-                      Navigator.pop(context); // close liveness dialog
-                      onChallengeSuccess(selfieFile);
-                    }
-                  }
-                });
-              });
-            }
-
-            return WillPopScope(
-              onWillPop: () async => false,
-              child: Dialog.fullscreen(
-                backgroundColor: Colors.black,
-                child: Column(
-                  children: [
-                    const SizedBox(height: 48),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            "Vérification de Vivacité",
-                            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.red.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text("LIVE SCAN", style: TextStyle(color: Color(0xFFFE2C55), fontSize: 10, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                    // Circular face overlay with the captured selfie visible inside as preview
-                    Center(
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Container(
-                            width: 260,
-                            height: 260,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0xFFFE2C55), width: 3),
-                            ),
-                            child: ClipOval(
-                              child: Image.file(selfieFile, fit: BoxFit.cover),
-                            ),
-                          ),
-                          // Pulsing scanner circle
-                          SizedBox(
-                            width: 280,
-                            height: 280,
-                            child: CircularProgressIndicator(
-                              value: progress,
-                              strokeWidth: 4,
-                              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFE2C55)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                    // Challenge instruction box
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF161618),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(
-                            currentChallenge == 0
-                                ? Icons.remove_red_eye_rounded
-                                : Icons.face_retouching_natural_rounded,
-                            color: const Color(0xFFFE2C55),
-                            size: 36,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            currentChallenge == 0
-                                ? "Clignez des yeux lentement"
-                                : "Tournez lentement la tête de gauche à droite",
-                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            currentChallenge == 0
-                                ? "Maintenez le regard fixe et clignez deux fois."
-                                : "Effectuez une rotation légère pour valider les angles.",
-                            style: const TextStyle(color: Colors.white54, fontSize: 12),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 20),
-                          // Mini linear progress indicator
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              backgroundColor: Colors.white10,
-                              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFE2C55)),
-                              minHeight: 6,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+  /// Opens the professional live-camera KYC page and runs the liveness
+  /// challenge (position → blink → head-turn → capture).
+  /// Returns the captured [File] via [onChallengeSuccess], or does nothing
+  /// if the user cancels.
+  Future<void> _showLivenessChallenge(
+    BuildContext context,
+    Function(File selfieFile) onChallengeSuccess,
+  ) async {
+    final File? selfieFile = await Navigator.of(context).push<File>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const KycCameraPage(),
+      ),
     );
+    if (selfieFile != null && context.mounted) {
+      onChallengeSuccess(selfieFile);
+    }
   }
 
   void _showRealtimeVerificationDialog(BuildContext context, File selfieFile, File docFile) {
-    int currentStep = 0; // 0: Fetching info, 1: Uploading & OCR, 2: Name comparison, 3: Face match, 4: Complete
+    // Steps: 0=Loading DB, 1=OCR+FaceMatch (uploading), 2=Name concordance, 3=Face match, 4=Done
+    int currentStep = 0;
     String userFirstName = "";
     String userLastName = "";
     String userDob = "";
     String verificationError = "";
     bool success = false;
-    double progress = 0.0;
-    Timer? processingTimer;
+    bool? nameMatched;
+    bool? dobMatched;
+    int faceMatchScore = 0;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textCol = isDark ? Colors.white : Colors.black;
     final subCol = isDark ? Colors.white54 : Colors.black54;
     final cardBg = isDark ? const Color(0xFF161618) : Colors.white;
 
+    // Controls whether we've already started the async pipeline
+    bool pipelineStarted = false;
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            
-            // Run the step-by-step verification pipeline
-            if (processingTimer == null) {
-              processingTimer = Timer.periodic(const Duration(milliseconds: 100), (timer) async {
-                setDialogState(() {
-                  progress += 0.05;
-                });
-                
-                if (progress >= 1.0) {
-                  timer.cancel(); // Pause timer while executing step
+
+            // Launch the pipeline once after the dialog opens
+            if (!pipelineStarted) {
+              pipelineStarted = true;
+              Future.microtask(() async {
+                // ── Step 0: Fetch user profile from database ──────────────────
+                try {
+                  final response = await http.get(
+                    Uri.parse('https://trasx.com/api/users/${widget.userId}'),
+                    headers: {'Content-Type': 'application/json', 'x-user-id': '${widget.userId}'},
+                  );
+                  if (response.statusCode == 200) {
+                    final data = jsonDecode(response.body);
+                    userFirstName = data['first_name'] ?? "Inconnu";
+                    userLastName  = data['last_name']  ?? "Inconnu";
+                    userDob = data['dob'] != null
+                        ? data['dob'].toString().split('T')[0]
+                        : "Non renseigné";
+                    setDialogState(() => currentStep = 1);
+                  } else {
+                    throw Exception("Erreur de récupération des informations.");
+                  }
+                } catch (e) {
+                  setDialogState(() {
+                    verificationError = "Impossible de récupérer les données de votre compte.";
+                    currentStep = 4;
+                  });
+                  return;
+                }
+
+                // ── Step 1: Upload selfie + document → OCR + server face match ─
+                try {
+                  final bytes = await selfieFile.readAsBytes();
+                  final base64Image = base64Encode(bytes);
+                  final selfieDataUrl = "data:image/jpeg;base64,$base64Image";
+
+                  final request = http.MultipartRequest(
+                    'POST',
+                    Uri.parse('https://trasx.com/api/wallet/withdraw-kyc'),
+                  );
+                  request.headers['x-user-id'] = '${widget.userId}';
+                  request.fields['selfie_image_data'] = selfieDataUrl;
+
+                  request.files.add(await http.MultipartFile.fromPath(
+                    'identity_document',
+                    docFile.path,
+                    contentType: MediaType('image', 'jpeg'),
+                  ));
+
+                  final streamedResponse = await request.send();
+                  final responseBody = await streamedResponse.stream.bytesToString();
+                  final resData = jsonDecode(responseBody);
+
+                  final details = resData['details'] as Map<String, dynamic>? ?? {};
+                  nameMatched    = details['nameMatched'] as bool?;
+                  dobMatched     = details['dobMatched']  as bool?;
+                  faceMatchScore = (details['faceMatchScore'] as num?)?.toInt() ?? 0;
                   
-                  if (currentStep == 0) {
-                    // Step 0: Fetch user account data in real-time from DB
-                    try {
-                      final response = await http.get(
-                        Uri.parse('https://trasx.com/api/users/${widget.userId}'),
-                        headers: {'Content-Type': 'application/json', 'x-user-id': '${widget.userId}'},
-                      );
-                      if (response.statusCode == 200) {
-                        final data = jsonDecode(response.body);
-                        userFirstName = data['first_name'] ?? "Inconnu";
-                        userLastName = data['last_name'] ?? "Inconnu";
-                        userDob = data['dob'] != null ? data['dob'].toString().split('T')[0] : "Non renseigné";
-                        
-                        setDialogState(() {
-                          currentStep = 1;
-                          progress = 0.0;
-                        });
-                        // Restart timer for next step
-                        processingTimer = null;
-                      } else {
-                        throw Exception("Erreur de récupération des informations.");
-                      }
-                    } catch (e) {
-                      setDialogState(() {
-                        currentStep = 4;
-                        verificationError = "Impossible de récupérer les données de votre compte.";
-                      });
-                    }
-                  } else if (currentStep == 1) {
-                    // Step 1: Upload and run OCR on the server
-                    try {
-                      final bytes = await selfieFile.readAsBytes();
-                      final base64Image = base64Encode(bytes);
-                      final selfieDataUrl = "data:image/jpeg;base64,$base64Image";
+                  setDialogState(() => currentStep = 2);
+                  await Future.delayed(const Duration(milliseconds: 600));
 
-                      final request = http.MultipartRequest(
-                        'POST',
-                        Uri.parse('https://trasx.com/api/wallet/withdraw-kyc'),
-                      );
-                      request.headers['x-user-id'] = '${widget.userId}';
-                      request.fields['selfie_image_data'] = selfieDataUrl;
-                      request.fields['face_match_distance'] = "0.25"; // perfect match
+                  // ── Step 2: Show name/DOB concordance result ──────────────────
+                  setDialogState(() => currentStep = 3);
+                  await Future.delayed(const Duration(milliseconds: 600));
 
-                      request.files.add(await http.MultipartFile.fromPath(
-                        'identity_document',
-                        docFile.path,
-                        contentType: MediaType('image', 'jpeg'),
-                      ));
-
-                      final response = await request.send();
-                      final responseBody = await response.stream.bytesToString();
-                      final resData = jsonDecode(responseBody);
-
-                      if (response.statusCode == 200 && resData['success'] == true) {
-                        setDialogState(() {
-                          currentStep = 2;
-                          progress = 0.0;
-                        });
-                        processingTimer = null;
-                      } else {
-                        setDialogState(() {
-                          currentStep = 4;
-                          verificationError = resData['error'] ?? "Échec de validation de la pièce d'identité.";
-                        });
-                      }
-                    } catch (e) {
-                      setDialogState(() {
-                        currentStep = 4;
-                        verificationError = "Erreur de connexion lors du téléversement.";
-                      });
-                    }
-                  } else if (currentStep == 2) {
-                    // Step 2: Comparison of identity data (OCR text vs DB values)
-                    setDialogState(() {
-                      currentStep = 3;
-                      progress = 0.0;
-                    });
-                    processingTimer = null;
-                  } else if (currentStep == 3) {
-                    // Step 3: Face matching comparison
+                  // ── Step 3: Show face match result ────────────────────────────
+                  if (streamedResponse.statusCode == 200 && resData['success'] == true) {
                     setDialogState(() {
                       currentStep = 4;
-                      progress = 0.0;
                       success = true;
                     });
-                    _fetchBalances(); // refresh KYC status in real-time
+                    _fetchBalances(); // refresh KYC status
+                  } else {
+                    setDialogState(() {
+                      currentStep = 4;
+                      success = false;
+                      verificationError = resData['error'] ?? "Échec de la validation du document.";
+                    });
                   }
+                } catch (e) {
+                  setDialogState(() {
+                    currentStep = 4;
+                    verificationError = "Erreur de connexion lors du téléversement.";
+                  });
                 }
               });
             }
@@ -10320,46 +10179,54 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                       _buildVerificationStepTile(
                         title: "1. Chargement des données du compte",
                         subtitle: currentStep > 0
-                            ? "Nom: $userLastName, Prénom: $userFirstName, Naissance: $userDob"
+                            ? "Nom: $userLastName  •  Prénom: $userFirstName  •  Naissance: $userDob"
                             : "Récupération des données en base...",
                         status: currentStep > 0 ? "success" : (currentStep == 0 ? "loading" : "idle"),
-                        progress: currentStep == 0 ? progress : null,
                         textCol: textCol,
                         subCol: subCol,
                       ),
-                      
-                      // Step 2: Upload and OCR analysis
+
+                      // Step 2: Upload + OCR
                       _buildVerificationStepTile(
                         title: "2. Lecture OCR du document d'identité",
                         subtitle: currentStep > 1
-                            ? "Données textuelles lues avec succès"
-                            : (currentStep == 1 ? "Extraction du texte par l'IA..." : "En attente..."),
+                            ? "Extraction du texte réussie"
+                            : (currentStep == 1 ? "Envoi du document et analyse IA en cours..." : "En attente..."),
                         status: currentStep > 1 ? "success" : (currentStep == 1 ? "loading" : "idle"),
-                        progress: currentStep == 1 ? progress : null,
                         textCol: textCol,
                         subCol: subCol,
                       ),
 
-                      // Step 3: OCR vs DB comparison
+                      // Step 3: Name/DOB concordance
                       _buildVerificationStepTile(
-                        title: "3. Analyse de concordance d'identité",
+                        title: "3. Concordance nom, prénom et date de naissance",
                         subtitle: currentStep > 2
-                            ? "Comparaison des données validée"
-                            : (currentStep == 2 ? "Concordance nom, prénom, naissance..." : "En attente..."),
-                        status: currentStep > 2 ? "success" : (currentStep == 2 ? "loading" : "idle"),
-                        progress: currentStep == 2 ? progress : null,
+                            ? (nameMatched == true && dobMatched == true
+                                ? "✓ Nom et date de naissance concordants"
+                                : nameMatched == false
+                                    ? "✗ Le nom ne correspond pas à votre compte"
+                                    : dobMatched == false
+                                        ? "✗ La date de naissance ne correspond pas"
+                                        : "Résultat de concordance partiel")
+                            : (currentStep == 2 ? "Comparaison nom/prénom/naissance avec le document..." : "En attente..."),
+                        status: currentStep > 2
+                            ? (nameMatched == true ? "success" : "error")
+                            : (currentStep == 2 ? "loading" : "idle"),
                         textCol: textCol,
                         subCol: subCol,
                       ),
 
-                      // Step 4: Face Match with distance scoring
+                      // Step 4: Face Match
                       _buildVerificationStepTile(
-                        title: "4. Reconnaissance faciale (Face Match)",
+                        title: "4. Reconnaissance faciale (Face Match IA)",
                         subtitle: currentStep > 3
-                            ? "Score de correspondance faciale : 92%"
-                            : (currentStep == 3 ? "Comparaison selfie vs photo de la pièce..." : "En attente..."),
-                        status: currentStep > 3 ? "success" : (currentStep == 3 ? "loading" : "idle"),
-                        progress: currentStep == 3 ? progress : null,
+                            ? (faceMatchScore >= 60
+                                ? "✓ Correspondance faciale : $faceMatchScore%"
+                                : "✗ Le selfie ne correspond pas à la photo du document")
+                            : (currentStep == 3 ? "Comparaison biométrique selfie ↔ photo de pièce..." : "En attente..."),
+                        status: currentStep > 3
+                            ? (faceMatchScore >= 60 ? "success" : "error")
+                            : (currentStep == 3 ? "loading" : "idle"),
                         textCol: textCol,
                         subCol: subCol,
                       ),
@@ -10376,10 +10243,10 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                               const Icon(Icons.check_circle_rounded, color: Colors.green, size: 24),
                               const SizedBox(width: 10),
                               Expanded(
-                                  child: Text(
-                                    "Vérification validée avec succès ! Vos retraits sont maintenant activés.",
-                                    style: TextStyle(color: textCol, fontSize: 13, fontWeight: FontWeight.bold),
-                                  ),
+                                child: Text(
+                                  "Vérification validée avec succès ! Vos retraits sont maintenant activés.",
+                                  style: TextStyle(color: textCol, fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
                               ),
                             ],
                           ),
@@ -10393,9 +10260,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                 foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                               ),
-                              onPressed: () {
-                                Navigator.pop(context); // close progress dialog
-                              },
+                              onPressed: () => Navigator.pop(context),
                               child: const Text("Terminer", style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ),
@@ -10422,9 +10287,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                 foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                               ),
-                              onPressed: () {
-                                Navigator.pop(context); // close progress dialog
-                              },
+                              onPressed: () => Navigator.pop(context),
                               child: const Text("Fermer", style: TextStyle(fontWeight: FontWeight.bold)),
                             ),
                           ),
@@ -10454,15 +10317,20 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     );
   }
 
+
+
   Widget _buildVerificationStepTile({
     required String title,
     required String subtitle,
-    required String status, // 'success', 'loading', 'idle'
-    double? progress,
+    required String status, // 'success', 'loading', 'idle', 'error'
     required Color textCol,
     required Color subCol,
   }) {
-    Color tileColor = status == 'success' ? Colors.green : (status == 'loading' ? const Color(0xFFFE2C55) : subCol);
+    Color tileColor = status == 'success'
+        ? Colors.green
+        : status == 'error'
+            ? Colors.red
+            : (status == 'loading' ? const Color(0xFFFE2C55) : subCol);
     return Padding(
       padding: const EdgeInsets.only(bottom: 18.0),
       child: Row(
@@ -10473,13 +10341,16 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
             width: 18,
             height: 18,
             child: status == 'loading'
-                ? CircularProgressIndicator(
-                    value: progress,
+                ? const CircularProgressIndicator(
                     strokeWidth: 2.5,
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFE2C55)),
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFE2C55)),
                   )
                 : Icon(
-                    status == 'success' ? Icons.check_circle_rounded : Icons.radio_button_off_rounded,
+                    status == 'success'
+                        ? Icons.check_circle_rounded
+                        : status == 'error'
+                            ? Icons.cancel_rounded
+                            : Icons.radio_button_off_rounded,
                     color: tileColor,
                     size: 18,
                   ),

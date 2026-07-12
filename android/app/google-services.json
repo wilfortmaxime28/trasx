@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "221349639539",
+    "project_id": "trasx-c7a26",
+    "storage_bucket": "trasx-c7a26.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:221349639539:android:6bee601f8c5737de2ec106",
+        "android_client_info": {
+          "package_name": "com.trasx.trasx_webview"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCFXCstEwB02u2IwbERkHWMRMdbP4f2AJo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
