@@ -16,7 +16,7 @@ const { sendEventTicketEmail } = require('../utils/mailer');
 const { buildMessageInboxSections } = require('../utils/messageInbox');
 const { getNumberSetting } = require('../utils/appSettings');
 const { createTranslator, normalizeLocale } = require('../utils/i18n');
-const { evaluateEventKycSubmission } = require('../utils/kycAi');
+const { evaluateEventKycSubmission, compareFacesOnServer } = require('../utils/kycAi');
 const { isoFromDateObject, normalizeDateToIso } = require('../utils/dateUtils');
 const presence = require('../utils/presence');
 
@@ -806,8 +806,15 @@ class EventsController {
       console.log('[KYC] Extracting OCR from uploaded document...');
       const ocrText = await extractOcrTextFromImage(req.file.path);
       console.log('[KYC] OCR text extracted:', String(ocrText || '').slice(0, 140));
-      const faceMatchDistance = Number(req.body?.face_match_distance);
       const savedSelfie = await saveDataUrlToFile(selfieImageData, EVENT_KYC_SELFIE_DIR, `selfie-${currentUserId}`);
+      
+      console.log('[KYC] Running server-side face comparison...');
+      let faceMatchDistance = 1.0;
+      if (savedSelfie) {
+        faceMatchDistance = await compareFacesOnServer(savedSelfie.filePath, req.file.path);
+        console.log('[KYC] Server face match distance:', faceMatchDistance);
+      }
+
       console.log('[KYC] Running identity evaluation...');
       const evaluation = await evaluateEventKycSubmission(
         currentUser,

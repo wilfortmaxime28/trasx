@@ -3964,7 +3964,7 @@ app.post('/api/deposits/create', requireAuth, async (req, res) => {
 });
 
 const KycRequest = require('./models/KycRequest');
-const { evaluateEventKycSubmission } = require('./utils/kycAi');
+const { evaluateEventKycSubmission, compareFacesOnServer } = require('./utils/kycAi');
 const { createWorker } = require('tesseract.js');
 const TESSERACT_ENG_PATH = path.dirname(require.resolve('@tesseract.js-data/eng/package.json')) + '/4.0.0';
 let withdrawOcrWorkerPromise = null;
@@ -4141,8 +4141,12 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
 
     console.log(`[WithdrawKYC] Starting verification for user ${currentUserId}`);
     const ocrText = await extractWithdrawOcrText(req.file.path);
-    const faceMatchDistance = Number(req.body?.face_match_distance);
     const savedSelfie = await saveWithdrawSelfie(selfieImageData, withdrawKycSelfieDir, `selfie-${currentUserId}`);
+    
+    let faceMatchDistance = 1.0;
+    if (savedSelfie) {
+      faceMatchDistance = await compareFacesOnServer(savedSelfie.filePath, req.file.path);
+    }
 
     const evaluation = evaluateEventKycSubmission(
       currentUser,
@@ -4264,10 +4268,20 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
       );
     }
 
+    const verificationDetails = {
+      score: evaluation.score,
+      faceMatchScore: evaluation.faceMatchScore,
+      faceMatchDistance: faceMatchDistance,
+      nameMatched: evaluation.matchedFullName ?? null,
+      dobMatched: evaluation.matchedDob ?? null,
+      ocrExcerpt: (evaluation.ocrTextExcerpt || '').slice(0, 120),
+      reasons: evaluation.reasons || []
+    };
+
     if (isApproved) {
-      res.json({ success: true, message: 'Félicitations, votre KYC de retrait a été vérifié et approuvé instantanément par l\'IA.' });
+      res.json({ success: true, message: 'Félicitations, votre KYC de retrait a été vérifié et approuvé instantanément par l\'IA.', details: verificationDetails });
     } else {
-      res.status(400).json({ success: false, error: 'Échec de la validation du document par l\'IA. Raisons : ' + evaluation.reasons.join(', ') });
+      res.status(400).json({ success: false, error: 'Échec de la validation du document par l\'IA. Raisons : ' + evaluation.reasons.join(', '), details: verificationDetails });
     }
   } catch (err) {
     console.error('[WithdrawKYC] Error:', err);

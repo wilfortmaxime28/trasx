@@ -1,0 +1,25 @@
+[Mediasoup] Initialisation de 12 workers...
+Database bsc_deposits table check complete.
+VAPID details initialized successfully.
+Database push_subscriptions table check complete.
+Database admins table and columns check complete.
+Le serveur tourne sur http://localhost:3000
+[Auth Middleware] URL: /
+[Auth Middleware] Incoming Cookies: undefined
+[Auth Middleware] Session ID: -g41GWSHeMiA9jUSAELB4T9b91kuInL1
+[Auth Middleware] Session User ID: undefined
+[Auth Middleware] Unauthenticated request to: /
+[NOWPayments] Scheduled sync failed: Error: connect ECONNREFUSED 127.0.0.1:3306
+    at getSetting (/Applications/XAMPP/xamppfiles/htdocs/tras2/utils/appSettings.js:4:27)
+    at isNowPaymentsProviderActive (/Applications/XAMPP/xamppfiles/htdocs/tras2/server.js:484:49)
+    at syncPendingNowPaymentsRecords (/Applications/XAMPP/xamppfiles/htdocs/tras2/server.js:948:17)
+    at Timeout._onTimeout (/Applications/XAMPP/xamppfiles/htdocs/tras2/server.js:937:5)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7) {
+  errno: -61,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 3306,
+  fatal: true
+}

@@ -1,4 +1,8 @@
 const { normalizeDateForComparison, normalizeDateToIsoCandidates } = require('./dateUtils');
+const sharp = require('sharp');
+const tf = require('@tensorflow/tfjs');
+const faceapi = require('face-api.js');
+const path = require('path');
 
 function normalizeText(value) {
   return String(value || '')
@@ -267,6 +271,70 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
   };
 }
 
+
+let modelsLoaded = false;
+
+async function ensureModelsLoaded() {
+  if (modelsLoaded) return;
+  const modelPath = path.join(__dirname, '../public/models/face-api');
+  await Promise.all([
+    faceapi.nets.tinyFaceDetector.loadFromDisk(modelPath),
+    faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath),
+    faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath)
+  ]);
+  modelsLoaded = true;
+}
+
+async function imageToTensor(filePath) {
+  const { data, info } = await sharp(filePath)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  
+  const tensor = tf.tensor3d(new Uint8Array(data), [info.height, info.width, info.channels], 'int32');
+  if (info.channels === 4) {
+    const rgbTensor = tf.slice3d(tensor, [0, 0, 0], [info.height, info.width, 3]);
+    tensor.dispose();
+    return rgbTensor;
+  }
+  return tensor;
+}
+
+async function compareFacesOnServer(selfiePath, docPath) {
+  try {
+    await ensureModelsLoaded();
+    
+    const [selfieTensor, docTensor] = await Promise.all([
+      imageToTensor(selfiePath),
+      imageToTensor(docPath)
+    ]);
+    
+    const detectorOptions = new faceapi.TinyFaceDetectorOptions({
+      inputSize: 416,
+      scoreThreshold: 0.45
+    });
+    
+    const [selfieDetection, docDetection] = await Promise.all([
+      faceapi.detectSingleFace(selfieTensor, detectorOptions).withFaceLandmarks().withFaceDescriptor(),
+      faceapi.detectSingleFace(docTensor, detectorOptions).withFaceLandmarks().withFaceDescriptor()
+    ]);
+    
+    selfieTensor.dispose();
+    docTensor.dispose();
+    
+    if (!selfieDetection || !docDetection) {
+      console.log('[Face Comparison] Face not detected on one or both images.');
+      return 1.0; // max distance (no match)
+    }
+    
+    const distance = faceapi.euclideanDistance(selfieDetection.descriptor, docDetection.descriptor);
+    console.log('[Face Comparison] Calculated Euclidean distance:', distance);
+    return distance;
+  } catch (err) {
+    console.error('[Face Comparison] Error comparing faces:', err);
+    return 1.0; // fallback mismatch
+  }
+}
+
 module.exports = {
   evaluateEventKycSubmission,
   normalizeText,
@@ -275,5 +343,6 @@ module.exports = {
   isValidIdentityDocument,
   scoreFromFaceDistance,
   extractDateCandidatesFromText,
-  chooseDobCandidateFromText
+  chooseDobCandidateFromText,
+  compareFacesOnServer
 };
