@@ -14,24 +14,71 @@ void main() async {
     debugPrint('Wakelock enable error: $e');
   }
   
-  // Retrieve the persistent login session status
+  // Retrieve the persistent login session status and theme preference
   final prefs = await SharedPreferences.getInstance();
   final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+  final bool isDarkMode = prefs.getBool('is_dark_mode') ?? true;
 
-  runApp(MyApp(isLoggedIn: isLoggedIn));
+  runApp(MyApp(isLoggedIn: isLoggedIn, initialDarkMode: isDarkMode));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   final bool isLoggedIn;
+  final bool initialDarkMode;
   
-  const MyApp({super.key, required this.isLoggedIn});
+  const MyApp({
+    super.key,
+    required this.isLoggedIn,
+    this.initialDarkMode = true,
+  });
+
+  static _MyAppState of(BuildContext context) {
+    final _MyAppState? result = context.findAncestorStateOfType<_MyAppState>();
+    if (result != null) return result;
+    throw FlutterError('MyAppState not found in context');
+  }
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late bool _isDarkMode;
+
+  bool get isDarkMode => _isDarkMode;
+
+  @override
+  void initState() {
+    super.initState();
+    _isDarkMode = widget.initialDarkMode;
+  }
+
+  void toggleTheme(bool value) async {
+    setState(() {
+      _isDarkMode = value;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_dark_mode', value);
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'TrasX',
       debugShowCheckedModeBanner: false,
+      themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
       theme: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFF9F9F9),
+        fontFamily: 'Montserrat',
+        colorScheme: const ColorScheme.light(
+          primary: Colors.black,
+          secondary: Color(0xFFE1306C),
+          surface: Colors.white,
+        ),
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF000000),
         fontFamily: 'Montserrat',
@@ -42,7 +89,18 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: isLoggedIn ? const DashboardPage() : const OnboardingPage(),
+      home: widget.isLoggedIn ? const DashboardPage() : const OnboardingPage(),
+      builder: (context, child) {
+        // Safearea wrapping for all screens globally
+        return Container(
+          color: _isDarkMode ? const Color(0xFF000000) : const Color(0xFFF9F9F9),
+          child: SafeArea(
+            top: true,
+            bottom: true,
+            child: child!,
+          ),
+        );
+      },
     );
   }
 }

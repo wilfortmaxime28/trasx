@@ -25,6 +25,7 @@ import 'models/post_model.dart';
 import 'services/feed_cache_service.dart';
 import 'widgets/feed_skeleton.dart';
 import 'onboarding_page.dart';
+import 'main.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -1214,6 +1215,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    _isDarkMode = MyApp.of(context).isDarkMode;
     // Dynamic Theme Variables
     final bgColor = _isDarkMode ? Colors.black : Colors.white;
     final cardColor = _isDarkMode ? const Color(0xFF0F0F0F) : const Color(0xFFF9F9F9);
@@ -1300,9 +1302,7 @@ class _DashboardPageState extends State<DashboardPage> {
               size: 24,
             ),
             onPressed: () {
-              setState(() {
-                _isDarkMode = !_isDarkMode;
-              });
+              MyApp.of(context).toggleTheme(!_isDarkMode);
             },
           ),
           IconButton(
@@ -3170,9 +3170,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 builder: (context) => LanguageSettingsPage(
                   isDarkMode: _isDarkMode,
                   onThemeChanged: (val) {
-                    setState(() {
-                      _isDarkMode = val;
-                    });
+                    MyApp.of(context).toggleTheme(val);
                   },
                 ),
               ),
@@ -7824,7 +7822,7 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = widget.isDarkMode;
+    final isDark = MyApp.of(context).isDarkMode;
     final textPrimaryColor = isDark ? Colors.white : Colors.black;
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final bgColor = isDark ? const Color(0xFF000000) : const Color(0xFFF9F9F9);
@@ -8289,7 +8287,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = widget.isDarkMode;
+    final isDark = MyApp.of(context).isDarkMode;
     final textPrimaryColor = isDark ? Colors.white : Colors.black;
     final textSecondaryColor = isDark ? Colors.white54 : Colors.black54;
     final cardColor = isDark ? const Color(0xFF161618) : Colors.white;
@@ -9380,7 +9378,7 @@ class _LanguageSettingsPageState extends State<LanguageSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = widget.isDarkMode;
+    final isDark = MyApp.of(context).isDarkMode;
     final textPrimaryColor = isDark ? Colors.white : Colors.black;
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final bgColor = isDark ? const Color(0xFF000000) : const Color(0xFFF9F9F9);
@@ -9562,7 +9560,7 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = widget.isDarkMode;
+    final isDark = MyApp.of(context).isDarkMode;
     final textPrimaryColor = isDark ? Colors.white : Colors.black;
     final textSecondaryColor = isDark ? Colors.white54 : Colors.black54;
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
