@@ -3750,10 +3750,11 @@ app.get('/api/wallet/deposit-info', requireAuth, async (req, res) => {
 
     // Check if user has passed KYC
     const [kycRows] = await db.query(
-      "SELECT id FROM kyc_requests WHERE user_id = ? AND request_type = 'withdrawal' AND status = 'approved' LIMIT 1",
+      "SELECT status FROM kyc_requests WHERE user_id = ? AND request_type = 'withdrawal' ORDER BY id DESC LIMIT 1",
       [userId]
     );
-    const hasPassedKyc = kycRows.length > 0;
+    const kycStatus = kycRows.length > 0 ? kycRows[0].status : 'none';
+    const hasPassedKyc = kycStatus === 'approved';
     const paymentsProvider = await getSetting('payments_provider', 'nowpayments');
 
     if (normalizeProviderValue(paymentsProvider, 'nowpayments') === 'nowpayments') {
@@ -3789,7 +3790,8 @@ app.get('/api/wallet/deposit-info', requireAuth, async (req, res) => {
         withdrawalFeePercent,
         withdrawalConfirmationsRequired: 1,
         isFirstWithdrawal,
-        hasPassedKyc
+        hasPassedKyc,
+        kycStatus
       });
     }
 
