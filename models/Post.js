@@ -847,7 +847,7 @@ class Post {
       FROM posts p
       JOIN bookmarks b ON b.post_id = p.id AND b.user_id = ?
       JOIN users u ON p.user_id = u.id
-      ORDER BY b.created_at DESC
+      ORDER BY p.id DESC
     `;
     const [rows] = await db.query(query, [userId, userId, userId, userId]);
     return rows.map(row => ({
