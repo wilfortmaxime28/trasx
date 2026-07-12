@@ -17,7 +17,8 @@
 const path = require('path');
 const db   = require('../config/db');
 
-let _admin = null;
+let _initialized = false;
+let _messaging = null;
 
 /**
  * Lazy-initialize Firebase Admin SDK.
@@ -25,7 +26,7 @@ let _admin = null;
  * Returns null and logs a warning if credentials are missing.
  */
 function getAdmin() {
-  if (_admin) return _admin;
+  if (_initialized) return { messaging: () => _messaging };
 
   const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
   const projectId          = process.env.FIREBASE_PROJECT_ID;
@@ -39,18 +40,21 @@ function getAdmin() {
   }
 
   try {
-    const admin = require('firebase-admin');
-    if (!admin.apps.length) {
+    const { initializeApp, getApps, cert } = require('firebase-admin/app');
+    const { getMessaging } = require('firebase-admin/messaging');
+
+    if (!getApps().length) {
       // eslint-disable-next-line import/no-dynamic-require
       const serviceAccount = require(path.resolve(serviceAccountPath));
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
+      initializeApp({
+        credential: cert(serviceAccount),
         projectId,
       });
       console.log('[FCM] ✅ Firebase Admin SDK initialised for project:', projectId);
     }
-    _admin = admin;
-    return _admin;
+    _messaging = getMessaging();
+    _initialized = true;
+    return { messaging: () => _messaging };
   } catch (err) {
     console.error('[FCM] ❌ Failed to initialise Firebase Admin SDK:', err.message);
     return null;
