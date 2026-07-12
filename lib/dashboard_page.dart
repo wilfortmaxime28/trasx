@@ -8033,6 +8033,14 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
   String _kycStatus = 'none'; // 'approved', 'pending', 'rejected', 'none'
   bool _isSubmittingKyc = false;
 
+  // Real-time Dispute management states
+  String _accountStatus = 'Active'; // 'Active', 'KycBlockFirst', 'KycBlockSecond'
+  String? _kycDisputeStatus; // 'pending', 'resolved', 'rejected', 'none'
+  String? _kycDisputeMessage;
+  String? _kycDisputeAdminResponse;
+  final _disputeMessageController = TextEditingController();
+  bool _isSubmittingDispute = false;
+
   @override
   void initState() {
     super.initState();
@@ -8044,6 +8052,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     if (widget.socket != null) {
       widget.socket!.on('balance-updated', _onBalanceUpdated);
       widget.socket!.on('deposit-status', _onDepositStatus);
+      widget.socket!.on('account-status-changed', _onAccountStatusChanged);
+      widget.socket!.on('kyc-dispute-updated', _onKycDisputeUpdated);
     }
 
     // Fallback: Poll balances and transactions every 4 seconds
@@ -8058,10 +8068,48 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     if (widget.socket != null) {
       widget.socket!.off('balance-updated', _onBalanceUpdated);
       widget.socket!.off('deposit-status', _onDepositStatus);
+      widget.socket!.off('account-status-changed', _onAccountStatusChanged);
+      widget.socket!.off('kyc-dispute-updated', _onKycDisputeUpdated);
     }
     _pollingTimer?.cancel();
     _bscAddressController.dispose();
+    _disputeMessageController.dispose();
     super.dispose();
+  }
+
+  void _onAccountStatusChanged(dynamic data) {
+    debugPrint("WalletSettingsPage: received account-status-changed: $data");
+    if (mounted && data != null) {
+      setState(() {
+        _accountStatus = data['accountStatus'] ?? _accountStatus;
+        if (data['kycStatus'] != null) {
+          _kycStatus = data['kycStatus'];
+          _hasPassedKyc = (_kycStatus == 'approved');
+        }
+        _kycDisputeStatus = data['kycDisputeStatus'] ?? _kycDisputeStatus;
+        _kycDisputeAdminResponse = data['kycDisputeAdminResponse'] ?? _kycDisputeAdminResponse;
+      });
+      if (data['message'] != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['message']),
+            backgroundColor: data['accountStatus'] == 'Active' ? Colors.green : Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  void _onKycDisputeUpdated(dynamic data) {
+    debugPrint("WalletSettingsPage: received kyc-dispute-updated: $data");
+    if (mounted && data != null) {
+      setState(() {
+        _kycDisputeStatus = data['kycDisputeStatus'];
+        _kycDisputeMessage = data['kycDisputeMessage'];
+        _kycDisputeAdminResponse = data['kycDisputeAdminResponse'];
+      });
+    }
   }
 
   // Socket callback for balance changes
@@ -8170,6 +8218,10 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
             _minWithdrawalAmount = double.tryParse(infoData['minWithdrawalAmount']?.toString() ?? '50.0') ?? 50.0;
             _hasPassedKyc = infoData['hasPassedKyc'] ?? false;
             _kycStatus = infoData['kycStatus'] ?? 'none';
+            _accountStatus = infoData['accountStatus'] ?? 'Active';
+            _kycDisputeStatus = infoData['kycDisputeStatus'];
+            _kycDisputeMessage = infoData['kycDisputeMessage'];
+            _kycDisputeAdminResponse = infoData['kycDisputeAdminResponse'];
           });
         }
       }
@@ -8369,10 +8421,13 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                   ),
                 ),
 
-                Text(
-                  "Mes comptes",
-                  style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
-                ),
+                if (_accountStatus == 'KycBlockFirst' || _accountStatus == 'KycBlockSecond') ...[
+                  _buildDisputeLayout(cardColor, borderColor, textPrimaryColor, textSecondaryColor, isDark),
+                ] else ...[
+                  Text(
+                    "Mes comptes",
+                    style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
                 const SizedBox(height: 12),
 
                 // 1. Coins Account (Deposit)
@@ -8663,6 +8718,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                       );
                     },
                   ),
+                ],
               ],
             ),
           ),
@@ -8818,6 +8874,308 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
               const SizedBox(height: 2),
               Text(date, style: TextStyle(color: textSecondaryColor, fontSize: 10)),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDisputeLayout(Color cardColor, Color borderColor, Color textPrimary, Color textSecondary, bool isDark) {
+    if (_accountStatus == 'KycBlockSecond') {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: borderColor),
+        ),
+        child: Column(
+          children: [
+            const Icon(Icons.gavel_rounded, color: Color(0xFFFE2C55), size: 48),
+            const SizedBox(height: 16),
+            Text(
+              "Compte Bloqué Définitivement",
+              style: TextStyle(color: textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              "Votre compte a été bloqué définitivement pour tentative d'utilisation frauduleuse d'une pièce d'identité déjà enregistrée sur un autre compte.\n\nSeuls les services administratifs peuvent lever cette suspension.",
+              style: TextStyle(color: textSecondary, fontSize: 13, height: 1.5),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.lock_rounded, color: Colors.red, size: 18),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      "Décision finale : Non contestable",
+                      style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Otherwise KycBlockFirst (Original owner who has option to raise a dispute)
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            children: [
+              const Icon(Icons.shield_outlined, color: Color(0xFFFFB000), size: 48),
+              const SizedBox(height: 16),
+              Text(
+                "Suspension de Sécurité",
+                style: TextStyle(color: textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                "Votre pièce d'identité a été détectée sur un autre compte. Par mesure de sécurité, vos retraits ont été gelés.\n\nVous pouvez soumettre un litige pour prouver que vous êtes le propriétaire légitime de ce document d'identité.",
+                style: TextStyle(color: textSecondary, fontSize: 13, height: 1.5),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          "Suivi du litige en temps réel",
+          style: TextStyle(color: textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        
+        // Timeline steps
+        _buildTimelineStep(
+          stepNumber: 1,
+          title: "Détection du conflit",
+          description: "Pièce d'identité enregistrée en double.",
+          status: "completed",
+          isDark: isDark,
+        ),
+        _buildTimelineStep(
+          stepNumber: 2,
+          title: "Ouverture du litige",
+          description: _kycDisputeStatus == 'pending'
+              ? "Explications envoyées : '${_kycDisputeMessage ?? ''}'"
+              : (_kycDisputeStatus == 'rejected' ? "Explication refusée par l'admin. Motif : '${_kycDisputeAdminResponse ?? ''}'" : "En attente de vos explications."),
+          status: _kycDisputeStatus == 'pending'
+              ? "completed"
+              : (_kycDisputeStatus == 'rejected' ? "error" : "pending"),
+          isDark: isDark,
+        ),
+        _buildTimelineStep(
+          stepNumber: 3,
+          title: "Décision administrative",
+          description: _kycDisputeStatus == 'resolved'
+              ? "Compte réactivé."
+              : (_kycDisputeStatus == 'rejected'
+                  ? "Rejeté. Motif : ${_kycDisputeAdminResponse ?? ''}"
+                  : "En attente d'examen."),
+          status: _kycDisputeStatus == 'resolved'
+              ? "completed"
+              : (_kycDisputeStatus == 'rejected' ? "error" : "idle"),
+          isDark: isDark,
+          isLast: true,
+        ),
+
+        const SizedBox(height: 24),
+
+        if (_kycDisputeStatus == null || _kycDisputeStatus == 'rejected') ...[
+          Text(
+            "Formulaire de contestation",
+            style: TextStyle(color: textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _disputeMessageController,
+            maxLines: 4,
+            style: TextStyle(color: textPrimary, fontSize: 13),
+            decoration: InputDecoration(
+              hintText: "Expliquez précisément la situation (ex: J'ai créé ce deuxième compte par erreur, ou mon identité a été usurpée...)",
+              hintStyle: TextStyle(color: textSecondary, fontSize: 12),
+              filled: true,
+              fillColor: cardColor,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: borderColor),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: Color(0xFFFE2C55), width: 1.5),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFE2C55),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                elevation: 0,
+              ),
+              onPressed: _isSubmittingDispute
+                  ? null
+                  : () async {
+                      final msg = _disputeMessageController.text.trim();
+                      if (msg.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Veuillez saisir votre message d'explication.")),
+                        );
+                        return;
+                      }
+                      setState(() => _isSubmittingDispute = true);
+                      try {
+                        final res = await http.post(
+                          Uri.parse("https://trasx.com/api/wallet/kyc-dispute"),
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'x-user-id': '${widget.userId}',
+                          },
+                          body: jsonEncode({"message": msg}),
+                        );
+                        final data = jsonDecode(res.body);
+                        if (res.statusCode == 200 && data['success'] == true) {
+                          _disputeMessageController.clear();
+                          _fetchBalances();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Votre litige a été transmis en temps réel.")),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(data['error'] ?? "Erreur lors de la soumission.")),
+                          );
+                        }
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Erreur réseau.")),
+                        );
+                      } finally {
+                        setState(() => _isSubmittingDispute = false);
+                      }
+                    },
+              child: _isSubmittingDispute
+                  ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                  : const Text("Envoyer mon explication", style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ] else if (_kycDisputeStatus == 'pending') ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.hourglass_top_rounded, color: Colors.orange, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    "Votre litige est en cours d'examen en temps réel par l'administration. Veuillez patienter.",
+                    style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTimelineStep({
+    required int stepNumber,
+    required String title,
+    required String description,
+    required String status, // 'completed', 'pending', 'error', 'idle'
+    required bool isDark,
+    bool isLast = false,
+  }) {
+    Color stepColor;
+    IconData icon;
+
+    if (status == 'completed') {
+      stepColor = Colors.green;
+      icon = Icons.check_circle_rounded;
+    } else if (status == 'pending') {
+      stepColor = Colors.orange;
+      icon = Icons.radio_button_checked_rounded;
+    } else if (status == 'error') {
+      stepColor = Colors.red;
+      icon = Icons.cancel_rounded;
+    } else {
+      stepColor = isDark ? Colors.white24 : Colors.black26;
+      icon = Icons.radio_button_off_rounded;
+    }
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              Icon(icon, color: stepColor, size: 20),
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    color: stepColor.withValues(alpha: 0.3),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: status != 'idle' ? (isDark ? Colors.white : Colors.black) : (isDark ? Colors.white30 : Colors.black38),
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  description,
+                  style: TextStyle(
+                    color: isDark ? Colors.white54 : Colors.black54,
+                    fontSize: 11,
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
           ),
         ],
       ),
