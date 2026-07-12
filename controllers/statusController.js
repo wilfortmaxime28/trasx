@@ -106,26 +106,32 @@ class StatusController {
       const statusId = parseInt(req.params.id, 10);
       if (!statusId) return res.status(400).json({ error: 'Status ID is required.' });
 
+      const status = await Status.getById(statusId);
+      if (!status) return res.status(404).json({ error: 'Status not found.' });
+
+      // Si l'utilisateur regarde son propre statut, on ne comptabilise pas la vue
+      if (Number(status.user_id) === Number(currentUserId)) {
+        const viewsCount = await Status.getViewCount(statusId);
+        return res.json({ success: true, viewsCount });
+      }
+
       await Status.recordView(statusId, currentUserId);
       const viewsCount = await Status.getViewCount(statusId);
 
-      const status = await Status.getById(statusId);
-      if (status) {
-        const viewerUser = await User.getById(currentUserId);
-        const io = req.app.get('io');
-        if (io) {
-          io.to(`user:${status.user_id}`).emit('status-viewed', {
-            statusId,
-            viewer: {
-              id: currentUserId,
-              username: viewerUser?.username || '',
-              name: viewerUser ? `${viewerUser.first_name} ${viewerUser.last_name}` : 'Quelqu\'un',
-              avatar: viewerUser?.avatar || '/uploads/avatars/default.png',
-              viewed_at: new Date()
-            },
-            viewsCount
-          });
-        }
+      const viewerUser = await User.getById(currentUserId);
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`user:${status.user_id}`).emit('status-viewed', {
+          statusId,
+          viewer: {
+            id: currentUserId,
+            username: viewerUser?.username || '',
+            name: viewerUser ? `${viewerUser.first_name} ${viewerUser.last_name}` : 'Quelqu\'un',
+            avatar: viewerUser?.avatar || '/uploads/avatars/default.png',
+            viewed_at: new Date()
+          },
+          viewsCount
+        });
       }
 
       return res.json({ success: true, viewsCount });
