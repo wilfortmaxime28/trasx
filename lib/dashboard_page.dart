@@ -7509,15 +7509,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      isSent ? 'Envoyé' : (isSelected ? 'Sélectionné' : 'Envoyer'),
-                                      style: TextStyle(
-                                        color: isSent ? Colors.green : (isSelected ? Colors.blue : const Color(0xFFC13584)),
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+
                                   ],
                                 ),
                               );
