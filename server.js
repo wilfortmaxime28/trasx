@@ -3983,10 +3983,17 @@ async function getWithdrawOcrWorker() {
   return withdrawOcrWorkerPromise;
 }
 
+const { preprocessImageForOcr, cleanOcrTempFile } = require('./utils/ocrHelper');
+
 async function extractWithdrawOcrText(filePath) {
-  const worker = await getWithdrawOcrWorker();
-  const result = await worker.recognize(filePath);
-  return String(result?.data?.text || '').trim();
+  const optimizedPath = await preprocessImageForOcr(filePath);
+  try {
+    const worker = await getWithdrawOcrWorker();
+    const result = await worker.recognize(optimizedPath);
+    return String(result?.data?.text || '').trim();
+  } finally {
+    cleanOcrTempFile(optimizedPath);
+  }
 }
 
 function parseWithdrawDataUrl(dataUrl) {

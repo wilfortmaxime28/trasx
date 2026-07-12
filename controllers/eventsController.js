@@ -92,10 +92,17 @@ async function getOcrWorker() {
   return ocrWorkerPromise;
 }
 
+const { preprocessImageForOcr, cleanOcrTempFile } = require('../utils/ocrHelper');
+
 async function extractOcrTextFromImage(filePath) {
-  const worker = await getOcrWorker();
-  const result = await worker.recognize(filePath);
-  return String(result?.data?.text || '').trim();
+  const optimizedPath = await preprocessImageForOcr(filePath);
+  try {
+    const worker = await getOcrWorker();
+    const result = await worker.recognize(optimizedPath);
+    return String(result?.data?.text || '').trim();
+  } finally {
+    cleanOcrTempFile(optimizedPath);
+  }
 }
 
 function wantsJsonResponse(req) {
