@@ -602,7 +602,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
         // 3. Side Action Buttons (Right side)
         Positioned(
           right: 12,
-          bottom: 120,
+          bottom: 90.0 + MediaQuery.of(context).padding.bottom,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -663,7 +663,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
         // 4. Bottom overlays (Caption, Author, Music metadata)
         Positioned(
           left: 16,
-          bottom: 48,
+          bottom: 72.0 + MediaQuery.of(context).padding.bottom,
           right: 80,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -730,7 +730,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
           Positioned(
             left: 0,
             right: 0,
-            bottom: 24,
+            bottom: 60.0 + MediaQuery.of(context).padding.bottom,
             child: VideoProgressIndicator(
               controller,
               allowScrubbing: true,
@@ -906,12 +906,20 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
   @override
   Widget build(BuildContext context) {
     final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final sheetBgColor = isDark ? const Color(0xFF161616) : Colors.white;
+    final textPrimaryColor = isDark ? Colors.white : Colors.black;
+    final textSecondaryColor = isDark ? Colors.white70 : Colors.black87;
+    final textMutedColor = isDark ? Colors.white38 : Colors.black38;
+    final dividerColor = isDark ? Colors.white12 : Colors.black12;
+    final inputBgColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF2F2F2);
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.65 + keyboardHeight,
-      decoration: const BoxDecoration(
-        color: Color(0xFF161616),
-        borderRadius: BorderRadius.only(
+      decoration: BoxDecoration(
+        color: sheetBgColor,
+        borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
         ),
@@ -925,7 +933,7 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
             height: 4,
             margin: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white24,
+              color: textMutedColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -938,26 +946,26 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
               children: [
                 Text(
                   '${_comments.length} commentaires',
-                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
                 ),
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
-                  child: const Icon(CupertinoIcons.xmark, color: Colors.white70, size: 20),
+                  child: Icon(CupertinoIcons.xmark, color: textSecondaryColor, size: 20),
                 )
               ],
             ),
           ),
-          const Divider(color: Colors.white12, height: 1),
+          Divider(color: dividerColor, height: 1),
 
           // Comments List
           Expanded(
             child: _isLoading
-                ? const Center(child: CupertinoActivityIndicator(color: Colors.white))
+                ? Center(child: CupertinoActivityIndicator(color: textPrimaryColor))
                 : _comments.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
                           'Soyez le premier à commenter !',
-                          style: TextStyle(color: Colors.white54, fontSize: 13),
+                          style: TextStyle(color: textMutedColor, fontSize: 13),
                         ),
                       )
                     : ListView.builder(
@@ -979,9 +987,9 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                               children: [
                                 CircleAvatar(
                                   radius: 18,
-                                  backgroundColor: Colors.grey[900],
+                                  backgroundColor: isDark ? Colors.grey[900] : Colors.grey[200],
                                   backgroundImage: cAvatar.isNotEmpty ? CachedNetworkImageProvider(cAvatar) : null,
-                                  child: cAvatar.isEmpty ? const Icon(CupertinoIcons.person_fill, color: Colors.white30, size: 18) : null,
+                                  child: cAvatar.isEmpty ? Icon(CupertinoIcons.person_fill, color: textMutedColor, size: 18) : null,
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
@@ -990,12 +998,12 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                                     children: [
                                       Text(
                                         '@$cAuthor',
-                                        style: const TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.bold),
+                                        style: TextStyle(color: textSecondaryColor, fontSize: 12, fontWeight: FontWeight.bold),
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
                                         cText,
-                                        style: const TextStyle(color: Colors.white, fontSize: 13.5),
+                                        style: TextStyle(color: textPrimaryColor, fontSize: 13.5),
                                       ),
                                     ],
                                   ),
@@ -1010,22 +1018,22 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
           // Input field at bottom
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E1E1E),
-              border: Border(top: BorderSide(color: Colors.white12, width: 0.5)),
+            decoration: BoxDecoration(
+              color: inputBgColor,
+              border: Border(top: BorderSide(color: dividerColor, width: 0.5)),
             ),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _commentInputController,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                    cursorColor: Colors.white,
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: textPrimaryColor, fontSize: 14),
+                    cursorColor: textPrimaryColor,
+                    decoration: InputDecoration(
                       hintText: 'Ajouter un commentaire...',
-                      hintStyle: TextStyle(color: Colors.white38),
+                      hintStyle: TextStyle(color: textMutedColor),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 8.0),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
                     ),
                     onSubmitted: (_) => _sendComment(),
                   ),
@@ -1099,11 +1107,19 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final sheetBgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final textPrimaryColor = isDark ? Colors.white : Colors.black;
+    final textSecondaryColor = isDark ? Colors.white70 : Colors.black87;
+    final textMutedColor = isDark ? Colors.white24 : Colors.black26;
+    final dividerColor = isDark ? Colors.white12 : Colors.black12;
+
     return Container(
       padding: const EdgeInsets.only(top: 12, bottom: 24),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.only(
+      decoration: BoxDecoration(
+        color: sheetBgColor,
+        borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
         ),
@@ -1118,7 +1134,7 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white24,
+                color: textMutedColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1126,11 +1142,11 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
           const SizedBox(height: 16),
 
           // Send to section
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Text(
               'Envoyer à des amis',
-              style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+              style: TextStyle(color: textSecondaryColor, fontSize: 13, fontWeight: FontWeight.bold),
             ),
           ),
           const SizedBox(height: 12),
@@ -1159,7 +1175,7 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
                           children: [
                             CircleAvatar(
                               radius: 25,
-                              backgroundColor: Colors.white10,
+                              backgroundColor: isDark ? Colors.white10 : Colors.black12,
                               backgroundImage: CachedNetworkImageProvider(uAvatar),
                             ),
                             if (sent)
@@ -1183,7 +1199,7 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white, fontSize: 11),
+                          style: TextStyle(color: textPrimaryColor, fontSize: 11),
                         ),
                       )
                     ],
@@ -1192,14 +1208,14 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
               },
             ),
           ),
-          const Divider(color: Colors.white12, height: 16),
+          Divider(color: dividerColor, height: 16),
 
           // Action Options (TikTok style share bar)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Text(
               'Partager',
-              style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+              style: TextStyle(color: textSecondaryColor, fontSize: 13, fontWeight: FontWeight.bold),
             ),
           ),
           const SizedBox(height: 12),
@@ -1211,6 +1227,7 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
                 icon: CupertinoIcons.link,
                 label: 'Copier le lien',
                 color: Colors.blueAccent,
+                textColor: textSecondaryColor,
                 onTap: () {
                   // Copy link action
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -1224,12 +1241,14 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
                 icon: CupertinoIcons.share,
                 label: 'Partager via...',
                 color: Colors.purple,
+                textColor: textSecondaryColor,
                 onTap: _shareExternal,
               ),
               _buildShareActionItem(
                 icon: CupertinoIcons.exclamationmark_bubble_fill,
                 color: Colors.amber,
                 label: 'Signaler',
+                textColor: textSecondaryColor,
                 onTap: () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Signalement envoyé à la modération.')),
@@ -1248,6 +1267,7 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
     required IconData icon,
     required String label,
     required Color color,
+    required Color textColor,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
@@ -1264,7 +1284,7 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
             child: Icon(icon, color: color, size: 24),
           ),
           const SizedBox(height: 6),
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+          Text(label, style: TextStyle(color: textColor, fontSize: 11)),
         ],
       ),
     );
