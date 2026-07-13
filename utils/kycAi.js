@@ -462,15 +462,28 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
   }
 
   const faceMatchDistance = Number(analysis.faceMatchDistance);
-  const faceScore = scoreFromFaceDistance(faceMatchDistance);
-  if (faceScore === null) {
-    reasons.push('La comparaison faciale n\'a pas pu être effectuée.');
-  } else if (faceMatchDistance <= 0.45) {
-    score += 20;
-  } else if (faceMatchDistance <= 0.6) {
-    score += 8;
-  } else {
-    reasons.push('Le selfie ne correspond pas à la photo du document.');
+  const selfieFaceDetected = analysis.selfieFaceDetected !== false;
+  const docFaceDetected = analysis.docFaceDetected !== false;
+
+  if (!docFaceDetected) {
+    reasons.push("Aucun visage n'a été détecté sur l'image de votre document d'identité.");
+  }
+  if (!selfieFaceDetected) {
+    reasons.push("Aucun visage n'a été détecté sur votre photo selfie. Assurez-vous d'être dans un endroit bien éclairé.");
+  }
+
+  let faceScore = null;
+  if (docFaceDetected && selfieFaceDetected) {
+    faceScore = scoreFromFaceDistance(faceMatchDistance);
+    if (faceScore === null) {
+      reasons.push('La comparaison faciale n\'a pas pu être effectuée.');
+    } else if (faceMatchDistance <= 0.45) {
+      score += 20;
+    } else if (faceMatchDistance <= 0.6) {
+      score += 8;
+    } else {
+      reasons.push('Le selfie ne correspond pas à la photo du document.');
+    }
   }
 
   const documentValid = documentCheck.valid;
@@ -478,7 +491,7 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
   const formDobValid = formDobMatches;
   const ocrNameValid = nameMatches;
   const ocrDobValid = dobMatches;
-  const faceValid = faceMatchDistance !== null && faceMatchDistance <= 0.45;
+  const faceValid = docFaceDetected && selfieFaceDetected && faceMatchDistance <= 0.45;
 
   const approved = documentValid && 
                    formNameValid && 
@@ -568,17 +581,32 @@ async function compareFacesOnServer(selfiePath, docPath) {
     selfieTensor.dispose();
     docTensor.dispose();
     
-    if (!selfieDetection || !docDetection) {
-      console.log('[Face Comparison] Face not detected on one or both images.');
-      return 1.0;
+    const selfieFaceDetected = !!selfieDetection;
+    const docFaceDetected = !!docDetection;
+    
+    let distance = 1.0;
+    if (selfieFaceDetected && docFaceDetected) {
+      distance = faceapi.euclideanDistance(selfieDetection.descriptor, docDetection.descriptor);
     }
     
-    const distance = faceapi.euclideanDistance(selfieDetection.descriptor, docDetection.descriptor);
-    console.log('[Face Comparison] Calculated Euclidean distance:', distance);
-    return distance;
+    console.log('[Face Comparison] Results:', {
+      selfieFaceDetected,
+      docFaceDetected,
+      distance
+    });
+    
+    return {
+      distance,
+      selfieFaceDetected,
+      docFaceDetected
+    };
   } catch (err) {
     console.error('[Face Comparison] Error comparing faces:', err);
-    return 1.0;
+    return {
+      distance: 1.0,
+      selfieFaceDetected: false,
+      docFaceDetected: false
+    };
   }
 }
 
