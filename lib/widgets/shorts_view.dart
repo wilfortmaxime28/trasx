@@ -411,11 +411,11 @@ class _ShortsViewState extends State<ShortsView> {
                         _activeTab = 'following';
                       });
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Affichage de vos abonnements...')),
+                        const SnackBar(content: Text('Affichage de vos suivis...')),
                       );
                     },
                     child: Text(
-                      'Abonnements',
+                      'Suivis',
                       style: TextStyle(
                         color: _activeTab == 'following' ? Colors.white : Colors.white60,
                         fontSize: 16,
@@ -807,7 +807,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
             color: iconColor,
             size: 32,
             shadows: const [
-              Shadow(blurRadius: 6.0, color: Colors.black54, offset: Offset(2.0, 2.0)),
+              Shadow(blurRadius: 8.0, color: Colors.black87, offset: Offset(1.5, 1.5)),
             ],
           ),
           const SizedBox(height: 4),
@@ -818,7 +818,8 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
               fontSize: 12,
               fontWeight: FontWeight.bold,
               shadows: [
-                Shadow(blurRadius: 4.0, color: Colors.black54, offset: Offset(1.0, 1.0)),
+                Shadow(blurRadius: 8.0, color: Colors.black, offset: Offset(1.0, 1.0)),
+                Shadow(blurRadius: 4.0, color: Colors.black54, offset: Offset(0.5, 0.5)),
               ],
             ),
           )
