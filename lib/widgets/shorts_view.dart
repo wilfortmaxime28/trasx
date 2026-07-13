@@ -602,7 +602,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
         // 3. Side Action Buttons (Right side)
         Positioned(
           right: 12,
-          bottom: 90.0 + MediaQuery.of(context).padding.bottom,
+          bottom: 50.0,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -663,7 +663,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
         // 4. Bottom overlays (Caption, Author, Music metadata)
         Positioned(
           left: 16,
-          bottom: 72.0 + MediaQuery.of(context).padding.bottom,
+          bottom: 16.0,
           right: 80,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -730,7 +730,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
           Positioned(
             left: 0,
             right: 0,
-            bottom: 60.0 + MediaQuery.of(context).padding.bottom,
+            bottom: 0.0,
             child: VideoProgressIndicator(
               controller,
               allowScrubbing: true,

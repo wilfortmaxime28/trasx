@@ -1233,8 +1233,6 @@ class _DashboardPageState extends State<DashboardPage> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: bgColor,
-      extendBody: _activeViewIndex == 1,
-      extendBodyBehindAppBar: _activeViewIndex == 1,
       appBar: _activeViewIndex == 1 ? null : AppBar(
         backgroundColor: bgColor.withValues(alpha: 0.8),
         elevation: 0,
