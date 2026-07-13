@@ -10271,6 +10271,14 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                   if (isCancelled) return;
                   final resData = jsonDecode(responseBody);
 
+                  final debugOcr = resData['debugOcrText'];
+                  if (debugOcr != null) {
+                    debugPrint('[WithdrawKYC Client Debug] OCR Text from server:');
+                    debugPrint('----------------------------------------');
+                    debugPrint(debugOcr.toString());
+                    debugPrint('----------------------------------------');
+                  }
+
                   final details = resData['details'] as Map<String, dynamic>? ?? {};
                   nameMatched    = details['nameMatched'] as bool?;
                   dobMatched     = details['dobMatched']  as bool?;
