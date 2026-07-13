@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -40,9 +41,24 @@ class _KycCameraPageState extends State<KycCameraPage>
   late Animation<double> _checkAnimation;
 
   // Step durations (ms)
-  static const _positionDelay = 2500;
-  static const _blinkDuration = 3000;
-  static const _turnDuration = 3500;
+  static const _positionDelay = 2000;
+
+  // Liveness analysis variables
+  bool _detectingLiveness = false;
+  Uint8List? _prevGrid;
+  final int _gridWidth = 8;
+  final int _gridHeight = 8;
+
+  int _consecutiveBlinkFrames = 0;
+  int _consecutiveTurnFrames = 0;
+
+  final double _blinkThreshold = 4.0;
+  final double _turnThreshold = 8.0;
+
+  // Manual fallback handling
+  int _secondsInStep = 0;
+  Timer? _stepTimeoutTimer;
+  bool _showManualFallback = false;
 
   @override
   void initState() {
@@ -87,13 +103,13 @@ class _KycCameraPageState extends State<KycCameraPage>
         selectedCamera,
         ResolutionPreset.high,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
       );
 
       await _controller!.initialize();
       if (!mounted) return;
 
       setState(() => _isInitialized = true);
+      _startImageStreaming();
       _startLivenessFlow();
     } catch (e) {
       if (!mounted) return;
@@ -105,28 +121,37 @@ class _KycCameraPageState extends State<KycCameraPage>
   }
 
   void _startLivenessFlow() {
-    // Step 1: Position (2.5s)
     setState(() {
       _step = _LivenessStep.position;
       _stepProgress = 0;
+      _detectingLiveness = false;
+      _showManualFallback = false;
     });
     _runProgressTimer(_positionDelay, () => _advanceToBlink());
   }
 
   void _advanceToBlink() {
+    if (!mounted) return;
     setState(() {
       _step = _LivenessStep.blink;
       _stepProgress = 0;
+      _prevGrid = null;
+      _consecutiveBlinkFrames = 0;
+      _detectingLiveness = true;
     });
-    _runProgressTimer(_blinkDuration, () => _advanceToTurn());
+    _resetStepTimer();
   }
 
   void _advanceToTurn() {
+    if (!mounted) return;
     setState(() {
       _step = _LivenessStep.turn;
       _stepProgress = 0;
+      _prevGrid = null;
+      _consecutiveTurnFrames = 0;
+      _detectingLiveness = true;
     });
-    _runProgressTimer(_turnDuration, () => _capturePhoto());
+    _resetStepTimer();
   }
 
   void _runProgressTimer(int durationMs, VoidCallback onComplete) {
@@ -145,6 +170,157 @@ class _KycCameraPageState extends State<KycCameraPage>
     });
   }
 
+  void _resetStepTimer() {
+    _stepTimeoutTimer?.cancel();
+    setState(() {
+      _secondsInStep = 0;
+      _showManualFallback = false;
+    });
+    _stepTimeoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      setState(() {
+        _secondsInStep++;
+        if (_secondsInStep >= 8) {
+          _showManualFallback = true;
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  void _onManualFallbackPressed() {
+    _detectingLiveness = false;
+    _stepTimeoutTimer?.cancel();
+    _capturePhoto();
+  }
+
+  void _startImageStreaming() {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    
+    _prevGrid = null;
+    _consecutiveBlinkFrames = 0;
+    _consecutiveTurnFrames = 0;
+    
+    try {
+      _controller!.startImageStream((CameraImage image) {
+        _processCameraImage(image);
+      });
+    } catch (e) {
+      debugPrint('[Liveness] Error starting image stream: $e');
+    }
+  }
+
+  void _processCameraImage(CameraImage image) {
+    if (!_detectingLiveness || _step == _LivenessStep.position || _step == _LivenessStep.capturing || _step == _LivenessStep.done) {
+      return;
+    }
+
+    try {
+      final bytes = image.planes[0].bytes;
+      final width = image.width;
+      final height = image.height;
+      final format = image.format.group;
+
+      // Extract a simplified 8x8 grid of brightness values
+      final grid = Uint8List(_gridWidth * _gridHeight);
+      final stepX = width ~/ _gridWidth;
+      final stepY = height ~/ _gridHeight;
+
+      // Determine pixel step size based on format
+      final isYuv = format == ImageFormatGroup.yuv420;
+      final bytesPerPixel = isYuv ? 1 : 4;
+
+      for (int gy = 0; gy < _gridHeight; gy++) {
+        for (int gx = 0; gx < _gridWidth; gx++) {
+          final x = gx * stepX + (stepX ~/ 2);
+          final y = gy * stepY + (stepY ~/ 2);
+          final index = (y * width + x) * bytesPerPixel;
+          if (index < bytes.length) {
+            grid[gy * _gridWidth + gx] = bytes[index];
+          }
+        }
+      }
+
+      if (_prevGrid != null) {
+        double totalDiff = 0;
+        double centerDiff = 0;
+
+        for (int i = 0; i < grid.length; i++) {
+          final diff = (grid[i] - _prevGrid![i]).abs().toDouble();
+          totalDiff += diff;
+
+          final gx = i % _gridWidth;
+          final gy = i ~/ _gridWidth;
+          if (gx >= 2 && gx <= 5 && gy >= 2 && gy <= 5) {
+            centerDiff += diff;
+          }
+        }
+
+        totalDiff /= grid.length;
+        centerDiff /= 16;
+
+        _handleLivenessMotion(totalDiff, centerDiff);
+      }
+
+      _prevGrid = grid;
+    } catch (e) {
+      debugPrint('[Liveness] Error processing frame: $e');
+    }
+  }
+
+  void _handleLivenessMotion(double totalDiff, double centerDiff) {
+    if (!mounted) return;
+
+    if (_step == _LivenessStep.blink) {
+      // Blink detection: looking for a quick change in the center of the frame
+      if (centerDiff > _blinkThreshold && centerDiff < 30.0) {
+        _consecutiveBlinkFrames++;
+      } else {
+        if (_consecutiveBlinkFrames >= 1 && _consecutiveBlinkFrames <= 6) {
+          _detectingLiveness = false;
+          _consecutiveBlinkFrames = 0;
+          _stepTimeoutTimer?.cancel();
+          
+          setState(() {
+            _stepProgress = 100;
+          });
+          
+          Future.delayed(const Duration(milliseconds: 400), () {
+            if (mounted) {
+              _advanceToTurn();
+            }
+          });
+          return;
+        }
+        _consecutiveBlinkFrames = 0;
+      }
+    } else if (_step == _LivenessStep.turn) {
+      // Turn detection: looking for sustained horizontal motion
+      if (totalDiff > _turnThreshold) {
+        _consecutiveTurnFrames++;
+        final pct = ((_consecutiveTurnFrames / 8) * 100).clamp(0, 100).toInt();
+        setState(() {
+          _stepProgress = pct;
+        });
+
+        if (_consecutiveTurnFrames >= 8) {
+          _detectingLiveness = false;
+          _consecutiveTurnFrames = 0;
+          _stepTimeoutTimer?.cancel();
+          _capturePhoto();
+        }
+      } else {
+        if (_consecutiveTurnFrames > 0) {
+          _consecutiveTurnFrames--;
+          final pct = ((_consecutiveTurnFrames / 8) * 100).clamp(0, 100).toInt();
+          setState(() {
+            _stepProgress = pct;
+          });
+        }
+      }
+    }
+  }
+
   Future<void> _capturePhoto() async {
     if (!mounted || _controller == null || !_controller!.value.isInitialized) {
       return;
@@ -155,6 +331,12 @@ class _KycCameraPageState extends State<KycCameraPage>
     });
 
     try {
+      _detectingLiveness = false;
+      _stepTimeoutTimer?.cancel();
+      if (_controller!.value.isStreamingImages) {
+        await _controller!.stopImageStream();
+      }
+
       final XFile photo = await _controller!.takePicture();
       final dir = await getTemporaryDirectory();
       final destPath = '${dir.path}/kyc_selfie_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -172,6 +354,7 @@ class _KycCameraPageState extends State<KycCameraPage>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erreur de capture : $e')),
         );
+        _startImageStreaming();
         _startLivenessFlow();
       }
     }
@@ -180,6 +363,12 @@ class _KycCameraPageState extends State<KycCameraPage>
   @override
   void dispose() {
     _challengeTimer?.cancel();
+    _stepTimeoutTimer?.cancel();
+    if (_controller != null && _controller!.value.isStreamingImages) {
+      try {
+        _controller!.stopImageStream();
+      } catch (_) {}
+    }
     _controller?.dispose();
     _pulseController.dispose();
     _checkController.dispose();
@@ -475,6 +664,29 @@ class _KycCameraPageState extends State<KycCameraPage>
               ],
             ),
           ),
+          if (_showManualFallback) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: _onManualFallbackPressed,
+                icon: const Icon(Icons.photo_camera_rounded),
+                label: const Text(
+                  'Prendre la photo manuellement',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFE2C55),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  elevation: 0,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

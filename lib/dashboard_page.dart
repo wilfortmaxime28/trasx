@@ -571,7 +571,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _socket?.dispose();
 
     try {
-      _socket = IO.io('https://trasx.com', IO.OptionBuilder()
+      _socket = IO.io('https://trasx.com:443', IO.OptionBuilder()
         .setTransports(['websocket', 'polling'])
         .setAuth({'userId': _userId})
         .setQuery({'userId': _userId})

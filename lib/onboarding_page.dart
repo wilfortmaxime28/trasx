@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'login_page.dart';
 
 class OnboardingPage extends StatefulWidget {
@@ -99,10 +100,19 @@ class _OnboardingPageState extends State<OnboardingPage> with SingleTickerProvid
     final Size size = MediaQuery.of(context).size;
 
     if (_showSplash) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: _buildBackground(
-          child: Center(
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+          systemNavigationBarColor: Colors.black,
+          systemNavigationBarIconBrightness: Brightness.light,
+          systemNavigationBarDividerColor: Colors.transparent,
+        ),
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: _buildBackground(
+            child: Center(
             child: ScaleTransition(
               scale: _logoScale,
               child: FadeTransition(
@@ -187,15 +197,24 @@ class _OnboardingPageState extends State<OnboardingPage> with SingleTickerProvid
             ),
           ),
         ),
-      );
+      ));
     }
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: _buildBackground(
-        child: SafeArea(
-          bottom: true,
-          child: Column(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.black,
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: _buildBackground(
+          child: SafeArea(
+            bottom: true,
+            child: Column(
             children: [
               const SizedBox(height: 12),
               // PageContent (PageView)
@@ -416,7 +435,7 @@ class _OnboardingPageState extends State<OnboardingPage> with SingleTickerProvid
           ),
         ),
       ),
-    );
+    ));
   }
 
   // Double Radial Glow background helper (Instagram Pink/Purple and Orange/Yellow)
