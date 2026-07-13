@@ -896,6 +896,11 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
   final TextEditingController _commentInputController = TextEditingController();
   bool _isLoading = true;
 
+  // Real-time reply tree, local comment likes, and expanding state
+  final Set<int> _likedCommentIds = {};
+  final Set<int> _expandedCommentIds = {};
+  dynamic _replyingToComment; // comment object we are replying to, if any
+
   @override
   void initState() {
     super.initState();
@@ -939,14 +944,60 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
     final text = _commentInputController.text.trim();
     if (text.isEmpty) return;
 
+    final int? parentId = _replyingToComment != null 
+        ? int.tryParse(_replyingToComment['id']?.toString() ?? '') 
+        : null;
+
     widget.socket?.emitWithAck('reel-comment-add', {
       'reelId': widget.reelId,
       'content': text,
+      'parentId': parentId,
     }, ack: (ack) {
       if (ack != null && ack['success'] == true) {
         _commentInputController.clear();
+        setState(() {
+          _replyingToComment = null;
+        });
       }
     });
+  }
+
+  void _toggleCommentLike(dynamic comment) {
+    final int commentId = int.tryParse(comment['id']?.toString() ?? '') ?? 0;
+    if (commentId == 0) return;
+
+    setState(() {
+      if (_likedCommentIds.contains(commentId)) {
+        _likedCommentIds.remove(commentId);
+        comment['likes_count'] = (comment['likes_count'] ?? 0) - 1;
+      } else {
+        _likedCommentIds.add(commentId);
+        comment['likes_count'] = (comment['likes_count'] ?? 0) + 1;
+      }
+    });
+  }
+
+  String _formatRelativeTime(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return "";
+    try {
+      final dateTime = DateTime.parse(dateStr).toLocal();
+      final now = DateTime.now();
+      final difference = now.difference(dateTime);
+
+      if (difference.inSeconds < 60) {
+        return "À l'instant";
+      } else if (difference.inMinutes < 60) {
+        return "${difference.inMinutes}m";
+      } else if (difference.inHours < 24) {
+        return "${difference.inHours}h";
+      } else if (difference.inDays < 7) {
+        return "${difference.inDays}j";
+      } else {
+        return "${dateTime.day}/${dateTime.month}";
+      }
+    } catch (e) {
+      return "";
+    }
   }
 
   @override
@@ -960,6 +1011,64 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
     final textMutedColor = isDark ? Colors.white38 : Colors.black38;
     final dividerColor = isDark ? Colors.white12 : Colors.black12;
     final inputBgColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF2F2F2);
+
+    // Build hierarchical Tree items list
+    final List<Map<String, dynamic>> listItems = [];
+    final rootComments = _comments.where((c) {
+      final parentId = c['parent_id'];
+      if (parentId == null) return true;
+      final parsedParentId = int.tryParse(parentId.toString());
+      if (parsedParentId == 0) return true;
+      return !_comments.any((parent) => int.tryParse(parent['id'].toString()) == parsedParentId);
+    }).toList();
+
+    final Map<int, List<dynamic>> repliesMap = {};
+    for (var c in _comments) {
+      final parentId = c['parent_id'];
+      if (parentId != null) {
+        final parsedParentId = int.tryParse(parentId.toString());
+        if (parsedParentId != null && parsedParentId != 0) {
+          repliesMap.putIfAbsent(parsedParentId, () => []).add(c);
+        }
+      }
+    }
+
+    // Sort replies chronological order
+    repliesMap.forEach((key, list) {
+      list.sort((a, b) {
+        final aDate = DateTime.tryParse(a['created_at']?.toString() ?? '') ?? DateTime.now();
+        final bDate = DateTime.tryParse(b['created_at']?.toString() ?? '') ?? DateTime.now();
+        return aDate.compareTo(bDate);
+      });
+    });
+
+    for (var root in rootComments) {
+      final rootId = int.tryParse(root['id']?.toString() ?? '') ?? 0;
+      listItems.add({'type': 'comment', 'comment': root, 'isReply': false});
+      
+      final parentReplies = repliesMap[rootId] ?? [];
+      if (parentReplies.isNotEmpty) {
+        final isExpanded = _expandedCommentIds.contains(rootId);
+        if (!isExpanded) {
+          listItems.add({
+            'type': 'toggle_expand',
+            'parentId': rootId,
+            'count': parentReplies.length,
+            'expand': true,
+          });
+        } else {
+          for (var reply in parentReplies) {
+            listItems.add({'type': 'comment', 'comment': reply, 'isReply': true});
+          }
+          listItems.add({
+            'type': 'toggle_expand',
+            'parentId': rootId,
+            'count': parentReplies.length,
+            'expand': false,
+          });
+        }
+      }
+    }
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.65 + keyboardHeight,
@@ -1007,7 +1116,7 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
           Expanded(
             child: _isLoading
                 ? Center(child: CupertinoActivityIndicator(color: textPrimaryColor))
-                : _comments.isEmpty
+                : listItems.isEmpty
                     ? Center(
                         child: Text(
                           'Soyez le premier à commenter !',
@@ -1016,24 +1125,82 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.all(16),
-                        itemCount: _comments.length,
+                        itemCount: listItems.length,
                         itemBuilder: (context, index) {
-                          final comment = _comments[index];
+                          final item = listItems[index];
+
+                          if (item['type'] == 'toggle_expand') {
+                            final parentId = item['parentId'] as int;
+                            final count = item['count'] as int;
+                            final expand = item['expand'] as bool;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 48.0, bottom: 12.0),
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    if (expand) {
+                                      _expandedCommentIds.add(parentId);
+                                    } else {
+                                      _expandedCommentIds.remove(parentId);
+                                    }
+                                  });
+                                },
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 24,
+                                      height: 1,
+                                      color: dividerColor,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      expand ? "Afficher les réponses ($count)" : "Masquer les réponses",
+                                      style: TextStyle(
+                                        color: textSecondaryColor,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      expand ? CupertinoIcons.chevron_down : CupertinoIcons.chevron_up,
+                                      color: textSecondaryColor,
+                                      size: 12,
+                                    )
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+
+                          // Render Comment / Reply
+                          final comment = item['comment'];
+                          final bool isReply = item['isReply'] as bool;
+                          final cId = int.tryParse(comment['id']?.toString() ?? '') ?? 0;
                           final cAuthor = comment['username']?.toString() ?? 'user';
                           final cText = comment['content']?.toString() ?? '';
+                          final cDate = _formatRelativeTime(comment['created_at']?.toString());
+                          final bool isLiked = _likedCommentIds.contains(cId);
+                          final int likesCount = comment['likes_count'] ?? 0;
+
                           var cAvatar = comment['avatar']?.toString() ?? '';
                           if (cAvatar.isNotEmpty && !cAvatar.startsWith('http')) {
                             cAvatar = 'https://trasx.com$cAvatar';
                           }
 
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: 16.0),
+                            padding: EdgeInsets.only(
+                              left: isReply ? 40.0 : 0.0,
+                              bottom: 16.0,
+                            ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                // Avatar with Gradient Fallback
                                 Container(
-                                  width: 36,
-                                  height: 36,
+                                  width: isReply ? 28 : 36,
+                                  height: isReply ? 28 : 36,
                                   decoration: const BoxDecoration(
                                     shape: BoxShape.circle,
                                   ),
@@ -1043,12 +1210,14 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                                             imageUrl: cAvatar,
                                             fit: BoxFit.cover,
                                             placeholder: (context, url) => Container(color: Colors.black26),
-                                            errorWidget: (context, url, error) => _buildGradientPlaceholder(cAuthor.isNotEmpty ? cAuthor : 'U', fontSize: 14),
+                                            errorWidget: (context, url, error) => _buildGradientPlaceholder(cAuthor.isNotEmpty ? cAuthor : 'U', fontSize: isReply ? 11 : 14),
                                           )
-                                        : _buildGradientPlaceholder(cAuthor.isNotEmpty ? cAuthor : 'U', fontSize: 14),
+                                        : _buildGradientPlaceholder(cAuthor.isNotEmpty ? cAuthor : 'U', fontSize: isReply ? 11 : 14),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
+
+                                // Author + Text content + Actions row
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1062,6 +1231,54 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                                         cText,
                                         style: TextStyle(color: textPrimaryColor, fontSize: 13.5),
                                       ),
+                                      const SizedBox(height: 6),
+
+                                      // Actions: Date & Reply button
+                                      Row(
+                                        children: [
+                                          Text(
+                                            cDate,
+                                            style: TextStyle(color: textMutedColor, fontSize: 11),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          GestureDetector(
+                                            onTap: () {
+                                              setState(() {
+                                                _replyingToComment = comment;
+                                              });
+                                            },
+                                            child: Text(
+                                              'Répondre',
+                                              style: TextStyle(
+                                                color: textMutedColor,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                // Like button on the right
+                                GestureDetector(
+                                  onTap: () => _toggleCommentLike(comment),
+                                  child: Column(
+                                    children: [
+                                      Icon(
+                                        isLiked ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
+                                        color: isLiked ? Colors.red : textMutedColor,
+                                        size: 16,
+                                      ),
+                                      if (likesCount > 0) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '$likesCount',
+                                          style: TextStyle(color: textMutedColor, fontSize: 10),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -1070,6 +1287,66 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                           );
                         },
                       ),
+          ),
+
+          // Replying to bar indicator
+          if (_replyingToComment != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF9F9F9),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "En réponse à @${_replyingToComment['username']}",
+                    style: TextStyle(color: textSecondaryColor, fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _replyingToComment = null;
+                      });
+                    },
+                    child: Icon(CupertinoIcons.xmark_circle_fill, color: textMutedColor, size: 18),
+                  )
+                ],
+              ),
+            ),
+
+          // Horizontal Emojis selector bar
+          Container(
+            height: 38,
+            decoration: BoxDecoration(
+              color: sheetBgColor,
+              border: Border(top: BorderSide(color: dividerColor, width: 0.5)),
+            ),
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              children: ['❤️', '😂', '🙌', '🔥', '😮', '😢', '👏', '😍', '👍', '🎉', '💡', '💯']
+                  .map((emoji) => GestureDetector(
+                        onTap: () {
+                          final text = _commentInputController.text;
+                          final selection = _commentInputController.selection;
+                          final newText = text.replaceRange(
+                            selection.start >= 0 ? selection.start : text.length,
+                            selection.end >= 0 ? selection.end : text.length,
+                            emoji,
+                          );
+                          _commentInputController.value = TextEditingValue(
+                            text: newText,
+                            selection: TextSelection.collapsed(
+                              offset: (selection.start >= 0 ? selection.start : text.length) + emoji.length,
+                            ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                          child: Text(emoji, style: const TextStyle(fontSize: 20)),
+                        ),
+                      ))
+                  .toList(),
+            ),
           ),
 
           // Input field at bottom
@@ -1087,7 +1364,9 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                     style: TextStyle(color: textPrimaryColor, fontSize: 14),
                     cursorColor: textPrimaryColor,
                     decoration: InputDecoration(
-                      hintText: 'Ajouter un commentaire...',
+                      hintText: _replyingToComment != null 
+                          ? 'Répondre à @${_replyingToComment['username']}...' 
+                          : 'Ajouter un commentaire...',
                       hintStyle: TextStyle(color: textMutedColor),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
