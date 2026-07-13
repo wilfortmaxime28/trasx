@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
+import 'package:share_plus/share_plus.dart';
 
 class ShortsView extends StatefulWidget {
   final int currentUserId;
@@ -24,25 +25,31 @@ class _ShortsViewState extends State<ShortsView> {
   final PageController _pageController = PageController();
   final List<dynamic> _reels = [];
   final Map<int, VideoPlayerController> _controllers = {};
-  final Set<int> _likedReelIds = {}; // Local like tracking since DB has no per-user table
+  final Set<int> _likedReelIds = {}; // Local like tracking
+  final Set<int> _followedUserIds = {}; // Local follow tracking
 
   bool _isLoading = false;
   bool _hasMore = true;
   String? _nextCursor;
   int _currentPageIndex = 0;
+  String _activeTab = 'for_you'; // 'for_you' or 'following'
 
   @override
   void initState() {
     super.initState();
     _fetchReels(isRefresh: true);
     
-    // Listen for real-time likes updates from socket
+    // Listen for real-time socket updates
     widget.socket?.on('reel-likes-updated', _onReelLikesUpdated);
+    widget.socket?.on('reel-comments-updated', _onReelCommentsUpdated);
+    widget.socket?.on('reel-shares-updated', _onReelSharesUpdated);
   }
 
   @override
   void dispose() {
     widget.socket?.off('reel-likes-updated', _onReelLikesUpdated);
+    widget.socket?.off('reel-comments-updated', _onReelCommentsUpdated);
+    widget.socket?.off('reel-shares-updated', _onReelSharesUpdated);
     _pageController.dispose();
     _controllers.forEach((_, controller) => controller.dispose());
     super.dispose();
@@ -63,6 +70,42 @@ class _ShortsViewState extends State<ShortsView> {
       }
     } catch (e) {
       debugPrint('Error updating real-time likes: $e');
+    }
+  }
+
+  void _onReelCommentsUpdated(dynamic data) {
+    if (!mounted || data == null) return;
+    try {
+      final reelId = int.tryParse(data['reelId']?.toString() ?? '');
+      final commentsCount = int.tryParse(data['commentsCount']?.toString() ?? '');
+      if (reelId != null && commentsCount != null) {
+        setState(() {
+          final index = _reels.indexWhere((r) => int.tryParse(r['id']?.toString() ?? '') == reelId);
+          if (index != -1) {
+            _reels[index]['comments_count'] = commentsCount;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error updating real-time comments count: $e');
+    }
+  }
+
+  void _onReelSharesUpdated(dynamic data) {
+    if (!mounted || data == null) return;
+    try {
+      final reelId = int.tryParse(data['reelId']?.toString() ?? '');
+      final sharesCount = int.tryParse(data['sharesCount']?.toString() ?? '');
+      if (reelId != null && sharesCount != null) {
+        setState(() {
+          final index = _reels.indexWhere((r) => int.tryParse(r['id']?.toString() ?? '') == reelId);
+          if (index != -1) {
+            _reels[index]['shares_count'] = sharesCount;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error updating real-time shares count: $e');
     }
   }
 
@@ -98,9 +141,18 @@ class _ShortsViewState extends State<ShortsView> {
             _reels.addAll(newReels);
             _hasMore = data['hasMore'] ?? false;
             _nextCursor = data['nextCursor']?.toString();
+
+            // Populate local following state
+            for (var reel in newReels) {
+              final authorId = int.tryParse(reel['user_id']?.toString() ?? '');
+              final isFollowing = reel['is_author_following'] == true || reel['is_author_following'] == 1;
+              if (authorId != null && isFollowing) {
+                _followedUserIds.add(authorId);
+              }
+            }
           });
 
-          // Preload the first few videos
+          // Preload
           if (isRefresh && _reels.isNotEmpty) {
             _initializeController(0);
             if (_reels.length > 1) _initializeController(1);
@@ -150,7 +202,7 @@ class _ShortsViewState extends State<ShortsView> {
       _currentPageIndex = index;
     });
 
-    // 1. Play current video
+    // Play current video
     final currentController = _controllers[index];
     if (currentController != null && currentController.value.isInitialized) {
       currentController.play();
@@ -158,7 +210,7 @@ class _ShortsViewState extends State<ShortsView> {
       _initializeController(index);
     }
 
-    // 2. Pause and dispose surrounding videos
+    // Pause all other videos
     _controllers.forEach((key, controller) {
       if (key != index) {
         controller.pause();
@@ -169,7 +221,7 @@ class _ShortsViewState extends State<ShortsView> {
     _initializeController(index - 1);
     _initializeController(index + 1);
 
-    // Clean up older controllers to prevent out-of-memory errors
+    // Clean up older controllers
     final keysToRemove = <int>[];
     _controllers.forEach((key, controller) {
       if ((key - index).abs() > 1) {
@@ -202,69 +254,209 @@ class _ShortsViewState extends State<ShortsView> {
       }
     });
 
-    // Emit Socket event to sync likes
     widget.socket?.emit('reel-like-toggle', {
       'reelId': reelId,
       'isLiked': !isCurrentlyLiked,
     });
   }
 
+  void _toggleFollow(dynamic reel) {
+    final authorId = int.tryParse(reel['user_id']?.toString() ?? '');
+    if (authorId == null || authorId == widget.currentUserId) return;
+
+    final isCurrentlyFollowing = _followedUserIds.contains(authorId);
+    setState(() {
+      if (isCurrentlyFollowing) {
+        _followedUserIds.remove(authorId);
+      } else {
+        _followedUserIds.add(authorId);
+      }
+    });
+
+    widget.socket?.emit('follow-toggle', {
+      'targetUserId': authorId,
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(isCurrentlyFollowing ? 'Abonnement retiré' : 'Abonné avec succès !'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _showCommentsSheet(dynamic reel) {
+    final reelId = int.tryParse(reel['id']?.toString() ?? '');
+    if (reelId == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return ReelCommentsBottomSheet(
+          reelId: reelId,
+          currentUserId: widget.currentUserId,
+          socket: widget.socket,
+        );
+      },
+    );
+  }
+
+  void _showShareSheet(dynamic reel) {
+    final reelId = int.tryParse(reel['id']?.toString() ?? '');
+    if (reelId == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return ReelShareBottomSheet(
+          reelId: reelId,
+          reelUrl: 'https://trasx.com/shorts/$reelId',
+          caption: reel['caption']?.toString() ?? '',
+          socket: widget.socket,
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_reels.isEmpty && _isLoading) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(
-          child: CupertinoActivityIndicator(color: Colors.white, radius: 14),
-        ),
-      );
-    }
-
-    if (_reels.isEmpty) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(CupertinoIcons.play_circle, color: Colors.white54, size: 64),
-              const SizedBox(height: 16),
-              const Text(
-                'Aucune vidéo disponible pour le moment.',
-                style: TextStyle(color: Colors.white70, fontSize: 15),
+    return Stack(
+      children: [
+        // 1. Vertical Video List
+        if (_reels.isEmpty && _isLoading)
+          const Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(
+              child: CupertinoActivityIndicator(color: Colors.white, radius: 14),
+            ),
+          )
+        else if (_reels.isEmpty)
+          Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(CupertinoIcons.play_circle, color: Colors.white54, size: 64),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Aucune vidéo disponible pour le moment.',
+                    style: TextStyle(color: Colors.white70, fontSize: 15),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton.icon(
+                    onPressed: () => _fetchReels(isRefresh: true),
+                    icon: const Icon(CupertinoIcons.refresh, color: Colors.white),
+                    label: const Text('Actualiser', style: TextStyle(color: Colors.white)),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              TextButton.icon(
-                onPressed: () => _fetchReels(isRefresh: true),
-                icon: const Icon(CupertinoIcons.refresh, color: Colors.white),
-                label: const Text('Actualiser', style: TextStyle(color: Colors.white)),
+            ),
+          )
+        else
+          PageView.builder(
+            controller: _pageController,
+            scrollDirection: Axis.vertical,
+            onPageChanged: _onPageChanged,
+            itemCount: _reels.length,
+            itemBuilder: (context, index) {
+              final reel = _reels[index];
+              final controller = _controllers[index];
+              final isLiked = _likedReelIds.contains(int.tryParse(reel['id']?.toString() ?? ''));
+              final authorId = int.tryParse(reel['user_id']?.toString() ?? '');
+              final isFollowing = _followedUserIds.contains(authorId);
+
+              return ReelPageItem(
+                reel: reel,
+                controller: controller,
+                isLiked: isLiked,
+                isFollowing: isFollowing,
+                currentUserId: widget.currentUserId,
+                onLikeToggle: () => _toggleLike(index, reel),
+                onFollowToggle: () => _toggleFollow(reel),
+                onCommentsPressed: () => _showCommentsSheet(reel),
+                onSharePressed: () => _showShareSheet(reel),
+              );
+            },
+          ),
+
+        // 2. Custom Top Navigation Bar (TikTok Style: Live | Tabs | Search)
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 8,
+          left: 12,
+          right: 12,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Live Stream icon on Left
+              GestureDetector(
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Lancement du flux Live en direct...')),
+                  );
+                },
+                child: const Icon(CupertinoIcons.tv_music_note, color: Colors.white, size: 28),
+              ),
+
+              // Centered "Pour toi" and "Abonnements" Tabs
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _activeTab = 'following';
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Affichage de vos abonnements...')),
+                      );
+                    },
+                    child: Text(
+                      'Abonnements',
+                      style: TextStyle(
+                        color: _activeTab == 'following' ? Colors.white : Colors.white60,
+                        fontSize: 16,
+                        fontWeight: _activeTab == 'following' ? FontWeight.bold : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Container(width: 1, height: 12, color: Colors.white24),
+                  const SizedBox(width: 16),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _activeTab = 'for_you';
+                      });
+                    },
+                    child: Text(
+                      'Pour toi',
+                      style: TextStyle(
+                        color: _activeTab == 'for_you' ? Colors.white : Colors.white60,
+                        fontSize: 16,
+                        fontWeight: _activeTab == 'for_you' ? FontWeight.bold : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // Search Button on Right
+              GestureDetector(
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Ouverture de la recherche de vidéos...')),
+                  );
+                },
+                child: const Icon(CupertinoIcons.search, color: Colors.white, size: 28),
               ),
             ],
           ),
         ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: PageView.builder(
-        controller: _pageController,
-        scrollDirection: Axis.vertical,
-        onPageChanged: _onPageChanged,
-        itemCount: _reels.length,
-        itemBuilder: (context, index) {
-          final reel = _reels[index];
-          final controller = _controllers[index];
-          final isLiked = _likedReelIds.contains(int.tryParse(reel['id']?.toString() ?? ''));
-
-          return ReelPageItem(
-            reel: reel,
-            controller: controller,
-            isLiked: isLiked,
-            onLikeToggle: () => _toggleLike(index, reel),
-          );
-        },
-      ),
+      ],
     );
   }
 }
@@ -273,14 +465,24 @@ class ReelPageItem extends StatefulWidget {
   final dynamic reel;
   final VideoPlayerController? controller;
   final bool isLiked;
+  final bool isFollowing;
+  final int currentUserId;
   final VoidCallback onLikeToggle;
+  final VoidCallback onFollowToggle;
+  final VoidCallback onCommentsPressed;
+  final VoidCallback onSharePressed;
 
   const ReelPageItem({
     Key? key,
     required this.reel,
     this.controller,
     required this.isLiked,
+    required this.isFollowing,
+    required this.currentUserId,
     required this.onLikeToggle,
+    required this.onFollowToggle,
+    required this.onCommentsPressed,
+    required this.onSharePressed,
   }) : super(key: key);
 
   @override
@@ -342,6 +544,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
     final likesCount = widget.reel['likes_count'] ?? 0;
     final commentsCount = widget.reel['comments_count'] ?? 0;
     final sharesCount = widget.reel['shares_count'] ?? 0;
+    final authorId = int.tryParse(widget.reel['user_id']?.toString() ?? '');
 
     var avatarUrl = widget.reel['author_avatar']?.toString() ?? '';
     if (avatarUrl.isNotEmpty && !avatarUrl.startsWith('http')) {
@@ -350,7 +553,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
 
     return Stack(
       children: [
-        // 1. Video Player
+        // 1. Full Screen Immersive Video (BoxFit.cover strategy)
         GestureDetector(
           onTap: _onTapVideo,
           child: Container(
@@ -358,10 +561,15 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
             width: double.infinity,
             height: double.infinity,
             child: (controller != null && controller.value.isInitialized)
-                ? Center(
-                    child: AspectRatio(
-                      aspectRatio: controller.value.aspectRatio,
-                      child: VideoPlayer(controller),
+                ? SizedBox.expand(
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      clipBehavior: Clip.hardEdge,
+                      child: SizedBox(
+                        width: controller.value.size.width,
+                        height: controller.value.size.height,
+                        child: VideoPlayer(controller),
+                      ),
                     ),
                   )
                 : const Center(
@@ -394,12 +602,12 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
         // 3. Side Action Buttons (Right side)
         Positioned(
           right: 12,
-          bottom: 100,
+          bottom: 120,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // User profile avatar
-              _buildAvatarButton(avatarUrl),
+              // User profile avatar + follow button
+              _buildAvatarButton(avatarUrl, authorId),
               const SizedBox(height: 20),
 
               // Like button
@@ -416,9 +624,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                 icon: CupertinoIcons.chat_bubble_fill,
                 iconColor: Colors.white,
                 label: '$commentsCount',
-                onTap: () {
-                  // Optional: trigger comment sheet if desired
-                },
+                onTap: widget.onCommentsPressed,
               ),
               const SizedBox(height: 18),
 
@@ -427,9 +633,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                 icon: CupertinoIcons.reply_thick_solid,
                 iconColor: Colors.white,
                 label: '$sharesCount',
-                onTap: () {
-                  // Optional: trigger system share
-                },
+                onTap: widget.onSharePressed,
               ),
               const SizedBox(height: 24),
 
@@ -459,7 +663,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
         // 4. Bottom overlays (Caption, Author, Music metadata)
         Positioned(
           left: 16,
-          bottom: 24,
+          bottom: 48,
           right: 80,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -526,7 +730,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
           Positioned(
             left: 0,
             right: 0,
-            bottom: 0,
+            bottom: 24,
             child: VideoProgressIndicator(
               controller,
               allowScrubbing: true,
@@ -541,7 +745,9 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildAvatarButton(String avatarUrl) {
+  Widget _buildAvatarButton(String avatarUrl, int? authorId) {
+    final showPlus = authorId != widget.currentUserId && !widget.isFollowing;
+
     return Stack(
       alignment: Alignment.bottomCenter,
       clipBehavior: Clip.none,
@@ -565,18 +771,22 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                 : const Icon(CupertinoIcons.person_fill, color: Colors.white54),
           ),
         ),
-        Positioned(
-          bottom: -8,
-          child: Container(
-            width: 20,
-            height: 20,
-            decoration: const BoxDecoration(
-              color: Color(0xFFE1306C),
-              shape: BoxShape.circle,
+        if (showPlus)
+          Positioned(
+            bottom: -8,
+            child: GestureDetector(
+              onTap: widget.onFollowToggle,
+              child: Container(
+                width: 20,
+                height: 20,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE1306C),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.add, color: Colors.white, size: 14),
+              ),
             ),
-            child: const Icon(Icons.add, color: Colors.white, size: 14),
-          ),
-        )
+          )
       ],
     );
   }
@@ -612,6 +822,449 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
               ],
             ),
           )
+        ],
+      ),
+    );
+  }
+}
+
+// ── REAL TIME COMMENTS BOTTOM SHEET ──────────────────────────────────────────
+class ReelCommentsBottomSheet extends StatefulWidget {
+  final int reelId;
+  final int currentUserId;
+  final io.Socket? socket;
+
+  const ReelCommentsBottomSheet({
+    Key? key,
+    required this.reelId,
+    required this.currentUserId,
+    this.socket,
+  }) : super(key: key);
+
+  @override
+  State<ReelCommentsBottomSheet> createState() => _ReelCommentsBottomSheetState();
+}
+
+class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
+  final List<dynamic> _comments = [];
+  final TextEditingController _commentInputController = TextEditingController();
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Join comments room
+    widget.socket?.emit('reel-comments-join', {'reelId': widget.reelId});
+    
+    // Fetch initial comments
+    widget.socket?.emitWithAck('reel-comments-fetch', {'reelId': widget.reelId}, ack: (response) {
+      if (mounted && response != null && response['success'] == true) {
+        setState(() {
+          _comments.clear();
+          _comments.addAll(response['comments'] ?? []);
+          _isLoading = false;
+        });
+      }
+    });
+
+    // Listen for new comments broadcasted in real time
+    widget.socket?.on('reel-comment-broadcast', _onCommentReceived);
+  }
+
+  @override
+  void dispose() {
+    widget.socket?.off('reel-comment-broadcast', _onCommentReceived);
+    widget.socket?.emit('reel-comments-leave', {'reelId': widget.reelId});
+    _commentInputController.dispose();
+    super.dispose();
+  }
+
+  void _onCommentReceived(dynamic data) {
+    if (!mounted || data == null) return;
+    final int receivedReelId = int.tryParse(data['reelId']?.toString() ?? '') ?? 0;
+    if (receivedReelId == widget.reelId && data['comment'] != null) {
+      setState(() {
+        _comments.insert(0, data['comment']);
+      });
+    }
+  }
+
+  void _sendComment() {
+    final text = _commentInputController.text.trim();
+    if (text.isEmpty) return;
+
+    widget.socket?.emitWithAck('reel-comment-add', {
+      'reelId': widget.reelId,
+      'content': text,
+    }, ack: (ack) {
+      if (ack != null && ack['success'] == true) {
+        _commentInputController.clear();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.65 + keyboardHeight,
+      decoration: const BoxDecoration(
+        color: Color(0xFF161616),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      padding: EdgeInsets.only(bottom: keyboardHeight),
+      child: Column(
+        children: [
+          // Drag handle
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Title/Count
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${_comments.length} commentaires',
+                  style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Icon(CupertinoIcons.xmark, color: Colors.white70, size: 20),
+                )
+              ],
+            ),
+          ),
+          const Divider(color: Colors.white12, height: 1),
+
+          // Comments List
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CupertinoActivityIndicator(color: Colors.white))
+                : _comments.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Soyez le premier à commenter !',
+                          style: TextStyle(color: Colors.white54, fontSize: 13),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _comments.length,
+                        itemBuilder: (context, index) {
+                          final comment = _comments[index];
+                          final cAuthor = comment['username']?.toString() ?? 'user';
+                          final cText = comment['content']?.toString() ?? '';
+                          var cAvatar = comment['avatar']?.toString() ?? '';
+                          if (cAvatar.isNotEmpty && !cAvatar.startsWith('http')) {
+                            cAvatar = 'https://trasx.com$cAvatar';
+                          }
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: Colors.grey[900],
+                                  backgroundImage: cAvatar.isNotEmpty ? CachedNetworkImageProvider(cAvatar) : null,
+                                  child: cAvatar.isEmpty ? const Icon(CupertinoIcons.person_fill, color: Colors.white30, size: 18) : null,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '@$cAuthor',
+                                        style: const TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        cText,
+                                        style: const TextStyle(color: Colors.white, fontSize: 13.5),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+          ),
+
+          // Input field at bottom
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+            decoration: const BoxDecoration(
+              color: Color(0xFF1E1E1E),
+              border: Border(top: BorderSide(color: Colors.white12, width: 0.5)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _commentInputController,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    cursorColor: Colors.white,
+                    decoration: const InputDecoration(
+                      hintText: 'Ajouter un commentaire...',
+                      hintStyle: TextStyle(color: Colors.white38),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 8.0),
+                    ),
+                    onSubmitted: (_) => _sendComment(),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(CupertinoIcons.paperplane_fill, color: Color(0xFFE1306C)),
+                  onPressed: _sendComment,
+                )
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+// ── REAL TIME TIKTOK SHARE BOTTOM SHEET ──────────────────────────────────────
+class ReelShareBottomSheet extends StatefulWidget {
+  final int reelId;
+  final String reelUrl;
+  final String caption;
+  final io.Socket? socket;
+
+  const ReelShareBottomSheet({
+    Key? key,
+    required this.reelId,
+    required this.reelUrl,
+    required this.caption,
+    this.socket,
+  }) : super(key: key);
+
+  @override
+  State<ReelShareBottomSheet> createState() => _ReelShareBottomSheetState();
+}
+
+class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
+  final Set<String> _sentUsers = {};
+
+  final List<Map<String, String>> _usersList = [
+    {'name': 'Lucas_Pro', 'avatar': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix'},
+    {'name': 'Elena_P2P', 'avatar': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka'},
+    {'name': 'Mélanie', 'avatar': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mimi'},
+    {'name': 'Wilfort', 'avatar': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jack'},
+    {'name': 'Support_TrasX', 'avatar': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sam'},
+  ];
+
+  void _sendDirect(String username) {
+    if (_sentUsers.contains(username)) return;
+
+    setState(() {
+      _sentUsers.add(username);
+    });
+
+    // Notify server of share count increment
+    widget.socket?.emit('reel-share-add', {'reelId': widget.reelId});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Partagé avec @$username !'),
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+
+  void _shareExternal() {
+    Share.share('Découvrez cette vidéo sur TrasX : ${widget.reelUrl}\n\n"${widget.caption}"');
+    widget.socket?.emit('reel-share-add', {'reelId': widget.reelId});
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.only(top: 12, bottom: 24),
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Send to section
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(
+              'Envoyer à des amis',
+              style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Friends horizontal list
+          SizedBox(
+            height: 90,
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              scrollDirection: Axis.horizontal,
+              itemCount: _usersList.length,
+              itemBuilder: (context, index) {
+                final user = _usersList[index];
+                final uName = user['name']!;
+                final uAvatar = user['avatar']!;
+                final sent = _sentUsers.contains(uName);
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: Column(
+                    children: [
+                      GestureDetector(
+                        onTap: () => _sendDirect(uName),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 25,
+                              backgroundColor: Colors.white10,
+                              backgroundImage: CachedNetworkImageProvider(uAvatar),
+                            ),
+                            if (sent)
+                              Container(
+                                width: 50,
+                                height: 50,
+                                decoration: const BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(CupertinoIcons.checkmark_alt, color: Colors.green, size: 30),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      SizedBox(
+                        width: 60,
+                        child: Text(
+                          uName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white, fontSize: 11),
+                        ),
+                      )
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          const Divider(color: Colors.white12, height: 16),
+
+          // Action Options (TikTok style share bar)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(
+              'Partager',
+              style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildShareActionItem(
+                icon: CupertinoIcons.link,
+                label: 'Copier le lien',
+                color: Colors.blueAccent,
+                onTap: () {
+                  // Copy link action
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Lien copié dans le presse-papiers !')),
+                  );
+                  widget.socket?.emit('reel-share-add', {'reelId': widget.reelId});
+                  Navigator.pop(context);
+                },
+              ),
+              _buildShareActionItem(
+                icon: CupertinoIcons.share,
+                label: 'Partager via...',
+                color: Colors.purple,
+                onTap: _shareExternal,
+              ),
+              _buildShareActionItem(
+                icon: CupertinoIcons.exclamationmark_bubble_fill,
+                color: Colors.amber,
+                label: 'Signaler',
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Signalement envoyé à la modération.')),
+                  );
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShareActionItem({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(height: 6),
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
         ],
       ),
     );
