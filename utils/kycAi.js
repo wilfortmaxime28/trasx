@@ -398,6 +398,9 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
   console.log(`[KYC OCR Debug] User account fields -> First Name: "${user?.first_name}", Last Name: "${user?.last_name}", DOB: "${user?.dob}"`);
   console.log(`[KYC OCR Debug] Extracted raw OCR text (first 1000 chars):\n-------------------\n${ocrText.slice(0, 1000)}\n-------------------`);
 
+  let nameMatches = false;
+  let dobMatches = false;
+
   const normalizedOcrText = normalizeText(ocrText);
   if (!normalizedOcrText) {
     console.log('[KYC OCR Debug] Rejecting: Extracted OCR text is completely empty or has no readable alphanumeric characters.');
@@ -405,7 +408,7 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
   } else {
     const firstNameMatches = fuzzyContains(ocrText, user?.first_name);
     const lastNameMatches = fuzzyContains(ocrText, user?.last_name);
-    const nameMatches = firstNameMatches && lastNameMatches;
+    nameMatches = firstNameMatches && lastNameMatches;
     
     console.log(`[KYC OCR Debug] Name matching results:`);
     console.log(`  - First name "${user?.first_name}" matches: ${firstNameMatches}`);
@@ -418,7 +421,6 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
       reasons.push('Le nom sur le document ne correspond pas à celui de votre compte.');
     }
 
-    let dobMatches = false;
     let dobMatchMethod = 'none';
 
     if (user?.dob) {
@@ -471,7 +473,21 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
     reasons.push('Le selfie ne correspond pas à la photo du document.');
   }
 
-  const approved = reasons.length === 0 && score >= 80;
+  const documentValid = documentCheck.valid;
+  const formNameValid = formNameMatches;
+  const formDobValid = formDobMatches;
+  const ocrNameValid = nameMatches;
+  const ocrDobValid = dobMatches;
+  const faceValid = faceMatchDistance !== null && faceMatchDistance <= 0.45;
+
+  const approved = documentValid && 
+                   formNameValid && 
+                   formDobValid && 
+                   ocrNameValid && 
+                   ocrDobValid && 
+                   faceValid && 
+                   reasons.length === 0 && 
+                   score >= 80;
 
   return {
     approved,

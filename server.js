@@ -4194,6 +4194,10 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
     );
 
     const isApproved = evaluation.approved;
+    if (isApproved) {
+      await db.query("UPDATE users SET account_status = 'Active' WHERE id = ?", [currentUserId]);
+      console.log(`[WithdrawKYC] User ${currentUserId} account restored to Active status.`);
+    }
     
     // Save to kyc_requests table
     await KycRequest.ensureSchema();

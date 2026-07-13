@@ -906,12 +906,13 @@ class EventsController {
           `
             UPDATE users
             SET events_status = 'active',
+                account_status = 'Active',
                 events_activated_at = COALESCE(events_activated_at, NOW())
             WHERE id = ?
           `,
-            [currentUserId]
+          [currentUserId]
         );
-        console.log(`[KYC] Event access approved for user ${currentUserId}.`);
+        console.log(`[KYC] Event access approved and user account status restored to Active for user ${currentUserId}.`);
         return res.redirect('/events?success=Event+access+approved');
       }
 
