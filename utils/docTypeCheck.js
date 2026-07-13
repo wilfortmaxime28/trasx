@@ -31,7 +31,8 @@ const ID_CARD_KEYWORDS = [
   "CARTE NATIONALE D'IDENTITE", "CARTE D'IDENTITE", 'NATIONAL IDENTITY',
   'IDENTITY CARD', 'ID CARD', 'CARTE IDENTITE',
   'CEDULA DE IDENTIDAD', 'DOCUMENTO NACIONAL DE IDENTIDAD', 'PERSONALAUSWEIS',
-  'TARJETA DE IDENTIDAD',
+  'TARJETA DE IDENTIDAD', "D'IDENTITE", "IDENTITE", "IDENTITY", "CEDULA", 
+  "PERSONALAUSWEIS", "IDENTIDAD", "TARJETA", "ID-CARD"
 ];
 
 const LICENSE_KEYWORDS = [
@@ -39,15 +40,18 @@ const LICENSE_KEYWORDS = [
   'DRIVING LICENCE', 'DRIVER LICENSE', "DRIVER'S LICENSE",
   'DRIVING LICENSE', 'LICENCIA DE CONDUCIR',
   'FÜHRERSCHEIN', 'RIJBEWIJS', 'PERMESSO DI GUIDA',
+  'CONDUIRE', 'DRIVING', 'LICENCE', 'LICENSE', 'LICENCIA'
 ];
 
-// Generic identity markers present on most official documents
 const GENERIC_IDENTITY_KEYWORDS = [
   'DATE OF BIRTH', 'DATE DE NAISSANCE', 'FECHA DE NACIMIENTO',
   'EXPIRY DATE', "DATE D'EXPIRATION", 'DATE D\'EXPIRY',
   'PLACE OF BIRTH', 'LIEU DE NAISSANCE',
   'ISSUED BY', 'DÉLIVRÉ PAR',
-  'SURNAME / NOM', 'GIVEN NAMES / PRÉNOMS'
+  'SURNAME / NOM', 'GIVEN NAMES / PRÉNOMS',
+  'NOM', 'PRENOM', 'PRENOMS', 'PRÉNOM', 'PRÉNOMS',
+  'NAISSANCE', 'BIRTH', 'NACIMIENTO', 'EXPIRATION', 'EXPIRY',
+  'DÉLIVRÉ', 'ISSUED', 'DOCUMENT'
 ];
 
 // ── Tesseract quick-scan worker (singleton) ────────────────────────────────
@@ -95,11 +99,11 @@ async function checkIsIdentityDocument(imagePath) {
   let thumbPath = null;
 
   try {
-    // Step 1: Downscale image for fast processing
+    // Step 1: Downscale image for fast processing (1000px wide, high quality to preserve OCR readability)
     thumbPath = imagePath + '_quickscan_thumb.jpg';
     await sharp(imagePath)
-      .resize(700, null, { withoutEnlargement: true, fit: 'inside' })
-      .jpeg({ quality: 55 })
+      .resize(1000, null, { withoutEnlargement: true, fit: 'inside' })
+      .jpeg({ quality: 80 })
       .toFile(thumbPath);
 
     // Step 2: Quick sparse OCR
@@ -129,6 +133,20 @@ async function checkIsIdentityDocument(imagePath) {
       docType = 'driving_license';
     } else if (GENERIC_IDENTITY_KEYWORDS.some(kw => normalized.includes(kw))) {
       docType = 'identity_document';
+    }
+
+    // Tally generic identity indicators to catch documents with OCR noise
+    if (!docType) {
+      let genericMatches = 0;
+      for (const kw of GENERIC_IDENTITY_KEYWORDS) {
+        if (normalized.includes(kw)) {
+          genericMatches++;
+        }
+      }
+      if (genericMatches >= 2) {
+        docType = 'identity_document_fuzzy';
+        console.log(`[DocTypeCheck] Matched generic identity document via fuzzy keywords count: ${genericMatches}`);
+      }
     }
 
     // Strict MRZ Detection: must contain at least 2 '<' characters inside a word of at least 15 characters
