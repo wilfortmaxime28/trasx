@@ -27,6 +27,7 @@ import 'widgets/feed_skeleton.dart';
 import 'onboarding_page.dart';
 import 'main.dart';
 import 'kyc_camera_page.dart';
+import 'image_cropper_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -9981,11 +9982,20 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                       subtitle: "Passeport, Carte Nationale d'Identité ou Permis",
                       imageFile: identityDocument,
                       onTap: () async {
-                        final doc = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+                        final doc = await picker.pickImage(source: ImageSource.gallery, imageQuality: 90);
                         if (doc != null) {
-                          setSheetState(() {
-                            identityDocument = File(doc.path);
-                          });
+                          if (context.mounted) {
+                            final File? cropped = await Navigator.of(context).push<File>(
+                              MaterialPageRoute(
+                                builder: (context) => ImageCropperPage(imageFile: File(doc.path)),
+                              ),
+                            );
+                            if (cropped != null) {
+                              setSheetState(() {
+                                identityDocument = cropped;
+                              });
+                            }
+                          }
                         }
                       },
                       icon: Icons.badge_outlined,
