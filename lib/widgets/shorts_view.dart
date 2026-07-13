@@ -6,6 +6,28 @@ import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+
+Widget _buildGradientPlaceholder(String char, {double fontSize = 18}) {
+  return Container(
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+    ),
+    alignment: Alignment.center,
+    child: Text(
+      char.isNotEmpty ? char[0].toUpperCase() : 'U',
+      style: TextStyle(
+        color: Colors.white,
+        fontWeight: FontWeight.bold,
+        fontSize: fontSize,
+      ),
+    ),
+  );
+}
 
 class ShortsView extends StatefulWidget {
   final int currentUserId;
@@ -182,10 +204,11 @@ class _ShortsViewState extends State<ShortsView> {
       videoUrlStr = 'https://trasx.com$videoUrlStr';
     }
 
-    final controller = VideoPlayerController.networkUrl(Uri.parse(videoUrlStr));
-    _controllers[index] = controller;
-
     try {
+      final file = await DefaultCacheManager().getSingleFile(videoUrlStr);
+      final controller = VideoPlayerController.file(file);
+      _controllers[index] = controller;
+
       await controller.initialize();
       controller.setLooping(true);
       if (mounted && _currentPageIndex == index) {
@@ -607,7 +630,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
             mainAxisSize: MainAxisSize.min,
             children: [
               // User profile avatar + follow button
-              _buildAvatarButton(avatarUrl, authorId),
+              _buildAvatarButton(avatarUrl, authorId, username),
               const SizedBox(height: 20),
 
               // Like button
@@ -677,7 +700,11 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   shadows: [
-                    Shadow(blurRadius: 4.0, color: Colors.black54, offset: Offset(1.0, 1.0)),
+                    Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, -1.5)),
+                    Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, -1.5)),
+                    Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, 1.5)),
+                    Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, 1.5)),
+                    Shadow(blurRadius: 6.0, color: Colors.black87, offset: Offset(2.0, 2.0)),
                   ],
                 ),
               ),
@@ -693,7 +720,11 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                     color: Colors.white70,
                     fontSize: 14,
                     shadows: [
-                      Shadow(blurRadius: 4.0, color: Colors.black54, offset: Offset(1.0, 1.0)),
+                      Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, -1.5)),
+                      Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, -1.5)),
+                      Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, 1.5)),
+                      Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, 1.5)),
+                      Shadow(blurRadius: 6.0, color: Colors.black87, offset: Offset(2.0, 2.0)),
                     ],
                   ),
                 ),
@@ -702,7 +733,14 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
               // Music scrolling name
               Row(
                 children: [
-                  const Icon(CupertinoIcons.music_note_2, color: Colors.white70, size: 14),
+                  const Icon(
+                    CupertinoIcons.music_note_2,
+                    color: Colors.white70,
+                    size: 14,
+                    shadows: [
+                      Shadow(blurRadius: 4.0, color: Colors.black, offset: Offset(1.0, 1.0)),
+                    ],
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -714,7 +752,11 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                         shadows: [
-                          Shadow(blurRadius: 4.0, color: Colors.black54, offset: Offset(1.0, 1.0)),
+                          Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, -1.5)),
+                          Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, -1.5)),
+                          Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, 1.5)),
+                          Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, 1.5)),
+                          Shadow(blurRadius: 6.0, color: Colors.black87, offset: Offset(2.0, 2.0)),
                         ],
                       ),
                     ),
@@ -745,7 +787,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildAvatarButton(String avatarUrl, int? authorId) {
+  Widget _buildAvatarButton(String avatarUrl, int? authorId, String username) {
     final showPlus = authorId != widget.currentUserId && !widget.isFollowing;
 
     return Stack(
@@ -766,9 +808,9 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                     imageUrl: avatarUrl,
                     fit: BoxFit.cover,
                     placeholder: (context, url) => Container(color: Colors.black26),
-                    errorWidget: (context, url, error) => const Icon(CupertinoIcons.person_fill, color: Colors.white54),
+                    errorWidget: (context, url, error) => _buildGradientPlaceholder(username.isNotEmpty ? username : 'U', fontSize: 18),
                   )
-                : const Icon(CupertinoIcons.person_fill, color: Colors.white54),
+                : _buildGradientPlaceholder(username.isNotEmpty ? username : 'U', fontSize: 18),
           ),
         ),
         if (showPlus)
@@ -989,11 +1031,22 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                CircleAvatar(
-                                  radius: 18,
-                                  backgroundColor: isDark ? Colors.grey[900] : Colors.grey[200],
-                                  backgroundImage: cAvatar.isNotEmpty ? CachedNetworkImageProvider(cAvatar) : null,
-                                  child: cAvatar.isEmpty ? Icon(CupertinoIcons.person_fill, color: textMutedColor, size: 18) : null,
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: ClipOval(
+                                    child: cAvatar.isNotEmpty
+                                        ? CachedNetworkImage(
+                                            imageUrl: cAvatar,
+                                            fit: BoxFit.cover,
+                                            placeholder: (context, url) => Container(color: Colors.black26),
+                                            errorWidget: (context, url, error) => _buildGradientPlaceholder(cAuthor.isNotEmpty ? cAuthor : 'U', fontSize: 14),
+                                          )
+                                        : _buildGradientPlaceholder(cAuthor.isNotEmpty ? cAuthor : 'U', fontSize: 14),
+                                  ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
@@ -1078,11 +1131,11 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
   final Set<String> _sentUsers = {};
 
   final List<Map<String, String>> _usersList = [
-    {'name': 'Lucas_Pro', 'avatar': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix'},
-    {'name': 'Elena_P2P', 'avatar': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka'},
-    {'name': 'Mélanie', 'avatar': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mimi'},
-    {'name': 'Wilfort', 'avatar': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jack'},
-    {'name': 'Support_TrasX', 'avatar': 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sam'},
+    {'name': 'Lucas_Pro', 'avatar': 'https://api.dicebear.com/7.x/avataaars/png?seed=Felix'},
+    {'name': 'Elena_P2P', 'avatar': 'https://api.dicebear.com/7.x/avataaars/png?seed=Aneka'},
+    {'name': 'Mélanie', 'avatar': 'https://api.dicebear.com/7.x/avataaars/png?seed=Mimi'},
+    {'name': 'Wilfort', 'avatar': 'https://api.dicebear.com/7.x/avataaars/png?seed=Jack'},
+    {'name': 'Support_TrasX', 'avatar': 'https://api.dicebear.com/7.x/avataaars/png?seed=Sam'},
   ];
 
   void _sendDirect(String username) {
@@ -1177,10 +1230,22 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            CircleAvatar(
-                              radius: 25,
-                              backgroundColor: isDark ? Colors.white10 : Colors.black12,
-                              backgroundImage: CachedNetworkImageProvider(uAvatar),
+                            Container(
+                              width: 50,
+                              height: 50,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                              ),
+                              child: ClipOval(
+                                child: uAvatar.isNotEmpty
+                                    ? CachedNetworkImage(
+                                        imageUrl: uAvatar,
+                                        fit: BoxFit.cover,
+                                        placeholder: (context, url) => Container(color: Colors.black26),
+                                        errorWidget: (context, url, error) => _buildGradientPlaceholder(uName.isNotEmpty ? uName : 'U', fontSize: 18),
+                                      )
+                                    : _buildGradientPlaceholder(uName.isNotEmpty ? uName : 'U', fontSize: 18),
+                              ),
                             ),
                             if (sent)
                               Container(
