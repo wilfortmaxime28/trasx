@@ -818,8 +818,11 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
               fontSize: 12,
               fontWeight: FontWeight.bold,
               shadows: [
-                Shadow(blurRadius: 8.0, color: Colors.black, offset: Offset(1.0, 1.0)),
-                Shadow(blurRadius: 4.0, color: Colors.black54, offset: Offset(0.5, 0.5)),
+                Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, -1.5)),
+                Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, -1.5)),
+                Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, 1.5)),
+                Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, 1.5)),
+                Shadow(blurRadius: 6.0, color: Colors.black87, offset: Offset(2.0, 2.0)),
               ],
             ),
           )
@@ -925,7 +928,7 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
           topRight: Radius.circular(20),
         ),
       ),
-      padding: EdgeInsets.only(bottom: keyboardHeight),
+      padding: EdgeInsets.only(bottom: keyboardHeight > 0 ? keyboardHeight : MediaQuery.of(context).padding.bottom),
       child: Column(
         children: [
           // Drag handle
@@ -1117,7 +1120,7 @@ class _ReelShareBottomSheetState extends State<ReelShareBottomSheet> {
     final dividerColor = isDark ? Colors.white12 : Colors.black12;
 
     return Container(
-      padding: const EdgeInsets.only(top: 12, bottom: 24),
+      padding: EdgeInsets.only(top: 12, bottom: 24 + MediaQuery.of(context).padding.bottom),
       decoration: BoxDecoration(
         color: sheetBgColor,
         borderRadius: const BorderRadius.only(
