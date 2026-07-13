@@ -92,14 +92,14 @@ class _ImageCropperPageState extends State<ImageCropperPage> {
         children: [
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            style: TextStyle(
-              color: Colors.white60,
-              fontSize: 12,
-              height: 1.4,
-            ),
             child: Text(
               "Pincez pour zoomer et déplacez le document afin de le cadrer précisément dans le rectangle ci-dessous.",
               textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white60,
+                fontSize: 12,
+                height: 1.4,
+              ),
             ),
           ),
           Expanded(
