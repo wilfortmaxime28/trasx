@@ -10,9 +10,6 @@ async function main() {
   console.log(`Resetting verification statuses for user ID: ${userId}...`);
 
   try {
-    // 1. Reset email verification
-    await db.query("UPDATE users SET is_verified = FALSE WHERE id = ?", [userId]);
-    console.log("- Email verification reset (is_verified = FALSE)");
 
     // 2. Reset events KYC activation
     await db.query("UPDATE users SET events_status = NULL, events_activated_at = NULL WHERE id = ?", [userId]);
