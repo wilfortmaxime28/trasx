@@ -49,6 +49,7 @@ class _ShortsViewState extends State<ShortsView> {
   final Map<int, VideoPlayerController> _controllers = {};
   final Set<int> _likedReelIds = {}; // Local like tracking
   final Set<int> _followedUserIds = {}; // Local follow tracking
+  final Set<int> _initializingIndexes = {}; // Prevent concurrent duplicate initializations
 
   bool _isLoading = false;
   bool _hasMore = true;
@@ -194,11 +195,16 @@ class _ShortsViewState extends State<ShortsView> {
 
   Future<void> _initializeController(int index) async {
     if (index < 0 || index >= _reels.length) return;
-    if (_controllers.containsKey(index)) return;
+    if (_controllers.containsKey(index) || _initializingIndexes.contains(index)) return;
+
+    _initializingIndexes.add(index);
 
     final reel = _reels[index];
     var videoUrlStr = reel['video_url']?.toString() ?? '';
-    if (videoUrlStr.isEmpty) return;
+    if (videoUrlStr.isEmpty) {
+      _initializingIndexes.remove(index);
+      return;
+    }
 
     if (!videoUrlStr.startsWith('http')) {
       videoUrlStr = 'https://trasx.com$videoUrlStr';
@@ -206,6 +212,13 @@ class _ShortsViewState extends State<ShortsView> {
 
     try {
       final file = await DefaultCacheManager().getSingleFile(videoUrlStr);
+      
+      // Double check if disposed or already initialized in the meantime
+      if (!mounted || _controllers.containsKey(index)) {
+        _initializingIndexes.remove(index);
+        return;
+      }
+
       final controller = VideoPlayerController.file(file);
       _controllers[index] = controller;
 
@@ -217,6 +230,8 @@ class _ShortsViewState extends State<ShortsView> {
       }
     } catch (e) {
       debugPrint('Error initializing video at index $index: $e');
+    } finally {
+      _initializingIndexes.remove(index);
     }
   }
 
@@ -601,6 +616,52 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
           ),
         ),
 
+        // Gradient scrim overlays for readable UI
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          height: 140,
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.5),
+                    Colors.black.withOpacity(0.2),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 240,
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.15),
+                    Colors.black.withOpacity(0.4),
+                    Colors.black.withOpacity(0.7),
+                  ],
+                  stops: const [0.0, 0.3, 0.7, 1.0],
+                ),
+              ),
+            ),
+          ),
+        ),
+
         // 2. Play/Pause Overlay Animation
         if (_showPlayPauseOverlay)
           Center(
@@ -700,11 +761,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   shadows: [
-                    Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, -1.5)),
-                    Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, -1.5)),
-                    Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, 1.5)),
-                    Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, 1.5)),
-                    Shadow(blurRadius: 6.0, color: Colors.black87, offset: Offset(2.0, 2.0)),
+                    Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset(0, 1.5)),
                   ],
                 ),
               ),
@@ -720,11 +777,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                     color: Colors.white70,
                     fontSize: 14,
                     shadows: [
-                      Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, -1.5)),
-                      Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, -1.5)),
-                      Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, 1.5)),
-                      Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, 1.5)),
-                      Shadow(blurRadius: 6.0, color: Colors.black87, offset: Offset(2.0, 2.0)),
+                      Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset(0, 1.5)),
                     ],
                   ),
                 ),
@@ -738,7 +791,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                     color: Colors.white70,
                     size: 14,
                     shadows: [
-                      Shadow(blurRadius: 4.0, color: Colors.black, offset: Offset(1.0, 1.0)),
+                      Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset(0, 1.5)),
                     ],
                   ),
                   const SizedBox(width: 6),
@@ -752,11 +805,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                         shadows: [
-                          Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, -1.5)),
-                          Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, -1.5)),
-                          Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, 1.5)),
-                          Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, 1.5)),
-                          Shadow(blurRadius: 6.0, color: Colors.black87, offset: Offset(2.0, 2.0)),
+                          Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset(0, 1.5)),
                         ],
                       ),
                     ),
@@ -900,6 +949,12 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
   final Set<int> _likedCommentIds = {};
   final Set<int> _expandedCommentIds = {};
   dynamic _replyingToComment; // comment object we are replying to, if any
+  bool _showEmojiPicker = false;
+
+  final List<String> _allEmojis = const [
+    '😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🥸','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🫣','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','👹','👺','🤡','💩','👻','💀','☠️','👽','👾','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾',
+    '👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🫰','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🫶','🤝','🙏','✍️','💅','🤳','💪','🧠','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟'
+  ];
 
   @override
   void initState() {
@@ -1358,11 +1413,34 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
             ),
             child: Row(
               children: [
+                // Smiley / Keyboard Toggle button
+                IconButton(
+                  icon: Icon(
+                    _showEmojiPicker ? CupertinoIcons.keyboard : CupertinoIcons.smiley,
+                    color: textSecondaryColor,
+                    size: 24,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _showEmojiPicker = !_showEmojiPicker;
+                      if (_showEmojiPicker) {
+                        FocusScope.of(context).unfocus();
+                      }
+                    });
+                  },
+                ),
                 Expanded(
                   child: TextField(
                     controller: _commentInputController,
                     style: TextStyle(color: textPrimaryColor, fontSize: 14),
                     cursorColor: textPrimaryColor,
+                    onTap: () {
+                      if (_showEmojiPicker) {
+                        setState(() {
+                          _showEmojiPicker = false;
+                        });
+                      }
+                    },
                     decoration: InputDecoration(
                       hintText: _replyingToComment != null 
                           ? 'Répondre à @${_replyingToComment['username']}...' 
@@ -1380,7 +1458,52 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                 )
               ],
             ),
-          )
+          ),
+          
+          // Collapsible Emoji Picker grid below the input bar
+          if (_showEmojiPicker)
+            Container(
+              height: 220,
+              decoration: BoxDecoration(
+                color: sheetBgColor,
+                border: Border(top: BorderSide(color: dividerColor, width: 0.5)),
+              ),
+              child: GridView.builder(
+                padding: const EdgeInsets.all(8),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 8,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                ),
+                itemCount: _allEmojis.length,
+                itemBuilder: (context, index) {
+                  final emoji = _allEmojis[index];
+                  return GestureDetector(
+                    onTap: () {
+                      final text = _commentInputController.text;
+                      final selection = _commentInputController.selection;
+                      final newText = text.replaceRange(
+                        selection.start >= 0 ? selection.start : text.length,
+                        selection.end >= 0 ? selection.end : text.length,
+                        emoji,
+                      );
+                      _commentInputController.value = TextEditingValue(
+                        text: newText,
+                        selection: TextSelection.collapsed(
+                          offset: (selection.start >= 0 ? selection.start : text.length) + emoji.length,
+                        ),
+                      );
+                    },
+                    child: Center(
+                      child: Text(
+                        emoji,
+                        style: const TextStyle(fontSize: 24),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );
