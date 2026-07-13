@@ -147,6 +147,181 @@ function containsText(source, needle) {
   return normalizedSource.length > 0 && normalizedNeedle.length > 0 && normalizedSource.includes(normalizedNeedle);
 }
 
+function levenshteinDistance(s1, s2) {
+  const m = s1.length;
+  const n = s2.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (s1[i - 1] === s2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = Math.min(
+          dp[i - 1][j] + 1,    // deletion
+          dp[i][j - 1] + 1,    // insertion
+          dp[i - 1][j - 1] + 1 // substitution
+        );
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+function fuzzyContains(ocrText, searchWord, maxDistanceFraction = 0.3) {
+  const target = normalizeText(searchWord);
+  if (!target) return true; // Empty search word is always "found"
+  
+  const ocrNormalized = normalizeText(ocrText);
+  if (!ocrNormalized) return false;
+
+  const searchWords = target.split(' ');
+  const ocrWords = ocrNormalized.split(' ');
+
+  for (const sWord of searchWords) {
+    if (sWord.length <= 2) {
+      if (!ocrWords.includes(sWord)) {
+        return false;
+      }
+      continue;
+    }
+    
+    let foundMatch = false;
+    const maxDist = Math.floor(sWord.length * maxDistanceFraction);
+    
+    for (const oWord of ocrWords) {
+      if (oWord.includes(sWord) || sWord.includes(oWord)) {
+        foundMatch = true;
+        break;
+      }
+      if (Math.abs(oWord.length - sWord.length) <= maxDist) {
+        const dist = levenshteinDistance(sWord, oWord);
+        if (dist <= maxDist) {
+          foundMatch = true;
+          break;
+        }
+      }
+    }
+    
+    if (!foundMatch) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+const MONTH_WORDS = {
+  1: ['01', '1', 'jan', 'janv', 'janvier', 'january'],
+  2: ['02', '2', 'feb', 'fev', 'fevr', 'fevrier', 'february'],
+  3: ['03', '3', 'mar', 'mars', 'march'],
+  4: ['04', '4', 'apr', 'avr', 'avril', 'april'],
+  5: ['05', '5', 'may', 'mai'],
+  6: ['06', '6', 'jun', 'juin', 'june'],
+  7: ['07', '7', 'jul', 'juil', 'juillet', 'july'],
+  8: ['08', '8', 'aug', 'aout', 'august'],
+  9: ['09', '9', 'sep', 'sept', 'septembre', 'september'],
+  10: ['10', 'oct', 'octobre', 'october'],
+  11: ['11', 'nov', 'novembre', 'november'],
+  12: ['12', 'dec', 'dece', 'decembre', 'december']
+};
+
+function fuzzyMatchYear(ocrText, yearStr) {
+  if (!yearStr || yearStr.length < 4) return false;
+  const normalizedOcr = normalizeText(ocrText);
+  
+  const last2Digits = yearStr.slice(2);
+  
+  let patternStr = '\\b';
+  for (const char of yearStr) {
+    if (char === '1') patternStr += '[1lI|]';
+    else if (char === '0') patternStr += '[0oO]';
+    else if (char === '5') patternStr += '[5sS]';
+    else if (char === '8') patternStr += '[8B]';
+    else if (char === '6') patternStr += '[6G]';
+    else if (char === '9') patternStr += '[9gG]';
+    else patternStr += char;
+  }
+  patternStr += '\\b';
+  
+  const regex = new RegExp(patternStr);
+  if (regex.test(normalizedOcr)) {
+    return true;
+  }
+  
+  let shortPattern = '\\b';
+  for (const char of last2Digits) {
+    if (char === '1') shortPattern += '[1lI|]';
+    else if (char === '0') shortPattern += '[0oO]';
+    else if (char === '5') shortPattern += '[5sS]';
+    else if (char === '8') shortPattern += '[8B]';
+    else if (char === '6') shortPattern += '[6G]';
+    else if (char === '9') shortPattern += '[9gG]';
+    else shortPattern += char;
+  }
+  shortPattern += '\\b';
+  const shortRegex = new RegExp(shortPattern);
+  return shortRegex.test(normalizedOcr);
+}
+
+function fuzzyMatchMonth(ocrText, monthNum) {
+  const normalizedOcr = normalizeText(ocrText);
+  const monthList = MONTH_WORDS[monthNum];
+  if (!monthList) return false;
+  
+  for (const mWord of monthList) {
+    if (mWord.match(/^\d+$/)) {
+      let pattern = '\\b';
+      for (const char of mWord) {
+        if (char === '1') pattern += '[1lI|]';
+        else if (char === '0') pattern += '[0oO]';
+        else if (char === '5') pattern += '[5sS]';
+        else if (char === '8') pattern += '[8B]';
+        else if (char === '6') pattern += '[6G]';
+        else if (char === '9') pattern += '[9gG]';
+        else pattern += char;
+      }
+      pattern += '\\b';
+      const regex = new RegExp(pattern);
+      if (regex.test(normalizedOcr)) {
+        return true;
+      }
+    } else {
+      if (normalizedOcr.includes(mWord)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function fuzzyMatchDay(ocrText, dayNum) {
+  const normalizedOcr = normalizeText(ocrText);
+  const dStr = String(dayNum);
+  const dStrPadded = dStr.padStart(2, '0');
+  
+  const dayVariants = [dStr, dStrPadded];
+  for (const variant of dayVariants) {
+    let pattern = '\\b';
+    for (const char of variant) {
+      if (char === '1') pattern += '[1lI|]';
+      else if (char === '0') pattern += '[0oO]';
+      else if (char === '5') pattern += '[5sS]';
+      else if (char === '8') pattern += '[8B]';
+      else if (char === '6') pattern += '[6G]';
+      else if (char === '9') pattern += '[9gG]';
+      else pattern += char;
+    }
+    pattern += '\\b';
+    const regex = new RegExp(pattern);
+    if (regex.test(normalizedOcr)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function isValidIdentityDocument(file) {
   if (!file) {
     return { valid: false, reason: 'A document is required.' };
@@ -196,56 +371,104 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
 
   const fullName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim();
   const submittedFullName = String(submission.full_name || '').trim();
+  const formNameMatches = sameText(submittedFullName, fullName) || 
+                         (containsText(submittedFullName, user?.first_name) && containsText(submittedFullName, user?.last_name));
   if (sameText(submittedFullName, fullName)) {
     score += 20;
   } else if (containsText(submittedFullName, user?.first_name) && containsText(submittedFullName, user?.last_name)) {
     score += 12;
   } else {
-    reasons.push('The full name does not match the account record.');
+    reasons.push('Le nom saisi dans le formulaire ne correspond pas à votre compte.');
   }
 
   const submittedDob = String(submission.dob || '').trim();
+  let formDobMatches = false;
   if (submittedDob && user?.dob) {
     const userDobText = normalizeDateText(user.dob);
     const submittedDobText = normalizeDateText(submittedDob);
     if (userDobText && submittedDobText && userDobText === submittedDobText) {
       score += 10;
+      formDobMatches = true;
     } else {
-      reasons.push('The date of birth does not match the account record.');
+      reasons.push('La date de naissance saisie dans le formulaire ne correspond pas à votre compte.');
     }
   }
 
+  console.log('[KYC OCR Debug] Starting OCR analysis evaluation.');
+  console.log(`[KYC OCR Debug] User account fields -> First Name: "${user?.first_name}", Last Name: "${user?.last_name}", DOB: "${user?.dob}"`);
+  console.log(`[KYC OCR Debug] Extracted raw OCR text (first 1000 chars):\n-------------------\n${ocrText.slice(0, 1000)}\n-------------------`);
+
   const normalizedOcrText = normalizeText(ocrText);
   if (!normalizedOcrText) {
-    reasons.push('The identity document text could not be read.');
+    console.log('[KYC OCR Debug] Rejecting: Extracted OCR text is completely empty or has no readable alphanumeric characters.');
+    reasons.push('Impossible de lire le texte du document d\'identité.');
   } else {
-    const nameMatches = containsText(normalizedOcrText, user?.first_name) && containsText(normalizedOcrText, user?.last_name);
+    const firstNameMatches = fuzzyContains(ocrText, user?.first_name);
+    const lastNameMatches = fuzzyContains(ocrText, user?.last_name);
+    const nameMatches = firstNameMatches && lastNameMatches;
+    
+    console.log(`[KYC OCR Debug] Name matching results:`);
+    console.log(`  - First name "${user?.first_name}" matches: ${firstNameMatches}`);
+    console.log(`  - Last name "${user?.last_name}" matches: ${lastNameMatches}`);
+    console.log(`  - Combined name match: ${nameMatches}`);
+
     if (nameMatches) {
       score += 15;
     } else {
-      reasons.push('The document name does not match the account record.');
+      reasons.push('Le nom sur le document ne correspond pas à celui de votre compte.');
     }
+
+    let dobMatches = false;
+    let dobMatchMethod = 'none';
 
     if (user?.dob) {
       const dobDigits = normalizeDateText(user.dob);
       if (dobDigits && ocrSelection.selectedDob && dobDigits === normalizeDateText(ocrSelection.selectedDob)) {
-        score += 10;
+        dobMatches = true;
+        dobMatchMethod = 'exact';
       } else {
-        reasons.push('The document date of birth does not match the account record.');
+        const dateObj = new Date(user.dob);
+        if (!isNaN(dateObj.getTime())) {
+          const year = dateObj.getUTCFullYear();
+          const month = dateObj.getUTCMonth() + 1;
+          const day = dateObj.getUTCDate();
+          
+          const yearOk = fuzzyMatchYear(ocrText, String(year));
+          const monthOk = fuzzyMatchMonth(ocrText, month);
+          const dayOk = fuzzyMatchDay(ocrText, day);
+          
+          console.log(`[KYC OCR Debug] Date of Birth fuzzy component check for "${year}-${month}-${day}":`);
+          console.log(`  - Year "${year}" (or short variant) found: ${yearOk}`);
+          console.log(`  - Month "${month}" (digit or word) found: ${monthOk}`);
+          console.log(`  - Day "${day}" found: ${dayOk}`);
+
+          if (yearOk && monthOk && dayOk) {
+            dobMatches = true;
+            dobMatchMethod = 'fuzzy_components';
+          }
+        }
       }
+    }
+
+    console.log(`[KYC OCR Debug] DOB matching result: ${dobMatches} (Method: ${dobMatchMethod})`);
+
+    if (dobMatches) {
+      score += 10;
+    } else {
+      reasons.push('La date de naissance sur le document ne correspond pas à celle de votre compte.');
     }
   }
 
   const faceMatchDistance = Number(analysis.faceMatchDistance);
   const faceScore = scoreFromFaceDistance(faceMatchDistance);
   if (faceScore === null) {
-    reasons.push('The face comparison could not be completed.');
+    reasons.push('La comparaison faciale n\'a pas pu être effectuée.');
   } else if (faceMatchDistance <= 0.45) {
     score += 20;
   } else if (faceMatchDistance <= 0.6) {
     score += 8;
   } else {
-    reasons.push('The selfie does not match the document face.');
+    reasons.push('Le selfie ne correspond pas à la photo du document.');
   }
 
   const approved = reasons.length === 0 && score >= 80;
@@ -255,13 +478,13 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
     score: Math.max(0, Math.min(100, score)),
     reasons,
     summary: approved
-      ? 'The verification passed. The account data, OCR text, and face comparison all matched.'
-      : 'The verification failed. The request does not meet the automated checks.',
+      ? 'La vérification a réussi. Les données du compte, le texte OCR et la comparaison faciale correspondent.'
+      : 'La vérification a échoué. Les critères de sécurité automatisés ne sont pas remplis.',
     documentValid: documentCheck.valid,
     documentReason: documentCheck.reason,
     faceMatchScore: faceScore,
-    matchedFullName: sameText(submittedFullName, fullName),
-    matchedDob: !!(submittedDob && user?.dob && normalizeDateText(user.dob) === normalizeDateText(submittedDob)),
+    matchedFullName: formNameMatches,
+    matchedDob: formDobMatches,
     ocrTextExcerpt: ocrText.trim().slice(0, 500),
     ocrDetectedDates: ocrSelection.detectedDates,
     ocrSelectedDob: ocrSelection.selectedDob,
@@ -285,8 +508,9 @@ async function ensureModelsLoaded() {
   modelsLoaded = true;
 }
 
-async function imageToTensor(filePath) {
+async function imageToTensorResized(filePath, maxSize = 600) {
   const { data, info } = await sharp(filePath)
+    .resize(maxSize, maxSize, { fit: 'inside', withoutEnlargement: true })
     .raw()
     .toBuffer({ resolveWithObject: true });
   
@@ -296,6 +520,13 @@ async function imageToTensor(filePath) {
     tensor.dispose();
     return rgbTensor;
   }
+  
+  if (info.channels === 1) {
+    const rgbTensor = tf.concat([tensor, tensor, tensor], 2);
+    tensor.dispose();
+    return rgbTensor;
+  }
+  
   return tensor;
 }
 
@@ -304,8 +535,8 @@ async function compareFacesOnServer(selfiePath, docPath) {
     await ensureModelsLoaded();
     
     const [selfieTensor, docTensor] = await Promise.all([
-      imageToTensor(selfiePath),
-      imageToTensor(docPath)
+      imageToTensorResized(selfiePath, 600),
+      imageToTensorResized(docPath, 600)
     ]);
     
     const detectorOptions = new faceapi.TinyFaceDetectorOptions({
@@ -323,7 +554,7 @@ async function compareFacesOnServer(selfiePath, docPath) {
     
     if (!selfieDetection || !docDetection) {
       console.log('[Face Comparison] Face not detected on one or both images.');
-      return 1.0; // max distance (no match)
+      return 1.0;
     }
     
     const distance = faceapi.euclideanDistance(selfieDetection.descriptor, docDetection.descriptor);
@@ -331,23 +562,15 @@ async function compareFacesOnServer(selfiePath, docPath) {
     return distance;
   } catch (err) {
     console.error('[Face Comparison] Error comparing faces:', err);
-    return 1.0; // fallback mismatch
+    return 1.0;
   }
 }
 
-
-/**
- * Fast pre-check: detects whether the document image contains a face.
- * Uses only TinyFaceDetector (no landmarks/descriptor) at a small input size
- * so it completes in <1s even on slow hardware.
- * Returns true if a face is found, false otherwise.
- */
 async function documentHasFace(docPath) {
   let docTensor;
   try {
     await ensureModelsLoaded();
-    docTensor = await imageToTensor(docPath);
-    // Smaller inputSize = faster detection, sufficient for a quick check
+    docTensor = await imageToTensorResized(docPath, 600);
     const detectorOptions = new faceapi.TinyFaceDetectorOptions({
       inputSize: 224,
       scoreThreshold: 0.35
@@ -356,7 +579,6 @@ async function documentHasFace(docPath) {
     return !!detection;
   } catch (err) {
     console.error('[documentHasFace] Error during quick face check:', err);
-    // On error, don't block the user — let the full pipeline decide
     return true;
   } finally {
     if (docTensor) docTensor.dispose();

@@ -811,6 +811,17 @@ class EventsController {
         dob: submission.dob || null
       });
 
+      // ── Fast document type check: reject immediately if not a passport, ID card, or driver's license ──
+      const docCheckResult = await checkIsIdentityDocument(req.file.path);
+      if (!docCheckResult.isIdentityDoc) {
+        console.log('[KYC] Document rejected: Not an identity document.', docCheckResult.reason);
+        return res.status(400).json({
+          success: false,
+          error: 'Le document soumis ne semble pas être un document d\'identité officiel (passeport, carte d\'identité nationale, ou permis de conduire). Veuillez soumettre une photo claire et lisible de votre pièce d\'identité.'
+        });
+      }
+      console.log(`[KYC] Document type pre-check passed (${docCheckResult.docType}). Running fast face pre-check...`);
+
       // ── Fast pre-check: reject immediately if the document has no face photo ──
       console.log('[KYC] Running fast face pre-check on document...');
       const docHasFace = await documentHasFace(req.file.path);
@@ -821,18 +832,7 @@ class EventsController {
           error: 'Le document soumis ne contient pas de photo de visage. Veuillez soumettre une pièce d\'identité valide (passeport, carte d\'identité, permis de conduire).'
         });
       }
-      console.log('[KYC] Face detected in document. Running quick scan document type validation...');
-
-      // ── Fast document type check: reject immediately if not a passport, ID card, or driver's license ──
-      const docCheckResult = await checkIsIdentityDocument(req.file.path);
-      if (!docCheckResult.isIdentityDoc) {
-        console.log('[KYC] Document rejected: Not an identity document.', docCheckResult.reason);
-        return res.status(400).json({
-          success: false,
-          error: 'Le document soumis ne semble pas être un document d\'identité officiel (passeport, carte d\'identité nationale, ou permis de conduire). Veuillez soumettre une photo claire et lisible de votre pièce d\'identité.'
-        });
-      }
-      console.log(`[KYC] Document type pre-check passed (${docCheckResult.docType}). Proceeding with full OCR...`);
+      console.log('[KYC] Face detected in document. Proceeding with full OCR...');
 
       console.log('[KYC] Extracting OCR from uploaded document...');
       const ocrText = await extractOcrTextFromImage(req.file.path);
