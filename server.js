@@ -4155,7 +4155,8 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
       console.log('[WithdrawKYC] Document rejected: Not an identity document.', docCheckResult.reason);
       return res.status(400).json({
         success: false,
-        error: 'Le document soumis ne semble pas être un document d\'identité officiel (passeport, carte d\'identité nationale, ou permis de conduire). Veuillez soumettre une photo claire et lisible de votre pièce d\'identité.'
+        error: 'Le document soumis ne semble pas être un document d\'identité officiel (passeport, carte d\'identité nationale, ou permis de conduire). Veuillez soumettre une photo claire et lisible de votre pièce d\'identité.',
+        debugOcrText: docCheckResult.rawText
       });
     }
     console.log(`[WithdrawKYC] Document type pre-check passed (${docCheckResult.docType}). Running fast face pre-check...`);
@@ -4311,9 +4312,19 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
     };
 
     if (isApproved) {
-      res.json({ success: true, message: 'Félicitations, votre KYC de retrait a été vérifié et approuvé instantanément par l\'IA.', details: verificationDetails });
+      res.json({
+        success: true,
+        message: 'Félicitations, votre KYC de retrait a été vérifié et approuvé instantanément par l\'IA.',
+        details: verificationDetails,
+        debugOcrText: ocrText
+      });
     } else {
-      res.status(400).json({ success: false, error: 'Échec de la validation du document par l\'IA. Raisons : ' + evaluation.reasons.join(', '), details: verificationDetails });
+      res.status(400).json({
+        success: false,
+        error: 'Échec de la validation du document par l\'IA. Raisons : ' + evaluation.reasons.join(', '),
+        details: verificationDetails,
+        debugOcrText: ocrText
+      });
     }
   } catch (err) {
     console.error('[WithdrawKYC] Error:', err);

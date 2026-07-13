@@ -172,6 +172,7 @@ async function checkIsIdentityDocument(imagePath) {
       reason: isIdentityDoc
         ? `Document reconnu comme : ${docType}`
         : 'Aucun marqueur de pièce d\'identité officielle détecté dans le document.',
+      rawText: normalized,
     };
   } catch (err) {
     console.error('[DocTypeCheck] Error during quick scan:', err);
