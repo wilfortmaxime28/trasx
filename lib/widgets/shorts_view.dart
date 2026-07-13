@@ -909,11 +909,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
               fontSize: 12,
               fontWeight: FontWeight.bold,
               shadows: [
-                Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, -1.5)),
-                Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, -1.5)),
-                Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(-1.5, 1.5)),
-                Shadow(blurRadius: 1.0, color: Colors.black, offset: Offset(1.5, 1.5)),
-                Shadow(blurRadius: 6.0, color: Colors.black87, offset: Offset(2.0, 2.0)),
+                Shadow(blurRadius: 4.0, color: Colors.black54, offset: Offset(0, 1.0)),
               ],
             ),
           )
