@@ -479,7 +479,7 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
       reasons.push('La comparaison faciale n\'a pas pu être effectuée.');
     } else if (faceMatchDistance <= 0.45) {
       score += 20;
-    } else if (faceMatchDistance <= 0.6) {
+    } else if (faceMatchDistance <= 0.52) {
       score += 8;
     } else {
       reasons.push('Le selfie ne correspond pas à la photo du document.');
@@ -491,7 +491,7 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
   const formDobValid = formDobMatches;
   const ocrNameValid = nameMatches;
   const ocrDobValid = dobMatches;
-  const faceValid = docFaceDetected && selfieFaceDetected && faceMatchDistance <= 0.45;
+  const faceValid = docFaceDetected && selfieFaceDetected && faceMatchDistance <= 0.52;
 
   const approved = documentValid && 
                    formNameValid && 
