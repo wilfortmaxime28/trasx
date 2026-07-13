@@ -28,6 +28,7 @@ import 'onboarding_page.dart';
 import 'main.dart';
 import 'kyc_camera_page.dart';
 import 'image_cropper_page.dart';
+import 'widgets/shorts_view.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -1232,7 +1233,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: bgColor,
-      appBar: AppBar(
+      appBar: _activeViewIndex == 1 ? null : AppBar(
         backgroundColor: bgColor.withValues(alpha: 0.8),
         elevation: 0,
         leadingWidth: (_activeViewIndex == 3 && _profileViewUserId != null && _profileViewUserId != _userId) ? 48 : 40,
@@ -2650,45 +2651,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // 2. SHORTS VIEW
   Widget _buildShortsView(Color cardColor, Color textPrimaryColor, Color textSecondaryColor) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: textPrimaryColor.withValues(alpha: 0.1)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.play_circle_fill_rounded, color: Color(0xFFE1306C), size: 64),
-              const SizedBox(height: 16),
-              Text(
-                'Shorts Vidéos',
-                style: TextStyle(color: textPrimaryColor, fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Faites défiler des vidéos courtes de jeux de société et de défis lancés par les joueurs du monde entier.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: textSecondaryColor, fontSize: 13, height: 1.4),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.arrow_downward_rounded, size: 16),
-                label: const Text('Découvrir les vidéos'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isDarkMode ? Colors.white : Colors.black,
-                  foregroundColor: _isDarkMode ? Colors.black : Colors.white,
-                ),
-              )
-            ],
-          ),
-        ),
-      ),
+    return ShortsView(
+      currentUserId: _userId,
+      socket: _socket,
     );
   }
 
