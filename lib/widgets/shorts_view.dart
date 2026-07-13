@@ -908,9 +908,6 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
               color: Colors.white,
               fontSize: 12,
               fontWeight: FontWeight.bold,
-              shadows: [
-                Shadow(blurRadius: 4.0, color: Colors.black54, offset: Offset(0, 1.0)),
-              ],
             ),
           )
         ],
