@@ -1,7 +1,7 @@
 const { normalizeDateForComparison, normalizeDateToIsoCandidates } = require('./dateUtils');
 const sharp = require('sharp');
-const tf = require('@tensorflow/tfjs');
 const faceapi = require('face-api.js');
+const tf = faceapi.tf;
 const path = require('path');
 
 function normalizeText(value) {
