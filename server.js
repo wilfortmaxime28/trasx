@@ -4358,8 +4358,19 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
     const savedSelfie = await saveWithdrawSelfie(selfieImageData, withdrawKycSelfieDir, `selfie-${currentUserId}`);
     
     let faceMatchDistance = 1.0;
+    let selfieFaceDetected = false;
+    let docFaceDetected = false;
     if (savedSelfie) {
-      faceMatchDistance = await compareFacesOnServer(savedSelfie.filePath, req.file.path);
+      const faceComparison = await compareFacesOnServer(
+        savedSelfie.filePath,
+        req.file.path,
+      );
+      const resolvedDistance = Number(faceComparison?.distance);
+      faceMatchDistance = Number.isFinite(resolvedDistance)
+        ? resolvedDistance
+        : 1.0;
+      selfieFaceDetected = faceComparison?.selfieFaceDetected === true;
+      docFaceDetected = faceComparison?.docFaceDetected === true;
     }
 
     const evaluation = evaluateEventKycSubmission(
@@ -4369,6 +4380,8 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
       {
         ocrText,
         faceMatchDistance,
+        selfieFaceDetected,
+        docFaceDetected,
         selfieFile: savedSelfie,
         documentText: ocrText
       }
@@ -4490,6 +4503,8 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
       score: evaluation.score,
       faceMatchScore: evaluation.faceMatchScore,
       faceMatchDistance: faceMatchDistance,
+      selfieFaceDetected,
+      docFaceDetected,
       nameMatched: evaluation.matchedFullName ?? null,
       dobMatched: evaluation.matchedDob ?? null,
       ocrExcerpt: (evaluation.ocrTextExcerpt || '').slice(0, 120),

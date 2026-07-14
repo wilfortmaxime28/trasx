@@ -17,6 +17,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http_parser/http_parser.dart';
+import 'package:mime/mime.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12437,12 +12438,20 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                   );
                   request.headers['x-user-id'] = '${widget.userId}';
                   request.fields['selfie_image_data'] = selfieDataUrl;
+                  final documentMime =
+                      lookupMimeType(docFile.path) ?? 'image/jpeg';
+                  final documentMimeParts = documentMime.split('/');
 
                   request.files.add(
                     await http.MultipartFile.fromPath(
                       'identity_document',
                       docFile.path,
-                      contentType: MediaType('image', 'jpeg'),
+                      contentType: documentMimeParts.length == 2
+                          ? MediaType(
+                              documentMimeParts[0],
+                              documentMimeParts[1],
+                            )
+                          : MediaType('image', 'jpeg'),
                     ),
                   );
 

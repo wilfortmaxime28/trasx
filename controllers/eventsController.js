@@ -841,9 +841,24 @@ class EventsController {
       
       console.log('[KYC] Running server-side face comparison...');
       let faceMatchDistance = 1.0;
+      let selfieFaceDetected = false;
+      let docFaceDetected = false;
       if (savedSelfie) {
-        faceMatchDistance = await compareFacesOnServer(savedSelfie.filePath, req.file.path);
-        console.log('[KYC] Server face match distance:', faceMatchDistance);
+        const faceComparison = await compareFacesOnServer(
+          savedSelfie.filePath,
+          req.file.path,
+        );
+        const resolvedDistance = Number(faceComparison?.distance);
+        faceMatchDistance = Number.isFinite(resolvedDistance)
+          ? resolvedDistance
+          : 1.0;
+        selfieFaceDetected = faceComparison?.selfieFaceDetected === true;
+        docFaceDetected = faceComparison?.docFaceDetected === true;
+        console.log('[KYC] Server face comparison:', {
+          distance: faceMatchDistance,
+          selfieFaceDetected,
+          docFaceDetected,
+        });
       }
 
       console.log('[KYC] Running identity evaluation...');
@@ -854,6 +869,8 @@ class EventsController {
         {
           ocrText,
           faceMatchDistance,
+          selfieFaceDetected,
+          docFaceDetected,
           selfieFile: savedSelfie,
           documentText: ocrText
         }

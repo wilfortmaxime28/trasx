@@ -219,6 +219,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   final FocusNode _searchFocusNode = FocusNode();
   final ImagePicker _mediaPicker = ImagePicker();
   final Set<String> _prefetchedMessageMedia = <String>{};
+  final Map<String, String> _localAttachmentPathsByUrl = <String, String>{};
   late final AnimationController _typingAnimationController;
 
   List<Map<String, dynamic>> _generalConversations = [];
@@ -239,6 +240,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   Map<String, dynamic>? _pendingAttachment;
   Map<String, dynamic>? _replyingToMessage;
   File? _pendingAttachmentFile;
+  int _attachmentUploadToken = 0;
 
   Timer? _typingDebounceTimer;
   Timer? _gameInviteTicker;
@@ -795,7 +797,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
   Map<String, dynamic> _normalizeMessage(dynamic raw) {
     final map = raw is Map ? raw : <String, dynamic>{};
-    return {
+    return _attachLocalAttachmentIfAvailable({
       'id': _asInt(map['id'] ?? map['messageId']),
       'sender_id': _asInt(map['sender_id'] ?? map['senderId']),
       'receiver_id': _asInt(map['receiver_id'] ?? map['receiverId']),
@@ -843,7 +845,94 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       'sender_name': _asString(map['sender_name']),
       'sender_avatar': _asString(map['sender_avatar']),
       'sender_username': _asString(map['sender_username']),
-    };
+      'local_attachment_path': _asString(
+        map['local_attachment_path'] ?? map['localAttachmentPath'],
+      ),
+    });
+  }
+
+  String _attachmentUrlKey(String url) {
+    final rawUrl = _asString(url);
+    if (rawUrl.isEmpty) return '';
+    final resolvedUrl = _resolveUrl(rawUrl);
+    return resolvedUrl.isNotEmpty ? resolvedUrl : rawUrl;
+  }
+
+  void _rememberLocalAttachment({
+    required String attachmentUrl,
+    required String filePath,
+  }) {
+    final key = _attachmentUrlKey(attachmentUrl);
+    if (key.isEmpty || filePath.trim().isEmpty) return;
+    _localAttachmentPathsByUrl[key] = filePath;
+  }
+
+  Map<String, dynamic> _attachLocalAttachmentIfAvailable(
+    Map<String, dynamic> message,
+  ) {
+    final existingPath = _asString(
+      message['local_attachment_path'] ?? message['localAttachmentPath'],
+    );
+    if (existingPath.isNotEmpty) return message;
+
+    final attachmentUrl = _asString(
+      message['attachment_url'] ?? message['attachmentUrl'],
+    );
+    final key = _attachmentUrlKey(attachmentUrl);
+    if (key.isEmpty) return message;
+
+    final localPath = _localAttachmentPathsByUrl[key];
+    if (localPath == null || localPath.isEmpty) return message;
+    return {...message, 'local_attachment_path': localPath};
+  }
+
+  void _clearPendingAttachmentState({bool invalidateUpload = false}) {
+    if (invalidateUpload) {
+      _attachmentUploadToken++;
+      _isUploadingAttachment = false;
+    }
+    _pendingAttachment = null;
+    _pendingAttachmentFile = null;
+  }
+
+  String _inferAttachmentType(String filePath, String formFieldName) {
+    if (formFieldName == 'audio') return 'audio';
+    final mediaType = _inferAttachmentMediaType(filePath, formFieldName);
+    switch (mediaType?.type) {
+      case 'image':
+        return 'image';
+      case 'video':
+        return 'video';
+      case 'audio':
+        return 'audio';
+      default:
+        return 'file';
+    }
+  }
+
+  String _extractFileName(String filePath) {
+    final normalizedPath = filePath.trim().replaceAll('\\', '/');
+    if (normalizedPath.isEmpty) return '';
+    final segments = normalizedPath.split('/');
+    return segments.isEmpty ? normalizedPath : segments.last;
+  }
+
+  int _safeAttachmentSize(String filePath) {
+    try {
+      final file = File(filePath);
+      if (!file.existsSync()) return 0;
+      return file.lengthSync();
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  File? _localAttachmentFileFromMessage(Map<String, dynamic> message) {
+    final localPath = _asString(
+      message['local_attachment_path'] ?? message['localAttachmentPath'],
+    );
+    if (localPath.isEmpty) return null;
+    return File(localPath);
   }
 
   Future<void> _openConversation(Map<String, dynamic> conversation) async {
@@ -882,8 +971,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     setState(() {
       _selectedConversation = null;
       _messages = [];
-      _pendingAttachment = null;
-      _pendingAttachmentFile = null;
+      _clearPendingAttachmentState(invalidateUpload: true);
       _replyingToMessage = null;
       _partnerTyping = false;
     });
@@ -1242,8 +1330,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       _selectedConversation = updatedSelected;
       if (!resolvedCanChat) {
         _partnerTyping = false;
-        _pendingAttachment = null;
-        _pendingAttachmentFile = null;
+        _clearPendingAttachmentState(invalidateUpload: true);
         _replyingToMessage = null;
       }
     });
@@ -1267,6 +1354,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
           'attachment_url': '',
           'attachment_type': '',
           'attachment_name': '',
+          'local_attachment_path': '',
           'attachment_size': 0,
           'voice_duration_seconds': 0,
           'status_id': 0,
@@ -2420,29 +2508,55 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   }
 
   Future<void> _pickImageFromSource(ImageSource source) async {
-    final XFile? file = await _mediaPicker.pickImage(
-      source: source,
-      imageQuality: 88,
-      preferredCameraDevice: CameraDevice.rear,
-    );
-    if (file == null) return;
+    try {
+      final XFile? file = await _mediaPicker.pickImage(
+        source: source,
+        imageQuality: 88,
+        preferredCameraDevice: CameraDevice.rear,
+      );
+      if (file == null) return;
 
-    await _uploadAttachmentFile(
-      filePath: file.path,
-      formFieldName: 'file',
-      localPreviewFile: File(file.path),
-    );
+      await _uploadAttachmentFile(
+        filePath: file.path,
+        formFieldName: 'file',
+        localPreviewFile: File(file.path),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showSnackBar(error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> _pickVideoFromSource(ImageSource source) async {
-    final XFile? file = await _mediaPicker.pickVideo(
-      source: source,
-      maxDuration: const Duration(minutes: 5),
-      preferredCameraDevice: CameraDevice.rear,
-    );
-    if (file == null) return;
+    try {
+      final XFile? file = await _mediaPicker.pickVideo(
+        source: source,
+        maxDuration: const Duration(minutes: 5),
+        preferredCameraDevice: CameraDevice.rear,
+      );
+      if (file == null || !mounted) return;
 
-    await _uploadAttachmentFile(filePath: file.path, formFieldName: 'file');
+      setState(() {
+        _pendingAttachment = {
+          'attachmentType': 'video',
+          'attachmentName': _attachmentDisplayLabel(
+            attachmentType: 'video',
+            originalName: file.name,
+          ),
+          'attachmentThumbnailUrl': '',
+          'attachmentSize': _safeAttachmentSize(file.path),
+          'voiceDurationSeconds': 0,
+          'localAttachmentPath': file.path,
+        };
+      });
+
+      unawaited(
+        _uploadAttachmentFile(filePath: file.path, formFieldName: 'file'),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showSnackBar(error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> _uploadAttachmentFile({
@@ -2453,9 +2567,29 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   }) async {
     if (_isUploadingAttachment || _isSendingMessage) return;
 
+    final provisionalType = _inferAttachmentType(filePath, formFieldName);
+    final localFile = localPreviewFile ?? File(filePath);
+    final uploadToken = ++_attachmentUploadToken;
+
     try {
+      if (!mounted) return;
       setState(() {
         _isUploadingAttachment = true;
+        _pendingAttachment = {
+          'attachmentType': provisionalType,
+          'attachmentName': _attachmentDisplayLabel(
+            attachmentType: provisionalType,
+            originalName: _extractFileName(filePath),
+            voiceDurationSeconds: voiceDurationSeconds,
+          ),
+          'attachmentThumbnailUrl': _asString(
+            _pendingAttachment?['attachmentThumbnailUrl'],
+          ),
+          'attachmentSize': _safeAttachmentSize(filePath),
+          'voiceDurationSeconds': voiceDurationSeconds,
+          'localAttachmentPath': filePath,
+        };
+        _pendingAttachmentFile = provisionalType == 'image' ? localFile : null;
       });
 
       final request = http.MultipartRequest(
@@ -2483,32 +2617,53 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         );
       }
 
+      final attachmentUrl = _asString(body['attachmentUrl']);
       final attachmentType = _asString(body['attachmentType']);
       final attachmentThumbnailUrl = _asString(
         body['attachmentThumbnailUrl'] ?? body['attachment_thumbnail_url'],
       );
+      if (attachmentUrl.isNotEmpty) {
+        _rememberLocalAttachment(
+          attachmentUrl: attachmentUrl,
+          filePath: filePath,
+        );
+      }
+      if (!mounted || uploadToken != _attachmentUploadToken) return;
+
       setState(() {
         _pendingAttachment = {
-          'attachmentUrl': body['attachmentUrl'],
-          'attachmentType': attachmentType,
+          'attachmentUrl': attachmentUrl,
+          'attachmentType': attachmentType.isNotEmpty
+              ? attachmentType
+              : provisionalType,
           'attachmentName': _attachmentDisplayLabel(
-            attachmentType: attachmentType,
-            originalName: _asString(body['attachmentName']),
+            attachmentType: attachmentType.isNotEmpty
+                ? attachmentType
+                : provisionalType,
+            originalName: _asString(
+              body['attachmentName'],
+              fallback: _extractFileName(filePath),
+            ),
             voiceDurationSeconds: voiceDurationSeconds,
           ),
           'attachmentThumbnailUrl': attachmentThumbnailUrl,
-          'attachmentSize': body['attachmentSize'],
+          'attachmentSize':
+              body['attachmentSize'] ?? _safeAttachmentSize(filePath),
           'voiceDurationSeconds': voiceDurationSeconds,
+          'localAttachmentPath': filePath,
         };
-        _pendingAttachmentFile = attachmentType == 'image'
-            ? (localPreviewFile ?? File(filePath))
+        _pendingAttachmentFile =
+            (attachmentType.isNotEmpty ? attachmentType : provisionalType) ==
+                'image'
+            ? localFile
             : null;
         _isUploadingAttachment = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || uploadToken != _attachmentUploadToken) return;
       setState(() {
         _isUploadingAttachment = false;
+        _clearPendingAttachmentState();
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2839,6 +2994,10 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
   Future<void> _sendMessage() async {
     if (_selectedConversation == null || widget.socket == null) return;
+    if (_isUploadingAttachment) {
+      _showSnackBar('Patientez pendant la preparation du media.');
+      return;
+    }
     if (!_canChatWithSelectedUser) {
       _showSnackBar(
         _hasBlockedSelectedUser
@@ -2884,8 +3043,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         'time_text': _formatConversationTime(DateTime.now().toIso8601String()),
       };
       _isSendingMessage = false;
-      _pendingAttachment = null;
-      _pendingAttachmentFile = null;
+      _clearPendingAttachmentState();
       _replyingToMessage = null;
     });
     _upsertConversation(_selectedConversation!, incrementUnread: 0);
@@ -4709,10 +4867,13 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     required Color textPrimary,
     required Color textSecondary,
   }) {
+    final localFile = _localAttachmentFileFromMessage(message);
+
     if (attachmentType == 'image') {
       return _MessageImageAttachmentCard(
         key: ValueKey<String>('image-${_asInt(message['id'])}'),
         imageUrl: _resolveUrl(attachmentUrl),
+        initialFile: localFile,
         isMine: isMine,
         onOpenViewer: (file) =>
             _openImagePreview(_resolveUrl(attachmentUrl), localFile: file),
@@ -4725,6 +4886,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         url: attachmentUrl,
         thumbnailUrl: _messageVideoThumbnailUrl(message),
         title: _asString(message['attachment_name'], fallback: 'Video'),
+        localFile: localFile,
         isMine: isMine,
         textPrimary: textPrimary,
         textSecondary: textSecondary,
@@ -4737,6 +4899,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         url: attachmentUrl,
         title: _asString(message['attachment_name'], fallback: 'Note vocale'),
         durationSeconds: _asInt(message['voice_duration_seconds']),
+        localFile: localFile,
         isMine: isMine,
         textPrimary: textPrimary,
         textSecondary: textSecondary,
@@ -4756,6 +4919,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     required String url,
     required String thumbnailUrl,
     required String title,
+    File? localFile,
     required bool isMine,
     required Color textPrimary,
     required Color textSecondary,
@@ -4768,6 +4932,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         attachmentType: 'video',
         originalName: title,
       ),
+      initialFile: localFile,
       isMine: isMine,
       onOpenViewer: (file) => _openVideoPreview(
         mediaUrl: _resolveUrl(url),
@@ -4796,6 +4961,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     required String url,
     required String title,
     required int durationSeconds,
+    File? localFile,
     required bool isMine,
     required Color textPrimary,
     required Color textSecondary,
@@ -4808,6 +4974,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         originalName: title,
         durationSeconds: durationSeconds,
       ),
+      initialLocalFile: localFile,
       durationSeconds: durationSeconds,
       isMine: isMine,
       textPrimary: textPrimary,
@@ -4964,7 +5131,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Pret a envoyer',
+                  _isUploadingAttachment
+                      ? 'Preparation du media'
+                      : 'Pret a envoyer',
                   style: TextStyle(
                     color: textPrimary,
                     fontSize: 12,
@@ -4995,8 +5164,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
           IconButton(
             onPressed: () {
               setState(() {
-                _pendingAttachment = null;
-                _pendingAttachmentFile = null;
+                _clearPendingAttachmentState(
+                  invalidateUpload: _isUploadingAttachment,
+                );
               });
             },
             icon: Icon(CupertinoIcons.xmark_circle_fill, color: textSecondary),
@@ -6952,12 +7122,14 @@ Widget _buildMessageMediaActionButton({
 
 class _MessageImageAttachmentCard extends StatefulWidget {
   final String imageUrl;
+  final File? initialFile;
   final bool isMine;
   final ValueChanged<File> onOpenViewer;
 
   const _MessageImageAttachmentCard({
     super.key,
     required this.imageUrl,
+    this.initialFile,
     required this.isMine,
     required this.onOpenViewer,
   });
@@ -6979,19 +7151,26 @@ class _MessageImageAttachmentCardState
   @override
   void initState() {
     super.initState();
-    unawaited(_restoreCachedImage());
+    _seedInitialFile();
+    if (_file == null) {
+      unawaited(_restoreCachedImage());
+    }
   }
 
   @override
   void didUpdateWidget(covariant _MessageImageAttachmentCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl) {
+    if (oldWidget.imageUrl != widget.imageUrl ||
+        oldWidget.initialFile?.path != widget.initialFile?.path) {
       _loadSubscription?.cancel();
       _file = null;
       _progress = null;
       _isLoading = false;
       _hasError = false;
-      unawaited(_restoreCachedImage());
+      _seedInitialFile();
+      if (_file == null) {
+        unawaited(_restoreCachedImage());
+      }
     }
   }
 
@@ -6999,6 +7178,13 @@ class _MessageImageAttachmentCardState
   void dispose() {
     _loadSubscription?.cancel();
     super.dispose();
+  }
+
+  void _seedInitialFile() {
+    final initialFile = widget.initialFile;
+    if (initialFile == null || !initialFile.existsSync()) return;
+    _file = initialFile;
+    _progress = 1;
   }
 
   Future<void> _restoreCachedImage() async {
@@ -7178,6 +7364,7 @@ class _MessageVideoAttachmentCard extends StatefulWidget {
   final String mediaUrl;
   final String thumbnailUrl;
   final String title;
+  final File? initialFile;
   final bool isMine;
   final ValueChanged<File> onOpenViewer;
 
@@ -7186,6 +7373,7 @@ class _MessageVideoAttachmentCard extends StatefulWidget {
     required this.mediaUrl,
     required this.thumbnailUrl,
     required this.title,
+    this.initialFile,
     required this.isMine,
     required this.onOpenViewer,
   });
@@ -7207,19 +7395,26 @@ class _MessageVideoAttachmentCardState
   @override
   void initState() {
     super.initState();
-    unawaited(_restoreCachedVideo());
+    _seedInitialFile();
+    if (_file == null) {
+      unawaited(_restoreCachedVideo());
+    }
   }
 
   @override
   void didUpdateWidget(covariant _MessageVideoAttachmentCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.mediaUrl != widget.mediaUrl) {
+    if (oldWidget.mediaUrl != widget.mediaUrl ||
+        oldWidget.initialFile?.path != widget.initialFile?.path) {
       _loadSubscription?.cancel();
       _file = null;
       _progress = null;
       _isLoading = false;
       _hasError = false;
-      unawaited(_restoreCachedVideo());
+      _seedInitialFile();
+      if (_file == null) {
+        unawaited(_restoreCachedVideo());
+      }
     }
   }
 
@@ -7227,6 +7422,13 @@ class _MessageVideoAttachmentCardState
   void dispose() {
     _loadSubscription?.cancel();
     super.dispose();
+  }
+
+  void _seedInitialFile() {
+    final initialFile = widget.initialFile;
+    if (initialFile == null || !initialFile.existsSync()) return;
+    _file = initialFile;
+    _progress = 1;
   }
 
   Future<void> _restoreCachedVideo() async {
@@ -7453,6 +7655,7 @@ class _MessageAudioAttachmentCard extends StatefulWidget {
   final String mediaUrl;
   final String title;
   final int durationSeconds;
+  final File? initialLocalFile;
   final bool isMine;
   final Color textPrimary;
   final Color textSecondary;
@@ -7462,6 +7665,7 @@ class _MessageAudioAttachmentCard extends StatefulWidget {
     required this.mediaUrl,
     required this.title,
     required this.durationSeconds,
+    this.initialLocalFile,
     required this.isMine,
     required this.textPrimary,
     required this.textSecondary,
@@ -7486,13 +7690,17 @@ class _MessageAudioAttachmentCardState
   @override
   void initState() {
     super.initState();
-    unawaited(_restoreCachedAudio());
+    _seedInitialFile();
+    if (_localFile == null) {
+      unawaited(_restoreCachedAudio());
+    }
   }
 
   @override
   void didUpdateWidget(covariant _MessageAudioAttachmentCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.mediaUrl != widget.mediaUrl) {
+    if (oldWidget.mediaUrl != widget.mediaUrl ||
+        oldWidget.initialLocalFile?.path != widget.initialLocalFile?.path) {
       _downloadSubscription?.cancel();
       _controller?.dispose();
       _controller = null;
@@ -7501,7 +7709,10 @@ class _MessageAudioAttachmentCardState
       _isLoading = false;
       _isPreparing = false;
       _hasError = false;
-      unawaited(_restoreCachedAudio());
+      _seedInitialFile();
+      if (_localFile == null) {
+        unawaited(_restoreCachedAudio());
+      }
     }
   }
 
@@ -7510,6 +7721,13 @@ class _MessageAudioAttachmentCardState
     _downloadSubscription?.cancel();
     _controller?.dispose();
     super.dispose();
+  }
+
+  void _seedInitialFile() {
+    final initialFile = widget.initialLocalFile;
+    if (initialFile == null || !initialFile.existsSync()) return;
+    _localFile = initialFile;
+    _downloadProgress = 1;
   }
 
   Future<void> _restoreCachedAudio() async {
