@@ -1,12 +1,24 @@
-import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:flutter/gestures.dart';
+import 'dart:convert';
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+
+// Importations d'optimisation Shorts
+import '../services/network_quality_service.dart';
+import '../services/video_preload_manager.dart';
+import '../controllers/shorts_feed_controller.dart';
+import 'short_video_player.dart';
+import 'weak_connection_banner.dart';
+import 'shorts_search_page.dart';
+
+
 
 Widget _buildGradientPlaceholder(String char, {double fontSize = 18}) {
   return Container(
@@ -32,36 +44,39 @@ Widget _buildGradientPlaceholder(String char, {double fontSize = 18}) {
 class ShortsView extends StatefulWidget {
   final int currentUserId;
   final io.Socket? socket;
+  final Function(int)? onSwitchTab;
+  final ValueChanged<int>? onViewProfile;
 
   const ShortsView({
     Key? key,
     required this.currentUserId,
     this.socket,
+    this.onSwitchTab,
+    this.onViewProfile,
   }) : super(key: key);
 
   @override
   State<ShortsView> createState() => _ShortsViewState();
 }
 
-class _ShortsViewState extends State<ShortsView> {
+class _ShortsViewState extends State<ShortsView> with WidgetsBindingObserver {
   final PageController _pageController = PageController();
-  final List<dynamic> _reels = [];
-  final Map<int, VideoPlayerController> _controllers = {};
+  late ShortsFeedController _feedController;
   final Set<int> _likedReelIds = {}; // Local like tracking
   final Set<int> _followedUserIds = {}; // Local follow tracking
-  final Set<int> _initializingIndexes = {}; // Prevent concurrent duplicate initializations
-
-  bool _isLoading = false;
-  bool _hasMore = true;
-  String? _nextCursor;
   int _currentPageIndex = 0;
   String _activeTab = 'for_you'; // 'for_you' or 'following'
 
   @override
   void initState() {
     super.initState();
-    _fetchReels(isRefresh: true);
-    
+    WidgetsBinding.instance.addObserver(this);
+    NetworkQualityService().initialize();
+
+    _feedController = ShortsFeedController(currentUserId: widget.currentUserId);
+    _feedController.addListener(_onFeedChanged);
+    _feedController.fetchReels(isRefresh: true);
+
     // Listen for real-time socket updates
     widget.socket?.on('reel-likes-updated', _onReelLikesUpdated);
     widget.socket?.on('reel-comments-updated', _onReelCommentsUpdated);
@@ -70,12 +85,52 @@ class _ShortsViewState extends State<ShortsView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.socket?.off('reel-likes-updated', _onReelLikesUpdated);
     widget.socket?.off('reel-comments-updated', _onReelCommentsUpdated);
     widget.socket?.off('reel-shares-updated', _onReelSharesUpdated);
     _pageController.dispose();
-    _controllers.forEach((_, controller) => controller.dispose());
+    _feedController.removeListener(_onFeedChanged);
+    _feedController.dispose();
+    VideoPreloadManager().dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      VideoPreloadManager().pauseCurrentVideo();
+    } else if (state == AppLifecycleState.resumed) {
+      VideoPreloadManager().resumeCurrentVideo();
+    }
+  }
+
+  void _onFeedChanged() {
+    if (mounted) {
+      VideoPreloadManager().setReels(_feedController.reels);
+
+      // Récupère l'état d'abonnement et de like depuis l'API pour chaque vidéo du flux
+      for (var reel in _feedController.reels) {
+        final reelId = int.tryParse(reel['id']?.toString() ?? '');
+        final isLiked = reel['is_liked'] == true || reel['is_liked'] == 1 || reel['is_liked'] == 'true';
+        if (reelId != null && isLiked) {
+          _likedReelIds.add(reelId);
+        }
+
+        final authorId = int.tryParse(reel['user_id']?.toString() ?? '');
+        final isFollowing = reel['is_author_following'] == true || reel['is_author_following'] == 1 || reel['is_following'] == true || reel['is_following'] == 1;
+        if (authorId != null && isFollowing) {
+          _followedUserIds.add(authorId);
+        }
+      }
+
+      if (_feedController.state == ShortsFeedState.success &&
+          _feedController.reels.isNotEmpty &&
+          _currentPageIndex == 0) {
+        VideoPreloadManager().setFocusedIndex(0);
+      }
+      setState(() {});
+    }
   }
 
   void _onReelLikesUpdated(dynamic data) {
@@ -84,12 +139,7 @@ class _ShortsViewState extends State<ShortsView> {
       final reelId = int.tryParse(data['reelId']?.toString() ?? '');
       final likesCount = int.tryParse(data['likesCount']?.toString() ?? '');
       if (reelId != null && likesCount != null) {
-        setState(() {
-          final index = _reels.indexWhere((r) => int.tryParse(r['id']?.toString() ?? '') == reelId);
-          if (index != -1) {
-            _reels[index]['likes_count'] = likesCount;
-          }
-        });
+        _feedController.updateReelLikes(reelId, likesCount);
       }
     } catch (e) {
       debugPrint('Error updating real-time likes: $e');
@@ -102,12 +152,7 @@ class _ShortsViewState extends State<ShortsView> {
       final reelId = int.tryParse(data['reelId']?.toString() ?? '');
       final commentsCount = int.tryParse(data['commentsCount']?.toString() ?? '');
       if (reelId != null && commentsCount != null) {
-        setState(() {
-          final index = _reels.indexWhere((r) => int.tryParse(r['id']?.toString() ?? '') == reelId);
-          if (index != -1) {
-            _reels[index]['comments_count'] = commentsCount;
-          }
-        });
+        _feedController.updateReelComments(reelId, commentsCount);
       }
     } catch (e) {
       debugPrint('Error updating real-time comments count: $e');
@@ -120,118 +165,10 @@ class _ShortsViewState extends State<ShortsView> {
       final reelId = int.tryParse(data['reelId']?.toString() ?? '');
       final sharesCount = int.tryParse(data['sharesCount']?.toString() ?? '');
       if (reelId != null && sharesCount != null) {
-        setState(() {
-          final index = _reels.indexWhere((r) => int.tryParse(r['id']?.toString() ?? '') == reelId);
-          if (index != -1) {
-            _reels[index]['shares_count'] = sharesCount;
-          }
-        });
+        _feedController.updateReelShares(reelId, sharesCount);
       }
     } catch (e) {
       debugPrint('Error updating real-time shares count: $e');
-    }
-  }
-
-  Future<void> _fetchReels({bool isRefresh = false}) async {
-    if (_isLoading) return;
-    if (!isRefresh && !_hasMore) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final cursorParam = isRefresh ? '' : (_nextCursor ?? '');
-      final response = await http.get(
-        Uri.parse('https://trasx.com/api/feed/reels?cursor=$cursorParam&limit=5'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '${widget.currentUserId}',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true && data['reels'] != null) {
-          final List<dynamic> newReels = data['reels'];
-          setState(() {
-            if (isRefresh) {
-              _reels.clear();
-              _controllers.forEach((_, controller) => controller.dispose());
-              _controllers.clear();
-              _currentPageIndex = 0;
-            }
-            _reels.addAll(newReels);
-            _hasMore = data['hasMore'] ?? false;
-            _nextCursor = data['nextCursor']?.toString();
-
-            // Populate local following state
-            for (var reel in newReels) {
-              final authorId = int.tryParse(reel['user_id']?.toString() ?? '');
-              final isFollowing = reel['is_author_following'] == true || reel['is_author_following'] == 1;
-              if (authorId != null && isFollowing) {
-                _followedUserIds.add(authorId);
-              }
-            }
-          });
-
-          // Preload
-          if (isRefresh && _reels.isNotEmpty) {
-            _initializeController(0);
-            if (_reels.length > 1) _initializeController(1);
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Error loading reels: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _initializeController(int index) async {
-    if (index < 0 || index >= _reels.length) return;
-    if (_controllers.containsKey(index) || _initializingIndexes.contains(index)) return;
-
-    _initializingIndexes.add(index);
-
-    final reel = _reels[index];
-    var videoUrlStr = reel['video_url']?.toString() ?? '';
-    if (videoUrlStr.isEmpty) {
-      _initializingIndexes.remove(index);
-      return;
-    }
-
-    if (!videoUrlStr.startsWith('http')) {
-      videoUrlStr = 'https://trasx.com$videoUrlStr';
-    }
-
-    try {
-      final file = await DefaultCacheManager().getSingleFile(videoUrlStr);
-      
-      // Double check if disposed or already initialized in the meantime
-      if (!mounted || _controllers.containsKey(index)) {
-        _initializingIndexes.remove(index);
-        return;
-      }
-
-      final controller = VideoPlayerController.file(file);
-      _controllers[index] = controller;
-
-      await controller.initialize();
-      controller.setLooping(true);
-      if (mounted && _currentPageIndex == index) {
-        setState(() {});
-        controller.play();
-      }
-    } catch (e) {
-      debugPrint('Error initializing video at index $index: $e');
-    } finally {
-      _initializingIndexes.remove(index);
     }
   }
 
@@ -240,40 +177,11 @@ class _ShortsViewState extends State<ShortsView> {
       _currentPageIndex = index;
     });
 
-    // Play current video
-    final currentController = _controllers[index];
-    if (currentController != null && currentController.value.isInitialized) {
-      currentController.play();
-    } else {
-      _initializeController(index);
-    }
-
-    // Pause all other videos
-    _controllers.forEach((key, controller) {
-      if (key != index) {
-        controller.pause();
-      }
-    });
-
-    // Initialize immediate adjacent videos for caching
-    _initializeController(index - 1);
-    _initializeController(index + 1);
-
-    // Clean up older controllers
-    final keysToRemove = <int>[];
-    _controllers.forEach((key, controller) {
-      if ((key - index).abs() > 1) {
-        controller.dispose();
-        keysToRemove.add(key);
-      }
-    });
-    for (var key in keysToRemove) {
-      _controllers.remove(key);
-    }
+    VideoPreloadManager().setFocusedIndex(index);
 
     // Infinite scroll check
-    if (index >= _reels.length - 2) {
-      _fetchReels();
+    if (index >= _feedController.reels.length - 2) {
+      _feedController.fetchReels();
     }
   }
 
@@ -285,12 +193,12 @@ class _ShortsViewState extends State<ShortsView> {
     setState(() {
       if (isCurrentlyLiked) {
         _likedReelIds.remove(reelId);
-        reel['likes_count'] = (int.tryParse(reel['likes_count']?.toString() ?? '0') ?? 0) - 1;
       } else {
         _likedReelIds.add(reelId);
-        reel['likes_count'] = (int.tryParse(reel['likes_count']?.toString() ?? '0') ?? 0) + 1;
       }
     });
+
+    _feedController.toggleReelLikeLocal(index, !isCurrentlyLiked);
 
     widget.socket?.emit('reel-like-toggle', {
       'reelId': reelId,
@@ -323,11 +231,11 @@ class _ShortsViewState extends State<ShortsView> {
     );
   }
 
-  void _showCommentsSheet(dynamic reel) {
+  void _showCommentsSheet(dynamic reel) async {
     final reelId = int.tryParse(reel['id']?.toString() ?? '');
     if (reelId == null) return;
 
-    showModalBottomSheet(
+    final result = await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -339,6 +247,13 @@ class _ShortsViewState extends State<ShortsView> {
         );
       },
     );
+
+    if (mounted && result != null && result.toString().startsWith('profile:')) {
+      final userId = int.tryParse(result.toString().substring(8));
+      if (userId != null) {
+        widget.onViewProfile?.call(userId);
+      }
+    }
   }
 
   void _showShareSheet(dynamic reel) {
@@ -361,17 +276,43 @@ class _ShortsViewState extends State<ShortsView> {
 
   @override
   Widget build(BuildContext context) {
+    final reels = _feedController.reels;
+    final state = _feedController.state;
+
     return Stack(
       children: [
         // 1. Vertical Video List
-        if (_reels.isEmpty && _isLoading)
+        if (reels.isEmpty && state == ShortsFeedState.initialLoading)
           const Scaffold(
             backgroundColor: Colors.black,
             body: Center(
               child: CupertinoActivityIndicator(color: Colors.white, radius: 14),
             ),
           )
-        else if (_reels.isEmpty)
+        else if (reels.isEmpty && state == ShortsFeedState.networkError)
+          Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(CupertinoIcons.wifi_exclamationmark, color: Colors.white54, size: 64),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Erreur de connexion réseau.',
+                    style: TextStyle(color: Colors.white70, fontSize: 15),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton.icon(
+                    onPressed: () => _feedController.fetchReels(isRefresh: true),
+                    icon: const Icon(CupertinoIcons.refresh, color: Colors.white),
+                    label: const Text('Réessayer', style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else if (reels.isEmpty)
           Scaffold(
             backgroundColor: Colors.black,
             body: Center(
@@ -386,7 +327,7 @@ class _ShortsViewState extends State<ShortsView> {
                   ),
                   const SizedBox(height: 16),
                   TextButton.icon(
-                    onPressed: () => _fetchReels(isRefresh: true),
+                    onPressed: () => _feedController.fetchReels(isRefresh: true),
                     icon: const Icon(CupertinoIcons.refresh, color: Colors.white),
                     label: const Text('Actualiser', style: TextStyle(color: Colors.white)),
                   ),
@@ -399,17 +340,16 @@ class _ShortsViewState extends State<ShortsView> {
             controller: _pageController,
             scrollDirection: Axis.vertical,
             onPageChanged: _onPageChanged,
-            itemCount: _reels.length,
+            itemCount: reels.length,
             itemBuilder: (context, index) {
-              final reel = _reels[index];
-              final controller = _controllers[index];
+              final reel = reels[index];
               final isLiked = _likedReelIds.contains(int.tryParse(reel['id']?.toString() ?? ''));
               final authorId = int.tryParse(reel['user_id']?.toString() ?? '');
               final isFollowing = _followedUserIds.contains(authorId);
 
               return ReelPageItem(
+                index: index,
                 reel: reel,
-                controller: controller,
                 isLiked: isLiked,
                 isFollowing: isFollowing,
                 currentUserId: widget.currentUserId,
@@ -417,6 +357,7 @@ class _ShortsViewState extends State<ShortsView> {
                 onFollowToggle: () => _toggleFollow(reel),
                 onCommentsPressed: () => _showCommentsSheet(reel),
                 onSharePressed: () => _showShareSheet(reel),
+                onViewProfile: widget.onViewProfile,
               );
             },
           ),
@@ -436,7 +377,13 @@ class _ShortsViewState extends State<ShortsView> {
                     const SnackBar(content: Text('Lancement du flux Live en direct...')),
                   );
                 },
-                child: const Icon(CupertinoIcons.tv_music_note, color: Colors.white, size: 28),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(CupertinoIcons.tv_music_note, color: Colors.black.withOpacity(0.5), size: 30),
+                    const Icon(CupertinoIcons.tv_music_note, color: Colors.white, size: 28),
+                  ],
+                ),
               ),
 
               // Centered "Pour toi" and "Abonnements" Tabs
@@ -484,22 +431,155 @@ class _ShortsViewState extends State<ShortsView> {
 
               // Search Button on Right
               GestureDetector(
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Ouverture de la recherche de vidéos...')),
+                onTap: () async {
+                  VideoPreloadManager().pauseCurrentVideo();
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ShortsSearchPage(
+                        currentUserId: widget.currentUserId,
+                        socket: widget.socket,
+                      ),
+                    ),
                   );
+                  VideoPreloadManager().resumeCurrentVideo();
                 },
-                child: const Icon(CupertinoIcons.search, color: Colors.white, size: 28),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(CupertinoIcons.search, color: Colors.black.withOpacity(0.5), size: 30),
+                    const Icon(CupertinoIcons.search, color: Colors.white, size: 28),
+                  ],
+                ),
               ),
             ],
           ),
+        ),
+
+        // 3. Network connection banner
+        WeakConnectionBanner(
+          onRetry: () {
+            if (_feedController.reels.isEmpty) {
+              _feedController.fetchReels(isRefresh: true);
+            } else {
+              VideoPreloadManager().setFocusedIndex(_currentPageIndex);
+            }
+          },
         ),
       ],
     );
   }
 }
 
+class DoubleTapHeart {
+  final int id;
+  final Offset position;
+  final double angle;
+
+  DoubleTapHeart({
+    required this.id,
+    required this.position,
+    required this.angle,
+  });
+}
+
+class HeartIconAnim extends StatefulWidget {
+  final Offset position;
+  final double angle;
+
+  const HeartIconAnim({
+    Key? key,
+    required this.position,
+    required this.angle,
+  }) : super(key: key);
+
+  @override
+  State<HeartIconAnim> createState() => _HeartIconAnimState();
+}
+
+class _HeartIconAnimState extends State<HeartIconAnim> with SingleTickerProviderStateMixin {
+  late AnimationController _animController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+  late Animation<double> _yOffsetAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+
+    _scaleAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween<double>(begin: 0.0, end: 1.4).chain(CurveTween(curve: Curves.easeOut)), weight: 20),
+      TweenSequenceItem(tween: Tween<double>(begin: 1.4, end: 1.0).chain(CurveTween(curve: Curves.easeIn)), weight: 15),
+      TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 45),
+      TweenSequenceItem(tween: Tween<double>(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeIn)), weight: 20),
+    ]).animate(_animController);
+
+    _opacityAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween<double>(begin: 0.0, end: 1.0), weight: 15),
+      TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 65),
+      TweenSequenceItem(tween: Tween<double>(begin: 1.0, end: 0.0), weight: 20),
+    ]).animate(_animController);
+
+    _yOffsetAnimation = Tween<double>(begin: 0.0, end: -80.0).animate(
+      CurvedAnimation(parent: _animController, curve: Curves.easeOut),
+    );
+
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: widget.position.dx - 50,
+      top: widget.position.dy - 50,
+      child: AnimatedBuilder(
+        animation: _animController,
+        builder: (context, child) {
+          return Transform.translate(
+            offset: Offset(0, _yOffsetAnimation.value),
+            child: Transform.rotate(
+              angle: widget.angle,
+              child: Transform.scale(
+                scale: _scaleAnimation.value,
+                child: Opacity(
+                  opacity: _opacityAnimation.value,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(
+                        CupertinoIcons.heart_fill,
+                        color: Colors.black.withOpacity(0.4),
+                        size: 102,
+                      ),
+                      const Icon(
+                        CupertinoIcons.heart_fill,
+                        color: Colors.redAccent,
+                        size: 100,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class ReelPageItem extends StatefulWidget {
+  final int index;
   final dynamic reel;
   final VideoPlayerController? controller;
   final bool isLiked;
@@ -509,9 +589,12 @@ class ReelPageItem extends StatefulWidget {
   final VoidCallback onFollowToggle;
   final VoidCallback onCommentsPressed;
   final VoidCallback onSharePressed;
+  final VideoPreloadManager? preloadManager;
+  final ValueChanged<int>? onViewProfile;
 
   const ReelPageItem({
     Key? key,
+    required this.index,
     required this.reel,
     this.controller,
     required this.isLiked,
@@ -521,6 +604,8 @@ class ReelPageItem extends StatefulWidget {
     required this.onFollowToggle,
     required this.onCommentsPressed,
     required this.onSharePressed,
+    this.preloadManager,
+    this.onViewProfile,
   }) : super(key: key);
 
   @override
@@ -529,8 +614,11 @@ class ReelPageItem extends StatefulWidget {
 
 class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderStateMixin {
   late AnimationController _discAnimationController;
-  bool _isPlaying = true;
   bool _showPlayPauseOverlay = false;
+  late VideoPlaybackControllerState _videoState;
+  final List<DoubleTapHeart> _hearts = [];
+  int _heartIdCounter = 0;
+  VideoPreloadManager get _manager => widget.preloadManager ?? VideoPreloadManager();
 
   @override
   void initState() {
@@ -538,29 +626,77 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
     _discAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 5),
-    )..repeat();
+    );
+
+    _initVideoState();
+  }
+
+  void _initVideoState() {
+    final reel = widget.reel;
+    var videoUrlStr = reel['video_url']?.toString() ?? '';
+    if (!videoUrlStr.startsWith('http')) {
+      videoUrlStr = 'https://trasx.com$videoUrlStr';
+    }
+    final thumbnailUrl = reel['thumbnail_url'] ?? reel['thumbnail'];
+
+    _videoState = _manager.getOrCreateState(
+      widget.index,
+      videoUrlStr,
+      thumbnailUrl,
+    );
+    _videoState.addListener(_onVideoStateChanged);
+    _updateDiscState();
+  }
+
+  @override
+  void didUpdateWidget(covariant ReelPageItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.index != widget.index || oldWidget.reel['video_url'] != widget.reel['video_url']) {
+      _videoState.removeListener(_onVideoStateChanged);
+      _initVideoState();
+    }
   }
 
   @override
   void dispose() {
+    _videoState.removeListener(_onVideoStateChanged);
     _discAnimationController.dispose();
     super.dispose();
   }
 
-  void _onTapVideo() {
-    final controller = widget.controller;
-    if (controller == null || !controller.value.isInitialized) return;
+  void _onVideoStateChanged() {
+    if (mounted) {
+      setState(() {
+        _updateDiscState();
+      });
+    }
+  }
 
-    setState(() {
-      if (controller.value.isPlaying) {
-        controller.pause();
-        _isPlaying = false;
-        _discAnimationController.stop();
-      } else {
-        controller.play();
-        _isPlaying = true;
+  void _updateDiscState() {
+    final controller = _videoState.controller;
+    final isPlaying = controller != null && controller.value.isInitialized && controller.value.isPlaying;
+    if (isPlaying) {
+      if (!_discAnimationController.isAnimating) {
         _discAnimationController.repeat();
       }
+    } else {
+      if (_discAnimationController.isAnimating) {
+        _discAnimationController.stop();
+      }
+    }
+  }
+
+  void _onTapVideo() {
+    final controller = _videoState.controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    if (controller.value.isPlaying) {
+      controller.pause();
+    } else {
+      controller.play();
+    }
+
+    setState(() {
       _showPlayPauseOverlay = true;
     });
 
@@ -573,9 +709,34 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
     });
   }
 
+  void _handleDoubleTap(Offset position) {
+    if (!widget.isLiked) {
+      widget.onLikeToggle();
+    }
+
+    final random = Random();
+    final double angle = (random.nextDouble() - 0.5) * 0.6; // random tilt
+    final heart = DoubleTapHeart(
+      id: _heartIdCounter++,
+      position: position,
+      angle: angle,
+    );
+
+    setState(() {
+      _hearts.add(heart);
+    });
+
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (mounted) {
+        setState(() {
+          _hearts.removeWhere((h) => h.id == heart.id);
+        });
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final controller = widget.controller;
     final caption = widget.reel['caption']?.toString() ?? '';
     final username = widget.reel['author_username']?.toString() ?? 'user';
     final musicName = widget.reel['sound_name']?.toString() ?? 'Original Sound';
@@ -594,27 +755,27 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
         // 1. Full Screen Immersive Video (BoxFit.cover strategy)
         GestureDetector(
           onTap: _onTapVideo,
+          onDoubleTapDown: (details) => _handleDoubleTap(details.localPosition),
+          onDoubleTap: () {}, // Nécessaire pour activer le double-tap
           child: Container(
             color: Colors.black,
             width: double.infinity,
             height: double.infinity,
-            child: (controller != null && controller.value.isInitialized)
-                ? SizedBox.expand(
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      clipBehavior: Clip.hardEdge,
-                      child: SizedBox(
-                        width: controller.value.size.width,
-                        height: controller.value.size.height,
-                        child: VideoPlayer(controller),
-                      ),
-                    ),
-                  )
-                : const Center(
-                    child: CupertinoActivityIndicator(color: Colors.white),
-                  ),
+            child: ShortVideoPlayer(
+              index: widget.index,
+              videoUrl: _videoState.url,
+              thumbnailUrl: _videoState.thumbnailUrl,
+              preloadManager: _manager,
+            ),
           ),
         ),
+
+        // Cœurs animés lors du double-tap
+        ..._hearts.map((heart) => HeartIconAnim(
+              key: ValueKey(heart.id),
+              position: heart.position,
+              angle: heart.angle,
+            )),
 
         // Gradient scrim overlays for readable UI
         Positioned(
@@ -675,7 +836,9 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                   borderRadius: BorderRadius.circular(50),
                 ),
                 child: Icon(
-                  _isPlaying ? CupertinoIcons.play_fill : CupertinoIcons.pause_fill,
+                  (_videoState.controller != null && _videoState.controller!.value.isPlaying)
+                      ? CupertinoIcons.play_fill
+                      : CupertinoIcons.pause_fill,
                   color: Colors.white,
                   size: 40,
                 ),
@@ -754,15 +917,22 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
             mainAxisSize: MainAxisSize.min,
             children: [
               // Author username
-              Text(
-                '@$username',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  shadows: [
-                    Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset(0, 1.5)),
-                  ],
+              GestureDetector(
+                onTap: () {
+                  if (authorId != null) {
+                    widget.onViewProfile?.call(authorId);
+                  }
+                },
+                child: Text(
+                  '@$username',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    shadows: [
+                      Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset.zero),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 6),
@@ -777,7 +947,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                     color: Colors.white70,
                     fontSize: 14,
                     shadows: [
-                      Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset(0, 1.5)),
+                      Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset.zero),
                     ],
                   ),
                 ),
@@ -791,7 +961,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                     color: Colors.white70,
                     size: 14,
                     shadows: [
-                      Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset(0, 1.5)),
+                      Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset.zero),
                     ],
                   ),
                   const SizedBox(width: 6),
@@ -805,7 +975,7 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                         shadows: [
-                          Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset(0, 1.5)),
+                          Shadow(blurRadius: 6.0, color: Colors.black45, offset: Offset.zero),
                         ],
                       ),
                     ),
@@ -817,13 +987,13 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
         ),
 
         // 5. Very thin Video Progress Bar at the bottom
-        if (controller != null && controller.value.isInitialized)
+        if (_videoState.controller != null && _videoState.controller!.value.isInitialized)
           Positioned(
             left: 0,
             right: 0,
             bottom: 0.0,
             child: VideoProgressIndicator(
-              controller,
+              _videoState.controller!,
               allowScrubbing: true,
               colors: const VideoProgressColors(
                 playedColor: Colors.white,
@@ -843,23 +1013,30 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
       alignment: Alignment.bottomCenter,
       clipBehavior: Clip.none,
       children: [
-        Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 1.5),
-            color: Colors.grey[900],
-          ),
-          child: ClipOval(
-            child: avatarUrl.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: avatarUrl,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(color: Colors.black26),
-                    errorWidget: (context, url, error) => _buildGradientPlaceholder(username.isNotEmpty ? username : 'U', fontSize: 18),
-                  )
-                : _buildGradientPlaceholder(username.isNotEmpty ? username : 'U', fontSize: 18),
+        GestureDetector(
+          onTap: () {
+            if (authorId != null) {
+              widget.onViewProfile?.call(authorId);
+            }
+          },
+          child: Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 1.5),
+              color: Colors.grey[900],
+            ),
+            child: ClipOval(
+              child: avatarUrl.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: avatarUrl,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(color: Colors.black26),
+                      errorWidget: (context, url, error) => _buildGradientPlaceholder(username.isNotEmpty ? username : 'U', fontSize: 18),
+                    )
+                  : _buildGradientPlaceholder(username.isNotEmpty ? username : 'U', fontSize: 18),
+            ),
           ),
         ),
         if (showPlus)
@@ -893,12 +1070,19 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
       behavior: HitTestBehavior.opaque,
       child: Column(
         children: [
-          Icon(
-            icon,
-            color: iconColor,
-            size: 32,
-            shadows: const [
-              Shadow(blurRadius: 8.0, color: Colors.black87, offset: Offset(1.5, 1.5)),
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Icon(
+                icon,
+                color: Colors.black.withOpacity(0.5),
+                size: 34,
+              ),
+              Icon(
+                icon,
+                color: iconColor,
+                size: 32,
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -908,6 +1092,9 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
               color: Colors.white,
               fontSize: 12,
               fontWeight: FontWeight.bold,
+              shadows: [
+                Shadow(blurRadius: 4.0, color: Colors.black54, offset: Offset.zero),
+              ],
             ),
           )
         ],
@@ -988,9 +1175,56 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
     }
   }
 
+  bool _isUploadingImage = false;
+  String? _selectedCommentImageUrl;
+
+  Future<void> _pickAndUploadImage() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+      if (image == null) return;
+
+      setState(() {
+        _isUploadingImage = true;
+      });
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://trasx.com/api/comments/upload-image'),
+      );
+      request.headers['x-user-id'] = '${widget.currentUserId}';
+      request.files.add(await http.MultipartFile.fromPath('image', image.path));
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _selectedCommentImageUrl = data['imageUrl'];
+          _isUploadingImage = false;
+        });
+      } else {
+        setState(() {
+          _isUploadingImage = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Échec de l'envoi de l'image.")),
+        );
+      }
+    } catch (_) {
+      setState(() {
+        _isUploadingImage = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Erreur lors de la sélection de l'image.")),
+      );
+    }
+  }
+
   void _sendComment() {
     final text = _commentInputController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && _selectedCommentImageUrl == null) return;
 
     final int? parentId = _replyingToComment != null 
         ? int.tryParse(_replyingToComment['id']?.toString() ?? '') 
@@ -1000,11 +1234,13 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
       'reelId': widget.reelId,
       'content': text,
       'parentId': parentId,
+      'imageUrl': _selectedCommentImageUrl,
     }, ack: (ack) {
       if (ack != null && ack['success'] == true) {
         _commentInputController.clear();
         setState(() {
           _replyingToComment = null;
+          _selectedCommentImageUrl = null;
         });
       }
     });
@@ -1232,6 +1468,7 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                           final bool isLiked = _likedCommentIds.contains(cId);
                           final int likesCount = comment['likes_count'] ?? 0;
 
+                          final cImageUrl = comment['image_url']?.toString() ?? '';
                           var cAvatar = comment['avatar']?.toString() ?? '';
                           if (cAvatar.isNotEmpty && !cAvatar.startsWith('http')) {
                             cAvatar = 'https://trasx.com$cAvatar';
@@ -1275,10 +1512,35 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                                         style: TextStyle(color: textSecondaryColor, fontSize: 12, fontWeight: FontWeight.bold),
                                       ),
                                       const SizedBox(height: 4),
-                                      Text(
-                                        cText,
-                                        style: TextStyle(color: textPrimaryColor, fontSize: 13.5),
-                                      ),
+                                      _buildCommentText(cText, context, textPrimaryColor),
+                                      if (cImageUrl.isNotEmpty) ...[
+                                        const SizedBox(height: 6),
+                                        GestureDetector(
+                                          onTap: () {
+                                            showDialog(
+                                              context: context,
+                                              builder: (context) => Dialog(
+                                                backgroundColor: Colors.transparent,
+                                                child: CachedNetworkImage(
+                                                  imageUrl: cImageUrl.startsWith('http') ? cImageUrl : 'https://trasx.com$cImageUrl',
+                                                  fit: BoxFit.contain,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: CachedNetworkImage(
+                                              imageUrl: cImageUrl.startsWith('http') ? cImageUrl : 'https://trasx.com$cImageUrl',
+                                              width: 120,
+                                              height: 120,
+                                              fit: BoxFit.cover,
+                                              placeholder: (context, url) => Container(color: Colors.white10),
+                                              errorWidget: (context, url, error) => const SizedBox.shrink(),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                       const SizedBox(height: 6),
 
                                       // Actions: Date & Reply button
@@ -1397,6 +1659,48 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
             ),
           ),
 
+          // Image upload/attached banner
+          if (_isUploadingImage || _selectedCommentImageUrl != null)
+            Container(
+              color: isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF9F9F9),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      color: isDark ? Colors.white10 : Colors.black12,
+                      width: 32,
+                      height: 32,
+                      child: _isUploadingImage
+                          ? const CupertinoActivityIndicator(radius: 8)
+                          : CachedNetworkImage(
+                              imageUrl: _selectedCommentImageUrl!.startsWith('http')
+                                  ? _selectedCommentImageUrl!
+                                  : 'https://trasx.com$_selectedCommentImageUrl',
+                              fit: BoxFit.cover,
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    _isUploadingImage ? "Envoi de l'image..." : "Image attachée au commentaire",
+                    style: TextStyle(color: textSecondaryColor, fontSize: 12),
+                  ),
+                  const Spacer(),
+                  if (!_isUploadingImage)
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedCommentImageUrl = null;
+                        });
+                      },
+                      child: Icon(CupertinoIcons.xmark_circle_fill, color: textMutedColor, size: 18),
+                    ),
+                ],
+              ),
+            ),
+
           // Input field at bottom
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
@@ -1423,30 +1727,84 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                   },
                 ),
                 Expanded(
-                  child: TextField(
-                    controller: _commentInputController,
-                    style: TextStyle(color: textPrimaryColor, fontSize: 14),
-                    cursorColor: textPrimaryColor,
-                    onTap: () {
-                      if (_showEmojiPicker) {
-                        setState(() {
-                          _showEmojiPicker = false;
-                        });
-                      }
-                    },
-                    decoration: InputDecoration(
-                      hintText: _replyingToComment != null 
-                          ? 'Répondre à @${_replyingToComment['username']}...' 
-                          : 'Ajouter un commentaire...',
-                      hintStyle: TextStyle(color: textMutedColor),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: Container(
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    onSubmitted: (_) => _sendComment(),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _commentInputController,
+                            style: TextStyle(color: textPrimaryColor, fontSize: 14),
+                            cursorColor: textPrimaryColor,
+                            textAlignVertical: TextAlignVertical.center,
+                            onTap: () {
+                              if (_showEmojiPicker) {
+                                setState(() {
+                                  _showEmojiPicker = false;
+                                });
+                              }
+                            },
+                            decoration: InputDecoration(
+                              hintText: _replyingToComment != null 
+                                  ? 'Répondre à @${_replyingToComment['username']}...' 
+                                  : 'Ajouter un commentaire...',
+                              hintStyle: TextStyle(color: textMutedColor, fontSize: 14),
+                              border: InputBorder.none,
+                              isCollapsed: true,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                            onSubmitted: (_) => _sendComment(),
+                          ),
+                        ),
+                        // Image selection icon
+                        GestureDetector(
+                          onTap: _pickAndUploadImage,
+                          child: Icon(
+                            CupertinoIcons.photo,
+                            color: _selectedCommentImageUrl != null ? const Color(0xFFE9435A) : textSecondaryColor,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // @ Tag icon shortcut
+                        GestureDetector(
+                          onTap: () {
+                            final text = _commentInputController.text;
+                            final selection = _commentInputController.selection;
+                            final newText = text.replaceRange(
+                              selection.start >= 0 ? selection.start : text.length,
+                              selection.end >= 0 ? selection.end : text.length,
+                              '@',
+                            );
+                            _commentInputController.value = TextEditingValue(
+                              text: newText,
+                              selection: TextSelection.collapsed(
+                                offset: (selection.start >= 0 ? selection.start : text.length) + 1,
+                              ),
+                            );
+                          },
+                          child: Icon(
+                            CupertinoIcons.at,
+                            color: textSecondaryColor,
+                            size: 20,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(CupertinoIcons.paperplane_fill, color: Color(0xFFE1306C)),
+                  icon: Icon(
+                    CupertinoIcons.paperplane_fill,
+                    color: _commentInputController.text.trim().isNotEmpty || _selectedCommentImageUrl != null
+                        ? const Color(0xFFE1306C)
+                        : Colors.white38,
+                  ),
                   onPressed: _sendComment,
                 )
               ],
@@ -1498,6 +1856,67 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCommentText(String text, BuildContext context, Color textPrimaryColor) {
+    final List<TextSpan> spans = [];
+    final words = text.split(' ');
+
+    for (int i = 0; i < words.length; i++) {
+      final word = words[i];
+      final trailingSpace = i == words.length - 1 ? "" : " ";
+
+      if (word.startsWith('@') && word.length > 1) {
+        final username = word.substring(1).replaceAll(RegExp(r'[^\w_]'), '');
+        spans.add(
+          TextSpan(
+            text: '$word$trailingSpace',
+            style: const TextStyle(
+              color: Color(0xFF3897F0), // TikTok blue tag
+              fontWeight: FontWeight.bold,
+            ),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () async {
+                try {
+                  final response = await http.get(
+                    Uri.parse('https://trasx.com/api/users/search?q=${Uri.encodeComponent(username)}'),
+                    headers: {'Content-Type': 'application/json'},
+                  ).timeout(const Duration(seconds: 4));
+
+                  if (response.statusCode == 200) {
+                    final List<dynamic> users = jsonDecode(response.body);
+                    final matchingUser = users.firstWhere(
+                      (u) => u['username']?.toString().toLowerCase() == username.toLowerCase(),
+                      orElse: () => null,
+                    );
+
+                    if (matchingUser != null) {
+                      final userId = int.tryParse(matchingUser['id']?.toString() ?? '');
+                      if (userId != null && context.mounted) {
+                        Navigator.pop(context, 'profile:$userId');
+                      }
+                    }
+                  }
+                } catch (_) {}
+              },
+          ),
+        );
+      } else {
+        spans.add(
+          TextSpan(
+            text: '$word$trailingSpace',
+            style: TextStyle(color: textPrimaryColor),
+          ),
+        );
+      }
+    }
+
+    return RichText(
+      text: TextSpan(
+        style: TextStyle(fontSize: 13.5, fontFamily: 'Outfit', color: textPrimaryColor),
+        children: spans,
       ),
     );
   }

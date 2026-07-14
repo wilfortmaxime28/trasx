@@ -94,6 +94,18 @@ class Reel {
       )
     `);
 
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS reel_likes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        reel_id INT NOT NULL,
+        user_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_reel_user_like (reel_id, user_id),
+        FOREIGN KEY (reel_id) REFERENCES reels(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
     await ensureIndex('reels', 'idx_reels_created_id', '(created_at DESC, id DESC)');
     await ensureIndex('reels', 'idx_reels_user_created_id', '(user_id, created_at DESC, id DESC)');
     await ensureIndex('reels', 'idx_reels_promo_created_id', '(promo_paid_hashtag_count, promo_daily_target, created_at DESC, id DESC)');
@@ -146,12 +158,17 @@ class Reel {
           SELECT 1
           FROM follows f
           WHERE f.follower_id = ? AND f.following_id = r.user_id
-        ) AS is_author_following
+        ) AS is_author_following,
+        EXISTS(
+          SELECT 1
+          FROM reel_likes rl
+          WHERE rl.user_id = ? AND rl.reel_id = r.id
+        ) AS is_liked
       FROM reels r
       JOIN users u ON r.user_id = u.id
       ORDER BY r.created_at DESC
     `;
-    const [rows] = await db.query(query, [currentUserId]);
+    const [rows] = await db.query(query, [currentUserId, currentUserId]);
     return rows;
   }
 
@@ -224,6 +241,7 @@ class Reel {
         u.created_at AS author_created_at,
         COALESCE(fc.followers_count, 0) AS author_followers_count,
         (fw.follower_id IS NOT NULL) AS is_author_following,
+        (rl.user_id IS NOT NULL) AS is_liked,
         ROUND((
           CASE WHEN fw.follower_id IS NOT NULL THEN 1500 ELSE 0 END
           + LEAST((r.promo_paid_hashtag_count * 240) + (LEAST(r.promo_daily_target, 5000) / 10), 1700)
@@ -259,6 +277,7 @@ class Reel {
         FROM follows
         GROUP BY following_id
       ) fc ON fc.following_id = r.user_id
+      LEFT JOIN reel_likes rl ON rl.reel_id = r.id AND rl.user_id = ?
       LEFT JOIN follows fw ON fw.follower_id = ? AND fw.following_id = r.user_id
       WHERE 1 = 1
       ${hardExcludeClause}
@@ -290,6 +309,7 @@ class Reel {
       safeSeed,
       ...normalizedSoftSeenIds,
       currentUserId,
+      currentUserId,
       ...normalizedHardExcludeIds
     ];
 
@@ -315,7 +335,8 @@ class Reel {
       ...row,
       ranking_score: Number(ranking_score || 0),
       created_at_sort: Number(created_at_sort || 0),
-      is_author_following: !!row.is_author_following
+      is_author_following: !!row.is_author_following,
+      is_liked: !!row.is_liked
     }));
 
     return {
@@ -413,6 +434,7 @@ class Reel {
         u.created_at AS author_created_at,
         COALESCE(fc.followers_count, 0) AS author_followers_count,
         (fw.follower_id IS NOT NULL) AS is_author_following,
+        (rl.user_id IS NOT NULL) AS is_liked,
         CASE
           WHEN LOWER(COALESCE(u.username, '')) = ? THEN 1000
           WHEN LOWER(COALESCE(u.display_name, CONCAT_WS(' ', u.first_name, u.last_name))) = ? THEN 960
@@ -430,6 +452,7 @@ class Reel {
         FROM follows
         GROUP BY following_id
       ) fc ON fc.following_id = r.user_id
+      LEFT JOIN reel_likes rl ON rl.reel_id = r.id AND rl.user_id = ?
       LEFT JOIN follows fw ON fw.follower_id = ? AND fw.following_id = r.user_id
       WHERE
         LOWER(COALESCE(u.username, '')) LIKE ?
@@ -452,6 +475,7 @@ class Reel {
       containsQuery,
       containsQuery,
       currentUserId,
+      currentUserId,
       containsQuery,
       containsQuery,
       containsQuery,
@@ -465,7 +489,8 @@ class Reel {
     return rows.map(({ search_rank, ...row }) => ({
       ...row,
       search_rank: Number(search_rank || 0),
-      is_author_following: !!row.is_author_following
+      is_author_following: !!row.is_author_following,
+      is_liked: !!row.is_liked
     }));
   }
 
@@ -504,7 +529,8 @@ class Reel {
         u.certification_type AS author_certification_type,
         u.created_at AS author_created_at,
         COALESCE(fc.followers_count, 0) AS author_followers_count,
-        (fw.follower_id IS NOT NULL) AS is_author_following
+        (fw.follower_id IS NOT NULL) AS is_author_following,
+        (rl.user_id IS NOT NULL) AS is_liked
       FROM reels r
       JOIN users u ON u.id = r.user_id
       LEFT JOIN (
@@ -517,17 +543,19 @@ class Reel {
         FROM follows
         GROUP BY following_id
       ) fc ON fc.following_id = r.user_id
+      LEFT JOIN reel_likes rl ON rl.reel_id = r.id AND rl.user_id = ?
       LEFT JOIN follows fw ON fw.follower_id = ? AND fw.following_id = r.user_id
       WHERE r.id = ?
       LIMIT 1
     `;
 
-    const [rows] = await db.query(query, [currentUserId, reelId]);
+    const [rows] = await db.query(query, [currentUserId, currentUserId, reelId]);
     if (!rows.length) return null;
 
     return {
       ...rows[0],
-      is_author_following: !!rows[0].is_author_following
+      is_author_following: !!rows[0].is_author_following,
+      is_liked: !!rows[0].is_liked
     };
   }
 
@@ -648,12 +676,18 @@ class Reel {
     await db.query('DELETE FROM reels WHERE id = ? AND user_id = ?', [reelId, userId]);
   }
 
-  static async incrementLikes(reelId) {
-    await db.query('UPDATE reels SET likes_count = likes_count + 1 WHERE id = ?', [reelId]);
+  static async incrementLikes(reelId, userId) {
+    if (userId) {
+      await db.query('INSERT IGNORE INTO reel_likes (reel_id, user_id) VALUES (?, ?)', [reelId, userId]);
+    }
+    await db.query('UPDATE reels SET likes_count = (SELECT COUNT(*) FROM reel_likes WHERE reel_id = ?) WHERE id = ?', [reelId, reelId]);
   }
 
-  static async decrementLikes(reelId) {
-    await db.query('UPDATE reels SET likes_count = GREATEST(0, likes_count - 1) WHERE id = ?', [reelId]);
+  static async decrementLikes(reelId, userId) {
+    if (userId) {
+      await db.query('DELETE FROM reel_likes WHERE reel_id = ? AND user_id = ?', [reelId, userId]);
+    }
+    await db.query('UPDATE reels SET likes_count = (SELECT COUNT(*) FROM reel_likes WHERE reel_id = ?) WHERE id = ?', [reelId, reelId]);
   }
 
   static async incrementComments(reelId) {
@@ -698,6 +732,9 @@ class Reel {
     if (!columnNames.has('voice_duration_seconds')) {
       await db.query('ALTER TABLE reel_comments ADD COLUMN voice_duration_seconds INT DEFAULT NULL');
     }
+    if (!columnNames.has('image_url')) {
+      await db.query('ALTER TABLE reel_comments ADD COLUMN image_url VARCHAR(255) DEFAULT NULL');
+    }
 
     await ensureIndex('reel_comments', 'idx_reel_comments_reel_created', '(reel_id, created_at DESC, id DESC)');
   }
@@ -713,6 +750,7 @@ class Reel {
         rc.content,
         rc.voice_url,
         rc.voice_duration_seconds,
+        rc.image_url,
         rc.created_at,
         u.first_name,
         u.last_name,
@@ -740,7 +778,7 @@ class Reel {
   static async addComment(reelId, userId, content) {
     await Reel.ensureReelCommentsTable();
     const [result] = await db.query(
-      'INSERT INTO reel_comments (reel_id, user_id, parent_id, content, voice_url, voice_duration_seconds) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO reel_comments (reel_id, user_id, parent_id, content, voice_url, voice_duration_seconds, image_url) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [
         reelId,
         userId,
@@ -749,7 +787,8 @@ class Reel {
         content?.voiceUrl || null,
         content?.voiceDurationSeconds !== undefined && content?.voiceDurationSeconds !== null
           ? parseInt(content.voiceDurationSeconds, 10)
-          : null
+          : null,
+        content?.imageUrl || null
       ]
     );
     await db.query(

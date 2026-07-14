@@ -2654,6 +2654,18 @@ class _DashboardPageState extends State<DashboardPage> {
     return ShortsView(
       currentUserId: _userId,
       socket: _socket,
+      onSwitchTab: (index) {
+        if (mounted) {
+          setState(() {
+            _activeViewIndex = index;
+          });
+        }
+      },
+      onViewProfile: (userId) {
+        if (mounted) {
+          _navigateToUserProfile(userId);
+        }
+      },
     );
   }
 

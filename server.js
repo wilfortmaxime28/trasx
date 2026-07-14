@@ -5510,6 +5510,26 @@ app.post('/api/comments/upload-voice', requireAuth, upload.single('audio'), (req
   res.json({ voiceUrl });
 });
 
+const commentImageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname) || '.jpg';
+    cb(null, 'comment-img-' + uniqueSuffix + ext);
+  }
+});
+const uploadCommentImage = multer({ storage: commentImageStorage });
+
+app.post('/api/comments/upload-image', requireAuth, uploadCommentImage.single('image'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No image file received.' });
+  }
+  const imageUrl = '/uploads/comments/' + req.file.filename;
+  res.json({ imageUrl });
+});
+
 // Configuration de multer pour les médias de posts
 const postUploadDir = path.join(__dirname, 'public/uploads/posts');
 if (!fs.existsSync(postUploadDir)) {
@@ -8445,15 +8465,18 @@ io.on('connection', (socket) => {
   // --- Reels / Shorts Socket Events ---
   socket.on('reel-like-toggle', async (data) => {
     try {
+      const currentUserId = session.userId;
+      if (!currentUserId) return;
+
       const { reelId, isLiked } = data;
       const parsedReelId = parseInt(reelId, 10);
       if (!parsedReelId) return;
 
       const Reel = require('./models/Reel');
       if (isLiked) {
-        await Reel.incrementLikes(parsedReelId);
+        await Reel.incrementLikes(parsedReelId, currentUserId);
       } else {
-        await Reel.decrementLikes(parsedReelId);
+        await Reel.decrementLikes(parsedReelId, currentUserId);
       }
 
       // Broadcast update to all other connected clients
@@ -8503,11 +8526,11 @@ io.on('connection', (socket) => {
       const currentUserId = session.userId;
       if (!currentUserId) return ack?.({ success: false, error: 'Unauthorized' });
 
-      const { reelId, content, parentId, voiceUrl, voiceDuration } = data;
+      const { reelId, content, parentId, voiceUrl, voiceDuration, imageUrl } = data;
       const parsedReelId = parseInt(reelId, 10);
       const parsedParentId = parentId ? parseInt(parentId, 10) : null;
       const normalizedContent = content ? String(content).trim() : '';
-      if (!parsedReelId || (!normalizedContent && !voiceUrl)) {
+      if (!parsedReelId || (!normalizedContent && !voiceUrl && !imageUrl)) {
         return ack?.({ success: false, error: 'Invalid input' });
       }
 
@@ -8525,7 +8548,8 @@ io.on('connection', (socket) => {
         parentId: parsedParentId || null,
         content: normalizedContent,
         voiceUrl: voiceUrl || null,
-        voiceDurationSeconds: Number.isFinite(normalizedVoiceDuration) ? normalizedVoiceDuration : null
+        voiceDurationSeconds: Number.isFinite(normalizedVoiceDuration) ? normalizedVoiceDuration : null,
+        imageUrl: imageUrl || null
       });
 
       const User = require('./models/User');
@@ -8536,6 +8560,7 @@ io.on('connection', (socket) => {
         parent_id: parsedParentId || null,
         voice_url: voiceUrl || null,
         voice_duration_seconds: Number.isFinite(normalizedVoiceDuration) ? normalizedVoiceDuration : null,
+        image_url: imageUrl || null,
         created_at: new Date().toISOString(),
         first_name: sender.first_name,
         last_name: sender.last_name,
@@ -8546,6 +8571,47 @@ io.on('connection', (socket) => {
 
       // Broadcast new comment to the reel comments room
       io.to(`reel:comments:${parsedReelId}`).emit('reel-comment-broadcast', { reelId: parsedReelId, comment: newComment });
+
+      // Parse mentions and send notifications
+      if (normalizedContent) {
+        const matches = normalizedContent.match(/@(\w+)/g);
+        if (matches) {
+          try {
+            const Notification = require('./models/Notification');
+            for (const match of matches) {
+              const usernameToNotify = match.substring(1);
+              const [userRows] = await require('./config/db').query('SELECT id FROM users WHERE LOWER(username) = ?', [usernameToNotify.toLowerCase()]);
+              if (userRows && userRows.length > 0) {
+                const taggedUserId = userRows[0].id;
+                if (Number(taggedUserId) !== Number(currentUserId)) {
+                  const notificationMessage = `@${sender.username} vous a tagué dans un commentaire : "${normalizedContent.substring(0, 50)}"`;
+                  const notificationId = await Notification.create({
+                    recipientId: taggedUserId,
+                    actorId: currentUserId,
+                    type: 'mention',
+                    message: notificationMessage,
+                    commentId: commentId
+                  });
+
+                  const unreadCount = await Notification.getUnreadCount(taggedUserId);
+                  io.to(`user:${taggedUserId}`).emit('notification-created', {
+                    id: notificationId,
+                    actor_id: currentUserId,
+                    actor_username: sender.username,
+                    actor_avatar: sender.avatar,
+                    type: 'mention',
+                    message: notificationMessage,
+                    unreadCount
+                  });
+                  io.to(`user:${taggedUserId}`).emit('notification-count-updated', { unreadCount });
+                }
+              }
+            }
+          } catch (notifyErr) {
+            console.error('Mention notification error:', notifyErr);
+          }
+        }
+      }
 
       // Broadcast comment count update to all clients
       const [rows] = await require('./config/db').query('SELECT comments_count FROM reels WHERE id = ?', [parsedReelId]);
