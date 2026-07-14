@@ -5593,6 +5593,17 @@ if (!fs.existsSync(messageUploadDir)) {
   fs.mkdirSync(messageUploadDir, { recursive: true });
 }
 
+function safeRemoveLocalFile(filePath) {
+  if (!filePath) return;
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (error) {
+    console.error('Failed to remove local file:', error);
+  }
+}
+
 const messageStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, messageUploadDir);
@@ -5622,9 +5633,9 @@ app.post('/api/messages/upload-media', requireAuth, uploadMessageMedia.fields([
     return res.status(400).json({ error: 'No file received.' });
   }
 
-  const attachmentUrl = '/uploads/messages/' + file.filename;
+  const sourcePath = file.path || path.join(messageUploadDir, file.filename);
   const attachmentName = file.originalname || file.filename;
-  const attachmentSize = file.size;
+  const sourceSize = file.size;
   const rawMime = String(file.mimetype || '').trim().toLowerCase();
   const fileName = String(file.originalname || file.filename || '').toLowerCase();
   const ext = path.extname(fileName);
@@ -5666,12 +5677,8 @@ app.post('/api/messages/upload-media', requireAuth, uploadMessageMedia.fields([
     file: 25 * 1024 * 1024
   };
   const maxAllowedSize = sizeLimits[attachmentType] || sizeLimits.file;
-  if (attachmentSize > maxAllowedSize) {
-    try {
-      fs.unlinkSync(path.join(messageUploadDir, file.filename));
-    } catch (unlinkErr) {
-      console.error('Failed to cleanup oversized message file:', unlinkErr);
-    }
+  if (sourceSize > maxAllowedSize) {
+    safeRemoveLocalFile(sourcePath);
     return res.status(413).json({
       error: attachmentType === 'video'
         ? 'Video files must not exceed 100 MB.'
@@ -5679,29 +5686,86 @@ app.post('/api/messages/upload-media', requireAuth, uploadMessageMedia.fields([
     });
   }
 
+  let attachmentUrl = '/uploads/messages/' + file.filename;
   let attachmentThumbnailUrl = null;
-  if (attachmentType === 'video') {
-    try {
-      const mediaOptimizer = require('./utils/mediaOptimizer');
-      const baseName = path.parse(file.filename).name;
-      const thumbnailFileName = `${baseName}-thumb.webp`;
-      const thumbnailAbsolutePath = path.join(
-        messageUploadDir,
-        thumbnailFileName,
-      );
-      const absoluteVideoPath =
-        file.path || path.join(messageUploadDir, file.filename);
+  let attachmentSize = sourceSize;
+  let optimizedMime = mime;
 
-      await mediaOptimizer.generateVideoThumbnail(
-        absoluteVideoPath,
-        thumbnailAbsolutePath,
-      );
-      attachmentThumbnailUrl = `/uploads/messages/${thumbnailFileName}`;
-    } catch (thumbErr) {
-      console.error(
-        'Failed to generate message video thumbnail:',
-        thumbErr,
-      );
+  if (
+    attachmentType == 'image' ||
+    attachmentType == 'video' ||
+    attachmentType == 'audio'
+  ) {
+    const mediaOptimizer = require('./utils/mediaOptimizer');
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    let optimizedPath = sourcePath;
+
+    try {
+      if (attachmentType === 'image') {
+        const optimizedFilename = `opt-message-${uniqueSuffix}.webp`;
+        optimizedPath = path.join(messageUploadDir, optimizedFilename);
+        await mediaOptimizer.optimizeImage(sourcePath, optimizedPath, {
+          maxWidth: 1440,
+          maxHeight: 1440,
+          quality: 78
+        });
+        attachmentUrl = `/uploads/messages/${optimizedFilename}`;
+        optimizedMime = 'image/webp';
+      } else if (attachmentType === 'video') {
+        const optimizedFilename = `opt-message-${uniqueSuffix}.mp4`;
+        optimizedPath = path.join(messageUploadDir, optimizedFilename);
+        await mediaOptimizer.optimizeVideo(sourcePath, optimizedPath);
+        attachmentUrl = `/uploads/messages/${optimizedFilename}`;
+        optimizedMime = 'video/mp4';
+
+        try {
+          const thumbnailFileName = `opt-message-${uniqueSuffix}-thumb.webp`;
+          const thumbnailAbsolutePath = path.join(
+            messageUploadDir,
+            thumbnailFileName,
+          );
+          await mediaOptimizer.generateVideoThumbnail(
+            optimizedPath,
+            thumbnailAbsolutePath,
+          );
+          attachmentThumbnailUrl = `/uploads/messages/${thumbnailFileName}`;
+        } catch (thumbErr) {
+          console.error(
+            'Failed to generate message video thumbnail:',
+            thumbErr,
+          );
+        }
+      } else if (attachmentType === 'audio') {
+        const optimizedFilename = `opt-message-${uniqueSuffix}.m4a`;
+        optimizedPath = path.join(messageUploadDir, optimizedFilename);
+        await mediaOptimizer.optimizeAudio(sourcePath, optimizedPath, {
+          audioBitrate: '64k',
+          channels: 1,
+          sampleRate: 44100
+        });
+        attachmentUrl = `/uploads/messages/${optimizedFilename}`;
+        optimizedMime = 'audio/mp4';
+      }
+
+      if (optimizedPath !== sourcePath) {
+        safeRemoveLocalFile(sourcePath);
+      }
+
+      attachmentSize = fs.statSync(optimizedPath).size;
+    } catch (processingError) {
+      safeRemoveLocalFile(sourcePath);
+      if (optimizedPath !== sourcePath) {
+        safeRemoveLocalFile(optimizedPath);
+      }
+      if (attachmentThumbnailUrl) {
+        safeRemoveLocalFile(
+          path.join(messageUploadDir, path.basename(attachmentThumbnailUrl)),
+        );
+      }
+      console.error('Message media processing error:', processingError);
+      return res.status(500).json({
+        error: 'Impossible de preparer ce media pour le moment.'
+      });
     }
   }
 
@@ -5711,7 +5775,7 @@ app.post('/api/messages/upload-media', requireAuth, uploadMessageMedia.fields([
     attachmentThumbnailUrl,
     attachmentSize,
     attachmentType,
-    mime
+    mime: optimizedMime
   });
 });
 

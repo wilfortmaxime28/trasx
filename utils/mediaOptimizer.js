@@ -159,6 +159,42 @@ function optimizeAndTrimVideo(inputPath, outputPath, startTime, duration) {
 }
 
 /**
+ * Optimizes an uploaded audio clip for fast playback in chat.
+ * @param {string} inputPath - Original uploaded audio path
+ * @param {string} outputPath - Desired destination path (M4A/AAC)
+ * @param {object} options - Encoding options
+ * @returns {Promise<string>} - Resolves to the optimized output path
+ */
+function optimizeAudio(inputPath, outputPath, options = {}) {
+  const {
+    audioBitrate = '64k',
+    channels = 1,
+    sampleRate = 44100
+  } = options;
+
+  return new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      .noVideo()
+      .audioCodec('aac')
+      .audioBitrate(audioBitrate)
+      .audioChannels(channels)
+      .audioFrequency(sampleRate)
+      .outputOptions([
+        '-movflags +faststart',
+        '-profile:a aac_low'
+      ])
+      .on('end', () => {
+        resolve(outputPath);
+      })
+      .on('error', (err) => {
+        console.error('Error optimizing audio:', err);
+        reject(err);
+      })
+      .save(outputPath);
+  });
+}
+
+/**
  * Extracts a frame from a video at 00:00:01 and saves it as a WebP thumbnail.
  * @param {string} videoPath - Source video path
  * @param {string} thumbnailPath - Destination path for the WebP thumbnail
@@ -212,5 +248,6 @@ module.exports = {
   generateResponsiveImageVariants,
   optimizeVideo,
   optimizeAndTrimVideo,
+  optimizeAudio,
   generateVideoThumbnail
 };

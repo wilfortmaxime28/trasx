@@ -4664,13 +4664,14 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         originalName: title,
       ),
       isMine: isMine,
-      onOpenViewer: () => _openVideoPreview(
+      onOpenViewer: (file) => _openVideoPreview(
         mediaUrl: _resolveUrl(url),
         title: _attachmentDisplayLabel(
           attachmentType: 'video',
           originalName: title,
         ),
         thumbnailUrl: thumbnailUrl,
+        localFile: file,
       ),
     );
   }
@@ -6744,6 +6745,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     required String mediaUrl,
     required String title,
     required String thumbnailUrl,
+    File? localFile,
   }) async {
     await Navigator.of(context).push(
       PageRouteBuilder<void>(
@@ -6758,6 +6760,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
               mediaUrl: mediaUrl,
               title: title,
               thumbnailUrl: thumbnailUrl,
+              localFile: localFile,
             ),
           );
         },
@@ -6801,6 +6804,45 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     final text = value?.toString().trim() ?? '';
     return text.isEmpty ? fallback : text;
   }
+}
+
+Widget _buildMessageMediaActionButton({
+  required VoidCallback? onTap,
+  required IconData icon,
+  bool isLoading = false,
+  double? progress,
+  double size = 34,
+}) {
+  final normalizedProgress = progress?.clamp(0.0, 1.0).toDouble();
+
+  return GestureDetector(
+    onTap: onTap,
+    child: Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.44),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Center(
+        child: isLoading
+            ? SizedBox(
+                width: size - 10,
+                height: size - 10,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  value: normalizedProgress,
+                  backgroundColor: Colors.white.withValues(alpha: 0.14),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Color(0xFFFE2C55),
+                  ),
+                ),
+              )
+            : Icon(icon, color: Colors.white, size: size * 0.46),
+      ),
+    ),
+  );
 }
 
 class _MessageImageAttachmentCard extends StatefulWidget {
@@ -6865,7 +6907,7 @@ class _MessageImageAttachmentCardState
     });
   }
 
-  Future<void> _handleTap() async {
+  Future<void> _handleActionTap() async {
     if (_file != null) {
       widget.onOpenViewer(_file!);
       return;
@@ -6908,12 +6950,7 @@ class _MessageImageAttachmentCardState
         );
   }
 
-  Widget _buildLoadSurface({
-    required String label,
-    String? subtitle,
-    double? progress,
-  }) {
-    final normalizedProgress = progress?.clamp(0.0, 1.0).toDouble();
+  Widget _buildLoadSurface({required String label, String? subtitle}) {
     return Container(
       width: 220,
       height: 220,
@@ -6942,6 +6979,18 @@ class _MessageImageAttachmentCardState
                       : Colors.white.withValues(alpha: 0.06),
                 ),
               ),
+            ),
+          ),
+          Positioned(
+            top: 12,
+            right: 12,
+            child: _buildMessageMediaActionButton(
+              onTap: _handleActionTap,
+              icon: _hasError
+                  ? CupertinoIcons.arrow_clockwise
+                  : CupertinoIcons.arrow_down,
+              isLoading: _isLoading,
+              progress: _progress,
             ),
           ),
           Center(
@@ -6984,22 +7033,6 @@ class _MessageImageAttachmentCardState
               ],
             ),
           ),
-          Positioned(
-            left: 14,
-            right: 14,
-            bottom: 12,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                minHeight: 3,
-                value: normalizedProgress,
-                backgroundColor: Colors.white.withValues(alpha: 0.16),
-                valueColor: const AlwaysStoppedAnimation<Color>(
-                  Color(0xFFFE2C55),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -7009,39 +7042,39 @@ class _MessageImageAttachmentCardState
   Widget build(BuildContext context) {
     if (_file != null) {
       return GestureDetector(
-        onTap: _handleTap,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Image.file(_file!, width: 220, height: 220, fit: BoxFit.cover),
+        onTap: () => widget.onOpenViewer(_file!),
+        child: SizedBox(
+          width: 220,
+          height: 220,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.file(_file!, fit: BoxFit.cover),
+          ),
         ),
       );
     }
 
     final subtitle = _hasError
-        ? 'Appuyer pour reessayer'
+        ? 'Touchez l icone pour reessayer'
         : (_isLoading
               ? '${((_progress ?? 0) * 100).round()}%'
-              : 'Appuyer pour charger');
+              : 'Touchez l icone pour charger');
 
-    return GestureDetector(
-      onTap: _handleTap,
-      child: _buildLoadSurface(
-        label: _hasError
-            ? 'Impossible de charger'
-            : (_isLoading ? 'Chargement image' : 'Charger l image'),
-        subtitle: subtitle,
-        progress: _isLoading ? _progress : 0,
-      ),
+    return _buildLoadSurface(
+      label: _hasError
+          ? 'Impossible de charger'
+          : (_isLoading ? 'Chargement image' : 'Image legere'),
+      subtitle: subtitle,
     );
   }
 }
 
-class _MessageVideoAttachmentCard extends StatelessWidget {
+class _MessageVideoAttachmentCard extends StatefulWidget {
   final String mediaUrl;
   final String thumbnailUrl;
   final String title;
   final bool isMine;
-  final VoidCallback onOpenViewer;
+  final ValueChanged<File> onOpenViewer;
 
   const _MessageVideoAttachmentCard({
     super.key,
@@ -7053,9 +7086,100 @@ class _MessageVideoAttachmentCard extends StatelessWidget {
   });
 
   @override
+  State<_MessageVideoAttachmentCard> createState() =>
+      _MessageVideoAttachmentCardState();
+}
+
+class _MessageVideoAttachmentCardState
+    extends State<_MessageVideoAttachmentCard> {
+  StreamSubscription<FileResponse>? _loadSubscription;
+  File? _file;
+  double? _progress;
+
+  bool _isLoading = false;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restoreCachedVideo());
+  }
+
+  @override
+  void didUpdateWidget(covariant _MessageVideoAttachmentCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mediaUrl != widget.mediaUrl) {
+      _loadSubscription?.cancel();
+      _file = null;
+      _progress = null;
+      _isLoading = false;
+      _hasError = false;
+      unawaited(_restoreCachedVideo());
+    }
+  }
+
+  @override
+  void dispose() {
+    _loadSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _restoreCachedVideo() async {
+    final cachedFile = await VideoCacheManager.getCachedFile(widget.mediaUrl);
+    if (!mounted || cachedFile == null) return;
+    setState(() {
+      _file = cachedFile;
+      _progress = 1;
+    });
+  }
+
+  Future<void> _handleActionTap() async {
+    if (_file != null) {
+      widget.onOpenViewer(_file!);
+      return;
+    }
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+      _progress = 0;
+    });
+
+    await _loadSubscription?.cancel();
+    _loadSubscription = VideoCacheManager.instance
+        .getFileStream(widget.mediaUrl, withProgress: true)
+        .listen(
+          (response) {
+            if (!mounted) return;
+            if (response is DownloadProgress) {
+              setState(() {
+                _progress = response.progress ?? _progress;
+              });
+              return;
+            }
+            if (response is FileInfo) {
+              setState(() {
+                _file = response.file;
+                _progress = 1;
+                _isLoading = false;
+              });
+            }
+          },
+          onError: (_) {
+            if (!mounted) return;
+            setState(() {
+              _hasError = true;
+              _isLoading = false;
+            });
+          },
+        );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onOpenViewer,
+      onTap: _file != null ? () => widget.onOpenViewer(_file!) : null,
       child: SizedBox(
         width: 220,
         height: 156,
@@ -7064,22 +7188,23 @@ class _MessageVideoAttachmentCard extends StatelessWidget {
           child: Stack(
             children: [
               Positioned.fill(
-                child: thumbnailUrl.isNotEmpty
+                child: widget.thumbnailUrl.isNotEmpty
                     ? CachedNetworkImage(
-                        imageUrl: thumbnailUrl,
+                        imageUrl: widget.thumbnailUrl,
                         width: 220,
                         height: 156,
                         fit: BoxFit.cover,
                         fadeInDuration: const Duration(milliseconds: 160),
-                        progressIndicatorBuilder: (_, _, progress) =>
+                        placeholder: (_, _) =>
                             _MessageVideoThumbnailPlaceholder(
-                              isMine: isMine,
-                              progress: progress.progress,
+                              isMine: widget.isMine,
                             ),
                         errorWidget: (_, _, _) =>
-                            _MessageVideoThumbnailPlaceholder(isMine: isMine),
+                            _MessageVideoThumbnailPlaceholder(
+                              isMine: widget.isMine,
+                            ),
                       )
-                    : _MessageVideoThumbnailPlaceholder(isMine: isMine),
+                    : _MessageVideoThumbnailPlaceholder(isMine: widget.isMine),
               ),
               Positioned.fill(
                 child: DecoratedBox(
@@ -7097,21 +7222,36 @@ class _MessageVideoAttachmentCard extends StatelessWidget {
                   ),
                 ),
               ),
-              Center(
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.34),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    CupertinoIcons.play_fill,
-                    color: Colors.white,
-                    size: 28,
+              if (_file != null)
+                Center(
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.34),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      CupertinoIcons.play_fill,
+                      color: Colors.white,
+                      size: 28,
+                    ),
                   ),
                 ),
-              ),
+              if (_file == null || _isLoading || _hasError)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: _buildMessageMediaActionButton(
+                    onTap: _handleActionTap,
+                    icon: _hasError
+                        ? CupertinoIcons.arrow_clockwise
+                        : CupertinoIcons.arrow_down,
+                    isLoading: _isLoading,
+                    progress: _progress,
+                    size: 36,
+                  ),
+                ),
               Positioned(
                 left: 14,
                 right: 14,
@@ -7120,7 +7260,7 @@ class _MessageVideoAttachmentCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title,
+                      widget.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -7130,9 +7270,15 @@ class _MessageVideoAttachmentCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
-                      'Appuyer pour charger',
-                      style: TextStyle(
+                    Text(
+                      _file != null
+                          ? 'Touchez pour ouvrir'
+                          : (_isLoading
+                                ? 'Telechargement ${(((_progress ?? 0) * 100).round())}%'
+                                : (_hasError
+                                      ? 'Touchez l icone pour reessayer'
+                                      : 'Touchez l icone pour charger')),
+                      style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
@@ -7151,16 +7297,11 @@ class _MessageVideoAttachmentCard extends StatelessWidget {
 
 class _MessageVideoThumbnailPlaceholder extends StatelessWidget {
   final bool isMine;
-  final double? progress;
 
-  const _MessageVideoThumbnailPlaceholder({
-    required this.isMine,
-    this.progress,
-  });
+  const _MessageVideoThumbnailPlaceholder({required this.isMine});
 
   @override
   Widget build(BuildContext context) {
-    final normalizedProgress = progress?.clamp(0.0, 1.0).toDouble();
     return Container(
       width: 220,
       height: 156,
@@ -7197,23 +7338,6 @@ class _MessageVideoThumbnailPlaceholder extends StatelessWidget {
               size: 28,
             ),
           ),
-          if (normalizedProgress != null)
-            Positioned(
-              left: 14,
-              right: 14,
-              bottom: 12,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  minHeight: 3,
-                  value: normalizedProgress,
-                  backgroundColor: Colors.white.withValues(alpha: 0.16),
-                  valueColor: const AlwaysStoppedAnimation<Color>(
-                    Color(0xFFFE2C55),
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -7246,48 +7370,110 @@ class _MessageAudioAttachmentCard extends StatefulWidget {
 class _MessageAudioAttachmentCardState
     extends State<_MessageAudioAttachmentCard> {
   VideoPlayerController? _controller;
-  Timer? _loaderTimer;
+  StreamSubscription<FileResponse>? _downloadSubscription;
+  File? _localFile;
+  double? _downloadProgress;
 
+  bool _isLoading = false;
   bool _isPreparing = false;
   bool _hasError = false;
-  bool _showLoader = false;
 
   @override
   void initState() {
     super.initState();
-    if (NetworkQualityService().currentQuality != NetworkQuality.offline) {
-      unawaited(VideoCacheManager.prefetchVideo(widget.mediaUrl));
-    }
+    unawaited(_restoreCachedAudio());
   }
 
   @override
   void didUpdateWidget(covariant _MessageAudioAttachmentCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.mediaUrl != widget.mediaUrl) {
-      _loaderTimer?.cancel();
+      _downloadSubscription?.cancel();
       _controller?.dispose();
       _controller = null;
+      _localFile = null;
+      _downloadProgress = null;
+      _isLoading = false;
       _isPreparing = false;
       _hasError = false;
-      _showLoader = false;
+      unawaited(_restoreCachedAudio());
     }
   }
 
   @override
   void dispose() {
-    _loaderTimer?.cancel();
+    _downloadSubscription?.cancel();
     _controller?.dispose();
     super.dispose();
   }
 
-  void _scheduleLoader() {
-    _loaderTimer?.cancel();
-    _loaderTimer = Timer(const Duration(milliseconds: 400), () {
-      if (!mounted || _controller?.value.isInitialized == true) return;
-      setState(() {
-        _showLoader = true;
-      });
+  Future<void> _restoreCachedAudio() async {
+    final cachedFile = await VideoCacheManager.getCachedFile(widget.mediaUrl);
+    if (!mounted || cachedFile == null) return;
+    setState(() {
+      _localFile = cachedFile;
+      _downloadProgress = 1;
     });
+  }
+
+  Future<File?> _ensureLocalFile() async {
+    final existingFile = _localFile;
+    if (existingFile != null && await existingFile.exists()) {
+      return existingFile;
+    }
+    if (_isLoading) return null;
+
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+      _downloadProgress = null;
+    });
+
+    final completer = Completer<File>();
+    await _downloadSubscription?.cancel();
+    _downloadSubscription = VideoCacheManager.instance
+        .getFileStream(widget.mediaUrl, withProgress: true)
+        .listen(
+          (response) {
+            if (!mounted) return;
+            if (response is DownloadProgress) {
+              setState(() {
+                _downloadProgress = response.progress ?? _downloadProgress;
+              });
+              return;
+            }
+            if (response is FileInfo && !completer.isCompleted) {
+              completer.complete(response.file);
+            }
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            if (!completer.isCompleted) {
+              completer.completeError(error, stackTrace);
+            }
+          },
+        );
+
+    try {
+      final file = await completer.future;
+      if (!mounted) return null;
+      setState(() {
+        _localFile = file;
+        _downloadProgress = 1;
+        _isLoading = false;
+      });
+      return file;
+    } catch (_) {
+      if (!mounted) return null;
+      setState(() {
+        _hasError = true;
+        _isLoading = false;
+        _downloadProgress = null;
+      });
+      return null;
+    } finally {
+      await _downloadSubscription?.cancel();
+      _downloadSubscription = null;
+    }
   }
 
   Future<void> _ensureController({required bool autoPlay}) async {
@@ -7300,20 +7486,13 @@ class _MessageAudioAttachmentCardState
       return;
     }
 
+    final file = await _ensureLocalFile();
+    if (file == null) return;
+
     _isPreparing = true;
     _hasError = false;
-    _scheduleLoader();
 
     try {
-      File file;
-      final cachedFile = await VideoCacheManager.getCachedFile(widget.mediaUrl);
-      if (cachedFile != null) {
-        file = cachedFile;
-      } else {
-        file = await VideoCacheManager.instance.getSingleFile(widget.mediaUrl);
-      }
-      if (!mounted) return;
-
       final controller = VideoPlayerController.file(file);
       _controller = controller;
       await controller.initialize();
@@ -7324,10 +7503,7 @@ class _MessageAudioAttachmentCardState
         return;
       }
 
-      setState(() {
-        _showLoader = false;
-        _hasError = false;
-      });
+      setState(() {});
 
       if (autoPlay) {
         await controller.play();
@@ -7336,11 +7512,9 @@ class _MessageAudioAttachmentCardState
       if (!mounted) return;
       setState(() {
         _hasError = true;
-        _showLoader = false;
       });
     } finally {
       _isPreparing = false;
-      _loaderTimer?.cancel();
     }
   }
 
@@ -7400,96 +7574,83 @@ class _MessageAudioAttachmentCardState
     final progress = duration.inMilliseconds <= 0
         ? 0.0
         : (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
+    final isBusy = _isLoading || (_isPreparing && _controller == null);
+    final isReady =
+        _localFile != null || (_controller?.value.isInitialized ?? false);
 
-    return GestureDetector(
-      onTap: _togglePlayback,
-      child: Container(
-        constraints: const BoxConstraints(minWidth: 176, maxWidth: 210),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: widget.isMine
-              ? Colors.white.withValues(alpha: 0.14)
-              : Colors.black.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: widget.isMine
-                    ? Colors.white.withValues(alpha: 0.16)
-                    : const Color(0xFFEEF2FF),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Center(
-                child: _showLoader
-                    ? CupertinoActivityIndicator(
-                        color: widget.isMine
-                            ? Colors.white
-                            : const Color(0xFF6F63FF),
-                        radius: 10,
-                      )
-                    : Icon(
-                        isPlaying
-                            ? CupertinoIcons.pause_fill
-                            : CupertinoIcons.play_fill,
-                        color: widget.isMine
-                            ? Colors.white
-                            : const Color(0xFF6F63FF),
-                        size: 18,
-                      ),
-              ),
+    return Container(
+      constraints: const BoxConstraints(minWidth: 156, maxWidth: 194),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: widget.isMine
+            ? Colors.white.withValues(alpha: 0.14)
+            : Colors.black.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildMessageMediaActionButton(
+            onTap: _togglePlayback,
+            icon: !isReady
+                ? (_hasError
+                      ? CupertinoIcons.arrow_clockwise
+                      : CupertinoIcons.arrow_down)
+                : (isPlaying
+                      ? CupertinoIcons.pause_fill
+                      : CupertinoIcons.play_fill),
+            isLoading: isBusy,
+            progress: _downloadProgress,
+            size: 30,
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: widget.isMine ? Colors.white : widget.textPrimary,
+                    fontSize: 11.2,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    minHeight: 2.5,
+                    value: progress,
+                    backgroundColor: widget.isMine
+                        ? Colors.white.withValues(alpha: 0.14)
+                        : Colors.black.withValues(alpha: 0.08),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      widget.isMine ? Colors.white : const Color(0xFF6F63FF),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _hasError
+                      ? 'Impossible de lire la note vocale'
+                      : isBusy
+                      ? 'Chargement ${(((_downloadProgress ?? 0) * 100).round())}%'
+                      : '${_formatDuration(position)} / ${_formatDuration(duration)}',
+                  style: TextStyle(
+                    color: widget.isMine
+                        ? Colors.white70
+                        : widget.textSecondary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: widget.isMine ? Colors.white : widget.textPrimary,
-                      fontSize: 11.8,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: LinearProgressIndicator(
-                      minHeight: 3,
-                      value: progress,
-                      backgroundColor: widget.isMine
-                          ? Colors.white.withValues(alpha: 0.14)
-                          : Colors.black.withValues(alpha: 0.08),
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        widget.isMine ? Colors.white : const Color(0xFF6F63FF),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    _hasError
-                        ? 'Impossible de lire la note vocale'
-                        : '${_formatDuration(position)} / ${_formatDuration(duration)}',
-                    style: TextStyle(
-                      color: widget.isMine
-                          ? Colors.white70
-                          : widget.textSecondary,
-                      fontSize: 10.6,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -7499,11 +7660,13 @@ class _MessageVideoViewerPage extends StatefulWidget {
   final String mediaUrl;
   final String title;
   final String thumbnailUrl;
+  final File? localFile;
 
   const _MessageVideoViewerPage({
     required this.mediaUrl,
     required this.title,
     required this.thumbnailUrl,
+    this.localFile,
   });
 
   @override
@@ -7548,36 +7711,43 @@ class _MessageVideoViewerPageState extends State<_MessageVideoViewerPage> {
 
     try {
       File file;
-      final cachedFile = await VideoCacheManager.getCachedFile(widget.mediaUrl);
-      if (cachedFile != null) {
-        file = cachedFile;
+      if (widget.localFile != null && await widget.localFile!.exists()) {
+        file = widget.localFile!;
       } else {
-        final completer = Completer<File>();
-        await _downloadSubscription?.cancel();
-        _downloadSubscription = VideoCacheManager.instance
-            .getFileStream(widget.mediaUrl, withProgress: true)
-            .listen(
-              (response) {
-                if (!mounted) return;
-                if (response is DownloadProgress) {
-                  setState(() {
-                    _downloadProgress = response.progress ?? _downloadProgress;
-                  });
-                  return;
-                }
-                if (response is FileInfo && !completer.isCompleted) {
-                  completer.complete(response.file);
-                }
-              },
-              onError: (Object error, StackTrace stackTrace) {
-                if (!completer.isCompleted) {
-                  completer.completeError(error, stackTrace);
-                }
-              },
-            );
-        file = await completer.future;
-        await _downloadSubscription?.cancel();
-        _downloadSubscription = null;
+        final cachedFile = await VideoCacheManager.getCachedFile(
+          widget.mediaUrl,
+        );
+        if (cachedFile != null) {
+          file = cachedFile;
+        } else {
+          final completer = Completer<File>();
+          await _downloadSubscription?.cancel();
+          _downloadSubscription = VideoCacheManager.instance
+              .getFileStream(widget.mediaUrl, withProgress: true)
+              .listen(
+                (response) {
+                  if (!mounted) return;
+                  if (response is DownloadProgress) {
+                    setState(() {
+                      _downloadProgress =
+                          response.progress ?? _downloadProgress;
+                    });
+                    return;
+                  }
+                  if (response is FileInfo && !completer.isCompleted) {
+                    completer.complete(response.file);
+                  }
+                },
+                onError: (Object error, StackTrace stackTrace) {
+                  if (!completer.isCompleted) {
+                    completer.completeError(error, stackTrace);
+                  }
+                },
+              );
+          file = await completer.future;
+          await _downloadSubscription?.cancel();
+          _downloadSubscription = null;
+        }
       }
       if (!mounted) return;
 
