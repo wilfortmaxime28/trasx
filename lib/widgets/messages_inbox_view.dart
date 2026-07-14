@@ -244,6 +244,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
   Timer? _typingDebounceTimer;
   Timer? _gameInviteTicker;
+  Timer? _incomingCallAlertTimer;
   bool _typingStateSent = false;
   bool _incomingCallDialogVisible = false;
   bool _isCallPageOpen = false;
@@ -313,6 +314,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     _detachSocketListeners();
     _typingDebounceTimer?.cancel();
     _gameInviteTicker?.cancel();
+    _incomingCallAlertTimer?.cancel();
     _typingAnimationController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -1498,11 +1500,10 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     }
 
     _incomingCallDialogVisible = true;
-    try {
-      await SystemSound.play(SystemSoundType.alert);
-    } catch (_) {}
+    _startIncomingCallAlert();
 
     if (!mounted) {
+      _stopIncomingCallAlert();
       _incomingCallDialogVisible = false;
       return;
     }
@@ -1537,6 +1538,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         );
       },
     );
+    _stopIncomingCallAlert();
 
     try {
       await _emitSocketAck('call-response', {
@@ -1559,7 +1561,31 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         _showSnackBar(error.toString().replaceFirst('Exception: ', ''));
       }
     }
+    _stopIncomingCallAlert();
     _incomingCallDialogVisible = false;
+  }
+
+  void _startIncomingCallAlert() {
+    _incomingCallAlertTimer?.cancel();
+    unawaited(_playIncomingCallAlert());
+    _incomingCallAlertTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!_incomingCallDialogVisible || !mounted) {
+        _stopIncomingCallAlert();
+        return;
+      }
+      unawaited(_playIncomingCallAlert());
+    });
+  }
+
+  void _stopIncomingCallAlert() {
+    _incomingCallAlertTimer?.cancel();
+    _incomingCallAlertTimer = null;
+  }
+
+  Future<void> _playIncomingCallAlert() async {
+    try {
+      await SystemSound.play(SystemSoundType.alert);
+    } catch (_) {}
   }
 
   void _handleCallResponse(dynamic data) {

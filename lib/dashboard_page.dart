@@ -3270,7 +3270,7 @@ class _DashboardPageState extends State<DashboardPage> {
       currentUsername: _username,
       currentDisplayName: _displayName,
       currentAvatarUrl: _avatarUrl,
-      isDarkMode: _isDarkMode,
+      isDarkMode: false,
       socket: _socket,
       onConversationStateChanged: (isOpen) {
         if (!mounted || _isMessagesConversationOpen == isOpen) return;
@@ -10364,7 +10364,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                           ),
                         ),
                         if (_kycStatus == 'none' ||
-                            _kycStatus == 'rejected') ...[
+                            _kycStatus == 'rejected' ||
+                            _kycStatus == 'draft') ...[
                           const SizedBox(height: 16),
                           SizedBox(
                             width: double.infinity,
@@ -10380,9 +10381,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                               ),
                               onPressed: () => _showKycUploadSheet(context),
                               child: Text(
-                                _kycStatus == 'rejected'
-                                    ? "Re-soumettre mon KYC"
-                                    : "Passer mon KYC",
+                                _kycStatus == 'none'
+                                    ? "Passer mon KYC"
+                                    : "Repasser mon KYC",
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 13,
@@ -11967,19 +11968,17 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
   void _showKycUploadSheet(BuildContext context) {
     File? selfieImage;
     File? identityDocument;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textCol = isDark ? Colors.white : Colors.black;
-    final subCol = isDark ? Colors.white54 : Colors.black54;
-    final cardBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7);
-    final borderCol = isDark
-        ? Colors.white.withValues(alpha: 0.1)
-        : Colors.black.withValues(alpha: 0.1);
-    final scaffoldBg = isDark ? const Color(0xFF0F0F10) : Colors.white;
+    const textCol = Color(0xFF111111);
+    const subCol = Color(0xFF6A6A73);
+    const cardBg = Color(0xFFF5F5F7);
+    final borderCol = Colors.black.withValues(alpha: 0.08);
+    const scaffoldBg = Colors.white;
     final picker = ImagePicker();
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: scaffoldBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -11987,236 +11986,245 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                top: 14,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 32,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Handle bar
-                    Center(
-                      child: Container(
-                        width: 48,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: borderCol.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(2.5),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Validation d'identité",
-                              style: TextStyle(
-                                color: textCol,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.5,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "Étape réglementaire KYC obligatoire",
-                              style: TextStyle(
-                                color: const Color(0xFFFE2C55),
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: borderCol,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.close_rounded,
-                              color: textCol,
-                              size: 18,
-                            ),
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 24,
+                  right: 24,
+                  top: 14,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Handle bar
+                      Center(
+                        child: Container(
+                          width: 48,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: borderCol.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(2.5),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Main description card
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFE2C55).withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: const Color(
-                            0xFFFE2C55,
-                          ).withValues(alpha: 0.15),
-                        ),
                       ),
-                      child: Row(
+                      const SizedBox(height: 20),
+
+                      // Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Icon(
-                            Icons.shield_outlined,
-                            color: Color(0xFFFE2C55),
-                            size: 22,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Validation d'identité",
+                                style: TextStyle(
+                                  color: textCol,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                "Étape réglementaire KYC obligatoire",
+                                style: TextStyle(
+                                  color: const Color(0xFFFE2C55),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              "Vos données sont cryptées de bout en bout et traitées instantanément par notre IA de sécurité en temps réel.",
-                              style: TextStyle(
-                                color: textCol.withValues(alpha: 0.8),
-                                fontSize: 11.5,
-                                height: 1.4,
+                          GestureDetector(
+                            onTap: () => Navigator.pop(context),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: borderCol,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.close_rounded,
+                                color: textCol,
+                                size: 18,
                               ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 16),
 
-                    // 1. Selfie Selector Card
-                    _buildSelectionRow(
-                      title: "1. Selfie de Vivacité",
-                      subtitle:
-                          "Doit inclure le clignement d'yeux et la rotation",
-                      imageFile: selfieImage,
-                      onTap: () {
-                        _showLivenessChallenge(context, (file) {
-                          setSheetState(() {
-                            selfieImage = file;
+                      // Main description card
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(
+                            0xFFFE2C55,
+                          ).withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: const Color(
+                              0xFFFE2C55,
+                            ).withValues(alpha: 0.15),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.shield_outlined,
+                              color: Color(0xFFFE2C55),
+                              size: 22,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                "Vos données sont cryptées de bout en bout et traitées instantanément par notre IA de sécurité en temps réel.",
+                                style: TextStyle(
+                                  color: textCol.withValues(alpha: 0.8),
+                                  fontSize: 11.5,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // 1. Selfie Selector Card
+                      _buildSelectionRow(
+                        title: "1. Selfie de Vivacité",
+                        subtitle:
+                            "Doit inclure le clignement d'yeux et la rotation",
+                        imageFile: selfieImage,
+                        onTap: () {
+                          _showLivenessChallenge(context, (file) {
+                            setSheetState(() {
+                              selfieImage = file;
+                            });
                           });
-                        });
-                      },
-                      icon: Icons.face_retouching_natural_rounded,
-                      textCol: textCol,
-                      subCol: subCol,
-                      cardBg: cardBg,
-                      borderCol: borderCol,
-                    ),
-                    const SizedBox(height: 20),
+                        },
+                        icon: Icons.face_retouching_natural_rounded,
+                        textCol: textCol,
+                        subCol: subCol,
+                        cardBg: cardBg,
+                        borderCol: borderCol,
+                      ),
+                      const SizedBox(height: 20),
 
-                    // 2. ID Document Selector Card
-                    _buildSelectionRow(
-                      title: "2. Pièce d'identité",
-                      subtitle:
-                          "Passeport, Carte Nationale d'Identité ou Permis",
-                      imageFile: identityDocument,
-                      onTap: () async {
-                        final doc = await picker.pickImage(
-                          source: ImageSource.gallery,
-                          imageQuality: 90,
-                        );
-                        if (doc != null) {
-                          if (context.mounted) {
-                            final File? cropped = await Navigator.of(context)
-                                .push<File>(
-                                  MaterialPageRoute(
-                                    builder: (context) => ImageCropperPage(
-                                      imageFile: File(doc.path),
+                      // 2. ID Document Selector Card
+                      _buildSelectionRow(
+                        title: "2. Pièce d'identité",
+                        subtitle:
+                            "Passeport, Carte Nationale d'Identité ou Permis",
+                        imageFile: identityDocument,
+                        onTap: () async {
+                          final doc = await picker.pickImage(
+                            source: ImageSource.gallery,
+                            imageQuality: 90,
+                          );
+                          if (doc != null) {
+                            if (context.mounted) {
+                              final File? cropped = await Navigator.of(context)
+                                  .push<File>(
+                                    MaterialPageRoute(
+                                      builder: (context) => ImageCropperPage(
+                                        imageFile: File(doc.path),
+                                      ),
                                     ),
-                                  ),
-                                );
-                            if (cropped != null) {
-                              setSheetState(() {
-                                identityDocument = cropped;
-                              });
+                                  );
+                              if (cropped != null) {
+                                setSheetState(() {
+                                  identityDocument = cropped;
+                                });
+                              }
                             }
                           }
-                        }
-                      },
-                      icon: Icons.badge_outlined,
-                      textCol: textCol,
-                      subCol: subCol,
-                      cardBg: cardBg,
-                      borderCol: borderCol,
-                    ),
-                    const SizedBox(height: 32),
+                        },
+                        icon: Icons.badge_outlined,
+                        textCol: textCol,
+                        subCol: subCol,
+                        cardBg: cardBg,
+                        borderCol: borderCol,
+                      ),
+                      const SizedBox(height: 32),
 
-                    // Submit Button with modern premium styling
-                    Container(
-                      width: double.infinity,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(26),
-                        gradient:
-                            (selfieImage != null && identityDocument != null)
-                            ? const LinearGradient(
-                                colors: [Color(0xFFFE2C55), Color(0xFFFF5277)],
-                                begin: Alignment.centerLeft,
-                                end: Alignment.centerRight,
-                              )
-                            : null,
-                        color: (selfieImage != null && identityDocument != null)
-                            ? null
-                            : cardBg,
-                        boxShadow:
-                            (selfieImage != null && identityDocument != null)
-                            ? [
-                                BoxShadow(
-                                  color: const Color(
-                                    0xFFFE2C55,
-                                  ).withValues(alpha: 0.25),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          foregroundColor: Colors.white,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(26),
+                      // Submit Button with modern premium styling
+                      Container(
+                        width: double.infinity,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(26),
+                          gradient:
+                              (selfieImage != null && identityDocument != null)
+                              ? const LinearGradient(
+                                  colors: [
+                                    Color(0xFFFE2C55),
+                                    Color(0xFFFF5277),
+                                  ],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                )
+                              : null,
+                          color:
+                              (selfieImage != null && identityDocument != null)
+                              ? null
+                              : cardBg,
+                          boxShadow:
+                              (selfieImage != null && identityDocument != null)
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFFFE2C55,
+                                    ).withValues(alpha: 0.25),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            foregroundColor: Colors.white,
+                            shadowColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(26),
+                            ),
+                          ),
+                          onPressed:
+                              (selfieImage == null || identityDocument == null)
+                              ? null
+                              : () {
+                                  Navigator.pop(context);
+                                  _showRealtimeVerificationDialog(
+                                    context,
+                                    selfieImage!,
+                                    identityDocument!,
+                                  );
+                                },
+                          child: Text(
+                            "Lancer la vérification instantanée",
+                            style: TextStyle(
+                              color:
+                                  (selfieImage != null &&
+                                      identityDocument != null)
+                                  ? Colors.white
+                                  : subCol,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                         ),
-                        onPressed:
-                            (selfieImage == null || identityDocument == null)
-                            ? null
-                            : () {
-                                Navigator.pop(context);
-                                _showRealtimeVerificationDialog(
-                                  context,
-                                  selfieImage!,
-                                  identityDocument!,
-                                );
-                              },
-                        child: Text(
-                          "Lancer la vérification instantanée",
-                          style: TextStyle(
-                            color:
-                                (selfieImage != null &&
-                                    identityDocument != null)
-                                ? Colors.white
-                                : subCol,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
-                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             );
@@ -12376,10 +12384,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     int faceMatchScore = 0;
     bool isCancelled = false;
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textCol = isDark ? Colors.white : Colors.black;
-    final subCol = isDark ? Colors.white54 : Colors.black54;
-    final cardBg = isDark ? const Color(0xFF161618) : Colors.white;
+    const textCol = Color(0xFF111111);
+    const subCol = Color(0xFF6A6A73);
+    const cardBg = Colors.white;
 
     // Controls whether we've already started the async pipeline
     bool pipelineStarted = false;
@@ -12479,16 +12486,31 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                   dobMatched = details['dobMatched'] as bool?;
                   faceMatchScore =
                       (details['faceMatchScore'] as num?)?.toInt() ?? 0;
+                  final responseReasons = (details['reasons'] is List)
+                      ? (details['reasons'] as List)
+                            .map((item) => item.toString().trim())
+                            .where((item) => item.isNotEmpty)
+                            .toList(growable: false)
+                      : const <String>[];
+                  final passedIdentityMatch =
+                      nameMatched == true && dobMatched == true;
+                  final passedFaceMatch = faceMatchScore >= 60;
+                  final passedServerChecks =
+                      resData['success'] == true &&
+                      passedIdentityMatch &&
+                      passedFaceMatch;
 
                   if (streamedResponse.statusCode != 200 ||
-                      resData['success'] != true) {
+                      !passedServerChecks) {
                     // Fast-reject or server error — jump straight to final error state
+                    final fallbackError = responseReasons.isNotEmpty
+                        ? responseReasons.join(' | ')
+                        : (resData['error'] ??
+                              "Échec de la validation du document.");
                     setDialogState(() {
                       currentStep = 4;
                       success = false;
-                      verificationError =
-                          resData['error'] ??
-                          "Échec de la validation du document.";
+                      verificationError = fallbackError;
                     });
                     return;
                   }
@@ -12618,7 +12640,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                   ? "Comparaison nom/prénom/naissance avec le document..."
                                   : "En attente..."),
                         status: currentStep > 2
-                            ? (nameMatched == true ? "success" : "error")
+                            ? (nameMatched == true && dobMatched == true
+                                  ? "success"
+                                  : "error")
                             : (currentStep == 2 ? "loading" : "idle"),
                         textCol: textCol,
                         subCol: subCol,
@@ -12642,7 +12666,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                       ),
 
                       const SizedBox(height: 16),
-                      const Divider(color: Colors.white12),
+                      Divider(color: subCol.withValues(alpha: 0.2)),
                       const SizedBox(height: 16),
 
                       // Verification Result / Action Button
@@ -12842,6 +12866,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     IconData icon;
 
     switch (status) {
+      case 'draft':
+        badgeColor = const Color(0xFFFE2C55);
+        label = "A refaire";
+        icon = Icons.refresh_rounded;
+        break;
       case 'approved':
         badgeColor = Colors.green;
         label = "Validé";
@@ -12890,6 +12919,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
 
   String _getKycStatusDescription(String status) {
     switch (status) {
+      case 'draft':
+        return "Votre précédent KYC a été annulé par l'administration. Veuillez soumettre un nouveau document et un nouveau selfie pour repasser la vérification.";
       case 'approved':
         return "Votre identité a été vérifiée avec succès. Le retrait est entièrement disponible.";
       case 'pending':
@@ -13411,26 +13442,29 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
       ),
-      child: ListTile(
-        leading: Icon(icon, color: const Color(0xFFC13584)),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: textPrimaryColor,
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          leading: Icon(icon, color: const Color(0xFFC13584)),
+          title: Text(
+            title,
+            style: TextStyle(
+              color: textPrimaryColor,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
           ),
+          subtitle: Text(
+            subtitle,
+            style: TextStyle(color: textSecondaryColor, fontSize: 11),
+          ),
+          trailing: Icon(
+            Icons.open_in_new_rounded,
+            color: textSecondaryColor.withValues(alpha: 0.5),
+            size: 16,
+          ),
+          onTap: onTap,
         ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(color: textSecondaryColor, fontSize: 11),
-        ),
-        trailing: Icon(
-          Icons.open_in_new_rounded,
-          color: textSecondaryColor.withValues(alpha: 0.5),
-          size: 16,
-        ),
-        onTap: onTap,
       ),
     );
   }

@@ -457,6 +457,64 @@ class KycRequest {
     );
   }
 
+  static async resetWithdrawalForResubmission(requestId) {
+    await ensureKycRequestTable();
+    const normalizedRequestId = Number.parseInt(requestId, 10);
+    if (!Number.isFinite(normalizedRequestId) || normalizedRequestId <= 0) {
+      return null;
+    }
+
+    await db.query(
+      `
+        UPDATE kyc_requests
+        SET
+          status = 'draft',
+          payment_status = 'none',
+          payment_amount = 0.00,
+          payment_non_refundable = 0,
+          document_url = NULL,
+          document_name = NULL,
+          document_type = NULL,
+          document_size = NULL,
+          selfie_url = NULL,
+          selfie_name = NULL,
+          selfie_type = NULL,
+          selfie_size = NULL,
+          submitted_full_name = NULL,
+          submitted_username = NULL,
+          submitted_email = NULL,
+          submitted_country = NULL,
+          submitted_dob = NULL,
+          verification_score = NULL,
+          face_match_score = NULL,
+          verification_notes = NULL,
+          ai_provider = NULL,
+          ai_model = NULL,
+          ocr_text_excerpt = NULL,
+          ocr_detected_dates = NULL,
+          ocr_selected_dob = NULL,
+          ocr_selected_dob_reason = NULL,
+          verified_by_ai = 0,
+          reviewed_by_admin_id = NULL,
+          reviewed_at = NULL
+        WHERE id = ? AND request_type = 'withdrawal'
+      `,
+      [normalizedRequestId]
+    );
+
+    const [rows] = await db.query(
+      `
+        SELECT *
+        FROM kyc_requests
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [normalizedRequestId]
+    );
+
+    return rows[0] || null;
+  }
+
   static async ensureSchema() {
     return ensureKycRequestTable();
   }

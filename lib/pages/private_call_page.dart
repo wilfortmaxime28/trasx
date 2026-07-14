@@ -18,6 +18,7 @@ class PrivateCallPage extends StatefulWidget {
 
 class _PrivateCallPageState extends State<PrivateCallPage> {
   bool _popScheduled = false;
+  bool _endingActionInFlight = false;
 
   PrivateCallSession get _session => widget.session;
 
@@ -38,17 +39,49 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
   void _handleSessionUpdate() {
     if (!mounted || _popScheduled || !_session.hasEnded) return;
     _popScheduled = true;
-    Future<void>.delayed(const Duration(milliseconds: 650), () async {
+    Future<void>.delayed(const Duration(milliseconds: 260), () async {
       if (!mounted) return;
       Navigator.of(context).maybePop(_session.endingReason);
     });
   }
 
   Future<bool> _handleWillPop() async {
-    if (!_session.hasEnded) {
-      await _session.endCall();
+    if (_session.hasEnded) {
+      return true;
     }
-    return true;
+    if (_session.isEnding || _endingActionInFlight) {
+      return false;
+    }
+
+    if (mounted) {
+      setState(() {
+        _endingActionInFlight = true;
+      });
+    }
+    try {
+      await _session.endCall();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _endingActionInFlight = false;
+        });
+      }
+    }
+    return false;
+  }
+
+  Future<void> _runControlAction(Future<void> Function() action) async {
+    if (_session.hasEnded || _session.isEnding) return;
+    try {
+      await action();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
   }
 
   @override
@@ -68,15 +101,36 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
         body: AnimatedBuilder(
           animation: _session,
           builder: (context, _) {
+            final sessionEnded = _session.hasEnded || _session.isEnding;
             final hasRemoteVideo =
+                !sessionEnded &&
                 _session.remoteVideoAvailable &&
                 _session.remoteRenderer.srcObject != null;
 
             return Stack(
               children: [
+                if (!sessionEnded &&
+                    !hasRemoteVideo &&
+                    _session.remoteRenderer.srcObject != null)
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    width: 1,
+                    height: 1,
+                    child: IgnorePointer(
+                      child: _RemoteAudioAnchor(
+                        renderer: _session.remoteRenderer,
+                      ),
+                    ),
+                  ),
                 Positioned.fill(
-                  child: hasRemoteVideo
+                  child: sessionEnded
+                      ? _buildEndedState()
+                      : hasRemoteVideo
                       ? RTCVideoView(
+                          key: ValueKey<String>(
+                            'remote-${_session.remoteRenderer.srcObject?.id ?? 'empty'}',
+                          ),
                           _session.remoteRenderer,
                           objectFit:
                               RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
@@ -84,71 +138,74 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
                       : _buildBackdrop(),
                 ),
                 Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.black.withValues(alpha: 0.18),
-                          Colors.black.withValues(alpha: 0.08),
-                          Colors.black.withValues(alpha: 0.28),
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                    ),
-                  ),
-                ),
-                SafeArea(
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                        child: Row(
-                          children: [
-                            _topPill(
-                              icon: CupertinoIcons.chevron_down,
-                              onTap: _handleWillPop,
+                  child: sessionEnded
+                      ? const SizedBox.shrink()
+                      : DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.black.withValues(alpha: 0.18),
+                                Colors.black.withValues(alpha: 0.08),
+                                Colors.black.withValues(alpha: 0.28),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
                             ),
-                            const Spacer(),
-                            _typeChip(),
-                          ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: IgnorePointer(
-                                child: AnimatedOpacity(
-                                  duration: const Duration(milliseconds: 220),
-                                  opacity: hasRemoteVideo ? 0 : 1,
-                                  child: _buildIdentityPanel(),
+                ),
+                if (!sessionEnded)
+                  SafeArea(
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          child: Row(
+                            children: [
+                              _topPill(
+                                icon: CupertinoIcons.chevron_down,
+                                onTap: _handleWillPop,
+                              ),
+                              const Spacer(),
+                              _typeChip(),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: Stack(
+                            children: [
+                              Positioned.fill(
+                                child: IgnorePointer(
+                                  child: AnimatedOpacity(
+                                    duration: const Duration(milliseconds: 220),
+                                    opacity: hasRemoteVideo ? 0 : 1,
+                                    child: _buildIdentityPanel(),
+                                  ),
                                 ),
                               ),
-                            ),
-                            if (hasRemoteVideo)
-                              Positioned(
-                                left: 18,
-                                top: 10,
-                                child: _buildLiveStatusCard(),
-                              ),
-                            if (_session.shouldShowLocalVideo)
-                              Positioned(
-                                right: 16,
-                                top: 10,
-                                child: _buildLocalPreview(),
-                              ),
-                          ],
+                              if (hasRemoteVideo)
+                                Positioned(
+                                  left: 18,
+                                  top: 10,
+                                  child: _buildLiveStatusCard(),
+                                ),
+                              if (_session.shouldShowLocalVideo)
+                                Positioned(
+                                  right: 16,
+                                  top: 10,
+                                  child: _buildLocalPreview(),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
-                        child: _buildControls(),
-                      ),
-                    ],
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
+                          child: _buildControls(),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
               ],
             );
           },
@@ -185,6 +242,49 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildEndedState() {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF090A10), Color(0xFF121525), Color(0xFF090A10)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _avatar(size: 98),
+              const SizedBox(height: 22),
+              Text(
+                _session.remoteName,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                _session.endingReason ?? 'Appel termine.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.76),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -357,6 +457,9 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
           ],
         ),
         child: RTCVideoView(
+          key: ValueKey<String>(
+            'local-${_session.localRenderer.srcObject?.id ?? 'empty'}-${_session.cameraEnabled}',
+          ),
           _session.localRenderer,
           mirror: true,
           objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
@@ -389,7 +492,7 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
                     : CupertinoIcons.mic_fill,
                 label: _session.microphoneMuted ? 'Micro off' : 'Micro',
                 active: !_session.microphoneMuted,
-                onTap: _session.toggleMicrophone,
+                onTap: _session.hasEnded ? null : _session.toggleMicrophone,
               ),
               _controlButton(
                 icon: _session.speakerEnabled
@@ -397,14 +500,14 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
                     : CupertinoIcons.speaker_slash_fill,
                 label: _session.speakerEnabled ? 'Haut-parleur' : 'Ecouteur',
                 active: _session.speakerEnabled,
-                onTap: _session.toggleSpeaker,
+                onTap: _session.hasEnded ? null : _session.toggleSpeaker,
               ),
               if (_session.isVideo)
                 _controlButton(
                   icon: Icons.flip_camera_android_rounded,
                   label: 'Retourner',
                   active: _session.canSwitchCamera,
-                  onTap: _session.canSwitchCamera
+                  onTap: (_session.canSwitchCamera && !_session.hasEnded)
                       ? _session.switchCamera
                       : null,
                 ),
@@ -415,14 +518,14 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
                       : Icons.videocam_off_rounded,
                   label: _session.cameraEnabled ? 'Camera' : 'Camera off',
                   active: _session.cameraEnabled,
-                  onTap: _session.toggleCamera,
+                  onTap: _session.hasEnded ? null : _session.toggleCamera,
                 ),
               _controlButton(
                 icon: CupertinoIcons.phone_down_fill,
                 label: 'Raccrocher',
                 active: true,
                 destructive: true,
-                onTap: _session.endCall,
+                onTap: _handleHangup,
               ),
             ],
           ),
@@ -445,7 +548,7 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
         : Colors.white.withValues(alpha: 0.08);
 
     return GestureDetector(
-      onTap: onTap == null ? null : () => unawaited(onTap()),
+      onTap: onTap == null ? null : () => unawaited(_runControlAction(onTap)),
       child: SizedBox(
         width: 88,
         child: Column(
@@ -512,6 +615,10 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
         child: Icon(icon, color: Colors.white, size: 18),
       ),
     );
+  }
+
+  Future<void> _handleHangup() async {
+    await _handleWillPop();
   }
 
   Widget _typeChip() {
@@ -604,5 +711,22 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
       return '${hours.toString().padLeft(2, '0')}:$minutes:$seconds';
     }
     return '$minutes:$seconds';
+  }
+}
+
+class _RemoteAudioAnchor extends StatelessWidget {
+  const _RemoteAudioAnchor({required this.renderer});
+
+  final RTCVideoRenderer renderer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: 0,
+      child: RTCVideoView(
+        renderer,
+        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
+      ),
+    );
   }
 }

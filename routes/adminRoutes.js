@@ -161,6 +161,7 @@ router.post('/moderation/dismiss-report', requireAdminAction('moderate_content')
 router.post('/moderation/delete-reported-post', requireAdminAction('moderate_content'), adminController.deleteReportedPost);
 router.post('/moderation/block-reported-user', requireAdminAction('moderate_content'), adminController.blockReportedUser);
 router.post('/kyc-review', requireAdminAction('manage_kyc'), adminController.reviewKycRequest);
+router.post('/kyc-reset-approved', requireAdminAction('manage_kyc'), adminController.resetApprovedWithdrawalKyc);
 router.post('/user-delete', requireAdminAction('manage_users'), adminController.deleteUser);
 router.post('/user-freeze', requireAdminAction('manage_users'), adminController.freezeUserAccount);
 router.post('/user-freeze-all', requireAdminAction('manage_users'), adminController.freezeAllAccounts);

@@ -1,9 +1,14 @@
+// ignore_for_file: implementation_imports
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:mediasfu_mediasoup_client/mediasfu_mediasoup_client.dart'
     as mediasoup;
+import 'package:mediasfu_mediasoup_client/src/handlers/handler_interface.dart'
+    as mediasoup_types;
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 enum PrivateCallRole { caller, callee }
@@ -18,7 +23,7 @@ class PrivateCallSession extends ChangeNotifier {
     required this.remoteAvatarUrl,
     required this.isVideo,
     required this.role,
-  }) : _speakerEnabled = isVideo,
+  }) : _speakerEnabled = true,
        _cameraEnabled = isVideo;
 
   final io.Socket socket;
@@ -37,14 +42,26 @@ class PrivateCallSession extends ChangeNotifier {
       <String, mediasoup.Producer>{};
   final Map<String, mediasoup.Consumer> _consumers =
       <String, mediasoup.Consumer>{};
+  final Set<String> _pendingConsumerProducerIds = <String>{};
+  static const Map<String, dynamic> _transportAdditionalSettings =
+      <String, dynamic>{'encodedInsertableStreams': false};
+  static const Map<String, dynamic> _transportProprietaryConstraints =
+      <String, dynamic>{
+        'optional': <Map<String, dynamic>>[
+          <String, dynamic>{'googDscp': true},
+        ],
+      };
 
   mediasoup.Device? _device;
   mediasoup.Transport? _sendTransport;
   mediasoup.Transport? _recvTransport;
   MediaStream? _localStream;
+  MediaStream? _remoteStream;
 
-  List<dynamic> _iceServers = const <dynamic>[];
+  List<mediasoup_types.RTCIceServer> _iceServers =
+      const <mediasoup_types.RTCIceServer>[];
   Timer? _callTimer;
+  Timer? _ringbackTimer;
   DateTime? _connectedAt;
 
   bool _initialized = false;
@@ -62,6 +79,8 @@ class PrivateCallSession extends ChangeNotifier {
   String? _endingReason;
   String? _errorText;
   Duration _elapsed = Duration.zero;
+  bool _mediaResourcesDisposed = false;
+  bool _renderersDisposed = false;
 
   dynamic Function(dynamic)? _newProducerListener;
   dynamic Function(dynamic)? _producerClosedListener;
@@ -74,6 +93,7 @@ class PrivateCallSession extends ChangeNotifier {
   bool get isReady => _initialized;
   bool get isLoading => _initializing;
   bool get isConnected => _connected;
+  bool get isEnding => _ending;
   bool get hasEnded => _ended;
   bool get remoteVideoAvailable => _remoteVideoAvailable;
   bool get microphoneMuted => _microphoneMuted;
@@ -92,31 +112,48 @@ class PrivateCallSession extends ChangeNotifier {
     if (_initialized || _initializing || _disposed) return;
     _initializing = true;
     _statusText = role == PrivateCallRole.caller
-        ? 'Appel en cours...'
+        ? 'Ca sonne...'
         : 'Connexion a l appel...';
     notifyListeners();
 
     try {
       await localRenderer.initialize();
       await remoteRenderer.initialize();
+      if (_shouldAbortOperations) return;
+
       _attachSocketListeners();
+      if (role == PrivateCallRole.caller) {
+        _startRingbackTone();
+      }
+
       await _ensureSocketConnected();
+      if (_shouldAbortOperations) return;
       await _configureAudioRoute();
+      if (_shouldAbortOperations) return;
       await _loadIceServers();
+      if (_shouldAbortOperations) return;
       final activeProducers = await _joinCallSession();
+      if (_shouldAbortOperations) return;
       await _loadDevice();
+      if (_shouldAbortOperations) return;
       await _createSendTransport();
+      if (_shouldAbortOperations) return;
       await _createReceiveTransport();
+      if (_shouldAbortOperations) return;
       await _captureLocalMedia();
+      if (_shouldAbortOperations) return;
       await _produceLocalTracks();
+      if (_shouldAbortOperations) return;
 
       for (final dynamic producer in activeProducers) {
+        if (_shouldAbortOperations) break;
         await _consumeProducer(producer);
       }
 
+      if (_shouldAbortOperations) return;
       _initialized = true;
       if (role == PrivateCallRole.caller && !_remoteAccepted) {
-        _statusText = 'Appel en cours...';
+        _statusText = 'Ca sonne...';
       } else if (!_connected) {
         _statusText = 'Connexion media...';
       }
@@ -135,10 +172,15 @@ class PrivateCallSession extends ChangeNotifier {
   }
 
   Future<void> toggleMicrophone() async {
+    if (_shouldAbortOperations) return;
     final audioProducer = _findProducerByKind('audio');
     if (audioProducer == null) return;
 
     _microphoneMuted = !_microphoneMuted;
+    for (final track
+        in _localStream?.getAudioTracks() ?? const <MediaStreamTrack>[]) {
+      track.enabled = !_microphoneMuted;
+    }
     if (_microphoneMuted) {
       audioProducer.pause();
     } else {
@@ -148,19 +190,22 @@ class PrivateCallSession extends ChangeNotifier {
   }
 
   Future<void> toggleSpeaker() async {
+    if (_shouldAbortOperations) return;
     _speakerEnabled = !_speakerEnabled;
-    try {
-      await Helper.setSpeakerphoneOn(_speakerEnabled);
-    } catch (_) {}
+    await _applyAudioRoute();
     notifyListeners();
   }
 
   Future<void> toggleCamera() async {
-    if (!isVideo) return;
+    if (!isVideo || _shouldAbortOperations) return;
     final videoProducer = _findProducerByKind('video');
     if (videoProducer == null) return;
 
     _cameraEnabled = !_cameraEnabled;
+    for (final track
+        in _localStream?.getVideoTracks() ?? const <MediaStreamTrack>[]) {
+      track.enabled = _cameraEnabled;
+    }
     if (_cameraEnabled) {
       videoProducer.resume();
     } else {
@@ -170,23 +215,26 @@ class PrivateCallSession extends ChangeNotifier {
   }
 
   Future<void> switchCamera() async {
-    if (!canSwitchCamera) return;
+    if (!canSwitchCamera || _shouldAbortOperations) return;
     final tracks = _localStream?.getVideoTracks() ?? const <MediaStreamTrack>[];
     if (tracks.isEmpty) return;
     await Helper.switchCamera(tracks.first);
   }
 
   Future<void> endCall() async {
+    if (_ending || _ended) return;
     await _finishLocally(reason: 'Appel termine.', notifyRemote: true);
   }
 
   Future<void> release() async {
-    await _disposeResources();
+    await _disposeResources(disposeRenderers: true);
     if (!_disposed) {
       _disposed = true;
       super.dispose();
     }
   }
+
+  bool get _shouldAbortOperations => _disposed || _ending || _ended;
 
   Future<void> _ensureSocketConnected({
     Duration timeout = const Duration(seconds: 10),
@@ -272,8 +320,16 @@ class PrivateCallSession extends ChangeNotifier {
       await Helper.ensureAudioSession();
     } catch (_) {}
 
+    await _applyAudioRoute();
+  }
+
+  Future<void> _applyAudioRoute() async {
     try {
-      await Helper.setSpeakerphoneOn(_speakerEnabled);
+      if (_speakerEnabled) {
+        await Helper.setSpeakerphoneOnButPreferBluetooth();
+      } else {
+        await Helper.setSpeakerphoneOn(false);
+      }
     } catch (_) {}
   }
 
@@ -286,11 +342,11 @@ class PrivateCallSession extends ChangeNotifier {
     final rawServers = response['iceServers'];
     if (rawServers is List) {
       _iceServers = rawServers
-          .whereType<Map>()
-          .map<dynamic>((server) => Map<String, dynamic>.from(server))
+          .map<mediasoup_types.RTCIceServer?>(_parseIceServer)
+          .whereType<mediasoup_types.RTCIceServer>()
           .toList(growable: false);
     } else {
-      _iceServers = const <dynamic>[];
+      _iceServers = const <mediasoup_types.RTCIceServer>[];
     }
   }
 
@@ -367,7 +423,9 @@ class PrivateCallSession extends ChangeNotifier {
       dtlsParameters: mediasoup.DtlsParameters.fromMap(
         Map<String, dynamic>.from(params['dtlsParameters'] as Map),
       ),
-      iceServers: _iceServers.cast(),
+      iceServers: _iceServers,
+      additionalSettings: _transportAdditionalSettings,
+      proprietaryConstraints: _transportProprietaryConstraints,
       appData: const {'scope': 'call'},
       producerCallback: (dynamic producer) {
         if (producer is mediasoup.Producer) {
@@ -448,10 +506,13 @@ class PrivateCallSession extends ChangeNotifier {
       dtlsParameters: mediasoup.DtlsParameters.fromMap(
         Map<String, dynamic>.from(params['dtlsParameters'] as Map),
       ),
-      iceServers: _iceServers.cast(),
+      iceServers: _iceServers,
+      additionalSettings: _transportAdditionalSettings,
+      proprietaryConstraints: _transportProprietaryConstraints,
       appData: const {'scope': 'call'},
       consumerCallback: (dynamic consumer, dynamic accept) async {
         if (consumer is! mediasoup.Consumer) return;
+        _pendingConsumerProducerIds.remove(consumer.producerId);
         _consumers[consumer.id] = consumer;
         await _attachConsumer(consumer);
         if (accept is Function) {
@@ -484,7 +545,11 @@ class PrivateCallSession extends ChangeNotifier {
 
   Future<void> _captureLocalMedia() async {
     final constraints = <String, dynamic>{
-      'audio': true,
+      'audio': <String, dynamic>{
+        'echoCancellation': true,
+        'noiseSuppression': true,
+        'autoGainControl': true,
+      },
       'video': isVideo
           ? <String, dynamic>{
               'facingMode': 'user',
@@ -495,12 +560,38 @@ class PrivateCallSession extends ChangeNotifier {
           : false,
     };
 
-    final stream = await navigator.mediaDevices.getUserMedia(constraints);
+    final stream = await navigator.mediaDevices
+        .getUserMedia(constraints)
+        .timeout(
+          const Duration(seconds: 12),
+          onTimeout: () =>
+              throw Exception('La camera ou le microphone ne repond pas.'),
+        );
+    if (_shouldAbortOperations) {
+      for (final track in stream.getTracks()) {
+        try {
+          await track.stop();
+        } catch (_) {}
+      }
+      try {
+        await stream.dispose();
+      } catch (_) {}
+      return;
+    }
+
+    for (final track in stream.getAudioTracks()) {
+      track.enabled = !_microphoneMuted;
+    }
+    for (final track in stream.getVideoTracks()) {
+      track.enabled = _cameraEnabled;
+    }
     _localStream = stream;
 
     if (isVideo) {
+      localRenderer.srcObject = null;
       localRenderer.srcObject = stream;
     }
+    notifyListeners();
   }
 
   Future<void> _produceLocalTracks() async {
@@ -510,8 +601,12 @@ class PrivateCallSession extends ChangeNotifier {
 
     final audioTracks = stream.getAudioTracks();
     if (audioTracks.isNotEmpty) {
+      final audioTrack = audioTracks.first;
+      if (audioTrack.kind != 'audio') {
+        throw Exception('La piste audio locale est invalide.');
+      }
       transport.produce(
-        track: audioTracks.first,
+        track: audioTrack,
         stream: stream,
         source: 'microphone',
         appData: const {'mediaTag': 'audio', 'scope': 'call'},
@@ -521,8 +616,12 @@ class PrivateCallSession extends ChangeNotifier {
     if (isVideo) {
       final videoTracks = stream.getVideoTracks();
       if (videoTracks.isNotEmpty) {
+        final videoTrack = videoTracks.first;
+        if (videoTrack.kind != 'video') {
+          throw Exception('La piste video locale est invalide.');
+        }
         transport.produce(
-          track: videoTracks.first,
+          track: videoTrack,
           stream: stream,
           source: 'webcam',
           appData: const {'mediaTag': 'camera', 'scope': 'call'},
@@ -532,62 +631,112 @@ class PrivateCallSession extends ChangeNotifier {
   }
 
   Future<void> _consumeProducer(dynamic rawProducer) async {
-    if (_recvTransport == null || _device == null) return;
+    if (_recvTransport == null || _device == null || _shouldAbortOperations) {
+      return;
+    }
     if (rawProducer is! Map) return;
 
     final producerId = (rawProducer['producerId'] ?? '').toString();
     final peerId = (rawProducer['peerId'] ?? '').toString();
     final kind = (rawProducer['kind'] ?? '').toString();
 
-    if (producerId.isEmpty || peerId == '$currentUserId') return;
+    if (producerId.isEmpty ||
+        peerId == '$currentUserId' ||
+        _pendingConsumerProducerIds.contains(producerId)) {
+      return;
+    }
     if (_consumers.values.any(
       (consumer) => consumer.producerId == producerId,
     )) {
       return;
     }
 
-    final dynamic response = await _emitSocketAck('mediasoup:consume', {
-      'roomId': roomId,
-      'peerId': '$currentUserId',
-      'transportId': _recvTransport!.id,
-      'producerId': producerId,
-      'rtpCapabilities': _device!.rtpCapabilities.toMap(),
-    });
+    _pendingConsumerProducerIds.add(producerId);
 
-    if (response is! Map || response['params'] is! Map) {
-      return;
-    }
-
-    final params = Map<String, dynamic>.from(response['params'] as Map);
-    _recvTransport!.consume(
-      id: (params['id'] ?? '').toString(),
-      producerId: producerId,
-      peerId: peerId,
-      kind: mediasoup.RTCRtpMediaTypeExtension.fromString(kind),
-      rtpParameters: mediasoup.RtpParameters.fromMap(
-        Map<String, dynamic>.from(params['rtpParameters'] as Map),
-      ),
-      appData: rawProducer['appData'] is Map
-          ? Map<String, dynamic>.from(rawProducer['appData'] as Map)
-          : const <String, dynamic>{},
-      accept: () => _emitSocketAck('mediasoup:resumeConsumer', {
+    try {
+      final dynamic response = await _emitSocketAck('mediasoup:consume', {
         'roomId': roomId,
         'peerId': '$currentUserId',
-        'consumerId': params['id'],
-      }),
-    );
+        'transportId': _recvTransport!.id,
+        'producerId': producerId,
+        'rtpCapabilities': _device!.rtpCapabilities.toMap(),
+      });
+
+      if (response is! Map || response['params'] is! Map) {
+        return;
+      }
+
+      final params = Map<String, dynamic>.from(response['params'] as Map);
+      _recvTransport!.consume(
+        id: (params['id'] ?? '').toString(),
+        producerId: producerId,
+        peerId: peerId,
+        kind: mediasoup.RTCRtpMediaTypeExtension.fromString(kind),
+        rtpParameters: mediasoup.RtpParameters.fromMap(
+          Map<String, dynamic>.from(params['rtpParameters'] as Map),
+        ),
+        appData: rawProducer['appData'] is Map
+            ? Map<String, dynamic>.from(rawProducer['appData'] as Map)
+            : const <String, dynamic>{},
+        accept: () => _emitSocketAck('mediasoup:resumeConsumer', {
+          'roomId': roomId,
+          'peerId': '$currentUserId',
+          'consumerId': params['id'],
+        }),
+      );
+    } catch (_) {
+      _pendingConsumerProducerIds.remove(producerId);
+      rethrow;
+    }
   }
 
   Future<void> _attachConsumer(mediasoup.Consumer consumer) async {
-    if (consumer.kind == 'video') {
-      _remoteVideoAvailable = true;
-      remoteRenderer.srcObject = consumer.stream;
-    }
+    if (_shouldAbortOperations) return;
+    _pendingConsumerProducerIds.remove(consumer.producerId);
+    await _syncRemoteStream();
 
     _remoteAccepted = true;
     if (!_connected) {
       _setConnectedState();
     }
+  }
+
+  Future<void> _syncRemoteStream() async {
+    if (_shouldAbortOperations) return;
+    final nextStream = await createLocalMediaStream(
+      'private-call-remote-$roomId',
+    );
+    final addedTrackIds = <String>{};
+
+    for (final consumer in _consumers.values) {
+      final track = consumer.track;
+      final trackId = track.id ?? '';
+      if (trackId.isEmpty || addedTrackIds.contains(trackId)) {
+        continue;
+      }
+      await nextStream.addTrack(track);
+      addedTrackIds.add(trackId);
+    }
+
+    final previousStream = _remoteStream;
+    _remoteStream = nextStream;
+    _remoteVideoAvailable = nextStream.getVideoTracks().isNotEmpty;
+
+    remoteRenderer.srcObject = addedTrackIds.isEmpty ? null : nextStream;
+    if (nextStream.getAudioTracks().isNotEmpty) {
+      try {
+        await remoteRenderer.setVolume(1.0);
+      } catch (_) {}
+      await _applyAudioRoute();
+    }
+
+    if (previousStream != null && previousStream.id != nextStream.id) {
+      try {
+        await previousStream.dispose();
+      } catch (_) {}
+    }
+
+    notifyListeners();
   }
 
   void _handleTransportState(String state) {
@@ -646,6 +795,7 @@ class PrivateCallSession extends ChangeNotifier {
     void callConnectedListener(dynamic data) {
       if (data is! Map || data['roomId']?.toString() != roomId) return;
       _remoteAccepted = true;
+      _stopRingbackTone();
       _setConnectedState();
     }
 
@@ -655,6 +805,7 @@ class PrivateCallSession extends ChangeNotifier {
     void participantJoinedListener(dynamic data) {
       if (data is! Map || data['roomId']?.toString() != roomId) return;
       _remoteAccepted = true;
+      _stopRingbackTone();
       if (!_connected) {
         _statusText = 'Connexion media...';
         notifyListeners();
@@ -671,6 +822,7 @@ class PrivateCallSession extends ChangeNotifier {
       final status = (data['status'] ?? '').toString().toLowerCase();
       if (status == 'accepted') {
         _remoteAccepted = true;
+        _stopRingbackTone();
         if (!_connected) {
           _statusText = 'Connexion media...';
           notifyListeners();
@@ -685,6 +837,14 @@ class PrivateCallSession extends ChangeNotifier {
 
       if (status == 'missed') {
         _finishLocally(reason: 'Aucune reponse.', notifyRemote: false);
+        return;
+      }
+
+      if (status == 'busy') {
+        _finishLocally(
+          reason: 'Utilisateur deja en appel.',
+          notifyRemote: false,
+        );
       }
     }
 
@@ -730,6 +890,7 @@ class PrivateCallSession extends ChangeNotifier {
   void _setConnectedState() {
     if (_connected) return;
     _connected = true;
+    _stopRingbackTone();
     _statusText = 'En appel';
     _connectedAt = DateTime.now();
     _callTimer?.cancel();
@@ -747,6 +908,9 @@ class PrivateCallSession extends ChangeNotifier {
   }) async {
     if (_ending || _disposed || _ended) return;
     _ending = true;
+    _ended = true;
+    _connected = false;
+    _stopRingbackTone();
     _statusText = reason;
     _endingReason = reason;
     notifyListeners();
@@ -760,85 +924,162 @@ class PrivateCallSession extends ChangeNotifier {
       } catch (_) {}
     }
 
-    await _disposeResources();
-    _ended = true;
+    await _disposeResources(disposeRenderers: false);
     _ending = false;
     if (!_disposed) {
       notifyListeners();
     }
   }
 
-  Future<void> _disposeResources() async {
-    _callTimer?.cancel();
-    _removeSocketListeners();
-
-    for (final producer in _producers.values) {
-      try {
-        producer.close();
-      } catch (_) {}
-    }
-    _producers.clear();
-
-    for (final consumer in _consumers.values) {
-      try {
-        await consumer.close();
-      } catch (_) {}
-    }
-    _consumers.clear();
-
-    try {
-      await _sendTransport?.close();
-    } catch (_) {}
-    _sendTransport = null;
-
-    try {
-      await _recvTransport?.close();
-    } catch (_) {}
-    _recvTransport = null;
-
-    final stream = _localStream;
-    _localStream = null;
-    if (stream != null) {
-      for (final track in stream.getTracks()) {
-        try {
-          await track.stop();
-        } catch (_) {}
+  void _startRingbackTone() {
+    if (role != PrivateCallRole.caller || _connected || _ended) return;
+    _ringbackTimer?.cancel();
+    unawaited(_playRingbackTone());
+    _ringbackTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (_connected || _ended || _disposed) {
+        _stopRingbackTone();
+        return;
       }
-      try {
-        await stream.dispose();
-      } catch (_) {}
-    }
+      unawaited(_playRingbackTone());
+    });
+  }
 
+  void _stopRingbackTone() {
+    _ringbackTimer?.cancel();
+    _ringbackTimer = null;
+  }
+
+  Future<void> _playRingbackTone() async {
     try {
-      localRenderer.srcObject = null;
-    } catch (_) {}
-    try {
-      remoteRenderer.srcObject = null;
-    } catch (_) {}
-    try {
-      await localRenderer.dispose();
-    } catch (_) {}
-    try {
-      await remoteRenderer.dispose();
+      await SystemSound.play(SystemSoundType.alert);
     } catch (_) {}
   }
 
+  Future<void> _disposeResources({required bool disposeRenderers}) async {
+    if (!_mediaResourcesDisposed) {
+      _mediaResourcesDisposed = true;
+      _callTimer?.cancel();
+      _callTimer = null;
+      _stopRingbackTone();
+      _removeSocketListeners();
+
+      for (final producer in _producers.values) {
+        try {
+          producer.close();
+        } catch (_) {}
+      }
+      _producers.clear();
+
+      for (final consumer in _consumers.values) {
+        try {
+          await consumer.close();
+        } catch (_) {}
+      }
+      _consumers.clear();
+      _pendingConsumerProducerIds.clear();
+
+      try {
+        await _sendTransport?.close();
+      } catch (_) {}
+      _sendTransport = null;
+
+      try {
+        await _recvTransport?.close();
+      } catch (_) {}
+      _recvTransport = null;
+
+      final stream = _localStream;
+      _localStream = null;
+      if (stream != null) {
+        for (final track in stream.getTracks()) {
+          try {
+            await track.stop();
+          } catch (_) {}
+        }
+        try {
+          await stream.dispose();
+        } catch (_) {}
+      }
+
+      try {
+        localRenderer.srcObject = null;
+      } catch (_) {}
+      try {
+        remoteRenderer.srcObject = null;
+      } catch (_) {}
+      final remoteStream = _remoteStream;
+      _remoteStream = null;
+      if (remoteStream != null) {
+        try {
+          await remoteStream.dispose();
+        } catch (_) {}
+      }
+    }
+
+    if (disposeRenderers && !_renderersDisposed) {
+      _renderersDisposed = true;
+      try {
+        await localRenderer.dispose();
+      } catch (_) {}
+      try {
+        await remoteRenderer.dispose();
+      } catch (_) {}
+    }
+  }
+
   void _removeConsumerByProducerId(String producerId) {
+    _pendingConsumerProducerIds.remove(producerId);
     final entry = _consumers.entries
         .where((item) => item.value.producerId == producerId)
         .toList();
     for (final item in entry) {
-      item.value.close();
+      unawaited(item.value.close());
       _consumers.remove(item.key);
     }
+    unawaited(_syncRemoteStream());
+  }
 
-    _remoteVideoAvailable = _consumers.values.any(
-      (consumer) => consumer.kind == 'video',
+  mediasoup_types.RTCIceServer? _parseIceServer(dynamic rawServer) {
+    if (rawServer is! Map) return null;
+
+    final server = Map<String, dynamic>.from(rawServer);
+    final urls = _extractIceServerUrls(server['urls'] ?? server['url']);
+    if (urls.isEmpty) return null;
+
+    final rawCredential = server['credential'];
+    final credentialTypeName = (server['credentialType'] ?? '')
+        .toString()
+        .toLowerCase();
+    final isOAuthCredential =
+        credentialTypeName == 'oauth' && rawCredential is Map;
+
+    return mediasoup_types.RTCIceServer(
+      credential: isOAuthCredential
+          ? mediasoup_types.RTCOAuthCredential(
+              accessToken: (rawCredential['accessToken'] ?? '').toString(),
+              macKey: (rawCredential['macKey'] ?? '').toString(),
+            )
+          : rawCredential,
+      credentialType: isOAuthCredential
+          ? mediasoup_types.RTCIceCredentialType.oauth
+          : mediasoup_types.RTCIceCredentialType.password,
+      urls: urls,
+      username: (server['username'] ?? '').toString(),
     );
-    if (!_remoteVideoAvailable) {
-      remoteRenderer.srcObject = null;
+  }
+
+  List<String> _extractIceServerUrls(dynamic rawUrls) {
+    if (rawUrls is String) {
+      final url = rawUrls.trim();
+      return url.isEmpty ? const <String>[] : <String>[url];
     }
-    notifyListeners();
+    if (rawUrls is List) {
+      return rawUrls
+          .map((dynamic value) => value.toString().trim())
+          .where((String value) => value.isNotEmpty)
+          .toList(growable: false);
+    }
+    return const <String>[];
   }
 
   Map<String, dynamic> _extractTransportParams(dynamic response) {

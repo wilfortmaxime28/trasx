@@ -4387,7 +4387,48 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
       }
     );
 
-    const isApproved = evaluation.approved;
+    const verificationReasons = Array.isArray(evaluation.reasons)
+      ? [...evaluation.reasons]
+      : [];
+    const hardIdentityMatch =
+      evaluation.matchedFullName === true && evaluation.matchedDob === true;
+    const hardFaceMatch =
+      selfieFaceDetected === true &&
+      docFaceDetected === true &&
+      Number.isFinite(Number(evaluation.faceMatchScore)) &&
+      Number(evaluation.faceMatchScore) >= 60 &&
+      faceMatchDistance <= 0.58;
+
+    if (!hardIdentityMatch) {
+      if (evaluation.matchedFullName !== true) {
+        const nameReason =
+          'Le nom sur le document ne correspond pas à celui de votre compte.';
+        if (!verificationReasons.includes(nameReason)) {
+          verificationReasons.push(nameReason);
+        }
+      }
+      if (evaluation.matchedDob !== true) {
+        const dobReason =
+          'La date de naissance sur le document ne correspond pas à celle de votre compte.';
+        if (!verificationReasons.includes(dobReason)) {
+          verificationReasons.push(dobReason);
+        }
+      }
+    }
+
+    if (!hardFaceMatch) {
+      const faceReason =
+        'Le selfie ne correspond pas à la photo du document.';
+      if (!verificationReasons.includes(faceReason)) {
+        verificationReasons.push(faceReason);
+      }
+    }
+
+    const isApproved = evaluation.approved && hardIdentityMatch && hardFaceMatch;
+    const verificationSummary = isApproved
+      ? evaluation.summary
+      : 'La vérification a échoué. Les contrôles stricts d identité et de reconnaissance faciale ne sont pas remplis.';
+
     if (isApproved) {
       await db.query("UPDATE users SET account_status = 'Active' WHERE id = ?", [currentUserId]);
       console.log(`[WithdrawKYC] User ${currentUserId} account restored to Active status.`);
@@ -4448,7 +4489,7 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
           savedSelfie ? savedSelfie.size : null,
           evaluation.score,
           evaluation.faceMatchScore,
-          evaluation.summary,
+          verificationSummary,
           evaluation.aiProvider,
           evaluation.aiModel,
           evaluation.ocrTextExcerpt,
@@ -4487,7 +4528,7 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
           savedSelfie ? savedSelfie.size : null,
           evaluation.score,
           evaluation.faceMatchScore,
-          evaluation.summary,
+          verificationSummary,
           evaluation.aiProvider,
           evaluation.aiModel,
           evaluation.ocrTextExcerpt,
@@ -4508,7 +4549,7 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
       nameMatched: evaluation.matchedFullName ?? null,
       dobMatched: evaluation.matchedDob ?? null,
       ocrExcerpt: (evaluation.ocrTextExcerpt || '').slice(0, 120),
-      reasons: evaluation.reasons || []
+      reasons: verificationReasons
     };
 
     if (isApproved) {
@@ -4521,7 +4562,9 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
     } else {
       res.status(400).json({
         success: false,
-        error: 'Échec de la validation du document par l\'IA. Raisons : ' + evaluation.reasons.join(', '),
+        error:
+          'Échec de la validation du document par l\'IA. Raisons : ' +
+          verificationReasons.join(', '),
         details: verificationDetails,
         debugOcrText: ocrText
       });

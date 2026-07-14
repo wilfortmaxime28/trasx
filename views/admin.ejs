@@ -4413,6 +4413,7 @@
                   <th style="padding: 8px;">Date Demande</th>
                   <th style="padding: 8px;">Statut</th>
                   <th style="padding: 8px;">Détails & Documents</th>
+                  <th style="padding: 8px;">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -4443,6 +4444,23 @@
                         <% } %>
                         <span style="font-size: 11px; color: var(--text-muted);">(Match: <%= reqKyc.face_match_score || 'N/A' %>%)</span>
                       </div>
+                    </td>
+                    <td style="padding: 8px;">
+                      <% if (reqKyc.request_type === 'withdrawal' && reqKyc.status === 'approved') { %>
+                        <form action="/admin/kyc-reset-approved" method="POST" style="margin: 0;">
+                          <input type="hidden" name="request_id" value="<%= reqKyc.id %>">
+                          <button
+                            type="submit"
+                            class="btn"
+                            style="background: #f59e0b; color: #111827;"
+                            onclick="return confirm('Annuler ce KYC validé pour obliger l utilisateur à repasser son KYC ?');"
+                          >
+                            Annuler le KYC
+                          </button>
+                        </form>
+                      <% } else { %>
+                        <span style="font-size: 11px; color: var(--text-muted);">Aucune</span>
+                      <% } %>
                     </td>
                   </tr>
                 <% }) %>

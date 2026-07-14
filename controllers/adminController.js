@@ -1328,6 +1328,108 @@ exports.reviewKycRequest = async (req, res) => {
   }
 };
 
+exports.resetApprovedWithdrawalKyc = async (req, res) => {
+  try {
+    const requestId = Number.parseInt(req.body.request_id, 10);
+    if (!Number.isFinite(requestId) || requestId <= 0) {
+      return adminRedirect(req, res, {
+        error: 'KYC invalide.',
+        fallbackPage: 'kyc'
+      });
+    }
+
+    const [rows] = await db.query(
+      `
+        SELECT
+          kr.id,
+          kr.user_id,
+          kr.request_type,
+          kr.status,
+          u.account_status
+        FROM kyc_requests kr
+        JOIN users u ON u.id = kr.user_id
+        WHERE kr.id = ?
+        LIMIT 1
+      `,
+      [requestId]
+    );
+    const request = rows[0];
+
+    if (!request) {
+      return adminRedirect(req, res, {
+        error: 'KYC introuvable.',
+        fallbackPage: 'kyc'
+      });
+    }
+
+    if (request.request_type !== 'withdrawal') {
+      return adminRedirect(req, res, {
+        error: 'Seul un KYC de retrait peut être annulé ici.',
+        fallbackPage: 'kyc'
+      });
+    }
+
+    if (request.status !== 'approved') {
+      return adminRedirect(req, res, {
+        error: 'Seul un KYC déjà validé peut être annulé.',
+        fallbackPage: 'kyc'
+      });
+    }
+
+    const resetRequest = await KycRequest.resetWithdrawalForResubmission(
+      requestId
+    );
+    if (!resetRequest || resetRequest.status !== 'draft') {
+      return adminRedirect(req, res, {
+        error: 'Impossible de réinitialiser ce KYC.',
+        fallbackPage: 'kyc'
+      });
+    }
+
+    await db.query(
+      `
+        UPDATE users
+        SET
+          kyc_dispute_status = NULL,
+          kyc_dispute_message = NULL,
+          kyc_dispute_admin_response = NULL
+        WHERE id = ?
+      `,
+      [request.user_id]
+    );
+
+    const io = req.app.get('socketio') || global.io;
+    if (io) {
+      io.to(`user:${request.user_id}`).emit('kyc-dispute-updated', {
+        kycDisputeStatus: null,
+        kycDisputeMessage: null,
+        kycDisputeAdminResponse: null
+      });
+      io.to(`user:${request.user_id}`).emit('account-status-changed', {
+        accountStatus: request.account_status || 'Active',
+        kycStatus: 'draft',
+        kycDisputeStatus: null,
+        kycDisputeMessage: null,
+        kycDisputeAdminResponse: null,
+        message:
+          "Votre KYC de retrait a été annulé par l'administration. Veuillez le repasser."
+      });
+    }
+
+    return adminRedirect(req, res, {
+      success:
+        'KYC de retrait annulé. L utilisateur peut maintenant repasser sa vérification.',
+      fallbackPage: 'kyc'
+    });
+  } catch (error) {
+    console.error('[resetApprovedWithdrawalKyc] Error:', error);
+    return adminRedirect(req, res, {
+      error: 'Impossible d annuler ce KYC validé.',
+      fallbackPage: 'kyc'
+    });
+  }
+};
+
 exports.updateEventThresholds = async (req, res) => {
   try {
     const scope = String(req.body.scope || 'global').toLowerCase();
