@@ -1,70 +1,540 @@
 const roomManager = require('../mediasoup/roomManager');
+const User = require('../models/User');
+const presence = require('../utils/presence');
 
-// Gère le cycle de vie applicatif des appels privés
-module.exports = function(socket, io) {
+const activeCallSessions = new Map();
+const userRoomIndex = new Map();
 
-  // Démarrer ou initier un appel
-  socket.on('call:start', async ({ roomId, callerId }, callback) => {
-    try {
-      socket.join(roomId);
-      const room = await roomManager.getOrCreateRoom(roomId);
-      room.addPeer(callerId, socket.id);
-      
-      socket.roomId = roomId;
-      socket.peerId = callerId;
-      
-      console.log(`[Appel] ${callerId} a initié l'appel dans la salle ${roomId}`);
-      callback({ success: true });
-    } catch (err) {
-      console.error('call:start error:', err);
-      callback({ error: err.message });
+const CALL_RING_TIMEOUT_MS = Math.max(
+  15000,
+  Number.parseInt(process.env.CALL_RING_TIMEOUT_MS || '35000', 10) || 35000,
+);
+
+function getCurrentUserId(socket) {
+  return Number(
+    socket.request?.session?.userId ||
+      socket.handshake?.auth?.userId ||
+      socket.handshake?.query?.userId ||
+      0,
+  );
+}
+
+function createRoomId(callerId, receiverId) {
+  return `call:${callerId}:${receiverId}:${Date.now().toString(36)}`;
+}
+
+function getRoomKey(userId) {
+  return String(Number(userId) || 0);
+}
+
+function getActiveRoomIdForUser(userId) {
+  return userRoomIndex.get(getRoomKey(userId)) || null;
+}
+
+function getSessionByRoomId(roomId) {
+  if (!roomId) return null;
+  return activeCallSessions.get(String(roomId)) || null;
+}
+
+function resolveSession({ roomId, callerId, receiverId }) {
+  const direct = getSessionByRoomId(roomId);
+  if (direct) return direct;
+
+  const callerRoomId = getActiveRoomIdForUser(callerId);
+  if (callerRoomId) {
+    const session = getSessionByRoomId(callerRoomId);
+    if (session && Number(session.receiverId) === Number(receiverId)) {
+      return session;
+    }
+  }
+
+  return null;
+}
+
+function releaseSessionLocks(session) {
+  if (!session) return;
+  userRoomIndex.delete(getRoomKey(session.callerId));
+  userRoomIndex.delete(getRoomKey(session.receiverId));
+}
+
+function clearRingTimeout(session) {
+  if (!session?.ringTimer) return;
+  clearTimeout(session.ringTimer);
+  session.ringTimer = null;
+}
+
+function destroySession(roomId, { closeRoom = true } = {}) {
+  const session = getSessionByRoomId(roomId);
+  if (!session) return null;
+
+  clearRingTimeout(session);
+  releaseSessionLocks(session);
+  activeCallSessions.delete(String(roomId));
+
+  if (closeRoom) {
+    roomManager.closeRoom(String(roomId));
+  }
+
+  return session;
+}
+
+function buildIceServers() {
+  const stunUrls = String(
+    process.env.CALL_STUN_URLS ||
+      process.env.STUN_URLS ||
+      'stun:stun.l.google.com:19302',
+  )
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const turnUrls = String(
+    process.env.CALL_TURN_URLS ||
+      process.env.TURN_URLS ||
+      process.env.COTURN_URLS ||
+      '',
+  )
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const turnUsername = String(
+    process.env.CALL_TURN_USERNAME ||
+      process.env.TURN_USERNAME ||
+      process.env.COTURN_USERNAME ||
+      '',
+  ).trim();
+
+  const turnCredential = String(
+    process.env.CALL_TURN_CREDENTIAL ||
+      process.env.TURN_CREDENTIAL ||
+      process.env.COTURN_CREDENTIAL ||
+      '',
+  ).trim();
+
+  const servers = [];
+
+  if (stunUrls.length > 0) {
+    servers.push({ urls: stunUrls });
+  }
+
+  if (turnUrls.length > 0) {
+    const turnServer = { urls: turnUrls };
+    if (turnUsername && turnCredential) {
+      turnServer.username = turnUsername;
+      turnServer.credential = turnCredential;
+    }
+    servers.push(turnServer);
+  }
+
+  return servers;
+}
+
+async function validateDirectCall(callerId, receiverId) {
+  if (!callerId || !receiverId || callerId === receiverId) {
+    return { ok: false, error: 'Appel invalide.' };
+  }
+
+  const relationshipState = await User.getMessageRelationshipState(
+    callerId,
+    receiverId,
+  );
+
+  if (!relationshipState.can_chat) {
+    return {
+      ok: false,
+      error: relationshipState.has_blocked_user
+        ? 'Debloquez cet utilisateur avant de l appeler.'
+        : 'Cet utilisateur vous a bloque.',
+    };
+  }
+
+  if (!presence.isUserOnline(receiverId)) {
+    return {
+      ok: false,
+      error: 'Cet utilisateur n est pas en ligne.',
+    };
+  }
+
+  if (getActiveRoomIdForUser(callerId) || getActiveRoomIdForUser(receiverId)) {
+    return {
+      ok: false,
+      error: 'Un des participants est deja dans un appel.',
+    };
+  }
+
+  return { ok: true };
+}
+
+function attachSocketToCall(socket, roomId, peerId) {
+  socket.join(String(roomId));
+  socket.roomId = String(roomId);
+  socket.peerId = String(peerId);
+  socket.data.privateCallRoomId = String(roomId);
+}
+
+function detachSocketFromCall(socket, roomId) {
+  if (roomId) {
+    socket.leave(String(roomId));
+  }
+
+  if (socket.data?.privateCallRoomId) {
+    delete socket.data.privateCallRoomId;
+  }
+
+  if (socket.roomId && (!roomId || socket.roomId === String(roomId))) {
+    delete socket.roomId;
+  }
+
+  if (socket.peerId) {
+    delete socket.peerId;
+  }
+}
+
+function emitCallerUpdate(io, session, payload) {
+  io.to(`user:${session.callerId}`).emit('call-response-received', payload);
+}
+
+function emitCallEnded(io, session, actorId) {
+  const payload = {
+    roomId: session.roomId,
+    peerId: Number(actorId) || 0,
+    enderId: Number(actorId) || 0,
+  };
+
+  io.to(session.roomId).emit('call:end', payload);
+  io.to(`user:${session.callerId}`).emit('call-ended', payload);
+  io.to(`user:${session.receiverId}`).emit('call-ended', payload);
+}
+
+module.exports = function handleVideoCallSocket(socket, io) {
+  socket.on('call:getConfig', (_, callback) => {
+    if (typeof callback === 'function') {
+      callback({
+        success: true,
+        iceServers: buildIceServers(),
+        ringTimeoutMs: CALL_RING_TIMEOUT_MS,
+      });
     }
   });
 
-  // Rejoindre un appel (le correspondant accepte)
-  socket.on('call:join', async ({ roomId, peerId }, callback) => {
+  socket.on('call-invite', async (data, callback) => {
+    const callerId = getCurrentUserId(socket);
+    const receiverId = Number.parseInt(data?.receiverId, 10);
+    const isVideo = data?.isVideo === true;
+    const done = (payload) => {
+      if (typeof callback === 'function') callback(payload);
+    };
+
     try {
-      socket.join(roomId);
-      const room = roomManager.getRoom(roomId);
-      if (!room) {
-        return callback({ error: "L'appel a expiré ou a été annulé" });
+      const validation = await validateDirectCall(callerId, receiverId);
+      if (!validation.ok) {
+        socket.emit('chat-action-error', {
+          action: 'start_call',
+          targetUserId: receiverId,
+          error: validation.error,
+        });
+        done({ success: false, error: validation.error });
+        return;
       }
 
-      room.addPeer(peerId, socket.id);
-      socket.roomId = roomId;
-      socket.peerId = peerId;
+      const caller = await User.getById(callerId);
+      if (!caller) {
+        done({ success: false, error: 'Utilisateur introuvable.' });
+        return;
+      }
 
-      // Récupérer les flux déjà en cours
+      const roomId = createRoomId(callerId, receiverId);
+      await roomManager.getOrCreateRoom(roomId);
+
+      const session = {
+        roomId,
+        callerId,
+        receiverId,
+        isVideo,
+        status: 'ringing',
+        createdAt: Date.now(),
+        callerSocketId: socket.id,
+        receiverSocketId: null,
+        ringTimer: null,
+      };
+
+      session.ringTimer = setTimeout(() => {
+        const activeSession = getSessionByRoomId(roomId);
+        if (!activeSession) return;
+
+        emitCallerUpdate(io, activeSession, {
+          status: 'missed',
+          responderId: activeSession.receiverId,
+          roomId: activeSession.roomId,
+          isVideo: activeSession.isVideo,
+        });
+        destroySession(roomId);
+      }, CALL_RING_TIMEOUT_MS);
+
+      activeCallSessions.set(roomId, session);
+      userRoomIndex.set(getRoomKey(callerId), roomId);
+      userRoomIndex.set(getRoomKey(receiverId), roomId);
+
+      io.to(`user:${receiverId}`).emit('call-incoming', {
+        roomId,
+        callerId,
+        callerName: `${caller.first_name} ${caller.last_name}`.trim(),
+        callerAvatar: caller.avatar || '/assets/avatar_placeholder.jpg',
+        isVideo,
+        createdAt: new Date().toISOString(),
+      });
+
+      socket.emit('call-ringing', {
+        roomId,
+        receiverId,
+        isVideo,
+      });
+
+      done({
+        success: true,
+        roomId,
+        receiverId,
+        isVideo,
+      });
+    } catch (error) {
+      console.error('[call-invite] error:', error);
+      done({
+        success: false,
+        error: error.message || 'Impossible de lancer cet appel.',
+      });
+    }
+  });
+
+  socket.on('call-response', (data, callback) => {
+    const responderId = getCurrentUserId(socket);
+    const status = String(data?.status || '').trim().toLowerCase();
+    const callerId = Number.parseInt(data?.callerId, 10);
+    const roomId = String(data?.roomId || '').trim();
+    const done = (payload) => {
+      if (typeof callback === 'function') callback(payload);
+    };
+
+    try {
+      const session = resolveSession({
+        roomId,
+        callerId,
+        receiverId: responderId,
+      });
+
+      if (!session || Number(session.receiverId) !== responderId) {
+        done({ success: false, error: 'Session d appel introuvable.' });
+        return;
+      }
+
+      if (status === 'accepted') {
+        clearRingTimeout(session);
+        session.status = 'accepted';
+        session.receiverSocketId = socket.id;
+
+        emitCallerUpdate(io, session, {
+          status: 'accepted',
+          responderId,
+          responderSocketId: socket.id,
+          roomId: session.roomId,
+          isVideo: session.isVideo,
+        });
+
+        socket.emit('call-ready', {
+          roomId: session.roomId,
+          peerId: responderId,
+          callerId: session.callerId,
+          receiverId: session.receiverId,
+          isVideo: session.isVideo,
+          role: 'callee',
+        });
+
+        done({
+          success: true,
+          roomId: session.roomId,
+          isVideo: session.isVideo,
+        });
+        return;
+      }
+
+      emitCallerUpdate(io, session, {
+        status: status || 'declined',
+        responderId,
+        responderSocketId: socket.id,
+        roomId: session.roomId,
+        isVideo: session.isVideo,
+      });
+
+      destroySession(session.roomId);
+      done({ success: true });
+    } catch (error) {
+      console.error('[call-response] error:', error);
+      done({
+        success: false,
+        error: error.message || 'Impossible de repondre a cet appel.',
+      });
+    }
+  });
+
+  socket.on('call:start', async ({ roomId, callerId }, callback) => {
+    try {
+      const effectiveCallerId = getCurrentUserId(socket) || Number(callerId);
+      const session = getSessionByRoomId(roomId);
+      if (!session) {
+        callback?.({ error: "L'appel a expire ou a ete annule" });
+        return;
+      }
+
+      if (Number(session.callerId) !== Number(effectiveCallerId)) {
+        callback?.({ error: 'Vous ne pouvez pas initialiser cet appel.' });
+        return;
+      }
+
+      const room = await roomManager.getOrCreateRoom(roomId);
+      room.addPeer(String(effectiveCallerId), socket.id);
+      attachSocketToCall(socket, roomId, effectiveCallerId);
+
+      session.callerSocketId = socket.id;
+      callback?.({
+        success: true,
+        roomId,
+        isVideo: session.isVideo,
+      });
+    } catch (error) {
+      console.error('call:start error:', error);
+      callback?.({ error: error.message });
+    }
+  });
+
+  socket.on('call:join', async ({ roomId, peerId }, callback) => {
+    try {
+      const effectivePeerId = getCurrentUserId(socket) || Number(peerId);
+      const session = getSessionByRoomId(roomId);
+      if (!session) {
+        callback?.({ error: "L'appel a expire ou a ete annule" });
+        return;
+      }
+
+      if (
+        Number(session.receiverId) !== Number(effectivePeerId) &&
+        Number(session.callerId) !== Number(effectivePeerId)
+      ) {
+        callback?.({ error: 'Vous ne pouvez pas rejoindre cet appel.' });
+        return;
+      }
+
+      const room = roomManager.getRoom(roomId);
+      if (!room) {
+        callback?.({ error: "L'appel a expire ou a ete annule" });
+        return;
+      }
+
+      room.addPeer(String(effectivePeerId), socket.id);
+      attachSocketToCall(socket, roomId, effectivePeerId);
+
       const activeProducers = [];
-      room.peers.forEach(p => {
-        p.producers.forEach(prod => {
+      room.peers.forEach((participant) => {
+        participant.producers.forEach((producer) => {
           activeProducers.push({
-            producerId: prod.id,
-            peerId: p.id,
-            kind: prod.kind
+            producerId: producer.id,
+            peerId: participant.id,
+            kind: producer.kind,
           });
         });
       });
 
-      console.log(`[Appel] ${peerId} a rejoint l'appel ${roomId}`);
-      callback({ success: true, activeProducers });
-    } catch (err) {
-      console.error('call:join error:', err);
-      callback({ error: err.message });
+      session.receiverSocketId = socket.id;
+      session.status = 'connected';
+
+      socket.to(roomId).emit('call:participant-joined', {
+        roomId,
+        peerId: effectivePeerId,
+      });
+      io.to(roomId).emit('call:connected', {
+        roomId,
+        isVideo: session.isVideo,
+      });
+
+      callback?.({
+        success: true,
+        roomId,
+        isVideo: session.isVideo,
+        activeProducers,
+      });
+    } catch (error) {
+      console.error('call:join error:', error);
+      callback?.({ error: error.message });
     }
   });
 
-  // Terminer ou raccrocher l'appel
-  socket.on('call:end', ({ roomId, peerId }) => {
-    console.log(`[Appel] Appel terminé par ${peerId} dans ${roomId}`);
-    socket.to(roomId).emit('call:end', { peerId });
-    roomManager.closeRoom(roomId);
+  socket.on('call:end', ({ roomId, peerId } = {}, callback) => {
+    try {
+      const currentUserId = getCurrentUserId(socket) || Number(peerId);
+      const session =
+        getSessionByRoomId(String(roomId || '')) ||
+        getSessionByRoomId(getActiveRoomIdForUser(currentUserId));
+
+      if (!session) {
+        callback?.({ success: true });
+        return;
+      }
+
+      emitCallEnded(io, session, currentUserId);
+      destroySession(session.roomId);
+      detachSocketFromCall(socket, session.roomId);
+      callback?.({ success: true });
+    } catch (error) {
+      console.error('call:end error:', error);
+      callback?.({
+        success: false,
+        error: error.message || 'Impossible de terminer cet appel.',
+      });
+    }
   });
 
-  // Rejeter l'appel entrant
-  socket.on('call:reject', ({ roomId, peerId }) => {
-    console.log(`[Appel] Appel rejeté par ${peerId} pour la salle ${roomId}`);
-    socket.to(roomId).emit('call:reject', { peerId });
-    roomManager.closeRoom(roomId);
+  socket.on('call:reject', ({ roomId, peerId } = {}, callback) => {
+    try {
+      const currentUserId = getCurrentUserId(socket) || Number(peerId);
+      const session =
+        getSessionByRoomId(String(roomId || '')) ||
+        getSessionByRoomId(getActiveRoomIdForUser(currentUserId));
+
+      if (!session) {
+        callback?.({ success: true });
+        return;
+      }
+
+      emitCallerUpdate(io, session, {
+        status: 'declined',
+        responderId: currentUserId,
+        roomId: session.roomId,
+        isVideo: session.isVideo,
+      });
+      emitCallEnded(io, session, currentUserId);
+      destroySession(session.roomId);
+      detachSocketFromCall(socket, session.roomId);
+      callback?.({ success: true });
+    } catch (error) {
+      console.error('call:reject error:', error);
+      callback?.({
+        success: false,
+        error: error.message || 'Impossible de rejeter cet appel.',
+      });
+    }
+  });
+
+  socket.on('disconnecting', () => {
+    const currentUserId = getCurrentUserId(socket);
+    const roomId =
+      socket.data?.privateCallRoomId || getActiveRoomIdForUser(currentUserId);
+    const session = getSessionByRoomId(roomId);
+    if (!session) {
+      detachSocketFromCall(socket, roomId);
+      return;
+    }
+
+    emitCallEnded(io, session, currentUserId);
+    destroySession(session.roomId, { closeRoom: false });
+    detachSocketFromCall(socket, session.roomId);
   });
 };

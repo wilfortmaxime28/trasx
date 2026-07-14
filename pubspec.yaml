@@ -53,6 +53,8 @@ dependencies:
   camera: ^0.12.0+1
   flutter_cache_manager: ^3.4.1
   emoji_picker_flutter: ^4.4.0
+  flutter_webrtc: ^1.5.2
+  mediasfu_mediasoup_client: ^0.1.4
 
 dev_dependencies:
   flutter_test:

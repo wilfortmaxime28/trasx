@@ -78,13 +78,20 @@ function handleSocket(socket, io) {
       const producer = await transport.produce({ kind, rtpParameters, appData });
       peer.addProducer(producer);
 
-      // Notifier les autres de ce nouveau producteur
-      socket.to(roomId).emit('live:newProducer', {
+      const producerPayload = {
+        roomId,
         producerId: producer.id,
         peerId: peer.id,
         kind: producer.kind,
-        name: peer.name || 'Spectateur'
-      });
+        name: peer.name || 'Spectateur',
+        appData: appData || {}
+      };
+
+      // Notifier les autres de ce nouveau producteur
+      socket.to(roomId).emit('mediasoup:newProducer', producerPayload);
+      if (room?.isLive) {
+        socket.to(roomId).emit('live:newProducer', producerPayload);
+      }
 
       callback({ id: producer.id });
     } catch (err) {
@@ -150,11 +157,22 @@ function handleSocket(socket, io) {
     try {
       const room = roomManager.getRoom(roomId);
       const peer = room?.getPeer(peerId);
+      const producer = peer?.producers?.get(producerId);
       if (peer) {
         peer.closeProducer(producerId);
       }
-      
-      socket.to(roomId).emit('live:producerClosed', { producerId });
+
+      const producerClosedPayload = {
+        roomId,
+        producerId,
+        peerId,
+        kind: producer?.kind || null
+      };
+
+      socket.to(roomId).emit('mediasoup:producerClosed', producerClosedPayload);
+      if (room?.isLive) {
+        socket.to(roomId).emit('live:producerClosed', producerClosedPayload);
+      }
       if (callback) callback({ success: true });
     } catch (err) {
       console.error('[Mediasoup:closeProducer] Error:', err);

@@ -8578,83 +8578,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── Signalisation d'appel entrant ──────────────────────────────────────────
-  // Émis par l'appelant pour notifier le destinataire
-  socket.on('call-invite', async (data) => {
-    try {
-      const callerId = Number(session.userId || 0);
-      if (!callerId) return;
-      const { receiverId, isVideo } = data || {};
-      const numericReceiverId = parseInt(receiverId, 10);
-      if (!numericReceiverId || numericReceiverId === Number(callerId)) return;
-      const relationshipState = await User.getMessageRelationshipState(callerId, numericReceiverId);
-      if (!relationshipState.can_chat) {
-        socket.emit('chat-action-error', {
-          action: 'start_call',
-          targetUserId: numericReceiverId,
-          error: relationshipState.has_blocked_user
-            ? 'Debloquez cet utilisateur avant de l appeler.'
-            : 'Cet utilisateur vous a bloque.'
-        });
-        return;
-      }
-      if (!presence.isUserOnline(numericReceiverId)) {
-        socket.emit('chat-action-error', {
-          action: 'start_call',
-          targetUserId: numericReceiverId,
-          error: 'Cet utilisateur n est pas en ligne.'
-        });
-        return;
-      }
-
-      const caller = await User.getById(callerId);
-      if (!caller) return;
-
-      io.to(`user:${numericReceiverId}`).emit('call-incoming', {
-        callerId,
-        callerName: `${caller.first_name} ${caller.last_name}`.trim(),
-        callerAvatar: caller.avatar || '/assets/avatar_placeholder.jpg',
-        isVideo: !!isVideo,
-        callerSocketId: socket.id
-      });
-    } catch (err) {
-      console.error('[call-invite] error:', err);
-    }
-  });
-
-  // Réponse du destinataire à l'appelant (accepted | declined | missed)
-  socket.on('call-response', (data) => {
-    try {
-      const responderId = session.userId;
-      if (!responderId) return;
-      const { callerId, status } = data || {};
-      const numericCallerId = parseInt(callerId, 10);
-      if (!numericCallerId) return;
-      io.to(`user:${numericCallerId}`).emit('call-response-received', {
-        status,
-        responderId,
-        responderSocketId: socket.id
-      });
-    } catch (err) {
-      console.error('[call-response] error:', err);
-    }
-  });
-
-  // Raccrochage en cours d'appel
-  socket.on('call-end', (data) => {
-    try {
-      const enderId = session.userId;
-      if (!enderId) return;
-      const { receiverId } = data || {};
-      const numericReceiverId = parseInt(receiverId, 10);
-      if (!numericReceiverId) return;
-      io.to(`user:${numericReceiverId}`).emit('call-ended', { enderId });
-    } catch (err) {
-      console.error('[call-end] error:', err);
-    }
-  });
-  // ───────────────────────────────────────────────────────────────────────────
-
   socket.on('chat-typing', (data) => {
     try {
       const currentUserId = Number(session.userId || 0);
@@ -9181,11 +9104,11 @@ io.on('connection', (socket) => {
           const peer = room.peers.get(String(socket.peerId)) || room.peers.get(Number(socket.peerId));
           const peerName = peer ? (peer.name || 'Anonyme') : 'Quelqu\'un';
           room.removePeer(socket.peerId);
-          if (socket.isHost) {
+          if (room.isLive && socket.isHost) {
             socket.to(socket.roomId).emit('live:ended');
             roomManager.closeRoom(socket.roomId);
             io.emit('live:ended-global', { roomId: socket.roomId });
-          } else {
+          } else if (room.isLive) {
             socket.to(socket.roomId).emit('live:viewerLeft', { peerId: socket.peerId, name: peerName });
 
             // Envoyer la liste des spectateurs mise à jour (sans l'animateur/créateur)

@@ -19,6 +19,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:video_player/video_player.dart';
 
+import '../pages/private_call_page.dart';
+import '../services/private_call_session.dart';
 import '../services/network_quality_service.dart';
 import '../services/video_cache_manager.dart';
 
@@ -242,6 +244,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   Timer? _gameInviteTicker;
   bool _typingStateSent = false;
   bool _incomingCallDialogVisible = false;
+  bool _isCallPageOpen = false;
+  String? _activeCallRoomId;
 
   @override
   void initState() {
@@ -1389,8 +1393,21 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     if (!mounted || data == null || _incomingCallDialogVisible) return;
     final callerId = _asInt(data['callerId']);
     final callerName = _asString(data['callerName'], fallback: 'Utilisateur');
+    final callerAvatar = _asString(data['callerAvatar']);
+    final roomId = _asString(data['roomId']);
     final isVideo = data['isVideo'] == true;
-    if (callerId <= 0) return;
+    if (callerId <= 0 || roomId.isEmpty) return;
+
+    if (_isCallPageOpen) {
+      try {
+        await _emitSocketAck('call-response', {
+          'callerId': callerId,
+          'roomId': roomId,
+          'status': 'busy',
+        });
+      } catch (_) {}
+      return;
+    }
 
     _incomingCallDialogVisible = true;
     try {
@@ -1416,10 +1433,6 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
             CupertinoDialogAction(
               onPressed: () {
                 responseStatus = 'declined';
-                widget.socket?.emit('call-response', {
-                  'callerId': callerId,
-                  'status': 'declined',
-                });
                 Navigator.of(dialogContext).pop();
               },
               child: const Text('Refuser'),
@@ -1428,10 +1441,6 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
               isDefaultAction: true,
               onPressed: () {
                 responseStatus = 'accepted';
-                widget.socket?.emit('call-response', {
-                  'callerId': callerId,
-                  'status': 'accepted',
-                });
                 Navigator.of(dialogContext).pop();
               },
               child: const Text('Repondre'),
@@ -1441,25 +1450,51 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       },
     );
 
-    if (mounted && responseStatus == 'accepted') {
-      _showSnackBar(
-        isVideo
-            ? 'Signal d appel video gere. Le flux media Flutter reste a brancher.'
-            : 'Signal d appel audio gere. Le flux media Flutter reste a brancher.',
-      );
+    try {
+      await _emitSocketAck('call-response', {
+        'callerId': callerId,
+        'roomId': roomId,
+        'status': responseStatus,
+      });
+      if (mounted && responseStatus == 'accepted') {
+        await _openCallPage(
+          roomId: roomId,
+          isVideo: isVideo,
+          isCaller: false,
+          partnerId: callerId,
+          partnerName: callerName,
+          partnerAvatar: callerAvatar,
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        _showSnackBar(error.toString().replaceFirst('Exception: ', ''));
+      }
     }
     _incomingCallDialogVisible = false;
   }
 
   void _handleCallResponse(dynamic data) {
     if (!mounted || data == null) return;
+    final roomId = _asString(data['roomId']);
+    if (_isCallPageOpen && roomId.isNotEmpty && roomId == _activeCallRoomId) {
+      return;
+    }
     final status = _asString(data['status']);
     if (status == 'accepted') {
-      _showSnackBar('Appel accepte. Le flux media Flutter reste a brancher.');
+      _showSnackBar('Appel accepte.');
       return;
     }
     if (status == 'declined') {
       _showSnackBar('Appel refuse.');
+      return;
+    }
+    if (status == 'missed') {
+      _showSnackBar('Aucune reponse.');
+      return;
+    }
+    if (status == 'busy') {
+      _showSnackBar('Utilisateur deja en appel.');
       return;
     }
     if (status.isNotEmpty) {
@@ -1469,6 +1504,10 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
   void _handleCallEnded(dynamic data) {
     if (!mounted || data == null) return;
+    final roomId = _asString(data['roomId']);
+    if (_isCallPageOpen && roomId.isNotEmpty && roomId == _activeCallRoomId) {
+      return;
+    }
     _showSnackBar('Appel termine.');
   }
 
@@ -1731,17 +1770,83 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     }
   }
 
-  void _startCall({required bool isVideo}) {
-    if (_selectedConversation == null) return;
-    widget.socket?.emit('call-invite', {
-      'receiverId': _selectedConversation!['id'],
-      'isVideo': isVideo,
-    });
-    _showSnackBar(
-      isVideo
-          ? 'Invitation appel video envoyee.'
-          : 'Invitation appel audio envoyee.',
+  Future<void> _startCall({required bool isVideo}) async {
+    final conversation = _selectedConversation;
+    if (conversation == null || _isCallPageOpen) return;
+
+    try {
+      final dynamic response = await _emitSocketAck('call-invite', {
+        'receiverId': conversation['id'],
+        'isVideo': isVideo,
+      }, timeout: const Duration(seconds: 12));
+
+      if (response is! Map || response['success'] != true) {
+        throw Exception(
+          _asString(
+            response is Map ? response['error'] : null,
+            fallback: 'Impossible de lancer cet appel.',
+          ),
+        );
+      }
+
+      final roomId = _asString(response['roomId']);
+      if (roomId.isEmpty) {
+        throw Exception('Session d appel introuvable.');
+      }
+
+      await _openCallPage(
+        roomId: roomId,
+        isVideo: isVideo,
+        isCaller: true,
+        partnerId: conversation['id'] as int,
+        partnerName: _asString(conversation['name'], fallback: 'Utilisateur'),
+        partnerAvatar: _asString(conversation['avatar']),
+      );
+    } catch (error) {
+      _showSnackBar(error.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _openCallPage({
+    required String roomId,
+    required bool isVideo,
+    required bool isCaller,
+    required int partnerId,
+    required String partnerName,
+    required String partnerAvatar,
+  }) async {
+    if (!mounted || _isCallPageOpen) return;
+    final socket = widget.socket;
+    if (socket == null) {
+      _showSnackBar('Messagerie temps reel indisponible.');
+      return;
+    }
+
+    _isCallPageOpen = true;
+    _activeCallRoomId = roomId;
+
+    final session = PrivateCallSession(
+      socket: socket,
+      roomId: roomId,
+      currentUserId: widget.currentUserId,
+      remoteUserId: partnerId,
+      remoteName: partnerName,
+      remoteAvatarUrl: partnerAvatar,
+      isVideo: isVideo,
+      role: isCaller ? PrivateCallRole.caller : PrivateCallRole.callee,
     );
+
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (_) => PrivateCallPage(session: session),
+        ),
+      );
+    } finally {
+      _isCallPageOpen = false;
+      _activeCallRoomId = null;
+    }
   }
 
   Future<void> _openGameInviteComposer() async {

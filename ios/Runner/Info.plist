@@ -5,7 +5,9 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Trasx a besoin d'accéder à votre caméra pour la vérification d'identité KYC.</string>
+	<string>Trasx a besoin d'accéder à votre caméra pour les appels vidéo et certaines vérifications d'identité.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Trasx a besoin d'accéder à votre microphone pour les appels audio et vidéo en temps réel.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

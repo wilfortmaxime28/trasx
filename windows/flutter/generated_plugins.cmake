@@ -7,6 +7,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   connectivity_plus
   emoji_picker_flutter
   file_selector_windows
+  flutter_webrtc
   record_windows
   share_plus
   url_launcher_windows
