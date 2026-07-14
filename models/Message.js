@@ -23,6 +23,7 @@ class Message {
         await addColumnIfMissing('attachment_url', 'attachment_url VARCHAR(255) DEFAULT NULL');
         await addColumnIfMissing('attachment_type', 'attachment_type VARCHAR(50) DEFAULT NULL');
         await addColumnIfMissing('attachment_name', 'attachment_name VARCHAR(255) DEFAULT NULL');
+        await addColumnIfMissing('attachment_thumbnail_url', 'attachment_thumbnail_url VARCHAR(255) DEFAULT NULL');
         await addColumnIfMissing('attachment_size', 'attachment_size INT DEFAULT NULL');
         await addColumnIfMissing('voice_duration_seconds', 'voice_duration_seconds INT DEFAULT NULL');
         await addColumnIfMissing('delivered_at', 'delivered_at TIMESTAMP NULL DEFAULT NULL');
@@ -74,6 +75,7 @@ class Message {
         m.attachment_url,
         m.attachment_type,
         m.attachment_name,
+        m.attachment_thumbnail_url,
         m.attachment_size,
         m.voice_duration_seconds,
         m.delivered_at,
@@ -113,6 +115,7 @@ class Message {
       attachmentUrl = null,
       attachmentType = null,
       attachmentName = null,
+      attachmentThumbnailUrl = null,
       attachmentSize = null,
       voiceDurationSeconds = null
     } = attachment || {};
@@ -129,11 +132,12 @@ class Message {
           attachment_url,
           attachment_type,
           attachment_name,
+          attachment_thumbnail_url,
           attachment_size,
           voice_duration_seconds,
           parent_id,
           status_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         senderId,
@@ -142,6 +146,7 @@ class Message {
         attachmentUrl,
         attachmentType,
         attachmentName,
+        attachmentThumbnailUrl,
         normalizedAttachmentSize,
         normalizedVoiceDurationSeconds,
         normalizedParentId,
@@ -162,6 +167,7 @@ class Message {
         m.attachment_url,
         m.attachment_type,
         m.attachment_name,
+        m.attachment_thumbnail_url,
         m.attachment_size,
         m.voice_duration_seconds,
         m.delivered_at,
@@ -217,6 +223,7 @@ class Message {
           m.attachment_url,
           m.attachment_type,
           m.attachment_name,
+          m.attachment_thumbnail_url,
           m.parent_id,
           u.username AS sender_username
         FROM messages m
@@ -256,6 +263,7 @@ class Message {
         attachment_url = NULL,
         attachment_type = NULL,
         attachment_name = NULL,
+        attachment_thumbnail_url = NULL,
         attachment_size = NULL,
         voice_duration_seconds = NULL
       WHERE id = ?
@@ -274,6 +282,7 @@ class Message {
         m.attachment_url,
         m.attachment_type,
         m.attachment_name,
+        m.attachment_thumbnail_url,
         m.attachment_size,
         m.voice_duration_seconds,
         m.delivered_at,

@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart' hide Config;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -102,6 +103,51 @@ class _MessagesViewCache {
         .map((item) => Map<String, dynamic>.from(item))
         .toList(growable: false);
   }
+}
+
+Widget _buildMessageMediaLoader({
+  required double width,
+  required double height,
+  required bool isMine,
+  BorderRadius? borderRadius,
+}) {
+  final resolvedRadius = borderRadius ?? BorderRadius.circular(18);
+  return Container(
+    width: width,
+    height: height,
+    decoration: BoxDecoration(
+      borderRadius: resolvedRadius,
+      gradient: LinearGradient(
+        colors: isMine
+            ? [
+                Colors.white.withValues(alpha: 0.16),
+                Colors.white.withValues(alpha: 0.08),
+              ]
+            : [const Color(0xFF111827), const Color(0xFF1F2937)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+    ),
+    child: Stack(
+      children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: resolvedRadius,
+              border: Border.all(
+                color: isMine
+                    ? Colors.white.withValues(alpha: 0.14)
+                    : Colors.white.withValues(alpha: 0.06),
+              ),
+            ),
+          ),
+        ),
+        const Center(
+          child: CupertinoActivityIndicator(color: Colors.white, radius: 13),
+        ),
+      ],
+    ),
+  );
 }
 
 class MessagesInboxView extends StatefulWidget {
@@ -904,14 +950,11 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
   bool _messageHasWarmableMedia(Map<String, dynamic> message) {
     final attachmentType = _asString(message['attachment_type']);
-    final attachmentUrl = _resolveUrl(_asString(message['attachment_url']));
-    if (attachmentUrl.isEmpty) return false;
-    return attachmentType == 'image' || attachmentType == 'video';
+    if (attachmentType != 'video') return false;
+    return _messageVideoThumbnailUrl(message).isNotEmpty;
   }
 
-  void _scheduleConversationMediaWarmup(
-    Iterable<Map<String, dynamic>> source,
-  ) {
+  void _scheduleConversationMediaWarmup(Iterable<Map<String, dynamic>> source) {
     final limit = _messagePrefetchWindow;
     if (limit <= 0) return;
 
@@ -936,36 +979,16 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     if (!mounted) return;
 
     final attachmentType = _asString(message['attachment_type']);
-    final attachmentUrl = _resolveUrl(_asString(message['attachment_url']));
-    if (attachmentUrl.isEmpty) return;
+    final thumbnailUrl = _messageVideoThumbnailUrl(message);
+    if (attachmentType != 'video' || thumbnailUrl.isEmpty) return;
 
-    final mediaKey = '$attachmentType|$attachmentUrl';
+    final mediaKey = 'thumb|$thumbnailUrl';
     if (!_prefetchedMessageMedia.add(mediaKey)) {
       return;
     }
 
     try {
-      if (attachmentType == 'image') {
-        await precacheImage(
-          CachedNetworkImageProvider(attachmentUrl),
-          context,
-        );
-        return;
-      }
-
-      if (attachmentType == 'video') {
-        final thumbnailUrl = _messageVideoThumbnailUrl(message);
-        if (thumbnailUrl.isNotEmpty) {
-          final thumbnailKey = 'thumb|$thumbnailUrl';
-          if (_prefetchedMessageMedia.add(thumbnailKey)) {
-            await precacheImage(
-              CachedNetworkImageProvider(thumbnailUrl),
-              context,
-            );
-          }
-        }
-        await VideoCacheManager.prefetchVideo(attachmentUrl);
-      }
+      await precacheImage(CachedNetworkImageProvider(thumbnailUrl), context);
     } catch (_) {
       _prefetchedMessageMedia.remove(mediaKey);
     }
@@ -1101,11 +1124,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       return source.map((item) {
         if (item['id'] != userId) return item;
         changed = true;
-        return {
-          ...item,
-          'is_online': isOnline,
-          'presence_text': presenceText,
-        };
+        return {...item, 'is_online': isOnline, 'presence_text': presenceText};
       }).toList();
     }
 
@@ -1114,7 +1133,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     Map<String, dynamic>? updatedSelected = _selectedConversation;
     bool shouldStopTyping = false;
 
-    if (_selectedConversation != null && _selectedConversation!['id'] == userId) {
+    if (_selectedConversation != null &&
+        _selectedConversation!['id'] == userId) {
       changed = true;
       updatedSelected = {
         ..._selectedConversation!,
@@ -1163,7 +1183,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _updateConversationRelationship(
@@ -1192,7 +1214,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     final updatedRequests = patchList(_requestConversations);
     Map<String, dynamic>? updatedSelected = _selectedConversation;
 
-    if (_selectedConversation != null && _selectedConversation!['id'] == contactId) {
+    if (_selectedConversation != null &&
+        _selectedConversation!['id'] == contactId) {
       selectedChanged = true;
       updatedSelected = {
         ..._selectedConversation!,
@@ -1295,7 +1318,11 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     final deleteType = _asString(data['deleteType']);
     if (messageId <= 0 || deleteType.isEmpty) return;
 
-    final updatedMessages = _applyMessageDeletion(_messages, messageId, deleteType);
+    final updatedMessages = _applyMessageDeletion(
+      _messages,
+      messageId,
+      deleteType,
+    );
     if (updatedMessages == null) {
       _fetchInbox(forceRefresh: true, silent: true);
       return;
@@ -1323,10 +1350,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     final nextMessages = _messages.map((message) {
       if (message['id'] != messageId) return message;
       updatedSelected = true;
-      return {
-        ...message,
-        'content': content,
-      };
+      return {...message, 'content': content};
     }).toList();
 
     if (updatedSelected && mounted) {
@@ -1431,9 +1455,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     if (!mounted || data == null) return;
     final status = _asString(data['status']);
     if (status == 'accepted') {
-      _showSnackBar(
-        'Appel accepte. Le flux media Flutter reste a brancher.',
-      );
+      _showSnackBar('Appel accepte. Le flux media Flutter reste a brancher.');
       return;
     }
     if (status == 'declined') {
@@ -1500,7 +1522,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     Map<String, dynamic> message,
     bool isMine,
   ) async {
-    final textPrimary = widget.isDarkMode ? Colors.white : const Color(0xFF111827);
+    final textPrimary = widget.isDarkMode
+        ? Colors.white
+        : const Color(0xFF111827);
     final textSecondary = widget.isDarkMode
         ? Colors.white70
         : const Color(0xFF6B7280);
@@ -1619,7 +1643,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
     final shouldBlock = !(_selectedConversation?['has_blocked_user'] == true);
     final label = shouldBlock ? 'Bloquer cet utilisateur' : 'Debloquer';
-    final textPrimary = widget.isDarkMode ? Colors.white : const Color(0xFF111827);
+    final textPrimary = widget.isDarkMode
+        ? Colors.white
+        : const Color(0xFF111827);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -1685,10 +1711,14 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       });
       if (response is! Map || response['success'] != true) {
         throw Exception(
-          _asString(response is Map ? response['error'] : null, fallback: 'Impossible de mettre a jour le blocage.'),
+          _asString(
+            response is Map ? response['error'] : null,
+            fallback: 'Impossible de mettre a jour le blocage.',
+          ),
         );
       }
-      final relationship = _asMap(response['relationship']) ?? const <String, dynamic>{};
+      final relationship =
+          _asMap(response['relationship']) ?? const <String, dynamic>{};
       _updateConversationRelationship(
         conversation['id'] as int,
         hasBlockedUser: relationship['hasBlockedUser'] == true,
@@ -1708,7 +1738,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       'isVideo': isVideo,
     });
     _showSnackBar(
-      isVideo ? 'Invitation appel video envoyee.' : 'Invitation appel audio envoyee.',
+      isVideo
+          ? 'Invitation appel video envoyee.'
+          : 'Invitation appel audio envoyee.',
     );
   }
 
@@ -1720,7 +1752,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     var durationSeconds = 60;
     var selectedTeam = 'FR';
     final amountController = TextEditingController(text: '1');
-    final textPrimary = widget.isDarkMode ? Colors.white : const Color(0xFF111827);
+    final textPrimary = widget.isDarkMode
+        ? Colors.white
+        : const Color(0xFF111827);
     final textSecondary = widget.isDarkMode
         ? Colors.white70
         : const Color(0xFF6B7280);
@@ -1773,12 +1807,18 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                     DropdownButtonFormField<String>(
                       initialValue: selectedGame,
                       items: const [
-                        DropdownMenuItem(value: 'domino', child: Text('Domino')),
+                        DropdownMenuItem(
+                          value: 'domino',
+                          child: Text('Domino'),
+                        ),
                         DropdownMenuItem(
                           value: 'puissance4',
                           child: Text('Puissance 4'),
                         ),
-                        DropdownMenuItem(value: 'gomoku', child: Text('Gomoku')),
+                        DropdownMenuItem(
+                          value: 'gomoku',
+                          child: Text('Gomoku'),
+                        ),
                         DropdownMenuItem(value: 'ludo', child: Text('Ludo')),
                         DropdownMenuItem(
                           value: 'tablefootball',
@@ -1896,8 +1936,12 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                       width: double.infinity,
                       child: FilledButton(
                         onPressed: () {
-                          final amount = double.tryParse(
-                                amountController.text.trim().replaceAll(',', '.'),
+                          final amount =
+                              double.tryParse(
+                                amountController.text.trim().replaceAll(
+                                  ',',
+                                  '.',
+                                ),
                               ) ??
                               0;
                           if (priceType == 'paid' && amount <= 0) {
@@ -1982,7 +2026,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
     String? team;
     if (action == 'accept' &&
-        _asString(structuredContent?['game']).toLowerCase() == 'tablefootball') {
+        _asString(structuredContent?['game']).toLowerCase() ==
+            'tablefootball') {
       team = await _pickFootballTeam();
       if (team == null) return;
     }
@@ -2198,15 +2243,10 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
             ),
             title: Text(
               label,
-              style: TextStyle(
-                color: textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700),
             ),
             subtitle: Text(
-              value == 'image'
-                  ? 'Photo ou image'
-                  : 'Clip video ou capture',
+              value == 'image' ? 'Photo ou image' : 'Clip video ou capture',
               style: TextStyle(color: textSecondary, fontSize: 12),
             ),
             trailing: Icon(
@@ -2297,10 +2337,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     );
     if (file == null) return;
 
-    await _uploadAttachmentFile(
-      filePath: file.path,
-      formFieldName: 'file',
-    );
+    await _uploadAttachmentFile(filePath: file.path, formFieldName: 'file');
   }
 
   Future<void> _uploadAttachmentFile({
@@ -2342,6 +2379,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       }
 
       final attachmentType = _asString(body['attachmentType']);
+      final attachmentThumbnailUrl = _asString(
+        body['attachmentThumbnailUrl'] ?? body['attachment_thumbnail_url'],
+      );
       setState(() {
         _pendingAttachment = {
           'attachmentUrl': body['attachmentUrl'],
@@ -2351,6 +2391,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
             originalName: _asString(body['attachmentName']),
             voiceDurationSeconds: voiceDurationSeconds,
           ),
+          'attachmentThumbnailUrl': attachmentThumbnailUrl,
           'attachmentSize': body['attachmentSize'],
           'voiceDurationSeconds': voiceDurationSeconds,
         };
@@ -2521,15 +2562,12 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                   });
 
                   recordTimer?.cancel();
-                  recordTimer = Timer.periodic(
-                    const Duration(seconds: 1),
-                    (_) {
-                      if (!sheetContext.mounted) return;
-                      setModalState(() {
-                        durationSeconds++;
-                      });
-                    },
-                  );
+                  recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+                    if (!sheetContext.mounted) return;
+                    setModalState(() {
+                      durationSeconds++;
+                    });
+                  });
                 } catch (error) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(this.context).showSnackBar(
@@ -2592,9 +2630,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                       ),
                       const SizedBox(height: 18),
                       Text(
-                        isRecording
-                            ? 'Enregistrement en cours'
-                            : 'Note vocale',
+                        isRecording ? 'Enregistrement en cours' : 'Note vocale',
                         style: TextStyle(
                           color: textPrimary,
                           fontSize: 18,
@@ -2719,6 +2755,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       'attachmentUrl': _pendingAttachment?['attachmentUrl'],
       'attachmentType': _pendingAttachment?['attachmentType'],
       'attachmentName': _pendingAttachment?['attachmentName'],
+      'attachmentThumbnailUrl': _pendingAttachment?['attachmentThumbnailUrl'],
       'attachmentSize': _pendingAttachment?['attachmentSize'],
       'voiceDurationSeconds': _pendingAttachment?['voiceDurationSeconds'],
       'parentId': _replyingToMessage?['id'],
@@ -2729,7 +2766,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         : _buildConversationPreview({
             'content': content,
             'attachment_type': _pendingAttachment?['attachmentType'],
-            'voice_duration_seconds': _pendingAttachment?['voiceDurationSeconds'],
+            'voice_duration_seconds':
+                _pendingAttachment?['voiceDurationSeconds'],
             'status_id': 0,
           });
 
@@ -3726,7 +3764,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                           ],
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -3737,7 +3775,6 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                                 ? () => _startCall(isVideo: false)
                                 : null,
                           ),
-                          const SizedBox(width: 2),
                           _buildHeaderActionButton(
                             icon: Icons.videocam_rounded,
                             color: textPrimary,
@@ -3745,7 +3782,6 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                                 ? () => _startCall(isVideo: true)
                                 : null,
                           ),
-                          const SizedBox(width: 2),
                           _buildHeaderActionButton(
                             icon: Icons.sports_esports_rounded,
                             color: textPrimary,
@@ -3753,7 +3789,6 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                                 ? _openGameInviteComposer
                                 : null,
                           ),
-                          const SizedBox(width: 2),
                           _buildHeaderActionButton(
                             icon: CupertinoIcons.ellipsis,
                             color: textPrimary,
@@ -3949,9 +3984,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       child: IconButton(
         onPressed: onPressed,
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+        constraints: const BoxConstraints.tightFor(width: 32, height: 32),
         visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
-        splashRadius: 18,
+        splashRadius: 16,
         icon: useCupertino
             ? Icon(icon, color: color, size: 18)
             : Icon(icon, color: color, size: 20),
@@ -3975,7 +4010,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: widget.isDarkMode ? const Color(0xFF131317) : const Color(0xFFFFF7F8),
+        color: widget.isDarkMode
+            ? const Color(0xFF131317)
+            : const Color(0xFFFFF7F8),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _tiktokPink.withValues(alpha: 0.18)),
       ),
@@ -4039,9 +4076,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       decoration: BoxDecoration(
         color: widget.isDarkMode ? const Color(0xFF121214) : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _bubblePurpleStart.withValues(alpha: 0.18),
-        ),
+        border: Border.all(color: _bubblePurpleStart.withValues(alpha: 0.18)),
       ),
       child: Row(
         children: [
@@ -4202,8 +4237,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
             children: List.generate(3, (index) {
               final wave = math.sin(
                 ((_typingAnimationController.value + (index * 0.14)) *
-                        math.pi *
-                        2),
+                    math.pi *
+                    2),
               );
               final opacity = 0.28 + ((wave + 1) / 2) * 0.72;
               final scale = 0.84 + ((wave + 1) / 2) * 0.26;
@@ -4338,12 +4373,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                 message['created_at'] as String,
                 textSecondary,
               ),
-            _buildMessageBubble(
-              message,
-              isMine,
-              textPrimary,
-              textSecondary,
-            ),
+            _buildMessageBubble(message, isMine, textPrimary, textSecondary),
           ],
         );
       },
@@ -4434,7 +4464,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                       _buildDeletedMessageBubble(isMine, textSecondary)
                     else ...[
                       if (_asString(message['parent_content']).isNotEmpty ||
-                          _asString(message['parent_sender_username']).isNotEmpty)
+                          _asString(
+                            message['parent_sender_username'],
+                          ).isNotEmpty)
                         Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(8),
@@ -4519,7 +4551,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                             textSecondary: textSecondary,
                           ),
                         if (hasText) ...[
-                          if (attachmentUrl.isNotEmpty) const SizedBox(height: 8),
+                          if (attachmentUrl.isNotEmpty)
+                            const SizedBox(height: 8),
                           Text(
                             message['content'] as String,
                             style: TextStyle(
@@ -4572,53 +4605,18 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     required Color textSecondary,
   }) {
     if (attachmentType == 'image') {
-      return GestureDetector(
-        onTap: () => _openImagePreview(_resolveUrl(attachmentUrl)),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: CachedNetworkImage(
-            imageUrl: _resolveUrl(attachmentUrl),
-            width: 220,
-            height: 220,
-            fit: BoxFit.cover,
-            fadeInDuration: const Duration(milliseconds: 160),
-            progressIndicatorBuilder: (_, _, progress) =>
-                _buildAttachmentLoader(
-                  width: 220,
-                  height: 220,
-                  isMine: isMine,
-                  icon: CupertinoIcons.photo_fill,
-                  label: 'Chargement image',
-                  progress: progress.progress,
-                ),
-            errorWidget: (_, _, _) => Container(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                gradient: LinearGradient(
-                  colors: isMine
-                      ? [
-                          Colors.white.withValues(alpha: 0.14),
-                          Colors.white.withValues(alpha: 0.06),
-                        ]
-                      : [const Color(0xFF111827), const Color(0xFF1F2937)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: const Icon(
-                CupertinoIcons.photo,
-                color: Colors.white70,
-              ),
-            ),
-          ),
-        ),
+      return _MessageImageAttachmentCard(
+        key: ValueKey<String>('image-${_asInt(message['id'])}'),
+        imageUrl: _resolveUrl(attachmentUrl),
+        isMine: isMine,
+        onOpenViewer: (file) =>
+            _openImagePreview(_resolveUrl(attachmentUrl), localFile: file),
       );
     }
 
     if (attachmentType == 'video') {
       return _buildVideoAttachmentCard(
+        messageId: _asInt(message['id']),
         url: attachmentUrl,
         thumbnailUrl: _messageVideoThumbnailUrl(message),
         title: _asString(message['attachment_name'], fallback: 'Video'),
@@ -4630,6 +4628,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
     if (attachmentType == 'audio') {
       return _buildAudioAttachmentCard(
+        messageId: _asInt(message['id']),
         url: attachmentUrl,
         title: _asString(message['attachment_name'], fallback: 'Note vocale'),
         durationSeconds: _asInt(message['voice_duration_seconds']),
@@ -4648,6 +4647,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   }
 
   Widget _buildVideoAttachmentCard({
+    required int messageId,
     required String url,
     required String thumbnailUrl,
     required String title,
@@ -4656,6 +4656,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     required Color textSecondary,
   }) {
     return _MessageVideoAttachmentCard(
+      key: ValueKey<String>('video-$messageId'),
       mediaUrl: _resolveUrl(url),
       thumbnailUrl: thumbnailUrl,
       title: _attachmentDisplayLabel(
@@ -4663,10 +4664,13 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         originalName: title,
       ),
       isMine: isMine,
-      onTap: () => _openAttachmentPlayer(
+      onOpenViewer: () => _openVideoPreview(
         mediaUrl: _resolveUrl(url),
-        title: title,
-        attachmentType: 'video',
+        title: _attachmentDisplayLabel(
+          attachmentType: 'video',
+          originalName: title,
+        ),
+        thumbnailUrl: thumbnailUrl,
       ),
     );
   }
@@ -4681,105 +4685,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     return rawThumbnail.isEmpty ? '' : _resolveUrl(rawThumbnail);
   }
 
-  Widget _buildAttachmentLoader({
-    required double width,
-    required double height,
-    required bool isMine,
-    required IconData icon,
-    required String label,
-    double? progress,
-  }) {
-    final normalizedProgress = progress?.clamp(0.0, 1.0).toDouble();
-
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: LinearGradient(
-          colors: isMine
-              ? [
-                  Colors.white.withValues(alpha: 0.16),
-                  Colors.white.withValues(alpha: 0.08),
-                ]
-              : [
-                  const Color(0xFF0F172A),
-                  const Color(0xFF1E293B),
-                ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isMine
-                      ? Colors.white.withValues(alpha: 0.14)
-                      : Colors.white.withValues(alpha: 0.06),
-                ),
-              ),
-            ),
-          ),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.22),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(icon, color: Colors.white, size: 24),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    value: normalizedProgress,
-                    color: Colors.white,
-                    backgroundColor: Colors.white.withValues(alpha: 0.18),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            left: 14,
-            right: 14,
-            bottom: 12,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                minHeight: 3,
-                value: normalizedProgress,
-                backgroundColor: Colors.white.withValues(alpha: 0.14),
-                valueColor: const AlwaysStoppedAnimation<Color>(_tiktokPink),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildAudioAttachmentCard({
+    required int messageId,
     required String url,
     required String title,
     required int durationSeconds,
@@ -4787,72 +4694,18 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     required Color textPrimary,
     required Color textSecondary,
   }) {
-    return GestureDetector(
-      onTap: () => _openAttachmentPlayer(
-        mediaUrl: _resolveUrl(url),
-        title: title,
+    return _MessageAudioAttachmentCard(
+      key: ValueKey<String>('audio-$messageId'),
+      mediaUrl: _resolveUrl(url),
+      title: _attachmentDisplayLabel(
         attachmentType: 'audio',
+        originalName: title,
+        durationSeconds: durationSeconds,
       ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isMine
-              ? Colors.white.withValues(alpha: 0.14)
-              : Colors.black.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: isMine
-                    ? Colors.white.withValues(alpha: 0.16)
-                    : const Color(0xFFEEF2FF),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                CupertinoIcons.play_fill,
-                color: isMine ? Colors.white : _bubblePurpleStart,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _attachmentDisplayLabel(
-                    attachmentType: 'audio',
-                    originalName: title,
-                    durationSeconds: durationSeconds,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isMine ? Colors.white : textPrimary,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  durationSeconds > 0
-                      ? 'Appuyer pour ecouter · ${_formatDuration(durationSeconds)}'
-                      : 'Appuyer pour ecouter',
-                  style: TextStyle(
-                    color: isMine ? Colors.white70 : textSecondary,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+      durationSeconds: durationSeconds,
+      isMine: isMine,
+      textPrimary: textPrimary,
+      textSecondary: textSecondary,
     );
   }
 
@@ -4913,6 +4766,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       originalName: _pendingAttachment?['attachmentName']?.toString(),
       voiceDurationSeconds: _asInt(_pendingAttachment?['voiceDurationSeconds']),
     );
+    final attachmentThumbnailUrl = _asString(
+      _pendingAttachment?['attachmentThumbnailUrl'],
+    );
     final voiceDurationSeconds = _asInt(
       _pendingAttachment?['voiceDurationSeconds'],
     );
@@ -4939,6 +4795,46 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                     width: 54,
                     height: 54,
                     fit: BoxFit.cover,
+                  )
+                : attachmentType == 'video' && attachmentThumbnailUrl.isNotEmpty
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CachedNetworkImage(
+                        imageUrl: _resolveUrl(attachmentThumbnailUrl),
+                        width: 54,
+                        height: 54,
+                        fit: BoxFit.cover,
+                        placeholder: (_, _) => _buildMessageMediaLoader(
+                          width: 54,
+                          height: 54,
+                          isMine: false,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        errorWidget: (_, _, _) => Container(
+                          color: widget.isDarkMode
+                              ? Colors.white10
+                              : Colors.black12,
+                        ),
+                      ),
+                      Container(
+                        color: Colors.black.withValues(alpha: 0.14),
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.42),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            CupertinoIcons.play_fill,
+                            color: Colors.white,
+                            size: 12,
+                          ),
+                        ),
+                      ),
+                    ],
                   )
                 : Container(
                     width: 54,
@@ -5379,7 +5275,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   ) {
     final label = _gameLabel(_asString(structuredContent['game']));
     final status = _asString(structuredContent['status'], fallback: 'pending');
-    final expired = status == 'pending' && _isGameInvitationExpired(structuredContent);
+    final expired =
+        status == 'pending' && _isGameInvitationExpired(structuredContent);
 
     if (status == 'accepted') return 'Invitation jeu acceptee : $label';
     if (status == 'declined') return 'Invitation jeu refusee : $label';
@@ -5399,7 +5296,10 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   }
 
   String _formatGameInvitationPrice(Map<String, dynamic> structuredContent) {
-    final priceType = _asString(structuredContent['priceType'], fallback: 'free');
+    final priceType = _asString(
+      structuredContent['priceType'],
+      fallback: 'free',
+    );
     if (priceType != 'paid') return 'Gratuit';
     final rawAmount = structuredContent['priceAmount'];
     final parsedAmount = rawAmount is num
@@ -5424,9 +5324,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     final trimmed = content.trim();
     if (trimmed.isEmpty) return null;
 
-    final urlMatch = RegExp(r'((?:https?:\/\/|trasx:\/\/)[^\s]+)').firstMatch(
-      trimmed,
-    );
+    final urlMatch = RegExp(
+      r'((?:https?:\/\/|trasx:\/\/)[^\s]+)',
+    ).firstMatch(trimmed);
     if (urlMatch == null) return null;
 
     final rawUrl = urlMatch.group(0) ?? '';
@@ -5450,7 +5350,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       return {
         'type': 'shared_reel',
         'shareUrl': rawUrl,
-        'appUrl': 'https://trasx.com/?view=shorts&shared_reel=$reelId#reel-$reelId',
+        'appUrl':
+            'https://trasx.com/?view=shorts&shared_reel=$reelId#reel-$reelId',
         if (note.isNotEmpty) 'note': note,
         'reel': {'id': reelId},
       };
@@ -5489,7 +5390,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
     if (uri.host == 'post') {
       final postId = int.tryParse(
-        segments.isNotEmpty ? segments.first : (uri.queryParameters['id'] ?? ''),
+        segments.isNotEmpty
+            ? segments.first
+            : (uri.queryParameters['id'] ?? ''),
       );
       if (postId != null && postId > 0) return postId;
     }
@@ -5514,7 +5417,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
     if (uri.host == 'shorts' || uri.host == 'reel') {
       final reelId = int.tryParse(
-        segments.isNotEmpty ? segments.first : (uri.queryParameters['id'] ?? ''),
+        segments.isNotEmpty
+            ? segments.first
+            : (uri.queryParameters['id'] ?? ''),
       );
       if (reelId != null && reelId > 0) return reelId;
     }
@@ -5690,7 +5595,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     required Color textSecondary,
   }) {
     final status = _asString(structuredContent['status'], fallback: 'pending');
-    final expired = status == 'pending' && _isGameInvitationExpired(structuredContent);
+    final expired =
+        status == 'pending' && _isGameInvitationExpired(structuredContent);
     final isPending = status == 'pending' && !expired;
     final isAccepted = status == 'accepted';
     final isDeclined = status == 'declined';
@@ -5850,10 +5756,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
               children: [
                 Expanded(
                   child: FilledButton(
-                    onPressed: () => _handleGameInvitationAction(
-                      message,
-                      'accept',
-                    ),
+                    onPressed: () =>
+                        _handleGameInvitationAction(message, 'accept'),
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF10B981),
                     ),
@@ -5863,10 +5767,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                 const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _handleGameInvitationAction(
-                      message,
-                      'decline',
-                    ),
+                    onPressed: () =>
+                        _handleGameInvitationAction(message, 'decline'),
                     child: const Text('Refuser'),
                   ),
                 ),
@@ -5879,7 +5781,9 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
               width: double.infinity,
               child: FilledButton(
                 onPressed: () => _openAcceptedGameInvite(structuredContent),
-                style: FilledButton.styleFrom(backgroundColor: _bubblePurpleStart),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _bubblePurpleStart,
+                ),
                 child: const Text('Jeu pret'),
               ),
             ),
@@ -6556,7 +6460,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     if (type == 'video') return 'Video envoyee';
     if (type == 'audio') {
       final duration = _asInt(
-        attachment['voiceDurationSeconds'] ?? attachment['voice_duration_seconds'],
+        attachment['voiceDurationSeconds'] ??
+            attachment['voice_duration_seconds'],
       );
       return duration > 0
           ? 'Note vocale · ${_formatDuration(duration)}'
@@ -6805,7 +6710,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     return '  ·  Envoye';
   }
 
-  void _openImagePreview(String imageUrl) {
+  void _openImagePreview(String imageUrl, {File? localFile}) {
     showDialog<void>(
       context: context,
       builder: (context) {
@@ -6814,42 +6719,63 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
           insetPadding: const EdgeInsets.all(16),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(22),
-            child: CachedNetworkImage(
-              imageUrl: imageUrl,
-              fit: BoxFit.contain,
-              errorWidget: (_, _, _) => Container(
-                color: Colors.black,
-                padding: const EdgeInsets.all(24),
-                child: const Icon(
-                  CupertinoIcons.photo,
-                  color: Colors.white70,
-                  size: 42,
-                ),
-              ),
-            ),
+            child: localFile != null
+                ? Image.file(localFile, fit: BoxFit.contain)
+                : CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.contain,
+                    errorWidget: (_, _, _) => Container(
+                      color: Colors.black,
+                      padding: const EdgeInsets.all(24),
+                      child: const Icon(
+                        CupertinoIcons.photo,
+                        color: Colors.white70,
+                        size: 42,
+                      ),
+                    ),
+                  ),
           ),
         );
       },
     );
   }
 
-  void _openAttachmentPlayer({
+  Future<void> _openVideoPreview({
     required String mediaUrl,
     required String title,
-    required String attachmentType,
-  }) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return _MessageMediaPlayerSheet(
-          mediaUrl: mediaUrl,
-          title: title,
-          attachmentType: attachmentType,
-          isDarkMode: widget.isDarkMode,
-        );
-      },
+    required String thumbnailUrl,
+  }) async {
+    await Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: false,
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            ),
+            child: _MessageVideoViewerPage(
+              mediaUrl: mediaUrl,
+              title: title,
+              thumbnailUrl: thumbnailUrl,
+            ),
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.985, end: 1).animate(curved),
+              child: child,
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -6877,163 +6803,122 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   }
 }
 
-class _MessageMediaPlayerSheet extends StatefulWidget {
-  final String mediaUrl;
-  final String title;
-  final String attachmentType;
-  final bool isDarkMode;
-
-  const _MessageMediaPlayerSheet({
-    required this.mediaUrl,
-    required this.title,
-    required this.attachmentType,
-    required this.isDarkMode,
-  });
-
-  @override
-  State<_MessageMediaPlayerSheet> createState() =>
-      _MessageMediaPlayerSheetState();
-}
-
-class _MessageVideoAttachmentCard extends StatefulWidget {
-  final String mediaUrl;
-  final String thumbnailUrl;
-  final String title;
+class _MessageImageAttachmentCard extends StatefulWidget {
+  final String imageUrl;
   final bool isMine;
-  final VoidCallback onTap;
+  final ValueChanged<File> onOpenViewer;
 
-  const _MessageVideoAttachmentCard({
-    required this.mediaUrl,
-    required this.thumbnailUrl,
-    required this.title,
+  const _MessageImageAttachmentCard({
+    super.key,
+    required this.imageUrl,
     required this.isMine,
-    required this.onTap,
+    required this.onOpenViewer,
   });
 
   @override
-  State<_MessageVideoAttachmentCard> createState() =>
-      _MessageVideoAttachmentCardState();
+  State<_MessageImageAttachmentCard> createState() =>
+      _MessageImageAttachmentCardState();
 }
 
-class _MessageVideoAttachmentCardState
-    extends State<_MessageVideoAttachmentCard> {
-  VideoPlayerController? _previewController;
-  Timer? _loaderTimer;
+class _MessageImageAttachmentCardState
+    extends State<_MessageImageAttachmentCard> {
+  StreamSubscription<FileResponse>? _loadSubscription;
+  File? _file;
+  double? _progress;
 
-  bool _isInitialized = false;
+  bool _isLoading = false;
   bool _hasError = false;
-  bool _showLoader = false;
 
   @override
   void initState() {
     super.initState();
-    _preparePreview();
+    unawaited(_restoreCachedImage());
   }
 
   @override
-  void didUpdateWidget(covariant _MessageVideoAttachmentCard oldWidget) {
+  void didUpdateWidget(covariant _MessageImageAttachmentCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.mediaUrl != widget.mediaUrl ||
-        oldWidget.thumbnailUrl != widget.thumbnailUrl) {
-      _disposePreviewController();
-      _preparePreview();
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _loadSubscription?.cancel();
+      _file = null;
+      _progress = null;
+      _isLoading = false;
+      _hasError = false;
+      unawaited(_restoreCachedImage());
     }
   }
 
   @override
   void dispose() {
-    _loaderTimer?.cancel();
-    _disposePreviewController();
+    _loadSubscription?.cancel();
     super.dispose();
   }
 
-  void _preparePreview() {
-    _loaderTimer?.cancel();
-    _hasError = false;
-    _isInitialized = false;
-    _showLoader = false;
+  Future<void> _restoreCachedImage() async {
+    final cachedFile = await DefaultCacheManager().getFileFromCache(
+      widget.imageUrl,
+    );
+    if (!mounted || cachedFile == null) return;
+    setState(() {
+      _file = cachedFile.file;
+      _progress = 1;
+    });
+  }
 
-    if (NetworkQualityService().currentQuality != NetworkQuality.offline) {
-      unawaited(VideoCacheManager.prefetchVideo(widget.mediaUrl));
-    }
-
-    if (widget.thumbnailUrl.isNotEmpty) {
+  Future<void> _handleTap() async {
+    if (_file != null) {
+      widget.onOpenViewer(_file!);
       return;
     }
+    if (_isLoading) return;
 
-    _loaderTimer = Timer(const Duration(milliseconds: 180), () {
-      if (!mounted || _isInitialized) return;
-      setState(() {
-        _showLoader = true;
-      });
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+      _progress = 0;
     });
 
-    unawaited(_initializePreviewController());
+    await _loadSubscription?.cancel();
+    _loadSubscription = DefaultCacheManager()
+        .getFileStream(widget.imageUrl, withProgress: true)
+        .listen(
+          (response) {
+            if (!mounted) return;
+            if (response is DownloadProgress) {
+              setState(() {
+                _progress = response.progress ?? _progress;
+              });
+              return;
+            }
+            if (response is FileInfo) {
+              setState(() {
+                _file = response.file;
+                _progress = 1;
+                _isLoading = false;
+              });
+            }
+          },
+          onError: (_) {
+            if (!mounted) return;
+            setState(() {
+              _hasError = true;
+              _isLoading = false;
+            });
+          },
+        );
   }
 
-  Future<void> _initializePreviewController() async {
-    final startedAt = DateTime.now();
-
-    try {
-      final cachedFile = await VideoCacheManager.getCachedFile(widget.mediaUrl);
-      if (!mounted) return;
-
-      final controller = cachedFile != null
-          ? VideoPlayerController.file(cachedFile)
-          : VideoPlayerController.networkUrl(Uri.parse(widget.mediaUrl));
-      _previewController = controller;
-
-      await controller.initialize();
-      await controller.setVolume(0);
-      await controller.pause();
-
-      NetworkQualityService().recordInitialization(
-        DateTime.now().difference(startedAt),
-      );
-      NetworkQualityService().recordSuccess();
-
-      if (!mounted) {
-        controller.dispose();
-        return;
-      }
-
-      setState(() {
-        _isInitialized = true;
-        _hasError = false;
-        _showLoader = false;
-      });
-    } catch (error) {
-      final errorText = error.toString().toLowerCase();
-      if (errorText.contains('socketexception') ||
-          errorText.contains('failed host lookup') ||
-          errorText.contains('network')) {
-        NetworkQualityService().recordOffline();
-      } else {
-        NetworkQualityService().recordError();
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _hasError = true;
-        _showLoader = false;
-      });
-    } finally {
-      _loaderTimer?.cancel();
-    }
-  }
-
-  void _disposePreviewController() {
-    _previewController?.dispose();
-    _previewController = null;
-  }
-
-  Widget _buildLoaderSurface({double? progress}) {
+  Widget _buildLoadSurface({
+    required String label,
+    String? subtitle,
+    double? progress,
+  }) {
     final normalizedProgress = progress?.clamp(0.0, 1.0).toDouble();
-
     return Container(
       width: 220,
-      height: 156,
+      height: 220,
       decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
         gradient: LinearGradient(
           colors: widget.isMine
               ? [
@@ -7050,12 +6935,12 @@ class _MessageVideoAttachmentCardState
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: widget.isMine
                       ? Colors.white.withValues(alpha: 0.14)
                       : Colors.white.withValues(alpha: 0.06),
                 ),
-                borderRadius: BorderRadius.circular(18),
               ),
             ),
           ),
@@ -7064,30 +6949,55 @@ class _MessageVideoAttachmentCardState
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 52,
-                  height: 52,
+                  width: 50,
+                  height: 50,
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.28),
+                    color: Colors.black.withValues(alpha: 0.26),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
-                    CupertinoIcons.video_camera_solid,
+                    CupertinoIcons.photo_fill,
                     color: Colors.white,
-                    size: 24,
+                    size: 22,
                   ),
                 ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    value: normalizedProgress,
+                const SizedBox(height: 12),
+                Text(
+                  label,
+                  style: const TextStyle(
                     color: Colors.white,
-                    backgroundColor: Colors.white.withValues(alpha: 0.18),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ],
+            ),
+          ),
+          Positioned(
+            left: 14,
+            right: 14,
+            bottom: 12,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                minHeight: 3,
+                value: normalizedProgress,
+                backgroundColor: Colors.white.withValues(alpha: 0.16),
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  Color(0xFFFE2C55),
+                ),
+              ),
             ),
           ),
         ],
@@ -7095,45 +7005,57 @@ class _MessageVideoAttachmentCardState
     );
   }
 
-  Widget _buildMediaSurface() {
-    if (widget.thumbnailUrl.isNotEmpty) {
-      return CachedNetworkImage(
-        imageUrl: widget.thumbnailUrl,
-        width: 220,
-        height: 156,
-        fit: BoxFit.cover,
-        fadeInDuration: const Duration(milliseconds: 160),
-        progressIndicatorBuilder: (_, _, progress) =>
-            _buildLoaderSurface(progress: progress.progress),
-        errorWidget: (_, _, _) => _buildLoaderSurface(),
-      );
-    }
-
-    if (_previewController != null && _isInitialized) {
-      return SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          clipBehavior: Clip.hardEdge,
-          child: SizedBox(
-            width: _previewController!.value.size.width,
-            height: _previewController!.value.size.height,
-            child: VideoPlayer(_previewController!),
-          ),
+  @override
+  Widget build(BuildContext context) {
+    if (_file != null) {
+      return GestureDetector(
+        onTap: _handleTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Image.file(_file!, width: 220, height: 220, fit: BoxFit.cover),
         ),
       );
     }
 
-    if (_hasError) {
-      return _buildLoaderSurface();
-    }
+    final subtitle = _hasError
+        ? 'Appuyer pour reessayer'
+        : (_isLoading
+              ? '${((_progress ?? 0) * 100).round()}%'
+              : 'Appuyer pour charger');
 
-    return _buildLoaderSurface();
+    return GestureDetector(
+      onTap: _handleTap,
+      child: _buildLoadSurface(
+        label: _hasError
+            ? 'Impossible de charger'
+            : (_isLoading ? 'Chargement image' : 'Charger l image'),
+        subtitle: subtitle,
+        progress: _isLoading ? _progress : 0,
+      ),
+    );
   }
+}
+
+class _MessageVideoAttachmentCard extends StatelessWidget {
+  final String mediaUrl;
+  final String thumbnailUrl;
+  final String title;
+  final bool isMine;
+  final VoidCallback onOpenViewer;
+
+  const _MessageVideoAttachmentCard({
+    super.key,
+    required this.mediaUrl,
+    required this.thumbnailUrl,
+    required this.title,
+    required this.isMine,
+    required this.onOpenViewer,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: widget.onTap,
+      onTap: onOpenViewer,
       child: SizedBox(
         width: 220,
         height: 156,
@@ -7141,7 +7063,24 @@ class _MessageVideoAttachmentCardState
           borderRadius: BorderRadius.circular(18),
           child: Stack(
             children: [
-              Positioned.fill(child: _buildMediaSurface()),
+              Positioned.fill(
+                child: thumbnailUrl.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: thumbnailUrl,
+                        width: 220,
+                        height: 156,
+                        fit: BoxFit.cover,
+                        fadeInDuration: const Duration(milliseconds: 160),
+                        progressIndicatorBuilder: (_, _, progress) =>
+                            _MessageVideoThumbnailPlaceholder(
+                              isMine: isMine,
+                              progress: progress.progress,
+                            ),
+                        errorWidget: (_, _, _) =>
+                            _MessageVideoThumbnailPlaceholder(isMine: isMine),
+                      )
+                    : _MessageVideoThumbnailPlaceholder(isMine: isMine),
+              ),
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -7158,13 +7097,6 @@ class _MessageVideoAttachmentCardState
                   ),
                 ),
               ),
-              if (_showLoader && !_isInitialized)
-                const Center(
-                  child: CupertinoActivityIndicator(
-                    color: Colors.white,
-                    radius: 13,
-                  ),
-                ),
               Center(
                 child: Container(
                   width: 56,
@@ -7184,15 +7116,29 @@ class _MessageVideoAttachmentCardState
                 left: 14,
                 right: 14,
                 bottom: 14,
-                child: Text(
-                  widget.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Appuyer pour charger',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -7203,68 +7149,222 @@ class _MessageVideoAttachmentCardState
   }
 }
 
-class _MessageMediaPlayerSheetState extends State<_MessageMediaPlayerSheet> {
-  VideoPlayerController? _controller;
-  late final Future<void> _initializeFuture;
+class _MessageVideoThumbnailPlaceholder extends StatelessWidget {
+  final bool isMine;
+  final double? progress;
 
-  bool get _isAudio => widget.attachmentType == 'audio';
+  const _MessageVideoThumbnailPlaceholder({
+    required this.isMine,
+    this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedProgress = progress?.clamp(0.0, 1.0).toDouble();
+    return Container(
+      width: 220,
+      height: 156,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isMine
+              ? [
+                  Colors.white.withValues(alpha: 0.16),
+                  Colors.white.withValues(alpha: 0.08),
+                ]
+              : [const Color(0xFF111827), const Color(0xFF1F2937)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: isMine
+                      ? Colors.white.withValues(alpha: 0.14)
+                      : Colors.white.withValues(alpha: 0.06),
+                ),
+              ),
+            ),
+          ),
+          const Center(
+            child: Icon(
+              CupertinoIcons.video_camera_solid,
+              color: Colors.white70,
+              size: 28,
+            ),
+          ),
+          if (normalizedProgress != null)
+            Positioned(
+              left: 14,
+              right: 14,
+              bottom: 12,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  minHeight: 3,
+                  value: normalizedProgress,
+                  backgroundColor: Colors.white.withValues(alpha: 0.16),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Color(0xFFFE2C55),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MessageAudioAttachmentCard extends StatefulWidget {
+  final String mediaUrl;
+  final String title;
+  final int durationSeconds;
+  final bool isMine;
+  final Color textPrimary;
+  final Color textSecondary;
+
+  const _MessageAudioAttachmentCard({
+    super.key,
+    required this.mediaUrl,
+    required this.title,
+    required this.durationSeconds,
+    required this.isMine,
+    required this.textPrimary,
+    required this.textSecondary,
+  });
+
+  @override
+  State<_MessageAudioAttachmentCard> createState() =>
+      _MessageAudioAttachmentCardState();
+}
+
+class _MessageAudioAttachmentCardState
+    extends State<_MessageAudioAttachmentCard> {
+  VideoPlayerController? _controller;
+  Timer? _loaderTimer;
+
+  bool _isPreparing = false;
+  bool _hasError = false;
+  bool _showLoader = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeFuture = _initializeController();
+    if (NetworkQualityService().currentQuality != NetworkQuality.offline) {
+      unawaited(VideoCacheManager.prefetchVideo(widget.mediaUrl));
+    }
   }
 
-  Future<void> _initializeController() async {
-    final startedAt = DateTime.now();
-
-    try {
-      File? cachedFile;
-      if (!_isAudio) {
-        cachedFile = await VideoCacheManager.getCachedFile(widget.mediaUrl);
-        if (cachedFile == null &&
-            NetworkQualityService().currentQuality != NetworkQuality.offline) {
-          unawaited(VideoCacheManager.prefetchVideo(widget.mediaUrl));
-        }
-      }
-
-      final controller = cachedFile != null
-          ? VideoPlayerController.file(cachedFile)
-          : VideoPlayerController.networkUrl(Uri.parse(widget.mediaUrl));
-      _controller = controller;
-
-      await controller.initialize();
-      await controller.setLooping(_isAudio);
-
-      if (!_isAudio) {
-        NetworkQualityService().recordInitialization(
-          DateTime.now().difference(startedAt),
-        );
-        NetworkQualityService().recordSuccess();
-      }
-
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (error) {
-      if (!_isAudio) {
-        final errorText = error.toString().toLowerCase();
-        if (errorText.contains('socketexception') ||
-            errorText.contains('failed host lookup') ||
-            errorText.contains('network')) {
-          NetworkQualityService().recordOffline();
-        } else {
-          NetworkQualityService().recordError();
-        }
-      }
-      rethrow;
+  @override
+  void didUpdateWidget(covariant _MessageAudioAttachmentCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mediaUrl != widget.mediaUrl) {
+      _loaderTimer?.cancel();
+      _controller?.dispose();
+      _controller = null;
+      _isPreparing = false;
+      _hasError = false;
+      _showLoader = false;
     }
   }
 
   @override
   void dispose() {
+    _loaderTimer?.cancel();
     _controller?.dispose();
     super.dispose();
+  }
+
+  void _scheduleLoader() {
+    _loaderTimer?.cancel();
+    _loaderTimer = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted || _controller?.value.isInitialized == true) return;
+      setState(() {
+        _showLoader = true;
+      });
+    });
+  }
+
+  Future<void> _ensureController({required bool autoPlay}) async {
+    if (_isPreparing) return;
+    final existing = _controller;
+    if (existing != null && existing.value.isInitialized) {
+      if (autoPlay) {
+        await _togglePlayback();
+      }
+      return;
+    }
+
+    _isPreparing = true;
+    _hasError = false;
+    _scheduleLoader();
+
+    try {
+      File file;
+      final cachedFile = await VideoCacheManager.getCachedFile(widget.mediaUrl);
+      if (cachedFile != null) {
+        file = cachedFile;
+      } else {
+        file = await VideoCacheManager.instance.getSingleFile(widget.mediaUrl);
+      }
+      if (!mounted) return;
+
+      final controller = VideoPlayerController.file(file);
+      _controller = controller;
+      await controller.initialize();
+      await controller.setLooping(false);
+
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+
+      setState(() {
+        _showLoader = false;
+        _hasError = false;
+      });
+
+      if (autoPlay) {
+        await controller.play();
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _hasError = true;
+        _showLoader = false;
+      });
+    } finally {
+      _isPreparing = false;
+      _loaderTimer?.cancel();
+    }
+  }
+
+  bool _isCompleted(VideoPlayerValue value) {
+    return value.duration.inMilliseconds > 0 &&
+        value.position >= value.duration - const Duration(milliseconds: 250);
+  }
+
+  Future<void> _togglePlayback() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      await _ensureController(autoPlay: true);
+      return;
+    }
+
+    if (controller.value.isPlaying) {
+      await controller.pause();
+      return;
+    }
+
+    if (_isCompleted(controller.value)) {
+      await controller.seekTo(Duration.zero);
+    }
+    await controller.play();
   }
 
   String _formatDuration(Duration duration) {
@@ -7276,180 +7376,481 @@ class _MessageMediaPlayerSheetState extends State<_MessageMediaPlayerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = widget.isDarkMode ? Colors.white : const Color(0xFF111827);
-    final textSecondary = widget.isDarkMode
-        ? Colors.white70
-        : const Color(0xFF6B7280);
+    final controller = _controller;
+    if (controller != null) {
+      return ValueListenableBuilder<VideoPlayerValue>(
+        valueListenable: controller,
+        builder: (context, value, _) => _buildAudioCard(value: value),
+      );
+    }
+    return _buildAudioCard();
+  }
 
-    return SafeArea(
-      top: false,
+  Widget _buildAudioCard({VideoPlayerValue? value}) {
+    final safeValue = value;
+    final isPlaying = safeValue?.isPlaying == true;
+    final duration =
+        safeValue?.duration.inMilliseconds != null &&
+            (safeValue?.duration.inMilliseconds ?? 0) > 0
+        ? safeValue!.duration
+        : Duration(seconds: widget.durationSeconds);
+    final position = safeValue == null
+        ? Duration.zero
+        : (safeValue.position > duration ? duration : safeValue.position);
+    final progress = duration.inMilliseconds <= 0
+        ? 0.0
+        : (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
+
+    return GestureDetector(
+      onTap: _togglePlayback,
       child: Container(
+        constraints: const BoxConstraints(minWidth: 176, maxWidth: 210),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: widget.isDarkMode ? const Color(0xFF0B0D11) : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          color: widget.isMine
+              ? Colors.white.withValues(alpha: 0.14)
+              : Colors.black.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(16),
         ),
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
-        child: FutureBuilder<void>(
-          future: _initializeFuture,
-          builder: (context, snapshot) {
-            final controller = _controller;
-            final ready = snapshot.connectionState == ConnectionState.done &&
-                controller != null &&
-                controller.value.isInitialized;
-
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 46,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: textSecondary.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(999),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: widget.isMine
+                    ? Colors.white.withValues(alpha: 0.16)
+                    : const Color(0xFFEEF2FF),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Center(
+                child: _showLoader
+                    ? CupertinoActivityIndicator(
+                        color: widget.isMine
+                            ? Colors.white
+                            : const Color(0xFF6F63FF),
+                        radius: 10,
+                      )
+                    : Icon(
+                        isPlaying
+                            ? CupertinoIcons.pause_fill
+                            : CupertinoIcons.play_fill,
+                        color: widget.isMine
+                            ? Colors.white
+                            : const Color(0xFF6F63FF),
+                        size: 18,
+                      ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: widget.isMine ? Colors.white : widget.textPrimary,
+                      fontSize: 11.8,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  widget.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                if (!ready)
-                  Container(
-                    height: 220,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: widget.isDarkMode
-                          ? Colors.white.withValues(alpha: 0.04)
-                          : const Color(0xFFF3F4F6),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    alignment: Alignment.center,
-                    child: snapshot.hasError
-                        ? Text(
-                            'Impossible de lire ce media.',
-                            style: TextStyle(color: textSecondary),
-                          )
-                        : const CircularProgressIndicator(color: Color(0xFFFE2C55)),
-                  )
-                else ...[
+                  const SizedBox(height: 5),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
-                    child: Container(
-                      width: double.infinity,
-                      color: Colors.black,
-                      child: _isAudio
-                          ? SizedBox(
-                              height: 220,
-                              child: Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      width: 74,
-                                      height: 74,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.08),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        CupertinoIcons.waveform,
-                                        color: Colors.white,
-                                        size: 34,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    const Text(
-                                      'Note vocale',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            )
-                          : AspectRatio(
-                              aspectRatio: controller.value.aspectRatio == 0
-                                  ? 9 / 16
-                                  : controller.value.aspectRatio,
-                              child: VideoPlayer(controller),
-                            ),
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      minHeight: 3,
+                      value: progress,
+                      backgroundColor: widget.isMine
+                          ? Colors.white.withValues(alpha: 0.14)
+                          : Colors.black.withValues(alpha: 0.08),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        widget.isMine ? Colors.white : const Color(0xFF6F63FF),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  ValueListenableBuilder<VideoPlayerValue>(
-                    valueListenable: controller,
-                    builder: (context, value, _) {
-                      final duration = value.duration;
-                      final position = value.position > duration
-                          ? duration
-                          : value.position;
-
-                      return Column(
-                        children: [
-                          Row(
-                            children: [
-                              IconButton(
-                                onPressed: () {
-                                  if (value.isPlaying) {
-                                    controller.pause();
-                                  } else {
-                                    controller.play();
-                                  }
-                                },
-                                icon: Icon(
-                                  value.isPlaying
-                                      ? CupertinoIcons.pause_solid
-                                      : CupertinoIcons.play_fill,
-                                  color: textPrimary,
-                                ),
-                              ),
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(999),
-                                  child: VideoProgressIndicator(
-                                    controller,
-                                    allowScrubbing: true,
-                                    padding: EdgeInsets.zero,
-                                    colors: const VideoProgressColors(
-                                      playedColor: Color(0xFFFE2C55),
-                                      bufferedColor: Color(0x66FFFFFF),
-                                      backgroundColor: Color(0x33FFFFFF),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                '${_formatDuration(position)} / ${_formatDuration(duration)}',
-                                style: TextStyle(
-                                  color: textSecondary,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      );
-                    },
+                  const SizedBox(height: 5),
+                  Text(
+                    _hasError
+                        ? 'Impossible de lire la note vocale'
+                        : '${_formatDuration(position)} / ${_formatDuration(duration)}',
+                    style: TextStyle(
+                      color: widget.isMine
+                          ? Colors.white70
+                          : widget.textSecondary,
+                      fontSize: 10.6,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
-              ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MessageVideoViewerPage extends StatefulWidget {
+  final String mediaUrl;
+  final String title;
+  final String thumbnailUrl;
+
+  const _MessageVideoViewerPage({
+    required this.mediaUrl,
+    required this.title,
+    required this.thumbnailUrl,
+  });
+
+  @override
+  State<_MessageVideoViewerPage> createState() =>
+      _MessageVideoViewerPageState();
+}
+
+class _MessageVideoViewerPageState extends State<_MessageVideoViewerPage> {
+  VideoPlayerController? _controller;
+  StreamSubscription<FileResponse>? _downloadSubscription;
+
+  bool _isPreparing = false;
+  bool _hasError = false;
+  double? _downloadProgress;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeController();
+  }
+
+  @override
+  void dispose() {
+    _downloadSubscription?.cancel();
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initializeController() async {
+    if (_isPreparing) return;
+    final previousController = _controller;
+    if (previousController != null) {
+      _controller = null;
+      await previousController.dispose();
+    }
+
+    setState(() {
+      _isPreparing = true;
+      _hasError = false;
+      _downloadProgress = null;
+    });
+
+    try {
+      File file;
+      final cachedFile = await VideoCacheManager.getCachedFile(widget.mediaUrl);
+      if (cachedFile != null) {
+        file = cachedFile;
+      } else {
+        final completer = Completer<File>();
+        await _downloadSubscription?.cancel();
+        _downloadSubscription = VideoCacheManager.instance
+            .getFileStream(widget.mediaUrl, withProgress: true)
+            .listen(
+              (response) {
+                if (!mounted) return;
+                if (response is DownloadProgress) {
+                  setState(() {
+                    _downloadProgress = response.progress ?? _downloadProgress;
+                  });
+                  return;
+                }
+                if (response is FileInfo && !completer.isCompleted) {
+                  completer.complete(response.file);
+                }
+              },
+              onError: (Object error, StackTrace stackTrace) {
+                if (!completer.isCompleted) {
+                  completer.completeError(error, stackTrace);
+                }
+              },
             );
-          },
+        file = await completer.future;
+        await _downloadSubscription?.cancel();
+        _downloadSubscription = null;
+      }
+      if (!mounted) return;
+
+      final controller = VideoPlayerController.file(file);
+      _controller = controller;
+      await controller.initialize();
+      await controller.setLooping(false);
+      await controller.setVolume(1);
+      await controller.play();
+
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+
+      setState(() {
+        _hasError = false;
+        _downloadProgress = 1;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _hasError = true;
+        _downloadProgress = null;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPreparing = false;
+        });
+      } else {
+        _isPreparing = false;
+      }
+    }
+  }
+
+  Future<void> _togglePlayback() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    if (controller.value.isPlaying) {
+      await controller.pause();
+      return;
+    }
+
+    if (_isCompleted(controller.value)) {
+      await controller.seekTo(Duration.zero);
+    }
+    await controller.play();
+  }
+
+  bool _isCompleted(VideoPlayerValue value) {
+    return value.duration.inMilliseconds > 0 &&
+        value.position >= value.duration - const Duration(milliseconds: 250);
+  }
+
+  String _formatDuration(Duration duration) {
+    final totalSeconds = duration.inSeconds;
+    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  Widget _buildLoadingOverlay() {
+    final progress = _downloadProgress?.clamp(0.0, 1.0).toDouble();
+    final hasProgress = progress != null;
+    final isFinishing = hasProgress && progress >= 0.999;
+
+    return Positioned(
+      left: 18,
+      right: 18,
+      bottom: 28,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.52),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isFinishing ? 'Ouverture de la video' : 'Chargement de la video',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                minHeight: 4,
+                value: progress,
+                backgroundColor: Colors.white.withValues(alpha: 0.14),
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  Color(0xFFFE2C55),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              hasProgress ? '${(progress * 100).round()}%' : 'Preparation...',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    final hasVideo = controller != null && controller.value.isInitialized;
+
+    return Scaffold(
+      backgroundColor: Colors.black.withValues(alpha: 0.96),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Container(
+                color: Colors.black,
+                alignment: Alignment.center,
+                child: hasVideo
+                    ? GestureDetector(
+                        onTap: _togglePlayback,
+                        child: AspectRatio(
+                          aspectRatio: controller.value.aspectRatio == 0
+                              ? 9 / 16
+                              : controller.value.aspectRatio,
+                          child: VideoPlayer(controller),
+                        ),
+                      )
+                    : (widget.thumbnailUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: widget.thumbnailUrl,
+                              fit: BoxFit.contain,
+                              placeholder: (_, _) => _buildMessageMediaLoader(
+                                width: double.infinity,
+                                height: double.infinity,
+                                isMine: false,
+                                borderRadius: BorderRadius.zero,
+                              ),
+                              errorWidget: (_, _, _) =>
+                                  _buildMessageMediaLoader(
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    isMine: false,
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                            )
+                          : _buildMessageMediaLoader(
+                              width: double.infinity,
+                              height: double.infinity,
+                              isMine: false,
+                              borderRadius: BorderRadius.zero,
+                            )),
+              ),
+            ),
+            if (!hasVideo && !_hasError && _isPreparing) _buildLoadingOverlay(),
+            Positioned(
+              top: 8,
+              left: 8,
+              right: 8,
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(CupertinoIcons.back, color: Colors.white),
+                  ),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_hasError)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    'Impossible de charger cette video.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              )
+            else if (hasVideo)
+              Positioned(
+                left: 18,
+                right: 18,
+                bottom: 24,
+                child: ValueListenableBuilder<VideoPlayerValue>(
+                  valueListenable: controller,
+                  builder: (context, value, _) {
+                    final duration = value.duration;
+                    final position = value.position > duration
+                        ? duration
+                        : value.position;
+
+                    return Container(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.48),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            onPressed: _togglePlayback,
+                            icon: Icon(
+                              value.isPlaying
+                                  ? CupertinoIcons.pause_fill
+                                  : CupertinoIcons.play_fill,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: VideoProgressIndicator(
+                                controller,
+                                allowScrubbing: true,
+                                padding: EdgeInsets.zero,
+                                colors: const VideoProgressColors(
+                                  playedColor: Color(0xFFFE2C55),
+                                  bufferedColor: Color(0x66FFFFFF),
+                                  backgroundColor: Color(0x33FFFFFF),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            '${_formatDuration(position)} / ${_formatDuration(duration)}',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
         ),
       ),
     );

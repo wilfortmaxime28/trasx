@@ -5616,7 +5616,7 @@ const uploadMessageMedia = multer({
 app.post('/api/messages/upload-media', requireAuth, uploadMessageMedia.fields([
   { name: 'file', maxCount: 1 },
   { name: 'audio', maxCount: 1 }
-]), (req, res) => {
+]), async (req, res) => {
   const file = req.files?.file?.[0] || req.files?.audio?.[0] || null;
   if (!file) {
     return res.status(400).json({ error: 'No file received.' });
@@ -5679,9 +5679,36 @@ app.post('/api/messages/upload-media', requireAuth, uploadMessageMedia.fields([
     });
   }
 
+  let attachmentThumbnailUrl = null;
+  if (attachmentType === 'video') {
+    try {
+      const mediaOptimizer = require('./utils/mediaOptimizer');
+      const baseName = path.parse(file.filename).name;
+      const thumbnailFileName = `${baseName}-thumb.webp`;
+      const thumbnailAbsolutePath = path.join(
+        messageUploadDir,
+        thumbnailFileName,
+      );
+      const absoluteVideoPath =
+        file.path || path.join(messageUploadDir, file.filename);
+
+      await mediaOptimizer.generateVideoThumbnail(
+        absoluteVideoPath,
+        thumbnailAbsolutePath,
+      );
+      attachmentThumbnailUrl = `/uploads/messages/${thumbnailFileName}`;
+    } catch (thumbErr) {
+      console.error(
+        'Failed to generate message video thumbnail:',
+        thumbErr,
+      );
+    }
+  }
+
   res.json({
     attachmentUrl,
     attachmentName,
+    attachmentThumbnailUrl,
     attachmentSize,
     attachmentType,
     mime
@@ -8290,6 +8317,7 @@ io.on('connection', (socket) => {
         attachmentUrl = null,
         attachmentType = null,
         attachmentName = null,
+        attachmentThumbnailUrl = null,
         attachmentSize = null,
         voiceDurationSeconds = null,
         parentId = null,
@@ -8336,6 +8364,7 @@ io.on('connection', (socket) => {
         attachmentUrl: attachmentUrl || null,
         attachmentType: attachmentType || null,
         attachmentName: attachmentName || null,
+        attachmentThumbnailUrl: attachmentThumbnailUrl || null,
         attachmentSize: normalizedAttachmentSize,
         voiceDurationSeconds: normalizedVoiceDuration
       }, parentId, statusId);
@@ -8379,6 +8408,7 @@ io.on('connection', (socket) => {
         attachment_url: attachmentUrl || null,
         attachment_type: attachmentType || null,
         attachment_name: attachmentName || null,
+        attachment_thumbnail_url: attachmentThumbnailUrl || null,
         attachment_size: normalizedAttachmentSize,
         voice_duration_seconds: normalizedVoiceDuration,
         parent_id: parentId || null,
@@ -8412,6 +8442,7 @@ io.on('connection', (socket) => {
         attachmentUrl: messagePayload.attachment_url,
         attachmentType: messagePayload.attachment_type,
         attachmentName: messagePayload.attachment_name,
+        attachmentThumbnailUrl: messagePayload.attachment_thumbnail_url,
         attachmentSize: messagePayload.attachment_size,
         voiceDurationSeconds: messagePayload.voice_duration_seconds,
         parent_id: messagePayload.parent_id,
@@ -8444,6 +8475,7 @@ io.on('connection', (socket) => {
         attachmentUrl: messagePayload.attachment_url,
         attachmentType: messagePayload.attachment_type,
         attachmentName: messagePayload.attachment_name,
+        attachmentThumbnailUrl: messagePayload.attachment_thumbnail_url,
         attachmentSize: messagePayload.attachment_size,
         voiceDurationSeconds: messagePayload.voice_duration_seconds,
         parent_id: messagePayload.parent_id,
