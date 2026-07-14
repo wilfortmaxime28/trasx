@@ -54,6 +54,7 @@ const { ethers } = require('ethers');
 const { initMediasoup, handleSocket: handleMediasoupSocket } = require('./mediasoup/index');
 const handleLiveSocket = require('./socket/live');
 const handleVideoCallSocket = require('./socket/videoCall');
+const { buildMessageInboxSections } = require('./utils/messageInbox');
 
 const compression = require('compression');
 const app = express();
@@ -5363,16 +5364,47 @@ app.post('/api/message-requests/:requesterId/:action', requireAuth, async (req, 
   }
 });
 
-// API Historique des messages
-app.get('/api/messages/:contactId', async (req, res) => {
+app.get('/api/messages/inbox', requireAuth, async (req, res) => {
   try {
-    const currentUserId = req.session.userId;
+    const currentUserId = Number(req.session?.userId || 0);
+    if (!currentUserId) {
+      return res.status(401).json({ success: false, error: 'Session expirée.' });
+    }
+
+    const messages = await Message.getRecentForUser(currentUserId);
+    const messagePartnerIds = messages.map((message) => {
+      const senderId = Number(message.sender_id || 0);
+      const receiverId = Number(message.receiver_id || 0);
+      return senderId === currentUserId ? receiverId : senderId;
+    }).filter((id) => Number.isFinite(id) && id > 0 && id !== currentUserId);
+
+    const contacts = await User.getInboxContactsWithFollowState(currentUserId, messagePartnerIds);
+    const inbox = buildMessageInboxSections(currentUserId, contacts, messages);
+
+    return res.json({
+      success: true,
+      sections: inbox.sections,
+      counts: inbox.counts
+    });
+  } catch (err) {
+    console.error('Inbox API error:', err);
+    return res.status(500).json({ success: false, error: 'Impossible de charger la boite de reception.' });
+  }
+});
+
+// API Historique des messages
+app.get('/api/messages/:contactId', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session?.userId || 0);
     const contactId = parseInt(req.params.contactId, 10);
+    if (!currentUserId || !contactId) {
+      return res.status(400).json({ error: 'Conversation introuvable.' });
+    }
     const history = await Message.getHistoryBetween(currentUserId, contactId);
     res.json(history);
   } catch (err) {
     console.error('Erreur API messages:', err);
-    res.status(500).json({ error: 'Failed to fetch messages' });
+    res.status(500).json({ error: 'Impossible de charger cette conversation.' });
   }
 });
 
@@ -6382,6 +6414,63 @@ io.on('connection', (socket) => {
     const host = socket.request.headers.host;
     return `${protocol}://${host}`;
   };
+
+  socket.on('chat-inbox-fetch', async (_data, ack) => {
+    if (typeof ack !== 'function') return;
+
+    try {
+      const currentUserId = Number(session.userId || 0);
+      if (!currentUserId) {
+        ack({ success: false, error: 'Session expirée.' });
+        return;
+      }
+
+      const messages = await Message.getRecentForUser(currentUserId);
+      const messagePartnerIds = messages
+        .map((message) => {
+          const senderId = Number(message.sender_id || 0);
+          const receiverId = Number(message.receiver_id || 0);
+          return senderId === currentUserId ? receiverId : senderId;
+        })
+        .filter((id) => Number.isFinite(id) && id > 0 && id !== currentUserId);
+
+      const contacts = await User.getInboxContactsWithFollowState(currentUserId, messagePartnerIds);
+      const inbox = buildMessageInboxSections(currentUserId, contacts, messages);
+
+      ack({
+        success: true,
+        sections: inbox.sections,
+        counts: inbox.counts
+      });
+    } catch (err) {
+      console.error('Chat inbox fetch error:', err);
+      ack({ success: false, error: 'Impossible de charger la boite de reception.' });
+    }
+  });
+
+  socket.on('chat-history-fetch', async (data, ack) => {
+    if (typeof ack !== 'function') return;
+
+    try {
+      const currentUserId = Number(session.userId || 0);
+      if (!currentUserId) {
+        ack({ success: false, error: 'Session expirée.' });
+        return;
+      }
+
+      const contactId = Number.parseInt(data?.contactId, 10);
+      if (!Number.isFinite(contactId) || contactId <= 0) {
+        ack({ success: false, error: 'Conversation introuvable.' });
+        return;
+      }
+
+      const messages = await Message.getHistoryBetween(currentUserId, contactId);
+      ack({ success: true, messages });
+    } catch (err) {
+      console.error('Chat history fetch error:', err);
+      ack({ success: false, error: 'Impossible de charger cette conversation.' });
+    }
+  });
 
   // 1. Créer une publication en temps réel
   socket.on('post-create', async (data, callback) => {

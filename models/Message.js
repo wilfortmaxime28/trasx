@@ -3,18 +3,42 @@ const { getMessagePreviewText, parseStructuredMessageContent } = require('../uti
 
 class Message {
   static async ensureMessageColumns() {
-    try {
-      await db.query('ALTER TABLE messages ADD COLUMN parent_id INT DEFAULT NULL');
-    } catch (e) {}
-    try {
-      await db.query('ALTER TABLE messages ADD COLUMN deleted_by_sender TINYINT(1) DEFAULT 0');
-    } catch (e) {}
-    try {
-      await db.query('ALTER TABLE messages ADD COLUMN deleted_by_receiver TINYINT(1) DEFAULT 0');
-    } catch (e) {}
-    try {
-      await db.query('ALTER TABLE messages ADD COLUMN deleted_for_everyone TINYINT(1) DEFAULT 0');
-    } catch (e) {}
+    if (!Message._schemaPromise) {
+      Message._schemaPromise = (async () => {
+        const [tableRows] = await db.query("SHOW TABLES LIKE 'messages'");
+        if (!tableRows || tableRows.length === 0) {
+          Message._schemaPromise = null;
+          return;
+        }
+
+        const [columnRows] = await db.query('SHOW COLUMNS FROM messages');
+        const columnNames = new Set(columnRows.map((row) => row.Field));
+
+        const addColumnIfMissing = async (columnName, definition) => {
+          if (columnNames.has(columnName)) return;
+          await db.query(`ALTER TABLE messages ADD COLUMN ${definition}`);
+          columnNames.add(columnName);
+        };
+
+        await addColumnIfMissing('attachment_url', 'attachment_url VARCHAR(255) DEFAULT NULL');
+        await addColumnIfMissing('attachment_type', 'attachment_type VARCHAR(50) DEFAULT NULL');
+        await addColumnIfMissing('attachment_name', 'attachment_name VARCHAR(255) DEFAULT NULL');
+        await addColumnIfMissing('attachment_size', 'attachment_size INT DEFAULT NULL');
+        await addColumnIfMissing('voice_duration_seconds', 'voice_duration_seconds INT DEFAULT NULL');
+        await addColumnIfMissing('delivered_at', 'delivered_at TIMESTAMP NULL DEFAULT NULL');
+        await addColumnIfMissing('read_at', 'read_at TIMESTAMP NULL DEFAULT NULL');
+        await addColumnIfMissing('parent_id', 'parent_id INT DEFAULT NULL');
+        await addColumnIfMissing('status_id', 'status_id INT DEFAULT NULL');
+        await addColumnIfMissing('deleted_by_sender', 'deleted_by_sender TINYINT(1) DEFAULT 0');
+        await addColumnIfMissing('deleted_by_receiver', 'deleted_by_receiver TINYINT(1) DEFAULT 0');
+        await addColumnIfMissing('deleted_for_everyone', 'deleted_for_everyone TINYINT(1) DEFAULT 0');
+      })().catch((error) => {
+        Message._schemaPromise = null;
+        throw error;
+      });
+    }
+
+    return Message._schemaPromise;
   }
 
   static async ensureMessageRequestsTable() {
@@ -76,6 +100,7 @@ class Message {
   }
 
   static async create(senderId, receiverId, content, attachment = {}, parentId = null, statusId = null) {
+    await Message.ensureMessageColumns();
     const normalizedContent = String(content ?? '');
     const {
       attachmentUrl = null,
@@ -120,6 +145,7 @@ class Message {
   }
 
   static async getHistoryBetween(userId, contactId) {
+    await Message.ensureMessageColumns();
     const query = `
       SELECT 
         m.id,
@@ -173,6 +199,7 @@ class Message {
   }
 
   static async getById(messageId) {
+    await Message.ensureMessageColumns();
     const [rows] = await db.query(
       `
         SELECT 
@@ -329,6 +356,7 @@ class Message {
   }
 
   static async markDelivered(messageId) {
+    await Message.ensureMessageColumns();
     const parsedId = Number.parseInt(messageId, 10);
     if (!Number.isFinite(parsedId)) return false;
     const [result] = await db.query(
@@ -339,6 +367,7 @@ class Message {
   }
 
   static async markConversationRead(senderId, receiverId) {
+    await Message.ensureMessageColumns();
     const [rows] = await db.query(
       `
         SELECT id

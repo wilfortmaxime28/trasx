@@ -370,6 +370,67 @@ class User {
     }));
   }
 
+  static async getInboxContactsWithFollowState(userId, extraUserIds = []) {
+    await ensureEventAccessColumns();
+
+    const normalizedExtraIds = Array.isArray(extraUserIds)
+      ? [...new Set(extraUserIds.map((id) => Number.parseInt(id, 10)).filter((id) => Number.isFinite(id) && id !== Number(userId)))]
+      : [];
+
+    const params = [userId, userId];
+    const clauses = [
+      `EXISTS(
+        SELECT 1
+        FROM follows rel
+        WHERE (rel.follower_id = ? AND rel.following_id = u.id)
+           OR (rel.following_id = ? AND rel.follower_id = u.id)
+      )`
+    ];
+
+    if (normalizedExtraIds.length > 0) {
+      clauses.push(`u.id IN (${normalizedExtraIds.map(() => '?').join(', ')})`);
+      params.push(...normalizedExtraIds);
+    }
+
+    const [rows] = await db.query(
+      `
+        SELECT DISTINCT
+          u.id,
+          u.username,
+          u.first_name,
+          u.last_name,
+          COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS name,
+          u.avatar,
+          u.certification_type,
+          u.last_seen_at,
+          EXISTS(
+            SELECT 1
+            FROM follows f
+            WHERE f.follower_id = ? AND f.following_id = u.id
+          ) AS is_following,
+          EXISTS(
+            SELECT 1
+            FROM follows f
+            WHERE f.follower_id = u.id AND f.following_id = ?
+          ) AS is_followed_by
+        FROM users u
+        WHERE u.id <> ?
+          AND (${clauses.join(' OR ')})
+        ORDER BY u.first_name ASC, u.last_name ASC
+      `,
+      [userId, userId, userId, ...params]
+    );
+
+    return rows.map((row) => ({
+      ...row,
+      is_following: Number(row.is_following) === 1,
+      is_followed_by: Number(row.is_followed_by) === 1,
+      is_mutual: Number(row.is_following) === 1 && Number(row.is_followed_by) === 1,
+      is_online: presence.isUserOnline(row.id),
+      presence_text: presence.getPresenceText(presence.isUserOnline(row.id), row.last_seen_at)
+    }));
+  }
+
   static async getFollowersIds(userId) {
     const [rows] = await db.query(
       'SELECT follower_id FROM follows WHERE following_id = ?',

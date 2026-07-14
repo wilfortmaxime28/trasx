@@ -137,12 +137,20 @@ const getMessagePreviewText = (message) => {
 function buildMessageInboxSections(currentUserId, contacts = [], messages = []) {
   const currentId = Number(currentUserId);
   const lastMessageByContact = new Map();
+  const unreadCountByContact = new Map();
 
   messages.forEach((message) => {
     const senderId = Number(message.sender_id);
     const receiverId = Number(message.receiver_id);
     const partnerId = senderId === currentId ? receiverId : senderId;
     lastMessageByContact.set(partnerId, message);
+
+    const isUnreadIncoming = senderId === currentId
+      ? false
+      : receiverId === currentId && !message.read_at;
+    if (isUnreadIncoming) {
+      unreadCountByContact.set(partnerId, Number(unreadCountByContact.get(partnerId) || 0) + 1);
+    }
   });
 
   const sections = {
@@ -172,6 +180,7 @@ function buildMessageInboxSections(currentUserId, contacts = [], messages = []) 
     const preview = getMessagePreviewText(lastMessage);
     const isOnline = !!contact.is_online;
     const lastSeenText = contact.last_seen_at ? getPresenceText(false, contact.last_seen_at) : 'Offline';
+    const unreadCount = Number(unreadCountByContact.get(Number(contact.id)) || 0);
 
     addItem({
       id: Number(contact.id),
@@ -189,6 +198,8 @@ function buildMessageInboxSections(currentUserId, contacts = [], messages = []) 
       category,
       last_message: lastMessage,
       preview,
+      unread_count: unreadCount,
+      is_unread: unreadCount > 0,
       time_text: lastMessage
         ? new Date(lastMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         : '',
@@ -210,7 +221,9 @@ function buildMessageInboxSections(currentUserId, contacts = [], messages = []) 
     sections,
     counts: {
       general: sections.general.length,
-      requests: sections.requests.length
+      requests: sections.requests.length,
+      unread_general: sections.general.reduce((sum, item) => sum + Number(item.unread_count || 0), 0),
+      unread_requests: sections.requests.reduce((sum, item) => sum + Number(item.unread_count || 0), 0)
     }
   };
 }
