@@ -61,6 +61,9 @@ class _ShortsSearchPageState extends State<ShortsSearchPage> {
   void initState() {
     super.initState();
     _preloadManager = VideoPreloadManager.createIndependent();
+    widget.socket?.on('reel-likes-updated', _onReelLikesUpdated);
+    widget.socket?.on('reel-comments-updated', _onCommentsUpdatedBroadcast);
+    widget.socket?.on('reel-shares-updated', _onReelSharesUpdated);
     _fetchTrendingHashtags();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _searchFocusNode.requestFocus();
@@ -69,6 +72,9 @@ class _ShortsSearchPageState extends State<ShortsSearchPage> {
 
   @override
   void dispose() {
+    widget.socket?.off('reel-likes-updated', _onReelLikesUpdated);
+    widget.socket?.off('reel-comments-updated', _onCommentsUpdatedBroadcast);
+    widget.socket?.off('reel-shares-updated', _onReelSharesUpdated);
     _debounceTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -298,6 +304,70 @@ class _ShortsSearchPageState extends State<ShortsSearchPage> {
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
       _fetchSuggestions(query);
     });
+  }
+
+  bool _applyMetricToReels(List<dynamic>? reels, int reelId, String field, int value) {
+    if (reels == null || reels.isEmpty) return false;
+
+    var updated = false;
+    for (final reel in reels) {
+      if (int.tryParse(reel['id']?.toString() ?? '') == reelId) {
+        if (reel[field] != value) {
+          reel[field] = value;
+          updated = true;
+        }
+      }
+    }
+    return updated;
+  }
+
+  void _updateReelMetricEverywhere(int reelId, String field, int value) {
+    var updated = _applyMetricToReels(_searchResults, reelId, field, value);
+    if (_playerReels != null && !identical(_playerReels, _searchResults)) {
+      updated = _applyMetricToReels(_playerReels, reelId, field, value) || updated;
+    }
+    if (updated && mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onReelLikesUpdated(dynamic data) {
+    if (!mounted || data == null) return;
+    try {
+      final reelId = int.tryParse(data['reelId']?.toString() ?? '');
+      final likesCount = int.tryParse(data['likesCount']?.toString() ?? '');
+      if (reelId != null && likesCount != null) {
+        _updateReelMetricEverywhere(reelId, 'likes_count', likesCount);
+      }
+    } catch (e) {
+      debugPrint('Error updating search real-time likes: $e');
+    }
+  }
+
+  void _onCommentsUpdatedBroadcast(dynamic data) {
+    if (!mounted || data == null) return;
+    try {
+      final reelId = int.tryParse(data['reelId']?.toString() ?? '');
+      final commentsCount = int.tryParse(data['commentsCount']?.toString() ?? '');
+      if (reelId != null && commentsCount != null) {
+        _updateReelMetricEverywhere(reelId, 'comments_count', commentsCount);
+      }
+    } catch (e) {
+      debugPrint('Error updating search real-time comments: $e');
+    }
+  }
+
+  void _onReelSharesUpdated(dynamic data) {
+    if (!mounted || data == null) return;
+    try {
+      final reelId = int.tryParse(data['reelId']?.toString() ?? '');
+      final sharesCount = int.tryParse(data['sharesCount']?.toString() ?? '');
+      if (reelId != null && sharesCount != null) {
+        _updateReelMetricEverywhere(reelId, 'shares_count', sharesCount);
+      }
+    } catch (e) {
+      debugPrint('Error updating search real-time shares: $e');
+    }
   }
 
   @override
@@ -802,9 +872,14 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
   final TextEditingController _commentInputController = TextEditingController();
   final FocusNode _commentFocusNode = FocusNode();
   bool _showQuickEmojis = false;
-  bool _isImageAttached = false;
   bool _isUploadingImage = false;
+  bool _isSubmittingComment = false;
   String? _selectedCommentImageUrl;
+
+  bool get _canSubmitComment =>
+      !_isUploadingImage &&
+      !_isSubmittingComment &&
+      (_commentInputController.text.trim().isNotEmpty || _selectedCommentImageUrl != null);
 
   @override
   void initState() {
@@ -834,17 +909,47 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
       setState(() {});
     });
 
-    // Écoute de la mise à jour des commentaires en temps réel
+    // Écoute de la mise à jour des métriques en temps réel
+    widget.socket?.on('reel-likes-updated', _onReelLikesUpdated);
     widget.socket?.on('reel-comments-updated', _onCommentsUpdatedBroadcast);
+    widget.socket?.on('reel-shares-updated', _onReelSharesUpdated);
   }
 
   @override
   void dispose() {
+    widget.socket?.off('reel-likes-updated', _onReelLikesUpdated);
     widget.socket?.off('reel-comments-updated', _onCommentsUpdatedBroadcast);
+    widget.socket?.off('reel-shares-updated', _onReelSharesUpdated);
     _pageController.dispose();
     _commentInputController.dispose();
     _commentFocusNode.dispose();
     super.dispose();
+  }
+
+  void _updatePlayerReelMetric(int reelId, String field, int value) {
+    var updated = false;
+    for (final reel in widget.searchResults) {
+      if (int.tryParse(reel['id']?.toString() ?? '') == reelId && reel[field] != value) {
+        reel[field] = value;
+        updated = true;
+      }
+    }
+    if (updated && mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onReelLikesUpdated(dynamic data) {
+    if (!mounted || data == null) return;
+    try {
+      final reelId = int.tryParse(data['reelId']?.toString() ?? '');
+      final likesCount = int.tryParse(data['likesCount']?.toString() ?? '');
+      if (reelId != null && likesCount != null) {
+        _updatePlayerReelMetric(reelId, 'likes_count', likesCount);
+      }
+    } catch (e) {
+      debugPrint('Error updating player real-time likes: $e');
+    }
   }
 
   void _onCommentsUpdatedBroadcast(dynamic data) {
@@ -853,16 +958,23 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
       final reelId = int.tryParse(data['reelId']?.toString() ?? '');
       final count = int.tryParse(data['commentsCount']?.toString() ?? '');
       if (reelId != null && count != null) {
-        for (var reel in widget.searchResults) {
-          if (int.tryParse(reel['id']?.toString() ?? '') == reelId) {
-            setState(() {
-              reel['comments_count'] = count;
-            });
-          }
-        }
+        _updatePlayerReelMetric(reelId, 'comments_count', count);
       }
     } catch (e) {
       debugPrint('Error updating real-time comment count: $e');
+    }
+  }
+
+  void _onReelSharesUpdated(dynamic data) {
+    if (!mounted || data == null) return;
+    try {
+      final reelId = int.tryParse(data['reelId']?.toString() ?? '');
+      final sharesCount = int.tryParse(data['sharesCount']?.toString() ?? '');
+      if (reelId != null && sharesCount != null) {
+        _updatePlayerReelMetric(reelId, 'shares_count', sharesCount);
+      }
+    } catch (e) {
+      debugPrint('Error updating player real-time shares: $e');
     }
   }
 
@@ -961,6 +1073,8 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
   }
 
   Future<void> _pickAndUploadImage() async {
+    if (_isUploadingImage || _isSubmittingComment) return;
+
     try {
       final ImagePicker picker = ImagePicker();
       final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
@@ -980,12 +1094,12 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
+      if (!mounted) return;
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setState(() {
           _selectedCommentImageUrl = data['imageUrl'];
-          _isImageAttached = true;
           _isUploadingImage = false;
         });
       } else {
@@ -997,6 +1111,7 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
         );
       }
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _isUploadingImage = false;
       });
@@ -1166,7 +1281,6 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
                     onTap: () {
                       setState(() {
                         _selectedCommentImageUrl = null;
-                        _isImageAttached = false;
                       });
                     },
                     child: const Icon(CupertinoIcons.xmark_circle_fill, color: Colors.white54, size: 18),
@@ -1252,7 +1366,7 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
                       ),
                       // Bouton Image (Simulation)
                       GestureDetector(
-                        onTap: _pickAndUploadImage,
+                        onTap: (_isUploadingImage || _isSubmittingComment) ? null : _pickAndUploadImage,
                         child: Icon(
                           CupertinoIcons.photo,
                           color: _selectedCommentImageUrl != null ? const Color(0xFFE9435A) : Colors.white.withOpacity(0.7),
@@ -1309,7 +1423,7 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
                   padding: const EdgeInsets.only(left: 12.0, right: 4.0),
                   child: Icon(
                     CupertinoIcons.paperplane_fill,
-                    color: _commentInputController.text.trim().isNotEmpty || _selectedCommentImageUrl != null
+                    color: _canSubmitComment
                         ? const Color(0xFFE9435A)
                         : Colors.white38,
                     size: 20,
@@ -1323,25 +1437,64 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
     );
   }
 
-  void _submitComment(dynamic currentReel) {
+  Future<void> _submitComment(dynamic currentReel) async {
     final val = _commentInputController.text.trim();
     if (val.isEmpty && _selectedCommentImageUrl == null) return;
 
-    final reelId = int.tryParse(currentReel['id']?.toString() ?? '');
-    if (reelId != null) {
-      widget.socket?.emit('reel-comment-add', {
-        'reelId': reelId,
-        'content': val,
-        'imageUrl': _selectedCommentImageUrl,
-      });
+    if (_isUploadingImage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Patientez pendant l'envoi de l'image."),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
 
-      // Incrémentation locale immédiate en attendant le broadcast
+    if (_isSubmittingComment) return;
+
+    final reelId = int.tryParse(currentReel['id']?.toString() ?? '');
+    if (reelId == null || widget.socket == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Impossible d'envoyer le commentaire pour le moment."),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSubmittingComment = true;
+      _showQuickEmojis = false;
+    });
+
+    final completer = Completer<dynamic>();
+    widget.socket!.emitWithAck('reel-comment-add', {
+      'reelId': reelId,
+      'content': val,
+      'imageUrl': _selectedCommentImageUrl,
+    }, ack: (response) {
+      if (!completer.isCompleted) {
+        completer.complete(response);
+      }
+    });
+
+    dynamic response;
+    try {
+      response = await completer.future.timeout(const Duration(seconds: 8));
+    } on TimeoutException {
+      response = {'success': false, 'error': "Le serveur met trop de temps à répondre."};
+    }
+
+    if (!mounted) return;
+
+    if (response != null && response['success'] == true) {
       setState(() {
         currentReel['comments_count'] = (currentReel['comments_count'] ?? 0) + 1;
         _commentInputController.clear();
         _selectedCommentImageUrl = null;
-        _isImageAttached = false;
-        _showQuickEmojis = false;
+        _isSubmittingComment = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1350,7 +1503,22 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
           duration: Duration(seconds: 1),
         ),
       );
+      return;
     }
+
+    setState(() {
+      _isSubmittingComment = false;
+    });
+
+    final errorMessage = response is Map && response['error'] != null
+        ? response['error'].toString()
+        : "Échec de l'envoi du commentaire.";
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(errorMessage),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 }
 

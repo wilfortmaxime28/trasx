@@ -7,6 +7,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
+const fs = require('fs');
 const multer = require('multer');
 require('dotenv').config();
 
@@ -127,6 +128,147 @@ function logSocketError(context, err) {
   } else {
     console.error(`Error on ${context}:`, err);
   }
+}
+
+function getRequestBaseUrl(req) {
+  return `${req.protocol}://${req.get('host')}`;
+}
+
+function normalizePublicAssetUrl(baseUrl, value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  return `${baseUrl}${raw.startsWith('/') ? raw : `/${raw}`}`;
+}
+
+function normalizeInlineText(value, fallback = '') {
+  const clean = String(value || '').replace(/\s+/g, ' ').trim();
+  return clean || fallback;
+}
+
+async function ensurePostVideoThumbnail(post) {
+  if (!post || post.media_type !== 'video' || post.thumbnail_url || !post.image_url) {
+    return post;
+  }
+
+  const relativeVideoPath = String(post.image_url || '').trim();
+  if (!relativeVideoPath) return post;
+
+  const absoluteVideoPath = path.join(__dirname, 'public', relativeVideoPath);
+  if (!fs.existsSync(absoluteVideoPath)) return post;
+
+  const uniqueSuffix = Date.now();
+  const thumbFilename = `thumb-auto-${Number(post.id || 0)}-${uniqueSuffix}.webp`;
+  const relativeThumbPath = `/uploads/posts/${thumbFilename}`;
+  const absoluteThumbPath = path.join(__dirname, 'public/uploads/posts', thumbFilename);
+
+  try {
+    const mediaOptimizer = require('./utils/mediaOptimizer');
+    await mediaOptimizer.generateVideoThumbnail(absoluteVideoPath, absoluteThumbPath);
+    await db.query('UPDATE posts SET thumbnail_url = ? WHERE id = ?', [relativeThumbPath, post.id]);
+    post.thumbnail_url = relativeThumbPath;
+    console.log(`Automatically generated thumbnail for shared video post ${post.id}: ${relativeThumbPath}`);
+  } catch (thumbErr) {
+    console.error('Error generating thumbnail for shared video post:', thumbErr);
+  }
+
+  return post;
+}
+
+function buildSharedPostMessagePayload({ post, baseUrl, shareUrl, note = '' }) {
+  const safePost = post || {};
+  const mediaType = safePost.media_type === 'video'
+    ? 'video'
+    : (safePost.media_type || safePost.image_url || safePost.bg_image_url ? 'image' : 'text');
+  const previewImagePath = mediaType === 'video'
+    ? String(safePost.thumbnail_url || '').trim()
+    : String(
+        safePost.image_url ||
+          safePost.image_url_2 ||
+          safePost.image_url_3 ||
+          safePost.image_url_4 ||
+          safePost.bg_image_url ||
+          ''
+      ).trim();
+  const previewVideoPath = mediaType === 'video'
+    ? String(safePost.image_url || '').trim()
+    : '';
+  const excerpt = normalizeInlineText(
+    safePost.content,
+    mediaType === 'video' ? 'Voir la video partagee.' : 'Voir la publication partagee.',
+  );
+
+  return {
+    type: 'shared_post',
+    shareUrl,
+    appUrl: `${baseUrl}/?shared_post=${Number(safePost.id || 0)}#post-${Number(safePost.id || 0)}`,
+    note: normalizeInlineText(note),
+    post: {
+      id: Number(safePost.id || 0),
+      authorName: normalizeInlineText(safePost.author_name, 'Publication'),
+      authorUsername: normalizeInlineText(safePost.author_username),
+      authorAvatar: normalizePublicAssetUrl(
+        baseUrl,
+        safePost.author_avatar || '/assets/avatar_placeholder.jpg',
+      ),
+      excerpt,
+      content: excerpt,
+      previewImageUrl: normalizePublicAssetUrl(baseUrl, previewImagePath),
+      previewVideoUrl: normalizePublicAssetUrl(baseUrl, previewVideoPath),
+      imageUrl: normalizePublicAssetUrl(baseUrl, safePost.image_url),
+      thumbnailUrl: normalizePublicAssetUrl(baseUrl, safePost.thumbnail_url),
+      bgImageUrl: normalizePublicAssetUrl(baseUrl, safePost.bg_image_url),
+      mediaType,
+      snapshot: {
+        kind: 'post',
+        likeCount: String(Number(safePost.likes_count || 0)),
+        commentCount: String(Number(safePost.comments_count || 0)),
+        shareCount: String(Number(safePost.shares_count || 0)),
+      },
+    },
+  };
+}
+
+function buildDirectMessageConversationPayload({
+  partnerUser,
+  preview,
+  senderId,
+  receiverId,
+  isOutgoing,
+  followingIds = [],
+  followerIds = [],
+  requestStatus = null,
+}) {
+  const partnerId = Number(partnerUser?.id || (isOutgoing ? receiverId : senderId));
+  const isFollowing = followingIds.includes(partnerId);
+  const isFollowedBy = followerIds.includes(partnerId);
+  const isMutual = isFollowing && isFollowedBy;
+  const canManageRequest = !isOutgoing && requestStatus === 'pending';
+  const category = canManageRequest ? 'requests' : 'general';
+  const partnerIsOnline = presence.isUserOnline(partnerId);
+  const partnerPresenceText = presence.getPresenceText(
+    partnerIsOnline,
+    partnerUser?.last_seen_at || null,
+  );
+
+  return {
+    contactId: partnerId,
+    contactName: partnerUser
+      ? `${partnerUser.first_name} ${partnerUser.last_name}`
+      : 'Conversation',
+    contactUsername: partnerUser?.username || '',
+    contactAvatar: partnerUser?.avatar || '/assets/avatar_placeholder.jpg',
+    preview,
+    timeText: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    category,
+    isFollowing,
+    isFollowedBy,
+    isMutual,
+    requestStatus,
+    canManageRequest,
+    isOnline: partnerIsOnline,
+    presenceText: partnerPresenceText,
+  };
 }
 
 async function emitMarketNotification(recipientId, actorId, message) {
@@ -2672,7 +2814,8 @@ app.post('/api/posts/:postId/shares', requireAuth, async (req, res) => {
     });
 
     const currentUser = await User.getById(currentUserId);
-    const shareUrl = `${req.protocol}://${req.get('host')}/share/${share.shareToken}?from=${encodeURIComponent(currentUser.username)}&name=${encodeURIComponent(`${currentUser.first_name} ${currentUser.last_name}`)}&by=${currentUser.id}&post=${postId}&channel=${encodeURIComponent(channel)}${platform ? `&platform=${encodeURIComponent(platform)}` : ''}`;
+    const baseUrl = getRequestBaseUrl(req);
+    const shareUrl = `${baseUrl}/share/${share.shareToken}?from=${encodeURIComponent(currentUser.username)}&name=${encodeURIComponent(`${currentUser.first_name} ${currentUser.last_name}`)}&by=${currentUser.id}&post=${postId}&channel=${encodeURIComponent(channel)}${platform ? `&platform=${encodeURIComponent(platform)}` : ''}`;
 
     // If there is a specific recipient, send a chat message and notification in real-time
     if (recipientUserId) {
@@ -2680,10 +2823,14 @@ app.post('/api/posts/:postId/shares', requireAuth, async (req, res) => {
       const recipientUser = await User.getById(numericReceiverId);
       
       if (recipientUser) {
-        let messageContent = `Regardez cette publication sur TRASX ! ${shareUrl}`;
-        if (message && String(message).trim().length > 0) {
-          messageContent = `${String(message).trim()}\n\n${shareUrl}`;
-        }
+        await ensurePostVideoThumbnail(post);
+        const sharedPayload = buildSharedPostMessagePayload({
+          post,
+          baseUrl,
+          shareUrl,
+          note: message,
+        });
+        const messageContent = JSON.stringify(sharedPayload);
         
         // 1. Create chat message in database
         const messageId = await Message.create(currentUserId, numericReceiverId, messageContent, {
@@ -2695,9 +2842,20 @@ app.post('/api/posts/:postId/shares', requireAuth, async (req, res) => {
         });
 
         // 2. Emit chat message real-time events via Socket.io
-        const previewText = messageContent;
+        const previewText = Message.getPreviewText({ content: messageContent });
         const receiverIsOnline = presence.isUserOnline(numericReceiverId);
         const deliveredAt = receiverIsOnline ? new Date().toISOString() : null;
+        const [
+          senderFollowingIds,
+          senderFollowerIds,
+          receiverFollowingIds,
+          receiverFollowerIds,
+        ] = await Promise.all([
+          User.getFollowingIds(currentUserId),
+          User.getFollowersIds(currentUserId),
+          User.getFollowingIds(numericReceiverId),
+          User.getFollowersIds(numericReceiverId),
+        ]);
 
         const senderPayload = {
           senderId: currentUserId,
@@ -2706,13 +2864,24 @@ app.post('/api/posts/:postId/shares', requireAuth, async (req, res) => {
           sender_avatar: currentUser?.avatar || '/assets/avatar_placeholder.jpg',
           content: messageContent,
           messageId,
+          sender_username: currentUser?.username || '',
           delivered_at: deliveredAt,
           read_at: null,
           messageStatus: 'sent',
           created_at: new Date().toISOString(),
           conversation: {
-            preview: previewText
-          }
+            ...buildDirectMessageConversationPayload({
+              partnerUser: recipientUser,
+              preview: previewText,
+              senderId: currentUserId,
+              receiverId: numericReceiverId,
+              isOutgoing: true,
+              followingIds: senderFollowingIds,
+              followerIds: senderFollowerIds,
+              requestStatus: null,
+            }),
+            preview: previewText,
+          },
         };
 
         const receiverPayload = {
@@ -2722,13 +2891,24 @@ app.post('/api/posts/:postId/shares', requireAuth, async (req, res) => {
           sender_avatar: currentUser?.avatar || '/assets/avatar_placeholder.jpg',
           content: messageContent,
           messageId,
+          sender_username: currentUser?.username || '',
           delivered_at: deliveredAt,
           read_at: null,
           messageStatus: 'incoming',
           created_at: new Date().toISOString(),
           conversation: {
-            preview: previewText
-          }
+            ...buildDirectMessageConversationPayload({
+              partnerUser: currentUser,
+              preview: previewText,
+              senderId: currentUserId,
+              receiverId: numericReceiverId,
+              isOutgoing: false,
+              followingIds: receiverFollowingIds,
+              followerIds: receiverFollowerIds,
+              requestStatus: null,
+            }),
+            preview: previewText,
+          },
         };
 
         io.to(`user:${currentUserId}`).emit('chat-message-received', senderPayload);
@@ -5408,9 +5588,6 @@ app.get('/api/messages/:contactId', requireAuth, async (req, res) => {
   }
 });
 
-// multer is imported at the top of the file
-const fs = require('fs');
-
 const messageUploadDir = path.join(__dirname, 'public/uploads/messages');
 if (!fs.existsSync(messageUploadDir)) {
   fs.mkdirSync(messageUploadDir, { recursive: true });
@@ -5448,7 +5625,34 @@ app.post('/api/messages/upload-media', requireAuth, uploadMessageMedia.fields([
   const attachmentUrl = '/uploads/messages/' + file.filename;
   const attachmentName = file.originalname || file.filename;
   const attachmentSize = file.size;
-  const mime = file.mimetype || '';
+  const rawMime = String(file.mimetype || '').trim().toLowerCase();
+  const fileName = String(file.originalname || file.filename || '').toLowerCase();
+  const ext = path.extname(fileName);
+  let mime = rawMime;
+  if (!mime || mime === 'application/octet-stream') {
+    const fallbackMimeByExt = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.heic': 'image/heic',
+      '.heif': 'image/heif',
+      '.mp4': 'video/mp4',
+      '.mov': 'video/quicktime',
+      '.m4v': 'video/x-m4v',
+      '.webm': 'video/webm',
+      '.mkv': 'video/x-matroska',
+      '.mp3': 'audio/mpeg',
+      '.m4a': 'audio/mp4',
+      '.aac': 'audio/aac',
+      '.wav': 'audio/wav',
+      '.ogg': 'audio/ogg',
+      '.opus': 'audio/opus',
+      '.pdf': 'application/pdf'
+    };
+    mime = fallbackMimeByExt[ext] || rawMime;
+  }
   let attachmentType = 'file';
   if (mime.startsWith('image/')) attachmentType = 'image';
   else if (mime.startsWith('video/')) attachmentType = 'video';
@@ -6382,7 +6586,17 @@ io.on('connection', (socket) => {
     }
   });
 
-  const buildConversationPayload = (viewerId, partnerUser, content, senderId, receiverId, isOutgoing, followingIds = [], followerIds = [], requestStatus = null) => {
+  const normalizeMessageRelationshipState = (state = {}) => {
+    const hasBlockedUser = state?.has_blocked_user === true;
+    const isBlockedByUser = state?.is_blocked_by_user === true;
+    return {
+      hasBlockedUser,
+      isBlockedByUser,
+      canChat: !hasBlockedUser && !isBlockedByUser
+    };
+  };
+
+  const buildConversationPayload = (viewerId, partnerUser, content, senderId, receiverId, isOutgoing, followingIds = [], followerIds = [], requestStatus = null, relationshipState = null) => {
     const partnerId = Number(partnerUser?.id || (isOutgoing ? receiverId : senderId));
     const isFollowing = followingIds.includes(partnerId);
     const isFollowedBy = followerIds.includes(partnerId);
@@ -6391,6 +6605,7 @@ io.on('connection', (socket) => {
     const category = canManageRequest ? 'requests' : 'general';
     const partnerIsOnline = presence.isUserOnline(partnerId);
     const partnerPresenceText = presence.getPresenceText(partnerIsOnline, partnerUser?.last_seen_at || null);
+    const relationship = normalizeMessageRelationshipState(relationshipState);
     return {
       contactId: partnerId,
       contactName: partnerUser ? `${partnerUser.first_name} ${partnerUser.last_name}` : 'Conversation',
@@ -6405,7 +6620,10 @@ io.on('connection', (socket) => {
       requestStatus,
       canManageRequest,
       isOnline: partnerIsOnline,
-      presenceText: partnerPresenceText
+      presenceText: partnerPresenceText,
+      hasBlockedUser: relationship.hasBlockedUser,
+      isBlockedByUser: relationship.isBlockedByUser,
+      canChat: relationship.canChat
     };
   };
 
@@ -8064,7 +8282,7 @@ io.on('connection', (socket) => {
   // 5. Envoyer un message de chat en temps réel
   socket.on('chat-message', async (data) => {
     try {
-      const currentUserId = session.userId;
+      const currentUserId = Number(session.userId || 0);
       if (!currentUserId) return;
       const {
         receiverId,
@@ -8080,6 +8298,7 @@ io.on('connection', (socket) => {
 
       const numericReceiverId = parseInt(receiverId, 10);
       if (!numericReceiverId) return;
+      if (numericReceiverId === currentUserId) return;
 
       const trimmedContent = String(content || '').trim();
       const hasAttachment = !!attachmentUrl;
@@ -8089,6 +8308,18 @@ io.on('connection', (socket) => {
       const parsedVoiceDuration = Number.parseInt(voiceDurationSeconds, 10);
       const normalizedAttachmentSize = Number.isFinite(parsedAttachmentSize) ? parsedAttachmentSize : null;
       const normalizedVoiceDuration = Number.isFinite(parsedVoiceDuration) ? parsedVoiceDuration : null;
+      const relationshipState = await User.getMessageRelationshipState(currentUserId, numericReceiverId);
+      if (!relationshipState.can_chat) {
+        socket.emit('chat-action-error', {
+          action: 'send_message',
+          targetUserId: numericReceiverId,
+          error: relationshipState.has_blocked_user
+            ? 'Vous avez bloque cet utilisateur.'
+            : 'Cet utilisateur vous a bloque.'
+        });
+        return;
+      }
+      const inverseRelationshipState = User.invertMessageRelationshipState(relationshipState);
 
       const [senderFollowingIds, senderFollowerIds, receiverFollowingIds, receiverFollowerIds] = await Promise.all([
         User.getFollowingIds(currentUserId),
@@ -8198,7 +8429,7 @@ io.on('connection', (socket) => {
         messageStatus: 'sent',
         created_at: messagePayload.created_at,
         conversation: {
-          ...buildConversationPayload(currentUserId, receiver, previewText, currentUserId, numericReceiverId, true, senderFollowingIds, senderFollowerIds, messageRequestStatus),
+          ...buildConversationPayload(currentUserId, receiver, previewText, currentUserId, numericReceiverId, true, senderFollowingIds, senderFollowerIds, messageRequestStatus, relationshipState),
           preview: previewText
         }
       };
@@ -8230,7 +8461,7 @@ io.on('connection', (socket) => {
         messageStatus: 'incoming',
         created_at: messagePayload.created_at,
         conversation: {
-          ...buildConversationPayload(numericReceiverId, sender, previewText, currentUserId, numericReceiverId, false, receiverFollowingIds, receiverFollowerIds, messageRequestStatus),
+          ...buildConversationPayload(numericReceiverId, sender, previewText, currentUserId, numericReceiverId, false, receiverFollowingIds, receiverFollowerIds, messageRequestStatus, inverseRelationshipState),
           preview: previewText
         }
       };
@@ -8255,11 +8486,30 @@ io.on('connection', (socket) => {
   // Émis par l'appelant pour notifier le destinataire
   socket.on('call-invite', async (data) => {
     try {
-      const callerId = session.userId;
+      const callerId = Number(session.userId || 0);
       if (!callerId) return;
       const { receiverId, isVideo } = data || {};
       const numericReceiverId = parseInt(receiverId, 10);
       if (!numericReceiverId || numericReceiverId === Number(callerId)) return;
+      const relationshipState = await User.getMessageRelationshipState(callerId, numericReceiverId);
+      if (!relationshipState.can_chat) {
+        socket.emit('chat-action-error', {
+          action: 'start_call',
+          targetUserId: numericReceiverId,
+          error: relationshipState.has_blocked_user
+            ? 'Debloquez cet utilisateur avant de l appeler.'
+            : 'Cet utilisateur vous a bloque.'
+        });
+        return;
+      }
+      if (!presence.isUserOnline(numericReceiverId)) {
+        socket.emit('chat-action-error', {
+          action: 'start_call',
+          targetUserId: numericReceiverId,
+          error: 'Cet utilisateur n est pas en ligne.'
+        });
+        return;
+      }
 
       const caller = await User.getById(callerId);
       if (!caller) return;
@@ -8311,17 +8561,71 @@ io.on('connection', (socket) => {
 
   socket.on('chat-typing', (data) => {
     try {
-      const currentUserId = session.userId;
+      const currentUserId = Number(session.userId || 0);
       if (!currentUserId) return;
       const { receiverId, isTyping } = data || {};
       const numericReceiverId = parseInt(receiverId, 10);
       if (!numericReceiverId) return;
-      io.to(`user:${numericReceiverId}`).emit('chat-typing-status', {
-        senderId: currentUserId,
-        isTyping: !!isTyping
-      });
+      User.getMessageRelationshipState(currentUserId, numericReceiverId)
+        .then((relationshipState) => {
+          if (!relationshipState.can_chat) return;
+          io.to(`user:${numericReceiverId}`).emit('chat-typing-status', {
+            senderId: currentUserId,
+            isTyping: !!isTyping
+          });
+        })
+        .catch((err) => {
+          console.error('Chat typing relationship error:', err);
+        });
     } catch (err) {
       console.error('Chat typing status error:', err);
+    }
+  });
+
+  socket.on('chat-block-toggle', async (data, ack) => {
+    if (typeof ack !== 'function') return;
+
+    try {
+      const currentUserId = Number(session.userId || 0);
+      if (!currentUserId) {
+        ack({ success: false, error: 'Session expirée.' });
+        return;
+      }
+
+      const contactId = parseInt(data?.contactId, 10);
+      const shouldBlock = data?.blocked === true;
+      if (!contactId || contactId === currentUserId) {
+        ack({ success: false, error: 'Utilisateur introuvable.' });
+        return;
+      }
+
+      const partner = await User.getById(contactId);
+      if (!partner) {
+        ack({ success: false, error: 'Utilisateur introuvable.' });
+        return;
+      }
+
+      const relationshipState = await User.setUserBlocked(currentUserId, contactId, shouldBlock);
+      const inverseRelationshipState = User.invertMessageRelationshipState(relationshipState);
+      const actorPayload = normalizeMessageRelationshipState(relationshipState);
+      const partnerPayload = normalizeMessageRelationshipState(inverseRelationshipState);
+
+      io.to(`user:${currentUserId}`).emit('chat-block-status-updated', {
+        contactId,
+        ...actorPayload
+      });
+      io.to(`user:${contactId}`).emit('chat-block-status-updated', {
+        contactId: currentUserId,
+        ...partnerPayload
+      });
+
+      ack({
+        success: true,
+        relationship: actorPayload
+      });
+    } catch (err) {
+      console.error('Chat block toggle error:', err);
+      ack({ success: false, error: 'Impossible de mettre a jour le blocage.' });
     }
   });
 
@@ -8367,12 +8671,31 @@ io.on('connection', (socket) => {
   // --- Game Invitation System Events ---
   socket.on('game-invitation-notify', async (data) => {
     try {
-      const currentUserId = session.userId;
+      const currentUserId = Number(session.userId || 0);
       if (!currentUserId) return;
 
       const { recipientId, game, priceType, priceAmount } = data || {};
       const numericRecipientId = parseInt(recipientId, 10);
       if (!numericRecipientId) return;
+      const relationshipState = await User.getMessageRelationshipState(currentUserId, numericRecipientId);
+      if (!relationshipState.can_chat) {
+        socket.emit('chat-action-error', {
+          action: 'send_game_invitation',
+          targetUserId: numericRecipientId,
+          error: relationshipState.has_blocked_user
+            ? 'Debloquez cet utilisateur avant d envoyer une invitation.'
+            : 'Cet utilisateur vous a bloque.'
+        });
+        return;
+      }
+      if (!presence.isUserOnline(numericRecipientId)) {
+        socket.emit('chat-action-error', {
+          action: 'send_game_invitation',
+          targetUserId: numericRecipientId,
+          error: 'Cet utilisateur n est pas en ligne.'
+        });
+        return;
+      }
 
       const gameNames = {
         domino: 'Domino',

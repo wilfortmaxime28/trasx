@@ -71,6 +71,19 @@ async function ensureEventAccessColumns() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS user_blocks (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          blocker_id INT NOT NULL,
+          blocked_id INT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY unique_user_block (blocker_id, blocked_id),
+          INDEX idx_blocked_user (blocked_id),
+          CONSTRAINT fk_user_blocks_blocker FOREIGN KEY (blocker_id) REFERENCES users(id) ON DELETE CASCADE,
+          CONSTRAINT fk_user_blocks_blocked FOREIGN KEY (blocked_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
       const [botBankRows] = await db.query("SELECT id FROM users WHERE username = 'botbank' LIMIT 1");
       if (!botBankRows || botBankRows.length === 0) {
         const bcrypt = require('bcryptjs');
@@ -328,6 +341,7 @@ class User {
   }
 
   static async getContactsWithFollowState(userId) {
+    await ensureEventAccessColumns();
     const [rows] = await db.query(
       `
         SELECT DISTINCT
@@ -348,7 +362,17 @@ class User {
             SELECT 1
             FROM follows f
             WHERE f.follower_id = u.id AND f.following_id = ?
-          ) AS is_followed_by
+          ) AS is_followed_by,
+          EXISTS(
+            SELECT 1
+            FROM user_blocks ub
+            WHERE ub.blocker_id = ? AND ub.blocked_id = u.id
+          ) AS has_blocked_user,
+          EXISTS(
+            SELECT 1
+            FROM user_blocks ub
+            WHERE ub.blocker_id = u.id AND ub.blocked_id = ?
+          ) AS is_blocked_by_user
         FROM users u
         INNER JOIN follows rel ON (
           (rel.follower_id = ? AND rel.following_id = u.id)
@@ -358,13 +382,16 @@ class User {
         WHERE u.id <> ?
         ORDER BY u.first_name ASC, u.last_name ASC
       `,
-      [userId, userId, userId, userId, userId]
+      [userId, userId, userId, userId, userId, userId, userId]
     );
     return rows.map((row) => ({
       ...row,
       is_following: Number(row.is_following) === 1,
       is_followed_by: Number(row.is_followed_by) === 1,
       is_mutual: Number(row.is_following) === 1 && Number(row.is_followed_by) === 1,
+      has_blocked_user: Number(row.has_blocked_user) === 1,
+      is_blocked_by_user: Number(row.is_blocked_by_user) === 1,
+      can_chat: Number(row.has_blocked_user) !== 1 && Number(row.is_blocked_by_user) !== 1,
       is_online: presence.isUserOnline(row.id),
       presence_text: presence.getPresenceText(presence.isUserOnline(row.id), row.last_seen_at)
     }));
@@ -412,13 +439,23 @@ class User {
             SELECT 1
             FROM follows f
             WHERE f.follower_id = u.id AND f.following_id = ?
-          ) AS is_followed_by
+          ) AS is_followed_by,
+          EXISTS(
+            SELECT 1
+            FROM user_blocks ub
+            WHERE ub.blocker_id = ? AND ub.blocked_id = u.id
+          ) AS has_blocked_user,
+          EXISTS(
+            SELECT 1
+            FROM user_blocks ub
+            WHERE ub.blocker_id = u.id AND ub.blocked_id = ?
+          ) AS is_blocked_by_user
         FROM users u
         WHERE u.id <> ?
           AND (${clauses.join(' OR ')})
         ORDER BY u.first_name ASC, u.last_name ASC
       `,
-      [userId, userId, userId, ...params]
+      [userId, userId, userId, userId, userId, ...params]
     );
 
     return rows.map((row) => ({
@@ -426,9 +463,86 @@ class User {
       is_following: Number(row.is_following) === 1,
       is_followed_by: Number(row.is_followed_by) === 1,
       is_mutual: Number(row.is_following) === 1 && Number(row.is_followed_by) === 1,
+      has_blocked_user: Number(row.has_blocked_user) === 1,
+      is_blocked_by_user: Number(row.is_blocked_by_user) === 1,
+      can_chat: Number(row.has_blocked_user) !== 1 && Number(row.is_blocked_by_user) !== 1,
       is_online: presence.isUserOnline(row.id),
       presence_text: presence.getPresenceText(presence.isUserOnline(row.id), row.last_seen_at)
     }));
+  }
+
+  static async getMessageRelationshipState(viewerId, targetUserId) {
+    await ensureEventAccessColumns();
+    const normalizedViewerId = Number.parseInt(viewerId, 10);
+    const normalizedTargetId = Number.parseInt(targetUserId, 10);
+
+    if (!Number.isFinite(normalizedViewerId) || !Number.isFinite(normalizedTargetId) || normalizedViewerId <= 0 || normalizedTargetId <= 0 || normalizedViewerId === normalizedTargetId) {
+      return {
+        has_blocked_user: false,
+        is_blocked_by_user: false,
+        can_chat: normalizedViewerId > 0 && normalizedTargetId > 0 && normalizedViewerId !== normalizedTargetId
+      };
+    }
+
+    const [rows] = await db.query(
+      `
+        SELECT
+          EXISTS(
+            SELECT 1
+            FROM user_blocks ub
+            WHERE ub.blocker_id = ? AND ub.blocked_id = ?
+          ) AS has_blocked_user,
+          EXISTS(
+            SELECT 1
+            FROM user_blocks ub
+            WHERE ub.blocker_id = ? AND ub.blocked_id = ?
+          ) AS is_blocked_by_user
+      `,
+      [normalizedViewerId, normalizedTargetId, normalizedTargetId, normalizedViewerId]
+    );
+
+    const hasBlockedUser = Number(rows[0]?.has_blocked_user) === 1;
+    const isBlockedByUser = Number(rows[0]?.is_blocked_by_user) === 1;
+
+    return {
+      has_blocked_user: hasBlockedUser,
+      is_blocked_by_user: isBlockedByUser,
+      can_chat: !hasBlockedUser && !isBlockedByUser
+    };
+  }
+
+  static invertMessageRelationshipState(state = {}) {
+    const hasBlockedUser = state?.has_blocked_user === true;
+    const isBlockedByUser = state?.is_blocked_by_user === true;
+    return {
+      has_blocked_user: isBlockedByUser,
+      is_blocked_by_user: hasBlockedUser,
+      can_chat: !hasBlockedUser && !isBlockedByUser
+    };
+  }
+
+  static async setUserBlocked(blockerId, blockedId, blocked) {
+    await ensureEventAccessColumns();
+    const normalizedBlockerId = Number.parseInt(blockerId, 10);
+    const normalizedBlockedId = Number.parseInt(blockedId, 10);
+
+    if (!Number.isFinite(normalizedBlockerId) || !Number.isFinite(normalizedBlockedId) || normalizedBlockerId <= 0 || normalizedBlockedId <= 0 || normalizedBlockerId === normalizedBlockedId) {
+      throw new Error('Relation de blocage invalide.');
+    }
+
+    if (blocked) {
+      await db.query(
+        'INSERT IGNORE INTO user_blocks (blocker_id, blocked_id) VALUES (?, ?)',
+        [normalizedBlockerId, normalizedBlockedId]
+      );
+    } else {
+      await db.query(
+        'DELETE FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?',
+        [normalizedBlockerId, normalizedBlockedId]
+      );
+    }
+
+    return this.getMessageRelationshipState(normalizedBlockerId, normalizedBlockedId);
   }
 
   static async getFollowersIds(userId) {

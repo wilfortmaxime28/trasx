@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -43,16 +44,20 @@ Widget _buildGradientPlaceholder(String char, {double fontSize = 18}) {
 
 class ShortsView extends StatefulWidget {
   final int currentUserId;
+  final int? initialReelId;
   final io.Socket? socket;
   final Function(int)? onSwitchTab;
   final ValueChanged<int>? onViewProfile;
+  final ValueChanged<int>? onInitialReelConsumed;
 
   const ShortsView({
     Key? key,
     required this.currentUserId,
+    this.initialReelId,
     this.socket,
     this.onSwitchTab,
     this.onViewProfile,
+    this.onInitialReelConsumed,
   }) : super(key: key);
 
   @override
@@ -66,6 +71,8 @@ class _ShortsViewState extends State<ShortsView> with WidgetsBindingObserver {
   final Set<int> _followedUserIds = {}; // Local follow tracking
   int _currentPageIndex = 0;
   String _activeTab = 'for_you'; // 'for_you' or 'following'
+  bool _isResolvingInitialReel = false;
+  int? _consumedInitialReelId;
 
   @override
   void initState() {
@@ -81,6 +88,16 @@ class _ShortsViewState extends State<ShortsView> with WidgetsBindingObserver {
     widget.socket?.on('reel-likes-updated', _onReelLikesUpdated);
     widget.socket?.on('reel-comments-updated', _onReelCommentsUpdated);
     widget.socket?.on('reel-shares-updated', _onReelSharesUpdated);
+    _tryResolveInitialReel();
+  }
+
+  @override
+  void didUpdateWidget(covariant ShortsView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialReelId != widget.initialReelId) {
+      _consumedInitialReelId = null;
+      _tryResolveInitialReel();
+    }
   }
 
   @override
@@ -130,7 +147,77 @@ class _ShortsViewState extends State<ShortsView> with WidgetsBindingObserver {
         VideoPreloadManager().setFocusedIndex(0);
       }
       setState(() {});
+      _tryResolveInitialReel();
     }
+  }
+
+  Future<void> _tryResolveInitialReel() async {
+    final targetReelId = widget.initialReelId;
+    if (targetReelId == null || targetReelId <= 0) return;
+    if (_consumedInitialReelId == targetReelId) return;
+
+    final existingIndex = _feedController.reels.indexWhere(
+      (reel) => int.tryParse(reel['id']?.toString() ?? '') == targetReelId,
+    );
+    if (existingIndex != -1) {
+      _focusReelIndex(existingIndex, reelId: targetReelId);
+      return;
+    }
+
+    if (_feedController.isLoading || _isResolvingInitialReel) return;
+
+    _isResolvingInitialReel = true;
+    try {
+      final response = await http
+          .get(
+            Uri.parse('https://trasx.com/api/feed/reels/$targetReelId/card'),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-id': '${widget.currentUserId}',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) return;
+
+      final data = jsonDecode(response.body);
+      final reel = data['reel'];
+      if (data['success'] == true && reel is Map) {
+        _feedController.insertOrPromoteReel(reel);
+        _focusReelIndex(0, reelId: targetReelId);
+      }
+    } catch (error) {
+      debugPrint('Error resolving shared reel $targetReelId: $error');
+    } finally {
+      _isResolvingInitialReel = false;
+    }
+  }
+
+  void _focusReelIndex(int index, {int? reelId, int attempt = 0}) {
+    if (!mounted || index < 0) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_pageController.hasClients) {
+        if (attempt < 6) {
+          Future.delayed(const Duration(milliseconds: 80), () {
+            _focusReelIndex(index, reelId: reelId, attempt: attempt + 1);
+          });
+        }
+        return;
+      }
+
+      if (_currentPageIndex != index) {
+        _pageController.jumpToPage(index);
+      } else {
+        _onPageChanged(index);
+      }
+
+      if (reelId != null && _consumedInitialReelId != reelId) {
+        _consumedInitialReelId = reelId;
+        widget.onInitialReelConsumed?.call(reelId);
+      }
+    });
   }
 
   void _onReelLikesUpdated(dynamic data) {
@@ -1070,20 +1157,10 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
       behavior: HitTestBehavior.opaque,
       child: Column(
         children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              Icon(
-                icon,
-                color: Colors.black.withOpacity(0.5),
-                size: 34,
-              ),
-              Icon(
-                icon,
-                color: iconColor,
-                size: 32,
-              ),
-            ],
+          Icon(
+            icon,
+            color: iconColor,
+            size: 32,
           ),
           const SizedBox(height: 4),
           Text(
@@ -1092,9 +1169,6 @@ class _ReelPageItemState extends State<ReelPageItem> with SingleTickerProviderSt
               color: Colors.white,
               fontSize: 12,
               fontWeight: FontWeight.bold,
-              shadows: [
-                Shadow(blurRadius: 4.0, color: Colors.black54, offset: Offset.zero),
-              ],
             ),
           )
         ],
@@ -1176,9 +1250,17 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
   }
 
   bool _isUploadingImage = false;
+  bool _isSubmittingComment = false;
   String? _selectedCommentImageUrl;
 
+  bool get _canSendComment =>
+      !_isUploadingImage &&
+      !_isSubmittingComment &&
+      (_commentInputController.text.trim().isNotEmpty || _selectedCommentImageUrl != null);
+
   Future<void> _pickAndUploadImage() async {
+    if (_isUploadingImage || _isSubmittingComment) return;
+
     try {
       final ImagePicker picker = ImagePicker();
       final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
@@ -1197,6 +1279,7 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
+      if (!mounted) return;
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1213,6 +1296,7 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
         );
       }
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _isUploadingImage = false;
       });
@@ -1222,28 +1306,74 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
     }
   }
 
-  void _sendComment() {
+  Future<void> _sendComment() async {
     final text = _commentInputController.text.trim();
     if (text.isEmpty && _selectedCommentImageUrl == null) return;
+
+    if (_isUploadingImage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Patientez pendant l'envoi de l'image."),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    if (_isSubmittingComment || widget.socket == null) return;
 
     final int? parentId = _replyingToComment != null 
         ? int.tryParse(_replyingToComment['id']?.toString() ?? '') 
         : null;
 
-    widget.socket?.emitWithAck('reel-comment-add', {
+    setState(() {
+      _isSubmittingComment = true;
+    });
+
+    final completer = Completer<dynamic>();
+    widget.socket!.emitWithAck('reel-comment-add', {
       'reelId': widget.reelId,
       'content': text,
       'parentId': parentId,
       'imageUrl': _selectedCommentImageUrl,
     }, ack: (ack) {
-      if (ack != null && ack['success'] == true) {
-        _commentInputController.clear();
-        setState(() {
-          _replyingToComment = null;
-          _selectedCommentImageUrl = null;
-        });
+      if (!completer.isCompleted) {
+        completer.complete(ack);
       }
     });
+
+    dynamic response;
+    try {
+      response = await completer.future.timeout(const Duration(seconds: 8));
+    } on TimeoutException {
+      response = {'success': false, 'error': "Le serveur met trop de temps à répondre."};
+    }
+
+    if (!mounted) return;
+
+    if (response != null && response['success'] == true) {
+      _commentInputController.clear();
+      setState(() {
+        _replyingToComment = null;
+        _selectedCommentImageUrl = null;
+        _isSubmittingComment = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isSubmittingComment = false;
+    });
+
+    final errorMessage = response is Map && response['error'] != null
+        ? response['error'].toString()
+        : "Échec de l'envoi du commentaire.";
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(errorMessage),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   void _toggleCommentLike(dynamic comment) {
@@ -1763,7 +1893,7 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                         ),
                         // Image selection icon
                         GestureDetector(
-                          onTap: _pickAndUploadImage,
+                          onTap: (_isUploadingImage || _isSubmittingComment) ? null : _pickAndUploadImage,
                           child: Icon(
                             CupertinoIcons.photo,
                             color: _selectedCommentImageUrl != null ? const Color(0xFFE9435A) : textSecondaryColor,
@@ -1801,7 +1931,7 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
                 IconButton(
                   icon: Icon(
                     CupertinoIcons.paperplane_fill,
-                    color: _commentInputController.text.trim().isNotEmpty || _selectedCommentImageUrl != null
+                    color: _canSendComment
                         ? const Color(0xFFE1306C)
                         : Colors.white38,
                   ),

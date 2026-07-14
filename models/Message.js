@@ -78,6 +78,9 @@ class Message {
         m.voice_duration_seconds,
         m.delivered_at,
         m.read_at,
+        m.deleted_by_sender,
+        m.deleted_by_receiver,
+        m.deleted_for_everyone,
         m.created_at,
         mr.status AS request_status,
         mr.requester_id AS request_requester_id,
@@ -92,10 +95,14 @@ class Message {
           (mr.requester_id = m.sender_id AND mr.recipient_id = m.receiver_id)
           OR (mr.requester_id = m.receiver_id AND mr.recipient_id = m.sender_id)
         )
-      WHERE m.receiver_id = ? OR m.sender_id = ?
+      WHERE (m.receiver_id = ? OR m.sender_id = ?)
+        AND (
+          (m.sender_id = ? AND m.deleted_by_sender = 0)
+          OR (m.receiver_id = ? AND m.deleted_by_receiver = 0)
+        )
       ORDER BY m.created_at ASC
     `;
-    const [rows] = await db.query(query, [userId, userId]);
+    const [rows] = await db.query(query, [userId, userId, userId, userId]);
     return rows;
   }
 

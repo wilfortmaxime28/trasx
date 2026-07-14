@@ -28,6 +28,7 @@ import 'onboarding_page.dart';
 import 'main.dart';
 import 'kyc_camera_page.dart';
 import 'image_cropper_page.dart';
+import 'widgets/messages_inbox_view.dart';
 import 'widgets/shorts_view.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -40,7 +41,7 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   static bool pauseAllVideos = false;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  
+
   // Theme state
   bool _isDarkMode = true;
 
@@ -67,9 +68,9 @@ class _DashboardPageState extends State<DashboardPage> {
   final ScrollController _feedScrollController = ScrollController();
   bool _isLoadingMoreFeed = false;
   bool _hasMoreFeed = true;
-  bool _isPaginating = false;         // verrou anti-double appel
-  String? _nextCursor;                // curseur backend
-  Set<int> _seenPostIds = {};         // IDs déjà envoyés au backend
+  bool _isPaginating = false; // verrou anti-double appel
+  String? _nextCursor; // curseur backend
+  Set<int> _seenPostIds = {}; // IDs déjà envoyés au backend
   bool _isRefreshing = false;
 
   // Feed error state
@@ -109,7 +110,9 @@ class _DashboardPageState extends State<DashboardPage> {
   StreamSubscription<Uri>? _linkSubscription;
 
   // Navigation State
-  int _activeViewIndex = 0; 
+  int _activeViewIndex = 0;
+  bool _isMessagesConversationOpen = false;
+  int? _pendingSharedReelId;
 
   static const List<Color> instagramGradient = [
     Color(0xFF833AB4), // Purple
@@ -145,21 +148,17 @@ class _DashboardPageState extends State<DashboardPage> {
       if (_userId > 0) _fetchStatuses();
     });
     // Listen to connectivity changes
-    _connectivitySub = Connectivity().onConnectivityChanged.listen(
-      (results) {
-        final wasOffline = _isOffline;
-        final nowOffline = results.every(
-          (r) => r == ConnectivityResult.none,
-        );
-        if (mounted) {
-          setState(() => _isOffline = nowOffline);
-        }
-        // Auto-retry when back online
-        if (wasOffline && !nowOffline && _userId > 0) {
-          _fetchHomeFeed();
-        }
-      },
-    );
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      final wasOffline = _isOffline;
+      final nowOffline = results.every((r) => r == ConnectivityResult.none);
+      if (mounted) {
+        setState(() => _isOffline = nowOffline);
+      }
+      // Auto-retry when back online
+      if (wasOffline && !nowOffline && _userId > 0) {
+        _fetchHomeFeed();
+      }
+    });
     // Initial connectivity check
     Connectivity().checkConnectivity().then((results) {
       if (mounted) {
@@ -182,7 +181,8 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _onFeedScroll() {
-    if (_feedScrollController.position.pixels >= _feedScrollController.position.maxScrollExtent - 300) {
+    if (_feedScrollController.position.pixels >=
+        _feedScrollController.position.maxScrollExtent - 300) {
       _fetchMoreHomeFeed();
     }
   }
@@ -210,10 +210,7 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final response = await http.get(
         Uri.parse('https://trasx.com/api/feed/statuses'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '$_userId',
-        },
+        headers: {'Content-Type': 'application/json', 'x-user-id': '$_userId'},
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -238,12 +235,13 @@ class _DashboardPageState extends State<DashboardPage> {
   }) async {
     if (_userId <= 0) return;
     try {
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('https://trasx.com/api/feed/statuses/create'),
-      )
-        ..headers['x-user-id'] = '$_userId'
-        ..fields['status_type'] = statusType;
+      final request =
+          http.MultipartRequest(
+              'POST',
+              Uri.parse('https://trasx.com/api/feed/statuses/create'),
+            )
+            ..headers['x-user-id'] = '$_userId'
+            ..fields['status_type'] = statusType;
 
       if (text != null && text.trim().isNotEmpty) {
         request.fields['caption'] = text.trim();
@@ -331,10 +329,13 @@ class _DashboardPageState extends State<DashboardPage> {
         '${seenParam.isNotEmpty ? '&seen=$seenParam' : ''}',
       );
       final response = await http
-          .get(uri, headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': '$_userId',
-          })
+          .get(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-id': '$_userId',
+            },
+          )
           .timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 200) {
@@ -370,7 +371,8 @@ class _DashboardPageState extends State<DashboardPage> {
         if (mounted && _feedPosts.isEmpty) {
           setState(() {
             _hasFeedError = true;
-            _feedErrorMessage = 'Erreur serveur (${response.statusCode}). Réessayez.';
+            _feedErrorMessage =
+                'Erreur serveur (${response.statusCode}). Réessayez.';
             _isLoadingFeed = false;
             _isRefreshing = false;
           });
@@ -385,7 +387,10 @@ class _DashboardPageState extends State<DashboardPage> {
           _isRefreshing = false;
         });
       } else if (mounted) {
-        setState(() { _isLoadingFeed = false; _isRefreshing = false; });
+        setState(() {
+          _isLoadingFeed = false;
+          _isRefreshing = false;
+        });
       }
     } catch (e) {
       debugPrint('Error fetching home feed: $e');
@@ -393,7 +398,8 @@ class _DashboardPageState extends State<DashboardPage> {
         setState(() {
           if (_feedPosts.isEmpty) {
             _hasFeedError = true;
-            _feedErrorMessage = 'Impossible de charger le fil. Vérifiez votre connexion.';
+            _feedErrorMessage =
+                'Impossible de charger le fil. Vérifiez votre connexion.';
           }
           _isLoadingFeed = false;
           _isRefreshing = false;
@@ -404,7 +410,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // ── Pagination (scroll infini, cursor-based) ──────────────────────────────────
   Future<void> _fetchMoreHomeFeed() async {
-    if (_userId <= 0 || _isLoadingMoreFeed || _isPaginating || !_hasMoreFeed) return;
+    if (_userId <= 0 || _isLoadingMoreFeed || _isPaginating || !_hasMoreFeed)
+      return;
 
     setState(() {
       _isLoadingMoreFeed = true;
@@ -417,16 +424,21 @@ class _DashboardPageState extends State<DashboardPage> {
       final allSeenIds = _feedPosts.map((p) => p.id).toSet();
       final seenParam = allSeenIds.take(100).join(',');
 
-      final cursorParam = _nextCursor != null ? '&cursor=${Uri.encodeComponent(_nextCursor!)}' : '';
+      final cursorParam = _nextCursor != null
+          ? '&cursor=${Uri.encodeComponent(_nextCursor!)}'
+          : '';
       final uri = Uri.parse(
         'https://trasx.com/api/feed/posts?limit=20$cursorParam'
         '${seenParam.isNotEmpty ? '&seen=$seenParam' : ''}',
       );
       final response = await http
-          .get(uri, headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': '$_userId',
-          })
+          .get(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-id': '$_userId',
+            },
+          )
           .timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 200) {
@@ -573,12 +585,15 @@ class _DashboardPageState extends State<DashboardPage> {
     _socket?.dispose();
 
     try {
-      _socket = IO.io('https://trasx.com:443', IO.OptionBuilder()
-        .setTransports(['websocket', 'polling'])
-        .setAuth({'userId': _userId})
-        .setQuery({'userId': _userId})
-        .enableAutoConnect()
-        .build());
+      _socket = IO.io(
+        'https://trasx.com:443',
+        IO.OptionBuilder()
+            .setTransports(['websocket', 'polling'])
+            .setAuth({'userId': _userId})
+            .setQuery({'userId': _userId})
+            .enableAutoConnect()
+            .build(),
+      );
 
       _socket!.connect();
 
@@ -594,7 +609,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
       _socket!.on('post-liked', (data) {
         debugPrint('Socket.IO: Received post-liked: $data');
-        if (data != null && data['postId'] != null && data['likes_count'] != null) {
+        if (data != null &&
+            data['postId'] != null &&
+            data['likes_count'] != null) {
           final int? pId = int.tryParse('${data['postId']}');
           final int? count = int.tryParse('${data['likes_count']}');
           if (pId != null && count != null) {
@@ -605,7 +622,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
       _socket!.on('like-response', (data) {
         debugPrint('Socket.IO: Received like-response: $data');
-        if (data != null && data['postId'] != null && data['liked'] != null && data['count'] != null) {
+        if (data != null &&
+            data['postId'] != null &&
+            data['liked'] != null &&
+            data['count'] != null) {
           final int? pId = int.tryParse('${data['postId']}');
           final bool liked = data['liked'] == true;
           final int? count = int.tryParse('${data['count']}');
@@ -635,8 +655,13 @@ class _DashboardPageState extends State<DashboardPage> {
       if (userId == null || newStatus == null) return;
 
       setState(() {
-        final idx = _statusGroups.indexWhere((g) => (g['user_id'] as num?)?.toInt() == userId);
-        final bool isStatusBoosted = newStatus['is_boosted'] == 1 || newStatus['is_boosted'] == true || newStatus['is_boosted'] == '1';
+        final idx = _statusGroups.indexWhere(
+          (g) => (g['user_id'] as num?)?.toInt() == userId,
+        );
+        final bool isStatusBoosted =
+            newStatus['is_boosted'] == 1 ||
+            newStatus['is_boosted'] == true ||
+            newStatus['is_boosted'] == '1';
 
         if (idx != -1) {
           final group = Map<String, dynamic>.from(_statusGroups[idx]);
@@ -679,8 +704,18 @@ class _DashboardPageState extends State<DashboardPage> {
 
           final aStatuses = a['statuses'] as List<dynamic>? ?? [];
           final bStatuses = b['statuses'] as List<dynamic>? ?? [];
-          final aLatest = aStatuses.isEmpty ? 0 : DateTime.tryParse(aStatuses.last['created_at'] ?? '')?.millisecondsSinceEpoch ?? 0;
-          final bLatest = bStatuses.isEmpty ? 0 : DateTime.tryParse(bStatuses.last['created_at'] ?? '')?.millisecondsSinceEpoch ?? 0;
+          final aLatest = aStatuses.isEmpty
+              ? 0
+              : DateTime.tryParse(
+                      aStatuses.last['created_at'] ?? '',
+                    )?.millisecondsSinceEpoch ??
+                    0;
+          final bLatest = bStatuses.isEmpty
+              ? 0
+              : DateTime.tryParse(
+                      bStatuses.last['created_at'] ?? '',
+                    )?.millisecondsSinceEpoch ??
+                    0;
           return bLatest - aLatest;
         });
       });
@@ -694,10 +729,7 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final response = await http.get(
         Uri.parse('https://trasx.com/api/hashtags'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '$_userId',
-        },
+        headers: {'Content-Type': 'application/json', 'x-user-id': '$_userId'},
       );
       if (response.statusCode == 200) {
         final List<dynamic> tags = jsonDecode(response.body);
@@ -705,7 +737,10 @@ class _DashboardPageState extends State<DashboardPage> {
         for (var t in tags) {
           if (t['name'] != null) {
             final name = (t['name'] as String).toLowerCase();
-            final isPaid = t['is_paid'] == 1 || t['is_paid'] == true || t['is_paid'] == 'true';
+            final isPaid =
+                t['is_paid'] == 1 ||
+                t['is_paid'] == true ||
+                t['is_paid'] == 'true';
             temp[name] = isPaid;
           }
         }
@@ -729,16 +764,15 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final response = await http.get(
         Uri.parse('https://trasx.com/api/posts/bookmarks'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '$_userId',
-        },
+        headers: {'Content-Type': 'application/json', 'x-user-id': '$_userId'},
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['posts'] != null) {
           final List<dynamic> postsJson = data['posts'];
-          final List<Post> parsed = postsJson.map((e) => Post.fromJson(e as Map<String, dynamic>)).toList();
+          final List<Post> parsed = postsJson
+              .map((e) => Post.fromJson(e as Map<String, dynamic>))
+              .toList();
           setState(() {
             _bookmarkedPosts = parsed;
           });
@@ -757,43 +791,76 @@ class _DashboardPageState extends State<DashboardPage> {
     _appLinks = AppLinks();
 
     // Listen to incoming links (when app is in background or foreground)
-    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
-      _handleDeepLink(uri);
-    }, onError: (err) {
-      debugPrint('Deep Link error: $err');
-    });
+    _linkSubscription = _appLinks.uriLinkStream.listen(
+      (uri) {
+        _handleDeepLink(uri);
+      },
+      onError: (err) {
+        debugPrint('Deep Link error: $err');
+      },
+    );
 
     // Check initial link (when app is cold started)
-    _appLinks.getInitialLink().then((uri) {
-      if (uri != null) {
-        _handleDeepLink(uri);
-      }
-    }).catchError((err) {
-      debugPrint('Initial Deep Link error: $err');
-    });
+    _appLinks
+        .getInitialLink()
+        .then((uri) {
+          if (uri != null) {
+            _handleDeepLink(uri);
+          }
+        })
+        .catchError((err) {
+          debugPrint('Initial Deep Link error: $err');
+        });
   }
 
   void _handleDeepLink(Uri uri) {
     debugPrint('Received Deep Link: $uri');
     final path = uri.path;
+    final fragment = uri.fragment;
 
-    int? postId;
-    if (path.startsWith('/post/')) {
+    int? postId = int.tryParse(uri.queryParameters['shared_post'] ?? '');
+    int? reelId = int.tryParse(uri.queryParameters['shared_reel'] ?? '');
+    postId ??= int.tryParse(
+      RegExp(r'post-(\d+)').firstMatch(fragment)?.group(1) ?? '',
+    );
+    reelId ??= int.tryParse(
+      RegExp(r'reel-(\d+)').firstMatch(fragment)?.group(1) ?? '',
+    );
+
+    if ((postId == null || postId <= 0) && path.startsWith('/post/')) {
       final segments = uri.pathSegments;
       if (segments.length >= 2) {
         postId = int.tryParse(segments[1]);
       }
-    } else if (uri.host == 'post') {
+    } else if ((reelId == null || reelId <= 0) && path.startsWith('/shorts/')) {
+      final segments = uri.pathSegments;
+      if (segments.length >= 2) {
+        reelId = int.tryParse(segments[1]);
+      }
+    } else if ((postId == null || postId <= 0) && uri.host == 'post') {
       final segments = uri.pathSegments;
       if (segments.isNotEmpty) {
         postId = int.tryParse(segments[0]);
       } else {
         postId = int.tryParse(uri.queryParameters['id'] ?? '');
       }
+    } else if ((reelId == null || reelId <= 0) &&
+        (uri.host == 'shorts' || uri.host == 'reel')) {
+      final segments = uri.pathSegments;
+      if (segments.isNotEmpty) {
+        reelId = int.tryParse(segments[0]);
+      } else {
+        reelId = int.tryParse(uri.queryParameters['id'] ?? '');
+      }
     }
 
     if (postId != null && postId > 0) {
       _openPostDetailPage(postId);
+      return;
+    }
+
+    if (reelId != null && reelId > 0) {
+      _openSharedReel(reelId);
     }
   }
 
@@ -815,6 +882,15 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  void _openSharedReel(int reelId) {
+    if (!mounted || reelId <= 0) return;
+    setState(() {
+      _activeViewIndex = 1;
+      _isMessagesConversationOpen = false;
+      _pendingSharedReelId = reelId;
+    });
+  }
+
   bool _isHashtagPaid(String tag) {
     final cleanTag = tag.replaceAll('#', '').trim().toLowerCase();
     if (_hashtagPaidStatus.containsKey(cleanTag)) {
@@ -827,6 +903,7 @@ class _DashboardPageState extends State<DashboardPage> {
   void _navigateToUserProfile(int targetUserId) {
     if (targetUserId <= 0) return;
     setState(() {
+      _isMessagesConversationOpen = false;
       _profileViewUserId = targetUserId;
       _activeViewIndex = 3; // Switch to profile page
     });
@@ -934,13 +1011,10 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final response = await http.post(
         Uri.parse('https://trasx.com/api/user/update-display-name'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '$_userId',
-        },
+        headers: {'Content-Type': 'application/json', 'x-user-id': '$_userId'},
         body: jsonEncode({'display_name': newName}),
       );
-      
+
       final data = jsonDecode(response.body);
       if (!mounted) return;
       if (response.statusCode == 200 && data['success'] == true) {
@@ -953,7 +1027,9 @@ class _DashboardPageState extends State<DashboardPage> {
         _fetchUserProfileAndPosts();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data['error'] ?? 'Impossible de modifier le nom.')),
+          SnackBar(
+            content: Text(data['error'] ?? 'Impossible de modifier le nom.'),
+          ),
         );
       }
     } catch (e) {
@@ -966,10 +1042,7 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final response = await http.post(
         Uri.parse('https://trasx.com/api/user/update-avatar'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '$_userId',
-        },
+        headers: {'Content-Type': 'application/json', 'x-user-id': '$_userId'},
         body: jsonEncode({'avatarUrl': selectedUrl}),
       );
 
@@ -980,12 +1053,18 @@ class _DashboardPageState extends State<DashboardPage> {
           _avatarUrl = data['avatarUrl'] ?? selectedUrl;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Photo de profil mise à jour avec succès.')),
+          const SnackBar(
+            content: Text('Photo de profil mise à jour avec succès.'),
+          ),
         );
         _fetchUserProfileAndPosts();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(data['error'] ?? 'Impossible de modifier la photo de profil.')),
+          SnackBar(
+            content: Text(
+              data['error'] ?? 'Impossible de modifier la photo de profil.',
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -1002,9 +1081,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!mounted) return;
 
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (context) => const OnboardingPage(),
-      ),
+      MaterialPageRoute(builder: (context) => const OnboardingPage()),
       (route) => false,
     );
   }
@@ -1012,7 +1089,11 @@ class _DashboardPageState extends State<DashboardPage> {
   void _switchView(int index) {
     setState(() {
       _activeViewIndex = index;
-      _profileViewUserId = null; // Always reset when switching views via tabs/drawer
+      if (index != 2) {
+        _isMessagesConversationOpen = false;
+      }
+      _profileViewUserId =
+          null; // Always reset when switching views via tabs/drawer
       if (index == 3) {
         _fetchUserProfileAndPosts(); // Load our own profile
       } else if (index == 5) {
@@ -1028,7 +1109,9 @@ class _DashboardPageState extends State<DashboardPage> {
   // Helper to build User Avatar dynamically
   Widget _buildUserAvatar({double radius = 26, String? customUrl}) {
     final url = customUrl ?? _avatarUrl;
-    final String initial = _username.isNotEmpty ? _username[0].toUpperCase() : 'U';
+    final String initial = _username.isNotEmpty
+        ? _username[0].toUpperCase()
+        : 'U';
     final innerGapColor = _isDarkMode ? Colors.black : Colors.white;
 
     Widget avatarContent;
@@ -1092,16 +1175,11 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       child: Container(
         padding: const EdgeInsets.all(2.0), // Inner space (black/white liseré)
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: innerGapColor,
-        ),
+        decoration: BoxDecoration(shape: BoxShape.circle, color: innerGapColor),
         child: SizedBox(
           width: radius * 2,
           height: radius * 2,
-          child: ClipOval(
-            child: avatarContent,
-          ),
+          child: ClipOval(child: avatarContent),
         ),
       ),
     );
@@ -1109,27 +1187,45 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // Dialog to change display name
   void _showEditDisplayNameDialog(Color textPrimaryColor, Color cardColor) {
-    final controller = TextEditingController(text: _displayName.isNotEmpty ? _displayName : _username);
+    final controller = TextEditingController(
+      text: _displayName.isNotEmpty ? _displayName : _username,
+    );
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: cardColor,
-          title: Text('Modifier le nom', style: TextStyle(color: textPrimaryColor, fontSize: 18, fontWeight: FontWeight.bold)),
+          title: Text(
+            'Modifier le nom',
+            style: TextStyle(
+              color: textPrimaryColor,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           content: TextField(
             controller: controller,
             style: TextStyle(color: textPrimaryColor),
             decoration: InputDecoration(
               hintText: 'Saisissez votre nouveau nom',
               hintStyle: const TextStyle(color: Colors.white30),
-              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: textPrimaryColor.withValues(alpha: 0.2))),
-              focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFC13584))),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(
+                  color: textPrimaryColor.withValues(alpha: 0.2),
+                ),
+              ),
+              focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFFC13584)),
+              ),
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler', style: TextStyle(color: Colors.white54)),
+              child: const Text(
+                'Annuler',
+                style: TextStyle(color: Colors.white54),
+              ),
             ),
             TextButton(
               onPressed: () {
@@ -1139,7 +1235,13 @@ class _DashboardPageState extends State<DashboardPage> {
                 }
                 Navigator.of(context).pop();
               },
-              child: const Text('Enregistrer', style: TextStyle(color: Color(0xFFC13584), fontWeight: FontWeight.bold)),
+              child: const Text(
+                'Enregistrer',
+                style: TextStyle(
+                  color: Color(0xFFC13584),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         );
@@ -1165,7 +1267,11 @@ class _DashboardPageState extends State<DashboardPage> {
               children: [
                 Text(
                   'Choisir un avatar',
-                  style: TextStyle(color: textPrimaryColor, fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: textPrimaryColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 SizedBox(
@@ -1184,7 +1290,9 @@ class _DashboardPageState extends State<DashboardPage> {
                           padding: const EdgeInsets.only(right: 14.0),
                           child: CircleAvatar(
                             radius: 36,
-                            backgroundColor: Colors.white.withValues(alpha: 0.05),
+                            backgroundColor: Colors.white.withValues(
+                              alpha: 0.05,
+                            ),
                             child: ClipOval(
                               child: CachedNetworkImage(
                                 imageUrl: url,
@@ -1196,10 +1304,11 @@ class _DashboardPageState extends State<DashboardPage> {
                                   height: 72,
                                   color: Colors.white10,
                                 ),
-                                errorWidget: (context, url, error) => const Icon(
-                                  Icons.error_outline_rounded,
-                                  color: Colors.white30,
-                                ),
+                                errorWidget: (context, url, error) =>
+                                    const Icon(
+                                      Icons.error_outline_rounded,
+                                      color: Colors.white30,
+                                    ),
                               ),
                             ),
                           ),
@@ -1221,118 +1330,182 @@ class _DashboardPageState extends State<DashboardPage> {
     _isDarkMode = Theme.of(context).brightness == Brightness.dark;
     // Dynamic Theme Variables
     final bgColor = _isDarkMode ? Colors.black : Colors.white;
-    final cardColor = _isDarkMode ? const Color(0xFF0F0F0F) : const Color(0xFFF9F9F9);
+    final cardColor = _isDarkMode
+        ? const Color(0xFF0F0F0F)
+        : const Color(0xFFF9F9F9);
     final textPrimaryColor = _isDarkMode ? Colors.white : Colors.black;
     final textSecondaryColor = _isDarkMode ? Colors.white60 : Colors.black54;
-    final borderColor = _isDarkMode ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1);
-    final bottomBarBgColor = _isDarkMode ? Colors.black.withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.9);
-    final bottomBarBorderColor = _isDarkMode ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08);
+    final borderColor = _isDarkMode
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.black.withValues(alpha: 0.1);
+    final bottomBarBgColor = _isDarkMode
+        ? Colors.black.withValues(alpha: 0.8)
+        : Colors.white.withValues(alpha: 0.9);
+    final bottomBarBorderColor = _isDarkMode
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
     final drawerBgColor = _isDarkMode ? const Color(0xFF0C0C0C) : Colors.white;
-    final drawerBorderColor = _isDarkMode ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08);
+    final drawerBorderColor = _isDarkMode
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
 
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: bgColor,
-      appBar: _activeViewIndex == 1 ? null : AppBar(
-        backgroundColor: bgColor.withValues(alpha: 0.8),
-        elevation: 0,
-        leadingWidth: (_activeViewIndex == 3 && _profileViewUserId != null && _profileViewUserId != _userId) ? 48 : 40,
-        leading: (_activeViewIndex == 3 && _profileViewUserId != null && _profileViewUserId != _userId)
-            ? IconButton(
-                icon: Icon(Icons.arrow_back_rounded, color: textPrimaryColor),
-                onPressed: () {
-                  setState(() {
-                    _profileViewUserId = null;
-                    _activeViewIndex = 0; // return to feed
-                  });
-                },
-              )
-            : Padding(
-                padding: const EdgeInsets.only(left: 12.0),
-                child: Image.asset(
-                  'assets/logo.png',
-                  color: textPrimaryColor,
-                  colorBlendMode: BlendMode.srcIn,
-                  errorBuilder: (context, error, stackTrace) => Icon(
-                    Icons.bolt_rounded,
+      appBar: (_activeViewIndex == 1 || _activeViewIndex == 2)
+          ? null
+          : AppBar(
+              backgroundColor: bgColor.withValues(alpha: 0.8),
+              elevation: 0,
+              leadingWidth:
+                  (_activeViewIndex == 3 &&
+                      _profileViewUserId != null &&
+                      _profileViewUserId != _userId)
+                  ? 48
+                  : 40,
+              leading:
+                  (_activeViewIndex == 3 &&
+                      _profileViewUserId != null &&
+                      _profileViewUserId != _userId)
+                  ? IconButton(
+                      icon: Icon(
+                        Icons.arrow_back_rounded,
+                        color: textPrimaryColor,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _profileViewUserId = null;
+                          _activeViewIndex = 0; // return to feed
+                        });
+                      },
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.only(left: 12.0),
+                      child: Image.asset(
+                        'assets/logo.png',
+                        color: textPrimaryColor,
+                        colorBlendMode: BlendMode.srcIn,
+                        errorBuilder: (context, error, stackTrace) => Icon(
+                          Icons.bolt_rounded,
+                          color: textPrimaryColor,
+                          size: 26,
+                        ),
+                      ),
+                    ),
+              titleSpacing: 8.0,
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'TRA',
+                    style: TextStyle(
+                      color: textPrimaryColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: instagramGradient,
+                    ).createShader(bounds),
+                    child: const Text(
+                      'SX',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                IconButton(
+                  icon: Icon(
+                    Icons.search_rounded,
+                    color: textPrimaryColor,
+                    size: 24,
+                  ),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Recherche bientôt disponible !'),
+                      ),
+                    );
+                  },
+                ),
+                IconButton(
+                  icon: Icon(
+                    _isDarkMode
+                        ? Icons.light_mode_rounded
+                        : Icons.dark_mode_rounded,
+                    color: textPrimaryColor,
+                    size: 24,
+                  ),
+                  onPressed: () {
+                    MyApp.of(context).toggleTheme(!_isDarkMode);
+                  },
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.notifications_none_rounded,
+                    color: textPrimaryColor,
+                    size: 24,
+                  ),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Aucune nouvelle notification.'),
+                      ),
+                    );
+                  },
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.menu_rounded,
                     color: textPrimaryColor,
                     size: 26,
                   ),
+                  onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
                 ),
-              ),
-        titleSpacing: 8.0,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'TRA',
-              style: TextStyle(
-                color: textPrimaryColor,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.0,
-              ),
+              ],
             ),
-            ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: instagramGradient,
-              ).createShader(bounds),
-              child: const Text(
-                'SX',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.0,
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.search_rounded, color: textPrimaryColor, size: 24),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Recherche bientôt disponible !')),
-              );
-            },
-          ),
-          IconButton(
-            icon: Icon(
-              _isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-              color: textPrimaryColor,
-              size: 24,
-            ),
-            onPressed: () {
-              MyApp.of(context).toggleTheme(!_isDarkMode);
-            },
-          ),
-          IconButton(
-            icon: Icon(Icons.notifications_none_rounded, color: textPrimaryColor, size: 24),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Aucune nouvelle notification.')),
-              );
-            },
-          ),
-          IconButton(
-            icon: Icon(Icons.menu_rounded, color: textPrimaryColor, size: 26),
-            onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-          ),
-        ],
+      endDrawer: _buildDrawer(
+        drawerBgColor,
+        drawerBorderColor,
+        textPrimaryColor,
+        textSecondaryColor,
       ),
-      endDrawer: _buildDrawer(drawerBgColor, drawerBorderColor, textPrimaryColor, textSecondaryColor),
       body: _buildBackground(
         bgColor: bgColor,
-        child: _buildBodyContent(bgColor, cardColor, textPrimaryColor, textSecondaryColor, borderColor),
+        child: _buildBodyContent(
+          bgColor,
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+          borderColor,
+        ),
       ),
-      bottomNavigationBar: _buildBottomNavigationBar(bottomBarBgColor, bottomBarBorderColor, textPrimaryColor),
+      bottomNavigationBar:
+          (_activeViewIndex == 2 && _isMessagesConversationOpen)
+          ? null
+          : _buildBottomNavigationBar(
+              bottomBarBgColor,
+              bottomBarBorderColor,
+              textPrimaryColor,
+            ),
     );
   }
 
   // --- HAMBURGER DRAWER ---
-  Widget _buildDrawer(Color drawerBgColor, Color drawerBorderColor, Color textPrimaryColor, Color textSecondaryColor) {
+  Widget _buildDrawer(
+    Color drawerBgColor,
+    Color drawerBorderColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+  ) {
     return Drawer(
       backgroundColor: drawerBgColor,
       child: SafeArea(
@@ -1342,9 +1515,7 @@ class _DashboardPageState extends State<DashboardPage> {
             Container(
               padding: const EdgeInsets.all(24.0),
               decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: drawerBorderColor),
-                ),
+                border: Border(bottom: BorderSide(color: drawerBorderColor)),
               ),
               child: Row(
                 children: [
@@ -1382,16 +1553,67 @@ class _DashboardPageState extends State<DashboardPage> {
             // Drawer Items List
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 8,
+                  horizontal: 12,
+                ),
                 children: [
-                  _buildDrawerTile('Accueil', Icons.home_rounded, 0, textPrimaryColor, textSecondaryColor),
-                  _buildDrawerTile('Profil', Icons.person_rounded, 3, textPrimaryColor, textSecondaryColor),
-                  _buildDrawerTile('Shorts', Icons.play_circle_outline_rounded, 1, textPrimaryColor, textSecondaryColor),
-                  _buildDrawerTile('Trading P2P', Icons.swap_horizontal_circle_rounded, 4, textPrimaryColor, textSecondaryColor),
-                  _buildDrawerTile('Signets', Icons.bookmark_rounded, 5, textPrimaryColor, textSecondaryColor),
-                  _buildDrawerTile('Jeux de société', Icons.sports_esports_rounded, 6, textPrimaryColor, textSecondaryColor),
-                  _buildDrawerTile('Événements', Icons.event_rounded, 7, textPrimaryColor, textSecondaryColor),
-                  _buildDrawerTile('Paramètres', Icons.settings_rounded, 8, textPrimaryColor, textSecondaryColor),
+                  _buildDrawerTile(
+                    'Accueil',
+                    Icons.home_rounded,
+                    0,
+                    textPrimaryColor,
+                    textSecondaryColor,
+                  ),
+                  _buildDrawerTile(
+                    'Profil',
+                    Icons.person_rounded,
+                    3,
+                    textPrimaryColor,
+                    textSecondaryColor,
+                  ),
+                  _buildDrawerTile(
+                    'Shorts',
+                    Icons.play_circle_outline_rounded,
+                    1,
+                    textPrimaryColor,
+                    textSecondaryColor,
+                  ),
+                  _buildDrawerTile(
+                    'Trading P2P',
+                    Icons.swap_horizontal_circle_rounded,
+                    4,
+                    textPrimaryColor,
+                    textSecondaryColor,
+                  ),
+                  _buildDrawerTile(
+                    'Signets',
+                    Icons.bookmark_rounded,
+                    5,
+                    textPrimaryColor,
+                    textSecondaryColor,
+                  ),
+                  _buildDrawerTile(
+                    'Jeux de société',
+                    Icons.sports_esports_rounded,
+                    6,
+                    textPrimaryColor,
+                    textSecondaryColor,
+                  ),
+                  _buildDrawerTile(
+                    'Événements',
+                    Icons.event_rounded,
+                    7,
+                    textPrimaryColor,
+                    textSecondaryColor,
+                  ),
+                  _buildDrawerTile(
+                    'Paramètres',
+                    Icons.settings_rounded,
+                    8,
+                    textPrimaryColor,
+                    textSecondaryColor,
+                  ),
                 ],
               ),
             ),
@@ -1403,16 +1625,27 @@ class _DashboardPageState extends State<DashboardPage> {
                 onTap: _logout,
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                    horizontal: 16,
+                  ),
                   decoration: BoxDecoration(
-                    color: _isDarkMode ? const Color(0xFF161616) : const Color(0xFFFFF5F5),
+                    color: _isDarkMode
+                        ? const Color(0xFF161616)
+                        : const Color(0xFFFFF5F5),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.redAccent.withValues(alpha: 0.15)),
+                    border: Border.all(
+                      color: Colors.redAccent.withValues(alpha: 0.15),
+                    ),
                   ),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.logout_rounded, color: Colors.redAccent, size: 20),
+                      Icon(
+                        Icons.logout_rounded,
+                        color: Colors.redAccent,
+                        size: 20,
+                      ),
                       SizedBox(width: 10),
                       Text(
                         'Déconnexion',
@@ -1433,7 +1666,13 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildDrawerTile(String title, IconData icon, int targetIndex, Color textPrimaryColor, Color textSecondaryColor) {
+  Widget _buildDrawerTile(
+    String title,
+    IconData icon,
+    int targetIndex,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+  ) {
     final bool isSelected = _activeViewIndex == targetIndex;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2.0),
@@ -1460,7 +1699,11 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // --- CUSTOM BOTTOM NAVIGATION BAR ---
-  Widget _buildBottomNavigationBar(Color bottomBarBgColor, Color bottomBarBorderColor, Color textPrimaryColor) {
+  Widget _buildBottomNavigationBar(
+    Color bottomBarBgColor,
+    Color bottomBarBorderColor,
+    Color textPrimaryColor,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: bottomBarBgColor,
@@ -1476,10 +1719,28 @@ class _DashboardPageState extends State<DashboardPage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildBottomTab(0, CupertinoIcons.house_fill, CupertinoIcons.house, 'Accueil', textPrimaryColor),
-              _buildBottomTab(1, CupertinoIcons.play_circle_fill, CupertinoIcons.play_circle, 'Shorts', textPrimaryColor),
+              _buildBottomTab(
+                0,
+                CupertinoIcons.house_fill,
+                CupertinoIcons.house,
+                'Accueil',
+                textPrimaryColor,
+              ),
+              _buildBottomTab(
+                1,
+                CupertinoIcons.play_circle_fill,
+                CupertinoIcons.play_circle,
+                'Shorts',
+                textPrimaryColor,
+              ),
               _buildAddButton(),
-              _buildBottomTab(2, CupertinoIcons.chat_bubble_2_fill, CupertinoIcons.chat_bubble_2, 'Messages', textPrimaryColor),
+              _buildBottomTab(
+                2,
+                CupertinoIcons.chat_bubble_2_fill,
+                CupertinoIcons.chat_bubble_2,
+                'Messages',
+                textPrimaryColor,
+              ),
               _buildProfileBottomTab(3, 'Profil', textPrimaryColor),
             ],
           ),
@@ -1488,7 +1749,13 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildBottomTab(int index, IconData activeIcon, IconData inactiveIcon, String label, Color textPrimaryColor) {
+  Widget _buildBottomTab(
+    int index,
+    IconData activeIcon,
+    IconData inactiveIcon,
+    String label,
+    Color textPrimaryColor,
+  ) {
     final bool isSelected = _activeViewIndex == index;
     return GestureDetector(
       onTap: () => _switchView(index),
@@ -1500,14 +1767,18 @@ class _DashboardPageState extends State<DashboardPage> {
           children: [
             Icon(
               isSelected ? activeIcon : inactiveIcon,
-              color: isSelected ? textPrimaryColor : textPrimaryColor.withValues(alpha: 0.5),
+              color: isSelected
+                  ? textPrimaryColor
+                  : textPrimaryColor.withValues(alpha: 0.5),
               size: 24,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? textPrimaryColor : textPrimaryColor.withValues(alpha: 0.5),
+                color: isSelected
+                    ? textPrimaryColor
+                    : textPrimaryColor.withValues(alpha: 0.5),
                 fontSize: 9,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -1520,10 +1791,16 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildProfileBottomTab(int index, String label, Color textPrimaryColor) {
+  Widget _buildProfileBottomTab(
+    int index,
+    String label,
+    Color textPrimaryColor,
+  ) {
     final bool isSelected = _activeViewIndex == index;
     final url = _avatarUrl;
-    final String initial = _username.isNotEmpty ? _username[0].toUpperCase() : 'U';
+    final String initial = _username.isNotEmpty
+        ? _username[0].toUpperCase()
+        : 'U';
 
     Widget avatarContent;
     if (url.isNotEmpty) {
@@ -1533,11 +1810,8 @@ class _DashboardPageState extends State<DashboardPage> {
         width: 22,
         height: 22,
         fit: BoxFit.cover,
-        placeholder: (context, url) => Container(
-          width: 22,
-          height: 22,
-          color: Colors.white10,
-        ),
+        placeholder: (context, url) =>
+            Container(width: 22, height: 22, color: Colors.white10),
         errorWidget: (context, url, error) => Container(
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
@@ -1546,7 +1820,11 @@ class _DashboardPageState extends State<DashboardPage> {
           child: Center(
             child: Text(
               initial,
-              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ),
@@ -1560,7 +1838,11 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Center(
           child: Text(
             initial,
-            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       );
@@ -1587,7 +1869,10 @@ class _DashboardPageState extends State<DashboardPage> {
                     : null,
                 border: isSelected
                     ? null
-                    : Border.all(color: textPrimaryColor.withValues(alpha: 0.3), width: 1.5),
+                    : Border.all(
+                        color: textPrimaryColor.withValues(alpha: 0.3),
+                        width: 1.5,
+                      ),
               ),
               child: Container(
                 padding: const EdgeInsets.all(1.0),
@@ -1598,9 +1883,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: SizedBox(
                   width: 20,
                   height: 20,
-                  child: ClipOval(
-                    child: avatarContent,
-                  ),
+                  child: ClipOval(child: avatarContent),
                 ),
               ),
             ),
@@ -1608,7 +1891,9 @@ class _DashboardPageState extends State<DashboardPage> {
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? textPrimaryColor : textPrimaryColor.withValues(alpha: 0.5),
+                color: isSelected
+                    ? textPrimaryColor
+                    : textPrimaryColor.withValues(alpha: 0.5),
                 fontSize: 9,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -1626,7 +1911,9 @@ class _DashboardPageState extends State<DashboardPage> {
       onTap: () {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Création de live ou de jeu de société bientôt disponible !"),
+            content: Text(
+              "Création de live ou de jeu de société bientôt disponible !",
+            ),
             backgroundColor: Color(0xFFC13584),
           ),
         );
@@ -1634,9 +1921,7 @@ class _DashboardPageState extends State<DashboardPage> {
       child: Container(
         width: 46,
         height: 30,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
         child: Stack(
           children: [
             Positioned(
@@ -1685,55 +1970,112 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // --- BODY VIEW RENDERING ---
-  Widget _buildBodyContent(Color bgColor, Color cardColor, Color textPrimaryColor, Color textSecondaryColor, Color borderColor) {
+  Widget _buildBodyContent(
+    Color bgColor,
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+    Color borderColor,
+  ) {
     switch (_activeViewIndex) {
       case 0:
-        return _buildFeedView(cardColor, textPrimaryColor, textSecondaryColor, borderColor);
+        return _buildFeedView(
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+          borderColor,
+        );
       case 1:
-        return _buildShortsView(cardColor, textPrimaryColor, textSecondaryColor);
+        return _buildShortsView(
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+        );
       case 2:
-        return _buildMessagesView(textPrimaryColor, textSecondaryColor);
+        return _buildMessagesView();
       case 3:
-        return _buildProfileView(bgColor, cardColor, textPrimaryColor, textSecondaryColor, borderColor);
+        return _buildProfileView(
+          bgColor,
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+          borderColor,
+        );
       case 4:
         return _buildP2PView(cardColor, textPrimaryColor, textSecondaryColor);
       case 5:
-        return _buildBookmarksView(cardColor, textPrimaryColor, textSecondaryColor, borderColor);
+        return _buildBookmarksView(
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+          borderColor,
+        );
       case 6:
         return _buildGamesView(cardColor, textPrimaryColor, textSecondaryColor);
       case 7:
-        return _buildEventsView(cardColor, textPrimaryColor, textSecondaryColor);
+        return _buildEventsView(
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+        );
       case 8:
-        return _buildSettingsView(cardColor, textPrimaryColor, textSecondaryColor);
+        return _buildSettingsView(
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+        );
       default:
-        return _buildFeedView(cardColor, textPrimaryColor, textSecondaryColor, borderColor);
+        return _buildFeedView(
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+          borderColor,
+        );
     }
   }
 
   // 1. DYNAMIC HOME FEED VIEW (Accueil)
-  Widget _buildFeedView(Color cardColor, Color textPrimaryColor, Color textSecondaryColor, Color borderColor) {
+  Widget _buildFeedView(
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+    Color borderColor,
+  ) {
     return Stack(
       children: [
         RefreshIndicator(
           onRefresh: () async {
-            setState(() { _nextCursor = null; _hasMoreFeed = true; });
+            setState(() {
+              _nextCursor = null;
+              _hasMoreFeed = true;
+            });
             await _fetchHomeFeed(isRefresh: true);
             await _fetchUserProfileAndPosts();
             await _fetchStatuses();
           },
           color: const Color(0xFFC13584),
           backgroundColor: cardColor,
-          child: _buildFeedContent(cardColor, textPrimaryColor, textSecondaryColor, borderColor),
+          child: _buildFeedContent(
+            cardColor,
+            textPrimaryColor,
+            textSecondaryColor,
+            borderColor,
+          ),
         ),
 
         // ── Offline banner ──────────────────────────────────────────────────
         if (_isOffline)
           Positioned(
-            top: 0, left: 0, right: 0,
+            top: 0,
+            left: 0,
+            right: 0,
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 14),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 6,
+                  horizontal: 14,
+                ),
                 color: const Color(0xFFFD1D1D).withAlpha(220),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1742,7 +2084,11 @@ class _DashboardPageState extends State<DashboardPage> {
                     SizedBox(width: 6),
                     Text(
                       'Hors ligne — données en cache',
-                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
@@ -1754,7 +2100,8 @@ class _DashboardPageState extends State<DashboardPage> {
         if (_pendingNewPosts.isNotEmpty)
           Positioned(
             top: _isOffline ? 38 : 10,
-            left: 0, right: 0,
+            left: 0,
+            right: 0,
             child: Center(
               child: GestureDetector(
                 onTap: () {
@@ -1769,22 +2116,39 @@ class _DashboardPageState extends State<DashboardPage> {
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFF833AB4), Color(0xFFC13584)],
                     ),
                     borderRadius: BorderRadius.circular(24),
-                    boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 8, offset: Offset(0, 2))],
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black38,
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 14),
+                      const Icon(
+                        Icons.arrow_upward_rounded,
+                        color: Colors.white,
+                        size: 14,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         '${_pendingNewPosts.length} nouvelle${_pendingNewPosts.length > 1 ? 's' : ''} publication${_pendingNewPosts.length > 1 ? 's' : ''}',
-                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -1796,7 +2160,12 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildFeedContent(Color cardColor, Color textPrimaryColor, Color textSecondaryColor, Color borderColor) {
+  Widget _buildFeedContent(
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+    Color borderColor,
+  ) {
     // Skeleton loading (initial only, no posts yet)
     if (_isLoadingFeed && _feedPosts.isEmpty) {
       return SingleChildScrollView(
@@ -1830,7 +2199,11 @@ class _DashboardPageState extends State<DashboardPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.cloud_off_rounded, color: Colors.white30, size: 48),
+                const Icon(
+                  Icons.cloud_off_rounded,
+                  color: Colors.white30,
+                  size: 48,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   _feedErrorMessage ?? 'Une erreur est survenue.',
@@ -1845,7 +2218,9 @@ class _DashboardPageState extends State<DashboardPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFC13584),
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ],
@@ -1875,9 +2250,16 @@ class _DashboardPageState extends State<DashboardPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.dynamic_feed_rounded, color: Colors.white24, size: 48),
+                  const Icon(
+                    Icons.dynamic_feed_rounded,
+                    color: Colors.white24,
+                    size: 48,
+                  ),
                   const SizedBox(height: 12),
-                  Text('Aucune publication disponible.', style: TextStyle(color: textSecondaryColor)),
+                  Text(
+                    'Aucune publication disponible.',
+                    style: TextStyle(color: textSecondaryColor),
+                  ),
                 ],
               ),
             ),
@@ -1896,8 +2278,15 @@ class _DashboardPageState extends State<DashboardPage> {
                         child: Center(
                           child: TextButton.icon(
                             onPressed: _fetchMoreHomeFeed,
-                            icon: const Icon(Icons.refresh_rounded, size: 16, color: Color(0xFFC13584)),
-                            label: const Text('Réessayer', style: TextStyle(color: Color(0xFFC13584))),
+                            icon: const Icon(
+                              Icons.refresh_rounded,
+                              size: 16,
+                              color: Color(0xFFC13584),
+                            ),
+                            label: const Text(
+                              'Réessayer',
+                              style: TextStyle(color: Color(0xFFC13584)),
+                            ),
                           ),
                         ),
                       );
@@ -1927,7 +2316,9 @@ class _DashboardPageState extends State<DashboardPage> {
                     borderColor: borderColor,
                   );
                 },
-                childCount: _feedPosts.length + (_isLoadingMoreFeed || _hasMoreFeed ? 1 : 0),
+                childCount:
+                    _feedPosts.length +
+                    (_isLoadingMoreFeed || _hasMoreFeed ? 1 : 0),
               ),
             ),
           ),
@@ -1941,7 +2332,8 @@ class _DashboardPageState extends State<DashboardPage> {
     required Color textSecondaryColor,
     required Color cardColor,
   }) {
-    final bool hasSelfStatus = _statusGroups.isNotEmpty &&
+    final bool hasSelfStatus =
+        _statusGroups.isNotEmpty &&
         (_statusGroups[0]['user_id'] as num?)?.toInt() == _userId;
 
     final List<dynamic> groups = [
@@ -1990,7 +2382,12 @@ class _DashboardPageState extends State<DashboardPage> {
                           hasUnviewedStatus: hasSelfStatus,
                           size: 60,
                           isDarkMode: _isDarkMode,
-                          statusCount: hasSelfStatus ? ((_statusGroups[0]['statuses'] as List<dynamic>?)?.length ?? 1) : 0,
+                          statusCount: hasSelfStatus
+                              ? ((_statusGroups[0]['statuses']
+                                            as List<dynamic>?)
+                                        ?.length ??
+                                    1)
+                              : 0,
                         ),
                       ),
                       GestureDetector(
@@ -2006,7 +2403,11 @@ class _DashboardPageState extends State<DashboardPage> {
                               width: 2,
                             ),
                           ),
-                          child: const Icon(Icons.add, size: 13, color: Colors.white),
+                          child: const Icon(
+                            Icons.add,
+                            size: 13,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ],
@@ -2033,7 +2434,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
           // Other user status bubble
           final statusGroup = g as Map<String, dynamic>;
-          final userName = statusGroup['user_name'] ?? statusGroup['username'] ?? '?';
+          final userName =
+              statusGroup['user_name'] ?? statusGroup['username'] ?? '?';
           final avatarUrl = statusGroup['avatar'] as String?;
           final bool isBoosted = statusGroup['is_boosted'] == true;
 
@@ -2051,7 +2453,9 @@ class _DashboardPageState extends State<DashboardPage> {
                     size: 60,
                     isDarkMode: _isDarkMode,
                     isBoosted: isBoosted,
-                    statusCount: (statusGroup['statuses'] as List<dynamic>?)?.length ?? 1,
+                    statusCount:
+                        (statusGroup['statuses'] as List<dynamic>?)?.length ??
+                        1,
                   ),
                   const SizedBox(height: 5),
                   SizedBox(
@@ -2062,20 +2466,30 @@ class _DashboardPageState extends State<DashboardPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: isBoosted ? const Color(0xFFFFD700) : textSecondaryColor,
+                        color: isBoosted
+                            ? const Color(0xFFFFD700)
+                            : textSecondaryColor,
                         fontSize: 10.5,
-                        fontWeight: isBoosted ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: isBoosted
+                            ? FontWeight.bold
+                            : FontWeight.normal,
                       ),
                     ),
                   ),
                   if (isBoosted) ...[
                     const SizedBox(height: 2),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFD700).withAlpha(30),
                         borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: const Color(0xFFFFD700), width: 0.5),
+                        border: Border.all(
+                          color: const Color(0xFFFFD700),
+                          width: 0.5,
+                        ),
                       ),
                       child: const Text(
                         'BOOSTÉ',
@@ -2106,17 +2520,25 @@ class _DashboardPageState extends State<DashboardPage> {
     bool isBoosted = false,
     int statusCount = 1,
   }) {
-    final String initial = username.isNotEmpty ? username[0].toUpperCase() : 'U';
+    final String initial = username.isNotEmpty
+        ? username[0].toUpperCase()
+        : 'U';
     final innerGap = isDarkMode ? Colors.black : Colors.white;
 
     // Use gold gradient for boosted accounts, else the standard instagram gradient
     final List<Color> ringColors = isBoosted
-        ? [const Color(0xFFFFD700), const Color(0xFFFFA500), const Color(0xFFFF8C00)]
+        ? [
+            const Color(0xFFFFD700),
+            const Color(0xFFFFA500),
+            const Color(0xFFFF8C00),
+          ]
         : instagramGradient;
 
     Widget avatarContent;
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
-      final fullUrl = avatarUrl.startsWith('http') ? avatarUrl : 'https://trasx.com$avatarUrl';
+      final fullUrl = avatarUrl.startsWith('http')
+          ? avatarUrl
+          : 'https://trasx.com$avatarUrl';
       avatarContent = CachedNetworkImage(
         imageUrl: fullUrl,
         width: size,
@@ -2129,7 +2551,14 @@ class _DashboardPageState extends State<DashboardPage> {
             gradient: LinearGradient(colors: ringColors),
           ),
           child: Center(
-            child: Text(initial, style: TextStyle(color: Colors.white, fontSize: size * 0.38, fontWeight: FontWeight.bold)),
+            child: Text(
+              initial,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: size * 0.38,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ),
       );
@@ -2140,7 +2569,14 @@ class _DashboardPageState extends State<DashboardPage> {
           gradient: LinearGradient(colors: ringColors),
         ),
         child: Center(
-          child: Text(initial, style: TextStyle(color: Colors.white, fontSize: size * 0.38, fontWeight: FontWeight.bold)),
+          child: Text(
+            initial,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: size * 0.38,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
       );
     }
@@ -2176,8 +2612,14 @@ class _DashboardPageState extends State<DashboardPage> {
     final TextEditingController _textCtrl = TextEditingController();
     String _selectedBg = '#833AB4';
     final List<String> _bgOptions = [
-      '#833AB4', '#C13584', '#E1306C', '#FD1D1D',
-      '#F77737', '#FCAF45', '#1A1A2E', '#0F3460',
+      '#833AB4',
+      '#C13584',
+      '#E1306C',
+      '#FD1D1D',
+      '#F77737',
+      '#FCAF45',
+      '#1A1A2E',
+      '#0F3460',
     ];
 
     // Media status variables
@@ -2194,391 +2636,522 @@ class _DashboardPageState extends State<DashboardPage> {
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black54,
       builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setBS) {
-          final double bottomPadding = MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).padding.bottom;
+        return StatefulBuilder(
+          builder: (ctx, setBS) {
+            final double bottomPadding =
+                MediaQuery.of(ctx).viewInsets.bottom +
+                MediaQuery.of(ctx).padding.bottom;
 
-          // Helper to pick image
-          Future<void> _pickImage() async {
-            try {
-              final picker = ImagePicker();
-              final picked = await picker.pickImage(source: ImageSource.gallery);
-              if (picked != null) {
-                setBS(() {
-                  _currentType = 'image';
-                  _mediaPath = picked.path;
-                });
-              }
-            } catch (e) {
-              debugPrint('Error picking image: $e');
-            }
-          }
-
-          // Helper to pick video
-          Future<void> _pickVideo() async {
-            try {
-              final picker = ImagePicker();
-              final picked = await picker.pickVideo(source: ImageSource.gallery);
-              if (picked != null) {
-                setBS(() {
-                  _currentType = 'video';
-                  _mediaPath = picked.path;
-                });
-              }
-            } catch (e) {
-              debugPrint('Error picking video: $e');
-            }
-          }
-
-          // Helper for recording voice notes (tap to start / tap to stop)
-          Future<void> _toggleVoiceRecording() async {
-            try {
-              if (_isRecording) {
-                // Stop recording
-                final path = await _audioRecorder.stop();
-                _recordTimer?.cancel();
-                setBS(() {
-                  _isRecording = false;
-                  if (path != null) {
-                    _currentType = 'voice';
-                    _mediaPath = path;
-                  }
-                });
-              } else {
-                // Start recording
-                if (await _audioRecorder.hasPermission()) {
-                  final tempDir = await getTemporaryDirectory();
-                  final filePath = '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-
+            // Helper to pick image
+            Future<void> _pickImage() async {
+              try {
+                final picker = ImagePicker();
+                final picked = await picker.pickImage(
+                  source: ImageSource.gallery,
+                );
+                if (picked != null) {
                   setBS(() {
-                    _currentType = 'voice';
-                    _isRecording = true;
-                    _mediaPath = null;
-                    _recordDuration = 0;
-                  });
-
-                  await _audioRecorder.start(
-                    const RecordConfig(encoder: AudioEncoder.aacLc),
-                    path: filePath,
-                  );
-
-                  _recordTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-                    setBS(() => _recordDuration++);
+                    _currentType = 'image';
+                    _mediaPath = picked.path;
                   });
                 }
+              } catch (e) {
+                debugPrint('Error picking image: $e');
               }
-            } catch (e) {
-              debugPrint('Error with voice recorder: $e');
-              setBS(() {
-                _isRecording = false;
-              });
             }
-          }
 
-          return ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-              child: Container(
-                height: MediaQuery.of(ctx).size.height * 0.82,
-                decoration: BoxDecoration(
-                  color: _isDarkMode ? const Color(0xED121212) : Colors.white.withAlpha(240),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  border: Border.all(color: _isDarkMode ? Colors.white12 : Colors.black12, width: 0.5),
-                ),
-                padding: EdgeInsets.only(bottom: bottomPadding + 16),
-                child: Column(
-                  children: [
-                    // Premium Handle
-                    Container(
-                      width: 40, height: 4,
-                      margin: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: _isDarkMode ? Colors.white24 : Colors.black26,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+            // Helper to pick video
+            Future<void> _pickVideo() async {
+              try {
+                final picker = ImagePicker();
+                final picked = await picker.pickVideo(
+                  source: ImageSource.gallery,
+                );
+                if (picked != null) {
+                  setBS(() {
+                    _currentType = 'video';
+                    _mediaPath = picked.path;
+                  });
+                }
+              } catch (e) {
+                debugPrint('Error picking video: $e');
+              }
+            }
+
+            // Helper for recording voice notes (tap to start / tap to stop)
+            Future<void> _toggleVoiceRecording() async {
+              try {
+                if (_isRecording) {
+                  // Stop recording
+                  final path = await _audioRecorder.stop();
+                  _recordTimer?.cancel();
+                  setBS(() {
+                    _isRecording = false;
+                    if (path != null) {
+                      _currentType = 'voice';
+                      _mediaPath = path;
+                    }
+                  });
+                } else {
+                  // Start recording
+                  if (await _audioRecorder.hasPermission()) {
+                    final tempDir = await getTemporaryDirectory();
+                    final filePath =
+                        '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+                    setBS(() {
+                      _currentType = 'voice';
+                      _isRecording = true;
+                      _mediaPath = null;
+                      _recordDuration = 0;
+                    });
+
+                    await _audioRecorder.start(
+                      const RecordConfig(encoder: AudioEncoder.aacLc),
+                      path: filePath,
+                    );
+
+                    _recordTimer = Timer.periodic(const Duration(seconds: 1), (
+                      t,
+                    ) {
+                      setBS(() => _recordDuration++);
+                    });
+                  }
+                }
+              } catch (e) {
+                debugPrint('Error with voice recorder: $e');
+                setBS(() {
+                  _isRecording = false;
+                });
+              }
+            }
+
+            return ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                child: Container(
+                  height: MediaQuery.of(ctx).size.height * 0.82,
+                  decoration: BoxDecoration(
+                    color: _isDarkMode
+                        ? const Color(0xED121212)
+                        : Colors.white.withAlpha(240),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(20),
                     ),
-                    // Title & Publish Header
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                      child: Row(
-                        children: [
-                          Text(
-                            'Nouveau statut',
+                    border: Border.all(
+                      color: _isDarkMode ? Colors.white12 : Colors.black12,
+                      width: 0.5,
+                    ),
+                  ),
+                  padding: EdgeInsets.only(bottom: bottomPadding + 16),
+                  child: Column(
+                    children: [
+                      // Premium Handle
+                      Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _isDarkMode ? Colors.white24 : Colors.black26,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      // Title & Publish Header
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              'Nouveau statut',
+                              style: TextStyle(
+                                color: _isDarkMode
+                                    ? Colors.white
+                                    : Colors.black,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () async {
+                                if (_currentType == 'text' &&
+                                    _textCtrl.text.trim().isEmpty)
+                                  return;
+
+                                Navigator.pop(ctx);
+                                await _postMediaStatus(
+                                  statusType: _currentType,
+                                  text: _textCtrl.text.isNotEmpty
+                                      ? _textCtrl.text
+                                      : null,
+                                  bgColor: _currentType == 'text'
+                                      ? _selectedBg
+                                      : null,
+                                  mediaPath: _mediaPath,
+                                );
+
+                                _audioRecorder.dispose();
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFC13584),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Text(
+                                  'Publier',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Preview Area Card
+                      Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            gradient: _currentType == 'text'
+                                ? LinearGradient(
+                                    colors: [
+                                      Color(
+                                        int.parse(
+                                          _selectedBg.replaceFirst('#', '0xFF'),
+                                        ),
+                                      ),
+                                      Color(
+                                        int.parse(
+                                          _selectedBg.replaceFirst('#', '0xFF'),
+                                        ),
+                                      ).withAlpha(180),
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  )
+                                : null,
+                            color: _currentType != 'text'
+                                ? Colors.black38
+                                : null,
+                            border: Border.all(
+                              color: _isDarkMode
+                                  ? Colors.white10
+                                  : Colors.black.withAlpha(12),
+                              width: 0.8,
+                            ),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24.0),
+                              child: Builder(
+                                builder: (c) {
+                                  if (_isRecording) {
+                                    return Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        // Animated pulsing red record dot
+                                        Container(
+                                          width: 60,
+                                          height: 60,
+                                          decoration: const BoxDecoration(
+                                            color: Colors.redAccent,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.mic,
+                                            color: Colors.white,
+                                            size: 32,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'Enregistrement : ${_recordDuration}s',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        const Text(
+                                          'Réappuyez sur le micro pour arrêter',
+                                          style: TextStyle(
+                                            color: Colors.white54,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }
+
+                                  if (_currentType == 'image' &&
+                                      _mediaPath != null) {
+                                    return Image.file(
+                                      File(_mediaPath!),
+                                      fit: BoxFit.contain,
+                                    );
+                                  }
+
+                                  if (_currentType == 'video' &&
+                                      _mediaPath != null) {
+                                    return Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(16),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withAlpha(20),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.video_library_rounded,
+                                            color: Colors.white,
+                                            size: 36,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        const Text(
+                                          'Vidéo sélectionnée',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }
+
+                                  if (_currentType == 'voice' &&
+                                      _mediaPath != null) {
+                                    return Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(16),
+                                          decoration: BoxDecoration(
+                                            color: const Color(
+                                              0xFFC13584,
+                                            ).withAlpha(30),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.audiotrack_rounded,
+                                            color: Color(0xFFC13584),
+                                            size: 40,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        const Text(
+                                          'Note vocale prête',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        const Text(
+                                          'Tapez sur "Publier" pour l\'envoyer',
+                                          style: TextStyle(
+                                            color: Colors.white54,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }
+
+                                  return Text(
+                                    _textCtrl.text.isEmpty
+                                        ? 'Écrivez votre message...'
+                                        : _textCtrl.text,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                      shadows: [
+                                        Shadow(
+                                          blurRadius: 10,
+                                          color: Colors.black45,
+                                          offset: Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Media Action selector bar
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _isDarkMode
+                              ? Colors.white.withAlpha(8)
+                              : Colors.black.withAlpha(6),
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            // Text option button
+                            _buildMediaButton(
+                              icon: Icons.text_fields_rounded,
+                              isActive: _currentType == 'text',
+                              onTap: () => setBS(() {
+                                _currentType = 'text';
+                                _mediaPath = null;
+                              }),
+                            ),
+                            // Gallery Image Option
+                            _buildMediaButton(
+                              icon: Icons.image_rounded,
+                              isActive: _currentType == 'image',
+                              onTap: _pickImage,
+                            ),
+                            // Video Option
+                            _buildMediaButton(
+                              icon: Icons.videocam_rounded,
+                              isActive: _currentType == 'video',
+                              onTap: _pickVideo,
+                            ),
+                            // Voice Recording Option (Click once to start/stop, no gesture conflicts)
+                            _buildMediaButton(
+                              icon: _isRecording
+                                  ? Icons.stop_circle_rounded
+                                  : Icons.mic_rounded,
+                              isActive: _currentType == 'voice',
+                              iconColor: _isRecording ? Colors.redAccent : null,
+                              onTap: () {
+                                setBS(() {
+                                  _currentType = 'voice';
+                                });
+                                _toggleVoiceRecording();
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Color selector (visible only for text statuses)
+                      if (_currentType == 'text')
+                        SizedBox(
+                          height: 40,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            itemCount: _bgOptions.length,
+                            itemBuilder: (_, i) {
+                              final hex = _bgOptions[i];
+                              final selected = hex == _selectedBg;
+                              return GestureDetector(
+                                onTap: () => setBS(() => _selectedBg = hex),
+                                child: Container(
+                                  width: 30,
+                                  height: 30,
+                                  margin: const EdgeInsets.only(right: 10),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Color(
+                                      int.parse(hex.replaceFirst('#', '0xFF')),
+                                    ),
+                                    border: selected
+                                        ? Border.all(
+                                            color: Colors.white,
+                                            width: 2.5,
+                                          )
+                                        : null,
+                                    boxShadow: selected
+                                        ? [
+                                            BoxShadow(
+                                              color: Colors.white.withAlpha(80),
+                                              blurRadius: 8,
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+
+                      // Caption text field (Conditional: hides on voice, visible for text/image/video)
+                      if (_currentType != 'voice')
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: TextField(
+                            controller: _textCtrl,
+                            maxLines: 2,
+                            onChanged: (_) => setBS(() {}),
                             style: TextStyle(
                               color: _isDarkMode ? Colors.white : Colors.black,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.2,
+                              fontSize: 14,
                             ),
-                          ),
-                          const Spacer(),
-                          GestureDetector(
-                            onTap: () async {
-                              if (_currentType == 'text' && _textCtrl.text.trim().isEmpty) return;
-
-                              Navigator.pop(ctx);
-                              await _postMediaStatus(
-                                statusType: _currentType,
-                                text: _textCtrl.text.isNotEmpty ? _textCtrl.text : null,
-                                bgColor: _currentType == 'text' ? _selectedBg : null,
-                                mediaPath: _mediaPath,
-                              );
-
-                              _audioRecorder.dispose();
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFC13584),
-                                borderRadius: BorderRadius.circular(20),
+                            decoration: InputDecoration(
+                              hintText: _currentType == 'text'
+                                  ? 'Écrivez votre statut...'
+                                  : 'Ajouter une légende...',
+                              hintStyle: TextStyle(
+                                color: _isDarkMode
+                                    ? Colors.white38
+                                    : Colors.black38,
+                                fontSize: 13,
                               ),
-                              child: const Text(
-                                'Publier',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
+                              filled: true,
+                              fillColor: _isDarkMode
+                                  ? Colors.white.withAlpha(12)
+                                  : Colors.black.withAlpha(8),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Preview Area Card
-                    Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          gradient: _currentType == 'text'
-                              ? LinearGradient(
-                                  colors: [
-                                    Color(int.parse(_selectedBg.replaceFirst('#', '0xFF'))),
-                                    Color(int.parse(_selectedBg.replaceFirst('#', '0xFF'))).withAlpha(180)
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                )
-                              : null,
-                          color: _currentType != 'text' ? Colors.black38 : null,
-                          border: Border.all(color: _isDarkMode ? Colors.white10 : Colors.black.withAlpha(12), width: 0.8),
                         ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24.0),
-                            child: Builder(builder: (c) {
-                              if (_isRecording) {
-                                return Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    // Animated pulsing red record dot
-                                    Container(
-                                      width: 60,
-                                      height: 60,
-                                      decoration: const BoxDecoration(
-                                        color: Colors.redAccent,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.mic, color: Colors.white, size: 32),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      'Enregistrement : ${_recordDuration}s',
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    const Text(
-                                      'Réappuyez sur le micro pour arrêter',
-                                      style: TextStyle(color: Colors.white54, fontSize: 12),
-                                    ),
-                                  ],
-                                );
-                              }
-
-                              if (_currentType == 'image' && _mediaPath != null) {
-                                return Image.file(File(_mediaPath!), fit: BoxFit.contain);
-                              }
-
-                              if (_currentType == 'video' && _mediaPath != null) {
-                                return Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withAlpha(20),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.video_library_rounded, color: Colors.white, size: 36),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    const Text(
-                                      'Vidéo sélectionnée',
-                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                                    ),
-                                  ],
-                                );
-                              }
-
-                              if (_currentType == 'voice' && _mediaPath != null) {
-                                return Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFC13584).withAlpha(30),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.audiotrack_rounded, color: Color(0xFFC13584), size: 40),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    const Text(
-                                      'Note vocale prête',
-                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    const Text(
-                                      'Tapez sur "Publier" pour l\'envoyer',
-                                      style: TextStyle(color: Colors.white54, fontSize: 12),
-                                    ),
-                                  ],
-                                );
-                              }
-
-                              return Text(
-                                _textCtrl.text.isEmpty ? 'Écrivez votre message...' : _textCtrl.text,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  shadows: [Shadow(blurRadius: 10, color: Colors.black45, offset: Offset(0, 2))],
-                                ),
-                              );
-                            }),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Media Action selector bar
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 20),
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _isDarkMode ? Colors.white.withAlpha(8) : Colors.black.withAlpha(6),
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          // Text option button
-                          _buildMediaButton(
-                            icon: Icons.text_fields_rounded,
-                            isActive: _currentType == 'text',
-                            onTap: () => setBS(() {
-                              _currentType = 'text';
-                              _mediaPath = null;
-                            }),
-                          ),
-                          // Gallery Image Option
-                          _buildMediaButton(
-                            icon: Icons.image_rounded,
-                            isActive: _currentType == 'image',
-                            onTap: _pickImage,
-                          ),
-                          // Video Option
-                          _buildMediaButton(
-                            icon: Icons.videocam_rounded,
-                            isActive: _currentType == 'video',
-                            onTap: _pickVideo,
-                          ),
-                          // Voice Recording Option (Click once to start/stop, no gesture conflicts)
-                          _buildMediaButton(
-                            icon: _isRecording ? Icons.stop_circle_rounded : Icons.mic_rounded,
-                            isActive: _currentType == 'voice',
-                            iconColor: _isRecording ? Colors.redAccent : null,
-                            onTap: () {
-                              setBS(() {
-                                _currentType = 'voice';
-                              });
-                              _toggleVoiceRecording();
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Color selector (visible only for text statuses)
-                    if (_currentType == 'text')
-                      SizedBox(
-                        height: 40,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: _bgOptions.length,
-                          itemBuilder: (_, i) {
-                            final hex = _bgOptions[i];
-                            final selected = hex == _selectedBg;
-                            return GestureDetector(
-                              onTap: () => setBS(() => _selectedBg = hex),
-                              child: Container(
-                                width: 30, height: 30,
-                                margin: const EdgeInsets.only(right: 10),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(int.parse(hex.replaceFirst('#', '0xFF'))),
-                                  border: selected
-                                      ? Border.all(color: Colors.white, width: 2.5)
-                                      : null,
-                                  boxShadow: selected
-                                      ? [BoxShadow(color: Colors.white.withAlpha(80), blurRadius: 8)]
-                                      : null,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-
-                    // Caption text field (Conditional: hides on voice, visible for text/image/video)
-                    if (_currentType != 'voice')
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: TextField(
-                          controller: _textCtrl,
-                          maxLines: 2,
-                          onChanged: (_) => setBS(() {}),
-                          style: TextStyle(
-                            color: _isDarkMode ? Colors.white : Colors.black,
-                            fontSize: 14,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: _currentType == 'text' ? 'Écrivez votre statut...' : 'Ajouter une légende...',
-                            hintStyle: TextStyle(color: _isDarkMode ? Colors.white38 : Colors.black38, fontSize: 13),
-                            filled: true,
-                            fillColor: _isDarkMode ? Colors.white.withAlpha(12) : Colors.black.withAlpha(8),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          ),
-                        ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        });
+            );
+          },
+        );
       },
     );
   }
@@ -2601,7 +3174,11 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         child: Icon(
           icon,
-          color: iconColor ?? (isActive ? Colors.white : (_isDarkMode ? Colors.white54 : Colors.black45)),
+          color:
+              iconColor ??
+              (isActive
+                  ? Colors.white
+                  : (_isDarkMode ? Colors.white54 : Colors.black45)),
           size: 20,
         ),
       ),
@@ -2612,7 +3189,9 @@ class _DashboardPageState extends State<DashboardPage> {
   void _showStatusViewer(Map<String, dynamic> group) {
     if (_statusGroups.isEmpty) return;
 
-    final int initialIndex = _statusGroups.indexWhere((g) => g['user_id'] == group['user_id']);
+    final int initialIndex = _statusGroups.indexWhere(
+      (g) => g['user_id'] == group['user_id'],
+    );
     final int safeIndex = initialIndex == -1 ? 0 : initialIndex;
 
     // 1. Pause all feed videos
@@ -2650,14 +3229,22 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // 2. SHORTS VIEW
-  Widget _buildShortsView(Color cardColor, Color textPrimaryColor, Color textSecondaryColor) {
+  Widget _buildShortsView(
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+  ) {
     return ShortsView(
       currentUserId: _userId,
+      initialReelId: _pendingSharedReelId,
       socket: _socket,
       onSwitchTab: (index) {
         if (mounted) {
           setState(() {
             _activeViewIndex = index;
+            if (index != 2) {
+              _isMessagesConversationOpen = false;
+            }
           });
         }
       },
@@ -2666,26 +3253,44 @@ class _DashboardPageState extends State<DashboardPage> {
           _navigateToUserProfile(userId);
         }
       },
+      onInitialReelConsumed: (reelId) {
+        if (!mounted || _pendingSharedReelId != reelId) return;
+        setState(() {
+          _pendingSharedReelId = null;
+        });
+      },
     );
   }
 
   // 3. MESSAGES VIEW
-  Widget _buildMessagesView(Color textPrimaryColor, Color textSecondaryColor) {
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        _buildSectionHeader("Discussions récentes", textPrimaryColor),
-        const SizedBox(height: 12),
-        _buildMessageTile("Lucas_Pro", "Salut ! On commence la partie de Monopoly ?", "Il y a 5m", textPrimaryColor, textSecondaryColor),
-        _buildMessageTile("Elena_P2P", "Le transfert de diamants a été validé sur la blockchain.", "Il y a 2h", textPrimaryColor, textSecondaryColor),
-        _buildMessageTile("Support_TrasX", "Votre compte a été vérifié avec succès.", "Hier", textPrimaryColor, textSecondaryColor),
-      ],
+  Widget _buildMessagesView() {
+    return MessagesInboxView(
+      currentUserId: _userId,
+      currentUsername: _username,
+      currentDisplayName: _displayName,
+      currentAvatarUrl: _avatarUrl,
+      isDarkMode: _isDarkMode,
+      socket: _socket,
+      onConversationStateChanged: (isOpen) {
+        if (!mounted || _isMessagesConversationOpen == isOpen) return;
+        setState(() {
+          _isMessagesConversationOpen = isOpen;
+        });
+      },
+      onOpenShareLink: _handleDeepLink,
     );
   }
 
   // 4. NESTED SCROLLING PROFILE VIEW (TikTok Style)
-  Widget _buildProfileView(Color bgColor, Color cardColor, Color textPrimaryColor, Color textSecondaryColor, Color borderColor) {
-    final bool isOwnProfile = _profileViewUserId == null || _profileViewUserId == _userId;
+  Widget _buildProfileView(
+    Color bgColor,
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+    Color borderColor,
+  ) {
+    final bool isOwnProfile =
+        _profileViewUserId == null || _profileViewUserId == _userId;
 
     return DefaultTabController(
       length: 2,
@@ -2701,10 +3306,16 @@ class _DashboardPageState extends State<DashboardPage> {
                         // Avatar profile picture with Camera edit icon if own profile
                         isOwnProfile
                             ? GestureDetector(
-                                onTap: () => _showAvatarPicker(textPrimaryColor, cardColor),
+                                onTap: () => _showAvatarPicker(
+                                  textPrimaryColor,
+                                  cardColor,
+                                ),
                                 child: Stack(
                                   children: [
-                                    _buildUserAvatar(radius: 42, customUrl: _profileAvatarUrl),
+                                    _buildUserAvatar(
+                                      radius: 42,
+                                      customUrl: _profileAvatarUrl,
+                                    ),
                                     Positioned(
                                       bottom: 0,
                                       right: 0,
@@ -2724,49 +3335,81 @@ class _DashboardPageState extends State<DashboardPage> {
                                   ],
                                 ),
                               )
-                            : _buildUserAvatar(radius: 42, customUrl: _profileAvatarUrl),
+                            : _buildUserAvatar(
+                                radius: 42,
+                                customUrl: _profileAvatarUrl,
+                              ),
                         const SizedBox(height: 12),
-                        
+
                         // Username row with edit pencil icon if own profile
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              _profileDisplayName.isNotEmpty ? _profileDisplayName : _profileUsername,
-                              style: TextStyle(color: textPrimaryColor, fontSize: 18, fontWeight: FontWeight.bold),
+                              _profileDisplayName.isNotEmpty
+                                  ? _profileDisplayName
+                                  : _profileUsername,
+                              style: TextStyle(
+                                color: textPrimaryColor,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             if (isOwnProfile) ...[
                               const SizedBox(width: 6),
                               GestureDetector(
-                                onTap: () => _showEditDisplayNameDialog(textPrimaryColor, cardColor),
+                                onTap: () => _showEditDisplayNameDialog(
+                                  textPrimaryColor,
+                                  cardColor,
+                                ),
                                 child: Icon(
                                   Icons.edit_rounded,
-                                  color: textSecondaryColor.withValues(alpha: 0.8),
+                                  color: textSecondaryColor.withValues(
+                                    alpha: 0.8,
+                                  ),
                                   size: 16,
                                 ),
                               ),
                             ],
                           ],
                         ),
-                        
+
                         // Small username handle below
                         if (_profileDisplayName.isNotEmpty) ...[
                           const SizedBox(height: 2),
                           Text(
                             '@$_profileUsername',
-                            style: TextStyle(color: textSecondaryColor, fontSize: 12),
+                            style: TextStyle(
+                              color: textSecondaryColor,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
-                        
+
                         const SizedBox(height: 20),
-                        
+
                         // Dynamic statistics row
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            _buildProfileStat("Abonnés", "$_profileFollowersCount", textPrimaryColor, textSecondaryColor),
-                            _buildProfileStat("Suivi", "$_profileFollowingCount", textPrimaryColor, textSecondaryColor),
-                            _buildProfileStat("J'aime", "$_profileLikesCount", textPrimaryColor, textSecondaryColor),
+                            _buildProfileStat(
+                              "Abonnés",
+                              "$_profileFollowersCount",
+                              textPrimaryColor,
+                              textSecondaryColor,
+                            ),
+                            _buildProfileStat(
+                              "Suivi",
+                              "$_profileFollowingCount",
+                              textPrimaryColor,
+                              textSecondaryColor,
+                            ),
+                            _buildProfileStat(
+                              "J'aime",
+                              "$_profileLikesCount",
+                              textPrimaryColor,
+                              textSecondaryColor,
+                            ),
                           ],
                         ),
                       ],
@@ -2776,7 +3419,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 ],
               ),
             ),
-            
+
             // Pinned TabBar (stays fixed at the top when scrolling)
             SliverPersistentHeader(
               pinned: true,
@@ -2788,7 +3431,10 @@ class _DashboardPageState extends State<DashboardPage> {
                   dividerColor: Colors.transparent,
                   tabs: const [
                     Tab(icon: Icon(Icons.grid_on_rounded), text: 'Feed'),
-                    Tab(icon: Icon(Icons.video_library_rounded), text: 'Shorts'),
+                    Tab(
+                      icon: Icon(Icons.video_library_rounded),
+                      text: 'Shorts',
+                    ),
                   ],
                 ),
                 bgColor,
@@ -2805,7 +3451,9 @@ class _DashboardPageState extends State<DashboardPage> {
                   // Tab 1: Feed Publications List with Pull-To-Refresh
                   RefreshIndicator(
                     onRefresh: () async {
-                      await _fetchUserProfileAndPosts(targetUserId: _profileViewUserId);
+                      await _fetchUserProfileAndPosts(
+                        targetUserId: _profileViewUserId,
+                      );
                       await _fetchHomeFeed();
                     },
                     color: const Color(0xFFC13584),
@@ -2832,18 +3480,33 @@ class _DashboardPageState extends State<DashboardPage> {
                                 id: postMap['id'] ?? 0,
                                 authorId: _profileViewUserId ?? _userId,
                                 authorUsername: _profileUsername,
-                                authorDisplayName: _profileDisplayName.isNotEmpty ? _profileDisplayName : _profileUsername,
+                                authorDisplayName:
+                                    _profileDisplayName.isNotEmpty
+                                    ? _profileDisplayName
+                                    : _profileUsername,
                                 authorAvatar: _profileAvatarUrl,
                                 content: postMap['content'] ?? '',
-                                imageUrl: postMap['imageUrl'] ?? postMap['image_url'],
-                                thumbnailUrl: postMap['thumbnailUrl'] ?? postMap['thumbnail_url'],
-                                isTrade: postMap['is_trade'] == 1 || postMap['is_trade'] == true,
+                                imageUrl:
+                                    postMap['imageUrl'] ?? postMap['image_url'],
+                                thumbnailUrl:
+                                    postMap['thumbnailUrl'] ??
+                                    postMap['thumbnail_url'],
+                                isTrade:
+                                    postMap['is_trade'] == 1 ||
+                                    postMap['is_trade'] == true,
                                 likesCount: postMap['likes_count'] ?? 0,
                                 commentsCount: postMap['comments_count'] ?? 0,
                                 sharesCount: postMap['shares_count'] ?? 0,
-                                isLiked: postMap['is_liked'] == 1 || postMap['is_liked'] == true,
-                                isBookmarked: postMap['is_bookmarked'] == 1 || postMap['is_bookmarked'] == true,
-                                isAuthorFollowing: isOwnProfile ? true : (_profileViewUserId != null), // Mock as following or similar
+                                isLiked:
+                                    postMap['is_liked'] == 1 ||
+                                    postMap['is_liked'] == true,
+                                isBookmarked:
+                                    postMap['is_bookmarked'] == 1 ||
+                                    postMap['is_bookmarked'] == true,
+                                isAuthorFollowing: isOwnProfile
+                                    ? true
+                                    : (_profileViewUserId !=
+                                          null), // Mock as following or similar
                                 createdAt: postMap['created_at'],
                               );
                               return _buildFeedCard(
@@ -2861,7 +3524,9 @@ class _DashboardPageState extends State<DashboardPage> {
                   // Tab 2: Shorts/Reels Grid View with Pull-To-Refresh
                   RefreshIndicator(
                     onRefresh: () async {
-                      await _fetchUserProfileAndPosts(targetUserId: _profileViewUserId);
+                      await _fetchUserProfileAndPosts(
+                        targetUserId: _profileViewUserId,
+                      );
                       await _fetchHomeFeed();
                     },
                     color: const Color(0xFFC13584),
@@ -2881,16 +3546,23 @@ class _DashboardPageState extends State<DashboardPage> {
                         : GridView.builder(
                             physics: const AlwaysScrollableScrollPhysics(),
                             padding: const EdgeInsets.only(top: 8, bottom: 80),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 8,
-                              childAspectRatio: 0.75,
-                            ),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 3,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                  childAspectRatio: 0.75,
+                                ),
                             itemCount: _profileReels.length,
                             itemBuilder: (context, index) {
                               final reel = _profileReels[index];
-                              return _buildReelThumbnailCard(reel, cardColor, textPrimaryColor, textSecondaryColor, borderColor);
+                              return _buildReelThumbnailCard(
+                                reel,
+                                cardColor,
+                                textPrimaryColor,
+                                textSecondaryColor,
+                                borderColor,
+                              );
                             },
                           ),
                   ),
@@ -2900,11 +3572,24 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildReelThumbnailCard(dynamic reel, Color cardColor, Color textPrimaryColor, Color textSecondaryColor, Color borderColor) {
+  Widget _buildReelThumbnailCard(
+    dynamic reel,
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+    Color borderColor,
+  ) {
     final String? videoUrl = reel['video_url'];
     final String? thumbnailUrl = reel['thumbnail_url'] ?? reel['thumbnail'];
-    final bool isVideo = reel['media_type'] == null || reel['media_type'] == 'video';
-    final bool hasImagePreview = videoUrl != null && (videoUrl.contains('unsplash.com') || videoUrl.endsWith('.jpg') || videoUrl.endsWith('.png') || videoUrl.endsWith('.jpeg') || videoUrl.endsWith('.gif'));
+    final bool isVideo =
+        reel['media_type'] == null || reel['media_type'] == 'video';
+    final bool hasImagePreview =
+        videoUrl != null &&
+        (videoUrl.contains('unsplash.com') ||
+            videoUrl.endsWith('.jpg') ||
+            videoUrl.endsWith('.png') ||
+            videoUrl.endsWith('.jpeg') ||
+            videoUrl.endsWith('.gif'));
 
     return Container(
       decoration: BoxDecoration(
@@ -2924,13 +3609,17 @@ class _DashboardPageState extends State<DashboardPage> {
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: CachedNetworkImage(
-                imageUrl: videoUrl.startsWith('http') ? videoUrl : 'https://trasx.com$videoUrl',
+                imageUrl: videoUrl.startsWith('http')
+                    ? videoUrl
+                    : 'https://trasx.com$videoUrl',
                 fit: BoxFit.cover,
-                placeholder: (context, url) => Container(
-                  color: Colors.white10,
-                ),
+                placeholder: (context, url) => Container(color: Colors.white10),
                 errorWidget: (context, url, error) => const Center(
-                  child: Icon(Icons.play_arrow_rounded, color: Colors.white70, size: 32),
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    color: Colors.white70,
+                    size: 32,
+                  ),
                 ),
               ),
             )
@@ -2950,19 +3639,22 @@ class _DashboardPageState extends State<DashboardPage> {
                 size: 32,
               ),
             ),
-          
+
           // Smooth Bottom Gradient Overlay
           Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               gradient: LinearGradient(
-                colors: [Colors.transparent, Colors.black.withValues(alpha: 0.85)],
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.85),
+                ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
             ),
           ),
-          
+
           Positioned(
             bottom: 8,
             left: 8,
@@ -2983,44 +3675,86 @@ class _DashboardPageState extends State<DashboardPage> {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(Icons.favorite_rounded, color: Color(0xFFE1306C), size: 10),
+                    const Icon(
+                      Icons.favorite_rounded,
+                      color: Color(0xFFE1306C),
+                      size: 10,
+                    ),
                     const SizedBox(width: 3),
                     Text(
                       "${reel['likes_count'] ?? 0}",
-                      style: const TextStyle(color: Colors.white70, fontSize: 8),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 8,
+                      ),
                     ),
                     const Spacer(),
-                    const Icon(Icons.play_arrow_rounded, color: Colors.white70, size: 10),
+                    const Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white70,
+                      size: 10,
+                    ),
                     const SizedBox(width: 2),
                     Text(
                       "${reel['views_count'] ?? 0}",
-                      style: const TextStyle(color: Colors.white70, fontSize: 8),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 8,
+                      ),
                     ),
                   ],
-                )
+                ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
   // 5. P2P VIEW
-  Widget _buildP2PView(Color cardColor, Color textPrimaryColor, Color textSecondaryColor) {
+  Widget _buildP2PView(
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+  ) {
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
-        _buildSectionHeader("Trading P2P - Postes et Diamants", textPrimaryColor),
+        _buildSectionHeader(
+          "Trading P2P - Postes et Diamants",
+          textPrimaryColor,
+        ),
         const SizedBox(height: 12),
-        _buildOfferCard("Vente Diamants", "100 💎 contre 10 USD", "Acheteur fiable uniquement", Colors.green, cardColor, textPrimaryColor, textSecondaryColor),
-        _buildOfferCard("Achat Diamants", "250 💎 contre 23 USD", "Paiement rapide via Mobile Money", Colors.blue, cardColor, textPrimaryColor, textSecondaryColor),
+        _buildOfferCard(
+          "Vente Diamants",
+          "100 💎 contre 10 USD",
+          "Acheteur fiable uniquement",
+          Colors.green,
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+        ),
+        _buildOfferCard(
+          "Achat Diamants",
+          "250 💎 contre 23 USD",
+          "Paiement rapide via Mobile Money",
+          Colors.blue,
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+        ),
       ],
     );
   }
 
   // 6. BOOKMARKS VIEW
-  Widget _buildBookmarksView(Color cardColor, Color textPrimaryColor, Color textSecondaryColor, Color borderColor) {
+  Widget _buildBookmarksView(
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+    Color borderColor,
+  ) {
     if (_isLoadingBookmarks && _bookmarkedPosts.isEmpty) {
       return const Center(
         child: CircularProgressIndicator(color: Color(0xFFC13584)),
@@ -3037,11 +3771,19 @@ class _DashboardPageState extends State<DashboardPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.bookmark_border_rounded, size: 64, color: textSecondaryColor.withValues(alpha: 0.4)),
+                Icon(
+                  Icons.bookmark_border_rounded,
+                  size: 64,
+                  color: textSecondaryColor.withValues(alpha: 0.4),
+                ),
                 const SizedBox(height: 16),
                 Text(
                   "Aucun signet enregistré",
-                  style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: textPrimaryColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -3079,34 +3821,86 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // 7. GAMES VIEW
-  Widget _buildGamesView(Color cardColor, Color textPrimaryColor, Color textSecondaryColor) {
+  Widget _buildGamesView(
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+  ) {
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
         _buildSectionHeader("Jeux de société mondiaux", textPrimaryColor),
         const SizedBox(height: 12),
-        _buildGameCard("Monopoly Classique", "Entrée : 10 diamants (Payant)", "4 joueurs en cours", true, cardColor, textPrimaryColor, textSecondaryColor),
-        _buildGameCard("Échecs amical", "Entrée : Gratuit", "1 joueur en attente", false, cardColor, textPrimaryColor, textSecondaryColor),
-        _buildGameCard("Ludo Pro", "Entrée : 5 diamants (Payant)", "Prêt à démarrer", true, cardColor, textPrimaryColor, textSecondaryColor),
+        _buildGameCard(
+          "Monopoly Classique",
+          "Entrée : 10 diamants (Payant)",
+          "4 joueurs en cours",
+          true,
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+        ),
+        _buildGameCard(
+          "Échecs amical",
+          "Entrée : Gratuit",
+          "1 joueur en attente",
+          false,
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+        ),
+        _buildGameCard(
+          "Ludo Pro",
+          "Entrée : 5 diamants (Payant)",
+          "Prêt à démarrer",
+          true,
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+        ),
       ],
     );
   }
 
   // 8. EVENTS VIEW
-  Widget _buildEventsView(Color cardColor, Color textPrimaryColor, Color textSecondaryColor) {
+  Widget _buildEventsView(
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+  ) {
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
         _buildSectionHeader("Lives & Événements Payants", textPrimaryColor),
         const SizedBox(height: 12),
-        _buildEventCard("Live Coaching Poker", "Organisé par : Alex_Poker", "Prix ticket : 20 💎", "Démarre dans 2h", cardColor, textPrimaryColor, textSecondaryColor),
-        _buildEventCard("Showmatch E-Sport Ludo", "Organisé par : TrasX_Official", "Entrée gratuite", "En direct", cardColor, textPrimaryColor, textSecondaryColor),
+        _buildEventCard(
+          "Live Coaching Poker",
+          "Organisé par : Alex_Poker",
+          "Prix ticket : 20 💎",
+          "Démarre dans 2h",
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+        ),
+        _buildEventCard(
+          "Showmatch E-Sport Ludo",
+          "Organisé par : TrasX_Official",
+          "Entrée gratuite",
+          "En direct",
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+        ),
       ],
     );
   }
 
   // 9. SETTINGS VIEW
-  Widget _buildSettingsView(Color cardColor, Color textPrimaryColor, Color textSecondaryColor) {
+  Widget _buildSettingsView(
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+  ) {
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
@@ -3120,7 +3914,8 @@ class _DashboardPageState extends State<DashboardPage> {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => SecuritySettingsPage(isDarkMode: _isDarkMode),
+                builder: (context) =>
+                    SecuritySettingsPage(isDarkMode: _isDarkMode),
               ),
             );
           },
@@ -3133,7 +3928,11 @@ class _DashboardPageState extends State<DashboardPage> {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => WalletSettingsPage(isDarkMode: _isDarkMode, userId: _userId, socket: _socket),
+                builder: (context) => WalletSettingsPage(
+                  isDarkMode: _isDarkMode,
+                  userId: _userId,
+                  socket: _socket,
+                ),
               ),
             );
           },
@@ -3164,7 +3963,8 @@ class _DashboardPageState extends State<DashboardPage> {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => SupportSettingsPage(isDarkMode: _isDarkMode),
+                builder: (context) =>
+                    SupportSettingsPage(isDarkMode: _isDarkMode),
               ),
             );
           },
@@ -3177,7 +3977,11 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildSectionHeader(String title, Color textPrimaryColor) {
     return Text(
       title,
-      style: TextStyle(color: textPrimaryColor, fontSize: 18, fontWeight: FontWeight.bold),
+      style: TextStyle(
+        color: textPrimaryColor,
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+      ),
     );
   }
 
@@ -3189,7 +3993,8 @@ class _DashboardPageState extends State<DashboardPage> {
     required Color textSecondaryColor,
     required Color borderColor,
   }) {
-    final bool isSelf = post.authorId == _userId || post.authorUsername == _username;
+    final bool isSelf =
+        post.authorId == _userId || post.authorUsername == _username;
     final bool showFollowButton = !post.isAuthorFollowing && !isSelf;
     final String initial = post.authorUsername.isNotEmpty
         ? post.authorUsername[0].toUpperCase()
@@ -3233,37 +4038,37 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildMessageTile(String name, String preview, String time, Color textPrimaryColor, Color textSecondaryColor) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: _isDarkMode ? const Color(0xFF0F0F0F) : const Color(0xFFF9F9F9),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _isDarkMode ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
-      ),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: textPrimaryColor.withValues(alpha: 0.08),
-          child: Text(name[0], style: TextStyle(color: textPrimaryColor, fontWeight: FontWeight.bold)),
-        ),
-        title: Text(name, style: TextStyle(color: textPrimaryColor, fontWeight: FontWeight.bold, fontSize: 14)),
-        subtitle: Text(preview, style: TextStyle(color: textSecondaryColor, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
-        trailing: Text(time, style: TextStyle(color: textSecondaryColor.withValues(alpha: 0.5), fontSize: 10)),
-      ),
-    );
-  }
-
-  Widget _buildProfileStat(String label, String value, Color textPrimaryColor, Color textSecondaryColor) {
+  Widget _buildProfileStat(
+    String label,
+    String value,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+  ) {
     return Column(
       children: [
-        Text(value, style: TextStyle(color: textPrimaryColor, fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(
+          value,
+          style: TextStyle(
+            color: textPrimaryColor,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 4),
         Text(label, style: TextStyle(color: textSecondaryColor, fontSize: 12)),
       ],
     );
   }
 
-  Widget _buildOfferCard(String title, String rates, String description, Color badgeColor, Color cardColor, Color textPrimaryColor, Color textSecondaryColor) {
+  Widget _buildOfferCard(
+    String title,
+    String rates,
+    String description,
+    Color badgeColor,
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -3280,28 +4085,62 @@ class _DashboardPageState extends State<DashboardPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: badgeColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
-                  child: Text(title, style: TextStyle(color: badgeColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: badgeColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: badgeColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 8),
-                Text(rates, style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold)),
+                Text(
+                  rates,
+                  style: TextStyle(
+                    color: textPrimaryColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(description, style: TextStyle(color: textSecondaryColor, fontSize: 12)),
+                Text(
+                  description,
+                  style: TextStyle(color: textSecondaryColor, fontSize: 12),
+                ),
               ],
             ),
           ),
           ElevatedButton(
             onPressed: () {},
-            style: ElevatedButton.styleFrom(backgroundColor: badgeColor, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: badgeColor,
+              foregroundColor: Colors.white,
+            ),
             child: const Text("Échanger"),
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildGameCard(String name, String fee, String players, bool isPaid, Color cardColor, Color textPrimaryColor, Color textSecondaryColor) {
+  Widget _buildGameCard(
+    String name,
+    String fee,
+    String players,
+    bool isPaid,
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -3314,36 +4153,75 @@ class _DashboardPageState extends State<DashboardPage> {
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: textPrimaryColor.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(12)),
-            child: Icon(Icons.casino_rounded, color: isPaid ? const Color(0xFFE1306C) : textPrimaryColor, size: 24),
+            decoration: BoxDecoration(
+              color: textPrimaryColor.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.casino_rounded,
+              color: isPaid ? const Color(0xFFE1306C) : textPrimaryColor,
+              size: 24,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: TextStyle(color: textPrimaryColor, fontWeight: FontWeight.bold, fontSize: 15)),
+                Text(
+                  name,
+                  style: TextStyle(
+                    color: textPrimaryColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
                 const SizedBox(height: 4),
-                Text(fee, style: TextStyle(color: isPaid ? const Color(0xFFF77737) : textSecondaryColor, fontSize: 12, fontWeight: isPaid ? FontWeight.bold : FontWeight.normal)),
+                Text(
+                  fee,
+                  style: TextStyle(
+                    color: isPaid
+                        ? const Color(0xFFF77737)
+                        : textSecondaryColor,
+                    fontSize: 12,
+                    fontWeight: isPaid ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(players, style: TextStyle(color: textSecondaryColor.withValues(alpha: 0.6), fontSize: 11)),
+                Text(
+                  players,
+                  style: TextStyle(
+                    color: textSecondaryColor.withValues(alpha: 0.6),
+                    fontSize: 11,
+                  ),
+                ),
               ],
             ),
           ),
           ElevatedButton(
             onPressed: () {},
             style: ElevatedButton.styleFrom(
-              backgroundColor: _isDarkMode ? Colors.white10 : Colors.black.withValues(alpha: 0.1),
+              backgroundColor: _isDarkMode
+                  ? Colors.white10
+                  : Colors.black.withValues(alpha: 0.1),
               foregroundColor: textPrimaryColor,
             ),
             child: const Text("Jouer"),
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildEventCard(String title, String organizer, String price, String time, Color cardColor, Color textPrimaryColor, Color textSecondaryColor) {
+  Widget _buildEventCard(
+    String title,
+    String organizer,
+    String price,
+    String time,
+    Color cardColor,
+    Color textPrimaryColor,
+    Color textSecondaryColor,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -3358,21 +4236,48 @@ class _DashboardPageState extends State<DashboardPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(title, style: TextStyle(color: textPrimaryColor, fontWeight: FontWeight.bold, fontSize: 15)),
+              Text(
+                title,
+                style: TextStyle(
+                  color: textPrimaryColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFE1306C).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
-                child: Text(price, style: const TextStyle(color: Color(0xFFE1306C), fontSize: 11, fontWeight: FontWeight.bold)),
-              )
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE1306C).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  price,
+                  style: const TextStyle(
+                    color: Color(0xFFE1306C),
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(organizer, style: TextStyle(color: textSecondaryColor, fontSize: 12)),
+          Text(
+            organizer,
+            style: TextStyle(color: textSecondaryColor, fontSize: 12),
+          ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(time, style: const TextStyle(color: Color(0xFFFCAF45), fontSize: 12, fontWeight: FontWeight.bold)),
+              Text(
+                time,
+                style: const TextStyle(
+                  color: Color(0xFFFCAF45),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               ElevatedButton(
                 onPressed: () {},
                 style: ElevatedButton.styleFrom(
@@ -3380,15 +4285,21 @@ class _DashboardPageState extends State<DashboardPage> {
                   foregroundColor: _isDarkMode ? Colors.black : Colors.white,
                 ),
                 child: const Text("Rejoindre"),
-              )
+              ),
             ],
-          )
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSettingsTile(String title, IconData icon, Color cardColor, Color textPrimaryColor, {required VoidCallback onTap}) {
+  Widget _buildSettingsTile(
+    String title,
+    IconData icon,
+    Color cardColor,
+    Color textPrimaryColor, {
+    required VoidCallback onTap,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -3398,8 +4309,14 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       child: ListTile(
         leading: Icon(icon, color: textPrimaryColor.withValues(alpha: 0.8)),
-        title: Text(title, style: TextStyle(color: textPrimaryColor, fontSize: 14)),
-        trailing: Icon(Icons.chevron_right_rounded, color: textPrimaryColor.withValues(alpha: 0.3)),
+        title: Text(
+          title,
+          style: TextStyle(color: textPrimaryColor, fontSize: 14),
+        ),
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: textPrimaryColor.withValues(alpha: 0.3),
+        ),
         onTap: onTap,
       ),
     );
@@ -3466,8 +4383,12 @@ class _DashboardPageState extends State<DashboardPage> {
   void _showHashtagModal(String hashtag) {
     final textPrimaryColor = _isDarkMode ? Colors.white : Colors.black;
     final textSecondaryColor = _isDarkMode ? Colors.white70 : Colors.black87;
-    final cardColor = _isDarkMode ? const Color(0xFF0F0F0F) : const Color(0xFFF9F9F9);
-    final borderColor = _isDarkMode ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1);
+    final cardColor = _isDarkMode
+        ? const Color(0xFF0F0F0F)
+        : const Color(0xFFF9F9F9);
+    final borderColor = _isDarkMode
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.black.withValues(alpha: 0.1);
 
     showDialog(
       context: context,
@@ -3501,11 +4422,12 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => _tabBar.preferredSize.height;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      color: _bgColor,
-      child: _tabBar,
-    );
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Container(color: _bgColor, child: _tabBar);
   }
 
   @override
@@ -3541,19 +4463,21 @@ class _ReelThumbnailState extends State<ReelThumbnail> {
         ? widget.videoUrl
         : 'https://trasx.com${widget.videoUrl.startsWith('/') ? widget.videoUrl : '/${widget.videoUrl}'}';
     _controller = VideoPlayerController.networkUrl(Uri.parse(fullUrl))
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
+      ..initialize()
+          .then((_) {
+            if (mounted) {
+              setState(() {
+                _isInitialized = true;
+              });
+            }
+          })
+          .catchError((_) {
+            if (mounted) {
+              setState(() {
+                _hasError = true;
+              });
+            }
           });
-        }
-      }).catchError((_) {
-        if (mounted) {
-          setState(() {
-            _hasError = true;
-          });
-        }
-      });
   }
 
   @override
@@ -3574,7 +4498,11 @@ class _ReelThumbnailState extends State<ReelThumbnail> {
         fit: BoxFit.cover,
         placeholder: (_, __) => Container(color: Colors.white10),
         errorWidget: (_, __, ___) => const Center(
-          child: Icon(Icons.play_arrow_rounded, color: Colors.white70, size: 32),
+          child: Icon(
+            Icons.play_arrow_rounded,
+            color: Colors.white70,
+            size: 32,
+          ),
         ),
       );
     }
@@ -3714,25 +4642,25 @@ class _PostVideoPlayerState extends State<PostVideoPlayer> {
       },
       child: !_isInitialized
           ? (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty
-              ? CachedNetworkImage(
-                  imageUrl: widget.thumbnailUrl!.startsWith('http')
-                      ? widget.thumbnailUrl!
-                      : 'https://trasx.com${widget.thumbnailUrl!.startsWith('/') ? widget.thumbnailUrl! : '/${widget.thumbnailUrl!}'}',
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  placeholder: (context, url) => Container(
+                ? CachedNetworkImage(
+                    imageUrl: widget.thumbnailUrl!.startsWith('http')
+                        ? widget.thumbnailUrl!
+                        : 'https://trasx.com${widget.thumbnailUrl!.startsWith('/') ? widget.thumbnailUrl! : '/${widget.thumbnailUrl!}'}',
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    placeholder: (context, url) => Container(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF121212)
+                          : const Color(0xFFFAFAFA),
+                    ),
+                  )
+                : Container(
                     color: Theme.of(context).brightness == Brightness.dark
                         ? const Color(0xFF121212)
                         : const Color(0xFFFAFAFA),
-                  ),
-                )
-              : Container(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFF121212)
-                      : const Color(0xFFFAFAFA),
-                  height: 300,
-                  alignment: Alignment.center,
-                ))
+                    height: 300,
+                    alignment: Alignment.center,
+                  ))
           : Stack(
               alignment: Alignment.center,
               children: [
@@ -3756,7 +4684,9 @@ class _PostVideoPlayerState extends State<PostVideoPlayer> {
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      _isPlaying ? CupertinoIcons.play_fill : CupertinoIcons.pause_fill,
+                      _isPlaying
+                          ? CupertinoIcons.play_fill
+                          : CupertinoIcons.pause_fill,
                       color: Colors.white,
                       size: 32,
                     ),
@@ -3776,7 +4706,9 @@ class _PostVideoPlayerState extends State<PostVideoPlayer> {
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        _isMuted ? CupertinoIcons.volume_mute : CupertinoIcons.volume_up,
+                        _isMuted
+                            ? CupertinoIcons.volume_mute
+                            : CupertinoIcons.volume_up,
                         color: Colors.white,
                         size: 16,
                       ),
@@ -3890,9 +4822,12 @@ class _FeedCardState extends State<FeedCard> {
     // Sync if parent refreshed stats
     if (old.likes != widget.likes) _localLikesCount = widget.likes;
     if (old.comments != widget.comments) _localCommentCount = widget.comments;
-    if (old.isFollowing != widget.isFollowing) _isFollowing = widget.isFollowing;
-    if (old.initialIsLiked != widget.initialIsLiked) _isLiked = widget.initialIsLiked;
-    if (old.initialIsBookmarked != widget.initialIsBookmarked) _isBookmarked = widget.initialIsBookmarked;
+    if (old.isFollowing != widget.isFollowing)
+      _isFollowing = widget.isFollowing;
+    if (old.initialIsLiked != widget.initialIsLiked)
+      _isLiked = widget.initialIsLiked;
+    if (old.initialIsBookmarked != widget.initialIsBookmarked)
+      _isBookmarked = widget.initialIsBookmarked;
   }
 
   @override
@@ -3964,9 +4899,7 @@ class _FeedCardState extends State<FeedCard> {
     // 3. Emit like event via Socket.IO
     try {
       if (widget.socket != null && widget.socket!.connected) {
-        widget.socket!.emit('post-like', {
-          'postId': widget.postId,
-        });
+        widget.socket!.emit('post-like', {'postId': widget.postId});
       } else {
         debugPrint('Socket.IO offline, cannot sync like in real-time');
       }
@@ -4003,13 +4936,15 @@ class _FeedCardState extends State<FeedCard> {
     );
 
     try {
-      final response = await http.post(
-        Uri.parse('https://trasx.com/api/posts/${widget.postId}/bookmark'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '${widget.currentUserId}',
-        },
-      ).timeout(const Duration(seconds: 8));
+      final response = await http
+          .post(
+            Uri.parse('https://trasx.com/api/posts/${widget.postId}/bookmark'),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-id': '${widget.currentUserId}',
+            },
+          )
+          .timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) {
         if (mounted) setState(() => _isBookmarked = wasBookmarked);
       }
@@ -4070,7 +5005,9 @@ class _FeedCardState extends State<FeedCard> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: widget.isDarkMode ? Colors.black : Colors.white, // Pure black/white background
+      backgroundColor: widget.isDarkMode
+          ? Colors.black
+          : Colors.white, // Pure black/white background
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -4116,21 +5053,26 @@ class _FeedCardState extends State<FeedCard> {
     );
   }
 
-  List<InlineSpan> _buildTextSpansWithHashtags(String text, BuildContext context) {
+  List<InlineSpan> _buildTextSpansWithHashtags(
+    String text,
+    BuildContext context,
+  ) {
     final List<InlineSpan> spans = [];
     final RegExp regex = RegExp(r'(#\w+)');
     final Iterable<RegExpMatch> matches = regex.allMatches(text);
-    
+
     int start = 0;
     for (final match in matches) {
       if (match.start > start) {
         spans.add(TextSpan(text: text.substring(start, match.start)));
       }
-      
+
       final hashtag = match.group(0)!;
       final isPaid = widget.isHashtagPaid(hashtag);
-      final hashtagColor = isPaid ? const Color(0xFFFF2A54) : const Color(0xFF00B0FF);
-      
+      final hashtagColor = isPaid
+          ? const Color(0xFFFF2A54)
+          : const Color(0xFF00B0FF);
+
       spans.add(
         TextSpan(
           text: hashtag,
@@ -4147,11 +5089,11 @@ class _FeedCardState extends State<FeedCard> {
       );
       start = match.end;
     }
-    
+
     if (start < text.length) {
       spans.add(TextSpan(text: text.substring(start)));
     }
-    
+
     return spans;
   }
 
@@ -4161,16 +5103,23 @@ class _FeedCardState extends State<FeedCard> {
     String? displayUrl;
     if (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty) {
       displayUrl = widget.thumbnailUrl;
-    } else if (widget.imageUrl != null && widget.imageUrl!.isNotEmpty && !widget.imageUrl!.toLowerCase().endsWith('.mp4') && !widget.imageUrl!.toLowerCase().endsWith('.mov')) {
+    } else if (widget.imageUrl != null &&
+        widget.imageUrl!.isNotEmpty &&
+        !widget.imageUrl!.toLowerCase().endsWith('.mp4') &&
+        !widget.imageUrl!.toLowerCase().endsWith('.mov')) {
       displayUrl = widget.imageUrl;
     }
 
-    final isVideo = widget.imageUrl != null && widget.imageUrl!.isNotEmpty && (widget.imageUrl!.toLowerCase().endsWith('.mp4') || widget.imageUrl!.toLowerCase().endsWith('.mov'));
+    final isVideo =
+        widget.imageUrl != null &&
+        widget.imageUrl!.isNotEmpty &&
+        (widget.imageUrl!.toLowerCase().endsWith('.mp4') ||
+            widget.imageUrl!.toLowerCase().endsWith('.mov'));
 
     // Truncate caption if it's long and not expanded
     final bool isLongText = widget.postText.length > 80;
-    final String displayText = (_isExpanded || !isLongText) 
-        ? widget.postText 
+    final String displayText = (_isExpanded || !isLongText)
+        ? widget.postText
         : '${widget.postText.substring(0, 80)}...';
 
     return Container(
@@ -4183,7 +5132,10 @@ class _FeedCardState extends State<FeedCard> {
         children: [
           // 1. User Header (with horizontal padding for alignment)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 8.0,
+            ),
             child: Row(
               children: [
                 GestureDetector(
@@ -4197,12 +5149,19 @@ class _FeedCardState extends State<FeedCard> {
                     children: [
                       Text(
                         widget.username,
-                        style: TextStyle(color: widget.textPrimaryColor, fontWeight: FontWeight.bold, fontSize: 13),
+                        style: TextStyle(
+                          color: widget.textPrimaryColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
                       ),
                       const SizedBox(height: 1),
                       Text(
                         "Suggestions",
-                        style: TextStyle(color: widget.textSecondaryColor, fontSize: 9),
+                        style: TextStyle(
+                          color: widget.textSecondaryColor,
+                          fontSize: 9,
+                        ),
                       ),
                     ],
                   ),
@@ -4211,12 +5170,15 @@ class _FeedCardState extends State<FeedCard> {
                   ElevatedButton(
                     onPressed: _toggleFollow,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: widget.isDarkMode 
-                          ? const Color(0xFF262626) 
+                      backgroundColor: widget.isDarkMode
+                          ? const Color(0xFF262626)
                           : const Color(0xFFEFEFEF),
                       foregroundColor: widget.textPrimaryColor,
                       elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 6,
+                      ),
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       shape: RoundedRectangleBorder(
@@ -4234,7 +5196,11 @@ class _FeedCardState extends State<FeedCard> {
                   const SizedBox(width: 8),
                 ],
                 IconButton(
-                  icon: Icon(Icons.more_vert_rounded, color: widget.textPrimaryColor, size: 20),
+                  icon: Icon(
+                    Icons.more_vert_rounded,
+                    color: widget.textPrimaryColor,
+                    size: 20,
+                  ),
                   onPressed: () {},
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -4242,7 +5208,7 @@ class _FeedCardState extends State<FeedCard> {
               ],
             ),
           ),
-          
+
           // 2. Media Content (100% full screen width edge-to-edge)
           if (isVideo)
             PostVideoPlayer(
@@ -4251,13 +5217,17 @@ class _FeedCardState extends State<FeedCard> {
             )
           else if (displayUrl != null && displayUrl.isNotEmpty)
             CachedNetworkImage(
-              imageUrl: displayUrl.startsWith('http') ? displayUrl : 'https://trasx.com${displayUrl.startsWith('/') ? displayUrl : '/$displayUrl'}',
+              imageUrl: displayUrl.startsWith('http')
+                  ? displayUrl
+                  : 'https://trasx.com${displayUrl.startsWith('/') ? displayUrl : '/$displayUrl'}',
               width: double.infinity,
               fit: BoxFit.fitWidth,
               placeholder: (context, url) => Container(
                 width: double.infinity,
                 height: 300,
-                color: widget.isDarkMode ? const Color(0xFF121212) : const Color(0xFFFAFAFA),
+                color: widget.isDarkMode
+                    ? const Color(0xFF121212)
+                    : const Color(0xFFFAFAFA),
               ),
               errorWidget: (context, url, error) => Container(
                 color: Colors.red.withValues(alpha: 0.1),
@@ -4266,12 +5236,19 @@ class _FeedCardState extends State<FeedCard> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.broken_image_rounded, color: Colors.redAccent, size: 36),
+                    const Icon(
+                      Icons.broken_image_rounded,
+                      color: Colors.redAccent,
+                      size: 36,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       "Erreur de chargement de l'image\n($error)",
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.redAccent, fontSize: 10),
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 10,
+                      ),
                     ),
                   ],
                 ),
@@ -4311,10 +5288,13 @@ class _FeedCardState extends State<FeedCard> {
                 ),
               ),
             ),
-          
+
           // 3. Actions & Caption Footer (with horizontal padding for clean align)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 10.0,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -4327,33 +5307,50 @@ class _FeedCardState extends State<FeedCard> {
                         children: [
                           AnimatedSwitcher(
                             duration: const Duration(milliseconds: 200),
-                            transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+                            transitionBuilder: (child, anim) =>
+                                ScaleTransition(scale: anim, child: child),
                             child: Icon(
-                              _isLiked ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
+                              _isLiked
+                                  ? CupertinoIcons.heart_fill
+                                  : CupertinoIcons.heart,
                               key: ValueKey(_isLiked),
-                              color: _isLiked ? const Color(0xFFE1306C) : widget.textPrimaryColor,
+                              color: _isLiked
+                                  ? const Color(0xFFE1306C)
+                                  : widget.textPrimaryColor,
                               size: 24,
                             ),
                           ),
                           const SizedBox(width: 6),
                           Text(
                             _formatNumber(_localLikesCount),
-                            style: TextStyle(color: widget.textPrimaryColor, fontSize: 13, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: widget.textPrimaryColor,
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(width: 16),
-                    
+
                     GestureDetector(
                       onTap: () => _showCommentsBottomSheet(context),
                       child: Row(
                         children: [
-                          Icon(CupertinoIcons.chat_bubble, color: widget.textPrimaryColor, size: 22),
+                          Icon(
+                            CupertinoIcons.chat_bubble,
+                            color: widget.textPrimaryColor,
+                            size: 22,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             _formatNumber(_localCommentCount),
-                            style: TextStyle(color: widget.textPrimaryColor, fontSize: 13, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: widget.textPrimaryColor,
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -4361,16 +5358,22 @@ class _FeedCardState extends State<FeedCard> {
                     const SizedBox(width: 16),
                     GestureDetector(
                       onTap: _sharePost,
-                      child: Icon(CupertinoIcons.paperplane, color: widget.textPrimaryColor, size: 22),
+                      child: Icon(
+                        CupertinoIcons.paperplane,
+                        color: widget.textPrimaryColor,
+                        size: 22,
+                      ),
                     ),
-                    
+
                     const Spacer(),
                     GestureDetector(
                       onTap: _toggleBookmark,
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 200),
                         child: Icon(
-                          _isBookmarked ? CupertinoIcons.bookmark_fill : CupertinoIcons.bookmark,
+                          _isBookmarked
+                              ? CupertinoIcons.bookmark_fill
+                              : CupertinoIcons.bookmark,
                           key: ValueKey(_isBookmarked),
                           color: widget.textPrimaryColor,
                           size: 24,
@@ -4380,24 +5383,33 @@ class _FeedCardState extends State<FeedCard> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                
+
                 // Likes count displayed here, below the icons!
                 Text(
                   "${_formatNumber(_localLikesCount)} J'aime",
-                  style: TextStyle(color: widget.textPrimaryColor, fontWeight: FontWeight.bold, fontSize: 13),
+                  style: TextStyle(
+                    color: widget.textPrimaryColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 6),
-                
+
                 // Caption
                 RichText(
                   text: TextSpan(
-                    style: TextStyle(color: widget.textPrimaryColor, fontSize: 13, height: 1.4),
+                    style: TextStyle(
+                      color: widget.textPrimaryColor,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
                     children: [
                       TextSpan(
                         text: "${widget.username} ",
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      if (displayUrl != null && displayUrl.isNotEmpty || isVideo)
+                      if (displayUrl != null && displayUrl.isNotEmpty ||
+                          isVideo)
                         ..._buildTextSpansWithHashtags(displayText, context),
                       if (widget.hashtag.isNotEmpty) ...[
                         const TextSpan(text: " "),
@@ -4406,9 +5418,11 @@ class _FeedCardState extends State<FeedCard> {
                     ],
                   ),
                 ),
-                
+
                 // "plus" / "moins" expansion toggle link
-                if (isLongText && (displayUrl != null && displayUrl.isNotEmpty || isVideo)) ...[
+                if (isLongText &&
+                    (displayUrl != null && displayUrl.isNotEmpty ||
+                        isVideo)) ...[
                   const SizedBox(height: 2),
                   GestureDetector(
                     onTap: () {
@@ -4418,11 +5432,15 @@ class _FeedCardState extends State<FeedCard> {
                     },
                     child: Text(
                       _isExpanded ? "moins" : "plus",
-                      style: TextStyle(color: widget.textSecondaryColor, fontSize: 12, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: widget.textSecondaryColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
-                
+
                 const SizedBox(height: 6),
                 GestureDetector(
                   onTap: () => _showCommentsBottomSheet(context),
@@ -4430,26 +5448,35 @@ class _FeedCardState extends State<FeedCard> {
                     _localCommentCount > 0
                         ? "Voir les $_localCommentCount commentaires"
                         : "Ajouter un commentaire...",
-                    style: TextStyle(color: widget.textSecondaryColor, fontSize: 13, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                      color: widget.textSecondaryColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 4),
                 if (widget.createdAt != null && widget.createdAt!.isNotEmpty)
                   Text(
                     _formatDate(widget.createdAt),
-                    style: TextStyle(color: widget.textSecondaryColor, fontSize: 10),
+                    style: TextStyle(
+                      color: widget.textSecondaryColor,
+                      fontSize: 10,
+                    ),
                   ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
   Widget _buildAvatar() {
-    final String initial = widget.username.isNotEmpty ? widget.username[0].toUpperCase() : 'U';
+    final String initial = widget.username.isNotEmpty
+        ? widget.username[0].toUpperCase()
+        : 'U';
     final url = widget.authorAvatarUrl;
     final innerGapColor = widget.isDarkMode ? Colors.black : Colors.white;
 
@@ -4461,20 +5488,23 @@ class _FeedCardState extends State<FeedCard> {
         width: 32,
         height: 32,
         fit: BoxFit.cover,
-        placeholder: (context, url) => Container(
-          width: 32,
-          height: 32,
-          color: Colors.white10,
-        ),
+        placeholder: (context, url) =>
+            Container(width: 32, height: 32, color: Colors.white10),
         errorWidget: (context, url, error) => Container(
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            gradient: LinearGradient(colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)]),
+            gradient: LinearGradient(
+              colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
+            ),
           ),
           child: Center(
             child: Text(
               initial,
-              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ),
@@ -4483,12 +5513,18 @@ class _FeedCardState extends State<FeedCard> {
       avatarContent = Container(
         decoration: const BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)]),
+          gradient: LinearGradient(
+            colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
+          ),
         ),
         child: Center(
           child: Text(
             initial,
-            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       );
@@ -4511,16 +5547,11 @@ class _FeedCardState extends State<FeedCard> {
       ),
       child: Container(
         padding: const EdgeInsets.all(1.5), // Inner space (black/white liseré)
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: innerGapColor,
-        ),
+        decoration: BoxDecoration(shape: BoxShape.circle, color: innerGapColor),
         child: SizedBox(
           width: 32,
           height: 32,
-          child: ClipOval(
-            child: avatarContent,
-          ),
+          child: ClipOval(child: avatarContent),
         ),
       ),
     );
@@ -4536,9 +5567,7 @@ class ReplyThreadLine extends StatelessWidget {
     return SizedBox(
       width: 26,
       height: 32, // align with avatar height
-      child: CustomPaint(
-        painter: _ThreadLinePainter(color: color),
-      ),
+      child: CustomPaint(painter: _ThreadLinePainter(color: color)),
     );
   }
 }
@@ -4617,7 +5646,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
 
     if (widget.socket != null && widget.socket!.connected) {
       widget.socket!.emit('feed-posts-watch', {
-        'postIds': [widget.postId]
+        'postIds': [widget.postId],
       });
       widget.socket!.on('comment-liked', _onCommentLikedReceived);
       widget.socket!.on('comment-created', _onCommentCreatedReceived);
@@ -4629,9 +5658,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
     if (widget.socket != null) {
       widget.socket!.off('comment-liked', _onCommentLikedReceived);
       widget.socket!.off('comment-created', _onCommentCreatedReceived);
-      widget.socket!.emit('feed-posts-watch', {
-        'postIds': []
-      });
+      widget.socket!.emit('feed-posts-watch', {'postIds': []});
     }
     _commentsPollingTimer?.cancel();
     _commentController.dispose();
@@ -4640,7 +5667,10 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
 
   void _onCommentLikedReceived(dynamic data) {
     debugPrint('Socket: received comment-liked: $data');
-    if (data == null || data['commentId'] == null || data['likes_count'] == null) return;
+    if (data == null ||
+        data['commentId'] == null ||
+        data['likes_count'] == null)
+      return;
     final int? cId = int.tryParse('${data['commentId']}');
     final int? count = int.tryParse('${data['likes_count']}');
     if (cId != null && count != null) {
@@ -4660,7 +5690,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
     if (data == null || data['id'] == null) return;
     final int? commentId = int.tryParse('${data['id']}');
     if (commentId == null) return;
-    
+
     final bool exists = _commentsList.any((c) => c['id'] == commentId);
     if (exists) return;
 
@@ -4694,28 +5724,24 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
 
   List<Map<String, dynamic>> _buildFlattenedTree() {
     final List<Map<String, dynamic>> flatList = [];
-    
+
     // Get all top-level comments (parent_id == null or 0)
-    final topLevel = _commentsList.where((c) => c['parent_id'] == null || c['parent_id'] == 0).toList();
-    
+    final topLevel = _commentsList
+        .where((c) => c['parent_id'] == null || c['parent_id'] == 0)
+        .toList();
+
     for (var parent in topLevel) {
-      flatList.add({
-        'comment': parent,
-        'isReply': false,
-        'depth': 0,
-      });
-      
+      flatList.add({'comment': parent, 'isReply': false, 'depth': 0});
+
       final parentId = parent['id'];
-      final replies = _commentsList.where((c) => c['parent_id'] == parentId).toList();
+      final replies = _commentsList
+          .where((c) => c['parent_id'] == parentId)
+          .toList();
       for (var reply in replies) {
-        flatList.add({
-          'comment': reply,
-          'isReply': true,
-          'depth': 1,
-        });
+        flatList.add({'comment': reply, 'isReply': true, 'depth': 1});
       }
     }
-    
+
     return flatList;
   }
 
@@ -4792,7 +5818,9 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
     final newComment = {
       'id': DateTime.now().millisecondsSinceEpoch,
       'user_username': widget.currentUsername,
-      'user_name': widget.currentDisplayName.isNotEmpty ? widget.currentDisplayName : widget.currentUsername,
+      'user_name': widget.currentDisplayName.isNotEmpty
+          ? widget.currentDisplayName
+          : widget.currentUsername,
       'user_avatar': widget.currentUserAvatar,
       'content': text,
       'parent_id': parentId,
@@ -4813,10 +5841,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
           'Content-Type': 'application/json',
           'x-user-id': '${widget.currentUserId}',
         },
-        body: jsonEncode({
-          'content': text,
-          'parentId': parentId,
-        }),
+        body: jsonEncode({'content': text, 'parentId': parentId}),
       );
     } catch (e) {
       debugPrint('Error posting comment: $e');
@@ -4824,9 +5849,12 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   }
 
   Widget _buildCommentLikeButton(Map<String, dynamic> comment) {
-    final bool isLiked = comment['is_liked'] == 1 || comment['is_liked'] == true || comment['is_liked'] == 'true';
+    final bool isLiked =
+        comment['is_liked'] == 1 ||
+        comment['is_liked'] == true ||
+        comment['is_liked'] == 'true';
     final int likesCount = int.tryParse('${comment['likes_count']}') ?? 0;
-    
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -4838,17 +5866,16 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
             child: Icon(
               isLiked ? CupertinoIcons.heart_fill : CupertinoIcons.heart,
               size: 14,
-              color: isLiked ? const Color(0xFFFF2A54) : widget.textSecondaryColor,
+              color: isLiked
+                  ? const Color(0xFFFF2A54)
+                  : widget.textSecondaryColor,
             ),
           ),
         ),
         if (likesCount > 0)
           Text(
             '$likesCount',
-            style: TextStyle(
-              color: widget.textSecondaryColor,
-              fontSize: 9,
-            ),
+            style: TextStyle(color: widget.textSecondaryColor, fontSize: 9),
           ),
       ],
     );
@@ -4856,17 +5883,20 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
 
   Future<void> _toggleCommentLike(Map<String, dynamic> comment) async {
     if (widget.currentUserId <= 0) return;
-    
+
     final int commentId = comment['id'];
-    final bool wasLiked = comment['is_liked'] == 1 || comment['is_liked'] == true || comment['is_liked'] == 'true';
+    final bool wasLiked =
+        comment['is_liked'] == 1 ||
+        comment['is_liked'] == true ||
+        comment['is_liked'] == 'true';
     final int oldLikesCount = int.tryParse('${comment['likes_count']}') ?? 0;
-    
+
     setState(() {
       comment['is_liked'] = wasLiked ? 0 : 1;
       comment['likes_count'] = wasLiked ? oldLikesCount - 1 : oldLikesCount + 1;
       if (comment['likes_count'] < 0) comment['likes_count'] = 0;
     });
-    
+
     try {
       final response = await http.post(
         Uri.parse('https://trasx.com/api/comments/$commentId/like'),
@@ -4894,7 +5924,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   Widget build(BuildContext context) {
     final double keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
     final flattenedComments = _buildFlattenedTree();
-    
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.7 + keyboardHeight,
       padding: EdgeInsets.only(bottom: keyboardHeight),
@@ -4910,7 +5940,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
               borderRadius: BorderRadius.circular(1.5),
             ),
           ),
-          
+
           // 2. Title
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -4923,13 +5953,19 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
               ),
             ),
           ),
-          
-          Divider(height: 0.5, thickness: 0.3, color: widget.isDarkMode ? Colors.white10 : Colors.black12),
-          
+
+          Divider(
+            height: 0.5,
+            thickness: 0.3,
+            color: widget.isDarkMode ? Colors.white10 : Colors.black12,
+          ),
+
           // 3. Comments list
           Expanded(
             child: _isLoading && _commentsList.isEmpty
-                ? const Center(child: CircularProgressIndicator(color: Color(0xFFC13584)))
+                ? const Center(
+                    child: CircularProgressIndicator(color: Color(0xFFC13584)),
+                  )
                 : ListView.builder(
                     padding: const EdgeInsets.all(12),
                     itemCount: flattenedComments.length,
@@ -4937,36 +5973,50 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                       final item = flattenedComments[index];
                       final comment = item['comment'];
                       final bool isReply = item['isReply'];
-                      
-                      final authorName = comment['user_name'] ?? comment['user_username'] ?? 'Anonyme';
+
+                      final authorName =
+                          comment['user_name'] ??
+                          comment['user_username'] ??
+                          'Anonyme';
                       final content = comment['content'] ?? '';
                       final avatarUrl = comment['user_avatar'];
                       final dateStr = _formatCommentDate(comment['created_at']);
-                      
+
                       final bool isLongText = content.length > 80;
-                      final bool isExpanded = _expandedCommentIds.contains(comment['id']);
+                      final bool isExpanded = _expandedCommentIds.contains(
+                        comment['id'],
+                      );
                       final String displayText = (isExpanded || !isLongText)
                           ? content
                           : '${content.substring(0, 80)}...';
-                      
+
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 6.0),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (isReply) ...[
-                              ReplyThreadLine(color: widget.isDarkMode ? Colors.white12 : Colors.black12),
+                              ReplyThreadLine(
+                                color: widget.isDarkMode
+                                    ? Colors.white12
+                                    : Colors.black12,
+                              ),
                               const SizedBox(width: 4),
                             ],
                             GestureDetector(
                               onTap: () {
-                                final commUserId = int.tryParse('${comment['user_id']}') ?? 0;
+                                final commUserId =
+                                    int.tryParse('${comment['user_id']}') ?? 0;
                                 if (commUserId > 0) {
                                   Navigator.pop(context); // close bottom sheet
                                   widget.onUserProfileTap(commUserId);
                                 }
                               },
-                              child: _buildCommentAvatar(authorName, avatarUrl, size: isReply ? 24 : 32),
+                              child: _buildCommentAvatar(
+                                authorName,
+                                avatarUrl,
+                                size: isReply ? 24 : 32,
+                              ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -4974,7 +6024,8 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
-                                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.baseline,
                                     textBaseline: TextBaseline.alphabetic,
                                     children: [
                                       Text(
@@ -5010,7 +6061,9 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                                       GestureDetector(
                                         onTap: () {
                                           setState(() {
-                                            _replyToCommentId = comment['parent_id'] ?? comment['id'];
+                                            _replyToCommentId =
+                                                comment['parent_id'] ??
+                                                comment['id'];
                                             _replyToUsername = authorName;
                                           });
                                         },
@@ -5029,9 +6082,13 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                                           onTap: () {
                                             setState(() {
                                               if (isExpanded) {
-                                                _expandedCommentIds.remove(comment['id']);
+                                                _expandedCommentIds.remove(
+                                                  comment['id'],
+                                                );
                                               } else {
-                                                _expandedCommentIds.add(comment['id']);
+                                                _expandedCommentIds.add(
+                                                  comment['id'],
+                                                );
                                               }
                                             });
                                           },
@@ -5057,16 +6114,21 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                     },
                   ),
           ),
-          
+
           if (_replyToCommentId != null)
             Container(
-              color: widget.isDarkMode ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
+              color: widget.isDarkMode
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.black.withValues(alpha: 0.05),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
                   Text(
                     "Réponse à @$_replyToUsername",
-                    style: TextStyle(color: widget.textSecondaryColor, fontSize: 12),
+                    style: TextStyle(
+                      color: widget.textSecondaryColor,
+                      fontSize: 12,
+                    ),
                   ),
                   const Spacer(),
                   GestureDetector(
@@ -5076,45 +6138,56 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                         _replyToUsername = null;
                       });
                     },
-                    child: Icon(Icons.close, size: 16, color: widget.textSecondaryColor),
+                    child: Icon(
+                      Icons.close,
+                      size: 16,
+                      color: widget.textSecondaryColor,
+                    ),
                   ),
                 ],
               ),
             ),
-          
+
           // Emojis quick insertion bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                '❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂'
-              ].map((emoji) {
+              children: ['❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂'].map((
+                emoji,
+              ) {
                 return GestureDetector(
                   onTap: () {
                     final text = _commentController.text;
                     final selection = _commentController.selection;
                     if (selection.isValid) {
-                      final newText = text.replaceRange(selection.start, selection.end, emoji);
+                      final newText = text.replaceRange(
+                        selection.start,
+                        selection.end,
+                        emoji,
+                      );
                       _commentController.value = TextEditingValue(
                         text: newText,
-                        selection: TextSelection.collapsed(offset: selection.start + emoji.length),
+                        selection: TextSelection.collapsed(
+                          offset: selection.start + emoji.length,
+                        ),
                       );
                     } else {
                       _commentController.text = text + emoji;
                     }
                   },
-                  child: Text(
-                    emoji,
-                    style: const TextStyle(fontSize: 22),
-                  ),
+                  child: Text(emoji, style: const TextStyle(fontSize: 22)),
                 );
               }).toList(),
             ),
           ),
-          
-          Divider(height: 0.5, thickness: 0.3, color: widget.isDarkMode ? Colors.white10 : Colors.black12),
-          
+
+          Divider(
+            height: 0.5,
+            thickness: 0.3,
+            color: widget.isDarkMode ? Colors.white10 : Colors.black12,
+          ),
+
           // 4. Input text bar at bottom
           SafeArea(
             child: Container(
@@ -5126,16 +6199,26 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                       Navigator.pop(context); // close bottom sheet
                       widget.onUserProfileTap(widget.currentUserId);
                     },
-                    child: _buildCommentAvatar(widget.currentUsername, widget.currentUserAvatar, size: 32),
+                    child: _buildCommentAvatar(
+                      widget.currentUsername,
+                      widget.currentUserAvatar,
+                      size: 32,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: TextField(
                       controller: _commentController,
-                      style: TextStyle(color: widget.textPrimaryColor, fontSize: 13),
+                      style: TextStyle(
+                        color: widget.textPrimaryColor,
+                        fontSize: 13,
+                      ),
                       decoration: InputDecoration(
                         hintText: "Ajouter un commentaire...",
-                        hintStyle: TextStyle(color: widget.textSecondaryColor, fontSize: 13),
+                        hintStyle: TextStyle(
+                          color: widget.textSecondaryColor,
+                          fontSize: 13,
+                        ),
                         border: InputBorder.none,
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(vertical: 8),
@@ -5165,7 +6248,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
 
   Widget _buildCommentAvatar(String name, String? url, {double size = 32}) {
     final String initial = name.isNotEmpty ? name[0].toUpperCase() : 'U';
-    
+
     Widget avatarContent;
     if (url != null && url.isNotEmpty) {
       final fullUrl = url.startsWith('http') ? url : 'https://trasx.com$url';
@@ -5178,12 +6261,18 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
         errorWidget: (context, url, error) => Container(
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            gradient: LinearGradient(colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)]),
+            gradient: LinearGradient(
+              colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
+            ),
           ),
           child: Center(
             child: Text(
               initial,
-              style: TextStyle(color: Colors.white, fontSize: size * 0.38, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: size * 0.38,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ),
@@ -5194,12 +6283,18 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
         height: size,
         decoration: const BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)]),
+          gradient: LinearGradient(
+            colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
+          ),
         ),
         child: Center(
           child: Text(
             initial,
-            style: TextStyle(color: Colors.white, fontSize: size * 0.38, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: size * 0.38,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       );
@@ -5219,16 +6314,11 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
       ),
       child: Container(
         padding: const EdgeInsets.all(1.0),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: innerGapColor,
-        ),
+        decoration: BoxDecoration(shape: BoxShape.circle, color: innerGapColor),
         child: SizedBox(
           width: size,
           height: size,
-          child: ClipOval(
-            child: avatarContent,
-          ),
+          child: ClipOval(child: avatarContent),
         ),
       ),
     );
@@ -5255,7 +6345,8 @@ class _StatusViewerSheet extends StatefulWidget {
   State<_StatusViewerSheet> createState() => _StatusViewerSheetState();
 }
 
-class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTickerProviderStateMixin {
+class _StatusViewerSheetState extends State<_StatusViewerSheet>
+    with SingleTickerProviderStateMixin {
   late int _currentGroupIndex;
   late List<dynamic> _currentStatuses;
   int _currentIndex = 0;
@@ -5277,15 +6368,24 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
     super.initState();
     _currentGroupIndex = widget.initialGroupIndex;
     _currentStatuses = widget.allGroups[_currentGroupIndex]['statuses'] ?? [];
-    _progressController = AnimationController(vsync: this, duration: _storyDuration);
+    _progressController = AnimationController(
+      vsync: this,
+      duration: _storyDuration,
+    );
     _progressController.addStatusListener(_onProgressComplete);
-    
+
     if (widget.socket != null && widget.socket!.connected) {
       widget.socket!.on('status-viewed', _onStatusViewedReceived);
-      widget.socket!.on('status-comment-created', _onStatusCommentCreatedReceived);
-      widget.socket!.on('status-comment-created-owner', _onStatusCommentCreatedReceived);
+      widget.socket!.on(
+        'status-comment-created',
+        _onStatusCommentCreatedReceived,
+      );
+      widget.socket!.on(
+        'status-comment-created-owner',
+        _onStatusCommentCreatedReceived,
+      );
     }
-    
+
     _initCurrentStatus();
   }
 
@@ -5293,8 +6393,14 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
   void dispose() {
     if (widget.socket != null) {
       widget.socket!.off('status-viewed', _onStatusViewedReceived);
-      widget.socket!.off('status-comment-created', _onStatusCommentCreatedReceived);
-      widget.socket!.off('status-comment-created-owner', _onStatusCommentCreatedReceived);
+      widget.socket!.off(
+        'status-comment-created',
+        _onStatusCommentCreatedReceived,
+      );
+      widget.socket!.off(
+        'status-comment-created-owner',
+        _onStatusCommentCreatedReceived,
+      );
       if (_previousStatusId != null) {
         widget.socket!.emit('leave', 'status:$_previousStatusId');
       }
@@ -5310,7 +6416,8 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
     final int? viewStatusId = int.tryParse('${data['statusId']}');
     if (viewStatusId == null) return;
 
-    if (_currentStatuses.isNotEmpty && _currentIndex < _currentStatuses.length) {
+    if (_currentStatuses.isNotEmpty &&
+        _currentIndex < _currentStatuses.length) {
       final currentStatus = _currentStatuses[_currentIndex];
       if (currentStatus['id'] == viewStatusId) {
         _loadStatusStats();
@@ -5328,7 +6435,8 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
     }
     if (commentStatusId == null) return;
 
-    if (_currentStatuses.isNotEmpty && _currentIndex < _currentStatuses.length) {
+    if (_currentStatuses.isNotEmpty &&
+        _currentIndex < _currentStatuses.length) {
       final currentStatus = _currentStatuses[_currentIndex];
       if (currentStatus['id'] == commentStatusId) {
         _loadStatusStats();
@@ -5441,7 +6549,8 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
       setState(() {
         _currentGroupIndex++;
         _currentIndex = 0;
-        _currentStatuses = widget.allGroups[_currentGroupIndex]['statuses'] ?? [];
+        _currentStatuses =
+            widget.allGroups[_currentGroupIndex]['statuses'] ?? [];
       });
       _initCurrentStatus();
     } else {
@@ -5456,7 +6565,8 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
     if (_currentGroupIndex > 0) {
       setState(() {
         _currentGroupIndex--;
-        _currentStatuses = widget.allGroups[_currentGroupIndex]['statuses'] ?? [];
+        _currentStatuses =
+            widget.allGroups[_currentGroupIndex]['statuses'] ?? [];
         _currentIndex = _currentStatuses.length - 1;
       });
       _initCurrentStatus();
@@ -5540,7 +6650,9 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
       context: context,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black45,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) {
         return ClipRRect(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -5549,19 +6661,29 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
             child: Container(
               height: MediaQuery.of(context).size.height * 0.5,
               decoration: BoxDecoration(
-                color: widget.isDarkMode ? const Color(0xE6121212) : Colors.white.withAlpha(235),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                border: Border.all(color: widget.isDarkMode ? Colors.white12 : Colors.black12, width: 0.5),
+                color: widget.isDarkMode
+                    ? const Color(0xE6121212)
+                    : Colors.white.withAlpha(235),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
+                border: Border.all(
+                  color: widget.isDarkMode ? Colors.white12 : Colors.black12,
+                  width: 0.5,
+                ),
               ),
               child: SafeArea(
                 child: Column(
                   children: [
                     // Premium Handle
                     Container(
-                      width: 40, height: 4,
+                      width: 40,
+                      height: 4,
                       margin: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
-                        color: widget.isDarkMode ? Colors.white24 : Colors.black26,
+                        color: widget.isDarkMode
+                            ? Colors.white24
+                            : Colors.black26,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -5570,23 +6692,42 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                       child: Text(
                         'Spectateurs',
                         style: TextStyle(
-                          color: widget.isDarkMode ? Colors.white : Colors.black,
+                          color: widget.isDarkMode
+                              ? Colors.white
+                              : Colors.black,
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                           letterSpacing: 0.3,
                         ),
                       ),
                     ),
-                    Divider(color: widget.isDarkMode ? Colors.white10 : Colors.black12, height: 1),
+                    Divider(
+                      color: widget.isDarkMode
+                          ? Colors.white10
+                          : Colors.black12,
+                      height: 1,
+                    ),
                     Expanded(
                       child: _statusViewers.isEmpty
                           ? Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.remove_red_eye_outlined, color: widget.isDarkMode ? Colors.white30 : Colors.black26, size: 36),
+                                  Icon(
+                                    Icons.remove_red_eye_outlined,
+                                    color: widget.isDarkMode
+                                        ? Colors.white30
+                                        : Colors.black26,
+                                    size: 36,
+                                  ),
                                   const SizedBox(height: 8),
-                                  const Text('Aucune vue pour l\'instant', style: TextStyle(color: Colors.white54, fontSize: 13)),
+                                  const Text(
+                                    'Aucune vue pour l\'instant',
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ],
                               ),
                             )
@@ -5595,15 +6736,26 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               itemBuilder: (context, index) {
                                 final v = _statusViewers[index];
-                                final name = v['user_name'] ?? v['username'] ?? '?';
+                                final name =
+                                    v['user_name'] ?? v['username'] ?? '?';
                                 final avatar = v['avatar'] as String?;
                                 return ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-                                  leading: buildPremiumAvatar(avatar, name, radius: 20, fontSize: 13),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 2,
+                                  ),
+                                  leading: buildPremiumAvatar(
+                                    avatar,
+                                    name,
+                                    radius: 20,
+                                    fontSize: 13,
+                                  ),
                                   title: Text(
                                     name,
                                     style: TextStyle(
-                                      color: widget.isDarkMode ? Colors.white : Colors.black,
+                                      color: widget.isDarkMode
+                                          ? Colors.white
+                                          : Colors.black,
                                       fontWeight: FontWeight.w600,
                                       fontSize: 14,
                                     ),
@@ -5634,195 +6786,300 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black45,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) {
-        final double bottomPadding = MediaQuery.of(ctx).viewInsets.bottom + MediaQuery.of(ctx).padding.bottom;
-        return StatefulBuilder(builder: (ctx, setCommentState) {
-          return ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: SafeArea(
-                top: false,
-                child: Container(
-                height: MediaQuery.of(ctx).size.height * 0.55,
-                decoration: BoxDecoration(
-                  color: widget.isDarkMode ? const Color(0xE6121212) : Colors.white.withAlpha(235),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  border: Border.all(color: widget.isDarkMode ? Colors.white12 : Colors.black12, width: 0.5),
-                ),
-                padding: EdgeInsets.only(bottom: bottomPadding),
-                child: Column(
-                  children: [
-                    // Premium Handle
-                    Container(
-                      width: 40, height: 4,
-                      margin: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: widget.isDarkMode ? Colors.white24 : Colors.black26,
-                        borderRadius: BorderRadius.circular(2),
+        final double bottomPadding =
+            MediaQuery.of(ctx).viewInsets.bottom +
+            MediaQuery.of(ctx).padding.bottom;
+        return StatefulBuilder(
+          builder: (ctx, setCommentState) {
+            return ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: SafeArea(
+                  top: false,
+                  child: Container(
+                    height: MediaQuery.of(ctx).size.height * 0.55,
+                    decoration: BoxDecoration(
+                      color: widget.isDarkMode
+                          ? const Color(0xE6121212)
+                          : Colors.white.withAlpha(235),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
+                      border: Border.all(
+                        color: widget.isDarkMode
+                            ? Colors.white12
+                            : Colors.black12,
+                        width: 0.5,
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Text(
-                        'Commentaires',
-                        style: TextStyle(
-                          color: widget.isDarkMode ? Colors.white : Colors.black,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          letterSpacing: 0.3,
+                    padding: EdgeInsets.only(bottom: bottomPadding),
+                    child: Column(
+                      children: [
+                        // Premium Handle
+                        Container(
+                          width: 40,
+                          height: 4,
+                          margin: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: widget.isDarkMode
+                                ? Colors.white24
+                                : Colors.black26,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
-                      ),
-                    ),
-                    Divider(color: widget.isDarkMode ? Colors.white10 : Colors.black12, height: 1),
-                    Expanded(
-                      child: _statusComments.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.comment_outlined, color: widget.isDarkMode ? Colors.white30 : Colors.black26, size: 36),
-                                  const SizedBox(height: 8),
-                                  const Text('Aucun commentaire pour l\'instant', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                                ],
-                              ),
-                            )
-                          : ListView.builder(
-                              itemCount: _statusComments.length,
-                              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                              itemBuilder: (context, index) {
-                                final c = _statusComments[index];
-                                final name = c['user_name'] ?? c['username'] ?? '?';
-                                final avatar = c['avatar'] as String?;
-                                final content = c['content'] ?? '';
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 6.0),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8.0),
+                          child: Text(
+                            'Commentaires',
+                            style: TextStyle(
+                              color: widget.isDarkMode
+                                  ? Colors.white
+                                  : Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ),
+                        Divider(
+                          color: widget.isDarkMode
+                              ? Colors.white10
+                              : Colors.black12,
+                          height: 1,
+                        ),
+                        Expanded(
+                          child: _statusComments.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      buildPremiumAvatar(avatar, name, radius: 16, fontSize: 11),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          decoration: BoxDecoration(
-                                            color: widget.isDarkMode ? Colors.white.withAlpha(12) : Colors.black.withAlpha(12),
-                                            borderRadius: const BorderRadius.only(
-                                              topRight: Radius.circular(16),
-                                              bottomLeft: Radius.circular(16),
-                                              bottomRight: Radius.circular(16),
-                                            ),
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                name,
-                                                style: TextStyle(
-                                                  color: widget.isDarkMode ? Colors.white : Colors.black,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                content,
-                                                style: TextStyle(
-                                                  color: widget.isDarkMode ? Colors.white70 : Colors.black87,
-                                                  fontSize: 13,
-                                                  height: 1.3,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
+                                      Icon(
+                                        Icons.comment_outlined,
+                                        color: widget.isDarkMode
+                                            ? Colors.white30
+                                            : Colors.black26,
+                                        size: 36,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      const Text(
+                                        'Aucun commentaire pour l\'instant',
+                                        style: TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 13,
                                         ),
                                       ),
                                     ],
                                   ),
-                                );
-                              },
-                            ),
-                    ),
-                    // Refined Chat-like Input Field
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: widget.isDarkMode ? Colors.white12 : Colors.black12, width: 0.5)),
-                        color: widget.isDarkMode ? const Color(0xFF161616) : Colors.white,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: widget.isDarkMode ? Colors.white.withAlpha(12) : Colors.black.withAlpha(8),
-                                borderRadius: BorderRadius.circular(20),
+                                )
+                              : ListView.builder(
+                                  itemCount: _statusComments.length,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                    horizontal: 16,
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final c = _statusComments[index];
+                                    final name =
+                                        c['user_name'] ?? c['username'] ?? '?';
+                                    final avatar = c['avatar'] as String?;
+                                    final content = c['content'] ?? '';
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 6.0,
+                                      ),
+                                      child: Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          buildPremiumAvatar(
+                                            avatar,
+                                            name,
+                                            radius: 16,
+                                            fontSize: 11,
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 8,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: widget.isDarkMode
+                                                    ? Colors.white.withAlpha(12)
+                                                    : Colors.black.withAlpha(
+                                                        12,
+                                                      ),
+                                                borderRadius:
+                                                    const BorderRadius.only(
+                                                      topRight: Radius.circular(
+                                                        16,
+                                                      ),
+                                                      bottomLeft:
+                                                          Radius.circular(16),
+                                                      bottomRight:
+                                                          Radius.circular(16),
+                                                    ),
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    name,
+                                                    style: TextStyle(
+                                                      color: widget.isDarkMode
+                                                          ? Colors.white
+                                                          : Colors.black,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    content,
+                                                    style: TextStyle(
+                                                      color: widget.isDarkMode
+                                                          ? Colors.white70
+                                                          : Colors.black87,
+                                                      fontSize: 13,
+                                                      height: 1.3,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                        // Refined Chat-like Input Field
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              top: BorderSide(
+                                color: widget.isDarkMode
+                                    ? Colors.white12
+                                    : Colors.black12,
+                                width: 0.5,
                               ),
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              alignment: Alignment.centerLeft,
-                              child: TextField(
-                                controller: _commentController,
-                                style: TextStyle(color: widget.isDarkMode ? Colors.white : Colors.black, fontSize: 14),
-                                decoration: const InputDecoration(
-                                  hintText: 'Ajouter un commentaire...',
-                                  hintStyle: TextStyle(color: Colors.white54, fontSize: 13),
-                                  border: InputBorder.none,
-                                  isDense: true,
+                            ),
+                            color: widget.isDarkMode
+                                ? const Color(0xFF161616)
+                                : Colors.white,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Container(
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: widget.isDarkMode
+                                        ? Colors.white.withAlpha(12)
+                                        : Colors.black.withAlpha(8),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  alignment: Alignment.centerLeft,
+                                  child: TextField(
+                                    controller: _commentController,
+                                    style: TextStyle(
+                                      color: widget.isDarkMode
+                                          ? Colors.white
+                                          : Colors.black,
+                                      fontSize: 14,
+                                    ),
+                                    decoration: const InputDecoration(
+                                      hintText: 'Ajouter un commentaire...',
+                                      hintStyle: TextStyle(
+                                        color: Colors.white54,
+                                        fontSize: 13,
+                                      ),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          GestureDetector(
-                            onTap: () async {
-                              final text = _commentController.text.trim();
-                              if (text.isEmpty) return;
+                              const SizedBox(width: 10),
+                              GestureDetector(
+                                onTap: () async {
+                                  final text = _commentController.text.trim();
+                                  if (text.isEmpty) return;
 
-                              // Optimistic update – insert locally immediately
-                              final optimistic = {
-                                'user_name': 'Vous',
-                                'username': '',
-                                'content': text,
-                                'avatar': null,
-                              };
-                              setCommentState(() {
-                                _statusComments = [optimistic, ..._statusComments];
-                              });
-                              _commentController.clear();
+                                  // Optimistic update – insert locally immediately
+                                  final optimistic = {
+                                    'user_name': 'Vous',
+                                    'username': '',
+                                    'content': text,
+                                    'avatar': null,
+                                  };
+                                  setCommentState(() {
+                                    _statusComments = [
+                                      optimistic,
+                                      ..._statusComments,
+                                    ];
+                                  });
+                                  _commentController.clear();
 
-                              final success = await _submitCommentToAPI(text);
-                              if (success) {
-                                await _loadStatusStats();
-                                setCommentState(() {});
-                              } else {
-                                // Rollback on failure
-                                setCommentState(() {
-                                  _statusComments = _statusComments.where((c) => c != optimistic).toList();
-                                });
-                              }
-                            },
-                            child: Container(
-                              width: 36,
-                              height: 36,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Color(0xFFC13584),
+                                  final success = await _submitCommentToAPI(
+                                    text,
+                                  );
+                                  if (success) {
+                                    await _loadStatusStats();
+                                    setCommentState(() {});
+                                  } else {
+                                    // Rollback on failure
+                                    setCommentState(() {
+                                      _statusComments = _statusComments
+                                          .where((c) => c != optimistic)
+                                          .toList();
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Color(0xFFC13584),
+                                  ),
+                                  child: const Icon(
+                                    Icons.send_rounded,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
                               ),
-                              child: const Icon(Icons.send_rounded, color: Colors.white, size: 16),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
-          );
-        });
+            );
+          },
+        );
       },
     ).then((_) {
       _progressController.forward();
@@ -5831,7 +7088,8 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
   }
 
   Widget _buildBottomControls(dynamic status) {
-    final bool isOwn = (status['user_id'] as num?)?.toInt() == widget.currentUserId;
+    final bool isOwn =
+        (status['user_id'] as num?)?.toInt() == widget.currentUserId;
 
     if (isOwn) {
       return Row(
@@ -5848,11 +7106,19 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.remove_red_eye_outlined, color: Colors.white, size: 16),
+                  const Icon(
+                    Icons.remove_red_eye_outlined,
+                    color: Colors.white,
+                    size: 16,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     '$_localViewsCount vue${_localViewsCount > 1 ? 's' : ''}',
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -5869,11 +7135,19 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.comment_outlined, color: Colors.white, size: 16),
+                  const Icon(
+                    Icons.comment_outlined,
+                    color: Colors.white,
+                    size: 16,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     '${_statusComments.length} commentaire${_statusComments.length > 1 ? 's' : ''}',
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -5924,7 +7198,11 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                 shape: BoxShape.circle,
                 color: Color(0xFFC13584),
               ),
-              child: const Icon(CupertinoIcons.paperplane_fill, color: Colors.white, size: 16),
+              child: const Icon(
+                CupertinoIcons.paperplane_fill,
+                color: Colors.white,
+                size: 16,
+              ),
             ),
           ),
         ],
@@ -5947,7 +7225,9 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
     if (_currentStatuses.isEmpty) {
       return const Scaffold(
         backgroundColor: Colors.black,
-        body: Center(child: CircularProgressIndicator(color: Color(0xFFC13584))),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFFC13584)),
+        ),
       );
     }
 
@@ -6007,16 +7287,18 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                     child: i < _currentIndex
                         ? Container(height: 2, color: Colors.white)
                         : i == _currentIndex
-                            ? AnimatedBuilder(
-                                animation: _progressController,
-                                builder: (_, __) => LinearProgressIndicator(
-                                  value: _progressController.value,
-                                  backgroundColor: Colors.white38,
-                                  valueColor: const AlwaysStoppedAnimation(Colors.white),
-                                  minHeight: 2,
-                                ),
-                              )
-                            : Container(height: 2, color: Colors.white38),
+                        ? AnimatedBuilder(
+                            animation: _progressController,
+                            builder: (_, __) => LinearProgressIndicator(
+                              value: _progressController.value,
+                              backgroundColor: Colors.white38,
+                              valueColor: const AlwaysStoppedAnimation(
+                                Colors.white,
+                              ),
+                              minHeight: 2,
+                            ),
+                          )
+                        : Container(height: 2, color: Colors.white38),
                   ),
                 ),
               );
@@ -6038,7 +7320,10 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                     : null,
                 backgroundColor: const Color(0xFF833AB4),
                 child: (avatarUrl == null || avatarUrl.isEmpty)
-                    ? Text(userName[0].toUpperCase(), style: const TextStyle(color: Colors.white))
+                    ? Text(
+                        userName[0].toUpperCase(),
+                        style: const TextStyle(color: Colors.white),
+                      )
                     : null,
               ),
               const SizedBox(width: 10),
@@ -6058,7 +7343,10 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                     if (remainingText.isNotEmpty)
                       Text(
                         'Expire dans $remainingText',
-                        style: const TextStyle(color: Colors.white70, fontSize: 10),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 10,
+                        ),
                       ),
                   ],
                 ),
@@ -6076,46 +7364,59 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
           ),
         ),
 
-            // ── Caption overlay (if media) ─────────────────────────────────
-            if (caption.isNotEmpty && mediaType != 'text')
-              Positioned(
-                bottom: MediaQuery.of(context).viewInsets.bottom + 80 + MediaQuery.of(context).padding.bottom,
-                left: 20,
-                right: 20,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.black45,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    caption,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      height: 1.4,
-                    ),
-                  ),
+        // ── Caption overlay (if media) ─────────────────────────────────
+        if (caption.isNotEmpty && mediaType != 'text')
+          Positioned(
+            bottom:
+                MediaQuery.of(context).viewInsets.bottom +
+                80 +
+                MediaQuery.of(context).padding.bottom,
+            left: 20,
+            right: 20,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                caption,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  height: 1.4,
                 ),
               ),
-
-            // ── Bottom controls (Vues, Commentaires, Répondre) ─────────────
-            Positioned(
-              bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 16,
-              left: 16,
-              right: 16,
-              child: _buildBottomControls(status),
             ),
+          ),
+
+        // ── Bottom controls (Vues, Commentaires, Répondre) ─────────────
+        Positioned(
+          bottom:
+              MediaQuery.of(context).viewInsets.bottom +
+              MediaQuery.of(context).padding.bottom +
+              16,
+          left: 16,
+          right: 16,
+          child: _buildBottomControls(status),
+        ),
       ],
     );
   }
 
-  Widget _buildMediaBackground(String mediaType, String mediaUrl, String? bgColor, String caption) {
+  Widget _buildMediaBackground(
+    String mediaType,
+    String mediaUrl,
+    String? bgColor,
+    String caption,
+  ) {
     if (mediaType == 'text') {
       Color bg = const Color(0xFF833AB4);
       if (bgColor != null && bgColor.startsWith('#')) {
-        try { bg = Color(int.parse(bgColor.replaceFirst('#', '0xFF'))); } catch (_) {}
+        try {
+          bg = Color(int.parse(bgColor.replaceFirst('#', '0xFF')));
+        } catch (_) {}
       }
       return Container(
         color: bg,
@@ -6137,7 +7438,8 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
     }
 
     if (mediaType.startsWith('audio/')) {
-      final isPlaying = _videoController != null && _videoController!.value.isPlaying;
+      final isPlaying =
+          _videoController != null && _videoController!.value.isPlaying;
       final currentPos = _videoController?.value.position ?? Duration.zero;
       final totalDuration = _videoController?.value.duration ?? Duration.zero;
 
@@ -6153,11 +7455,7 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
           gradient: LinearGradient(
             begin: Alignment.topRight,
             end: Alignment.bottomLeft,
-            colors: [
-              Color(0xFF0F2027),
-              Color(0xFF203A43),
-              Color(0xFF2C5364),
-            ],
+            colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
           ),
         ),
         alignment: Alignment.center,
@@ -6173,7 +7471,10 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                   decoration: BoxDecoration(
                     color: const Color(0xFFC13584).withOpacity(0.1),
                     shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFC13584).withOpacity(0.3), width: 2),
+                    border: Border.all(
+                      color: const Color(0xFFC13584).withOpacity(0.3),
+                      width: 2,
+                    ),
                   ),
                 ),
                 Container(
@@ -6212,7 +7513,9 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                       ],
                     ),
                     child: Icon(
-                      isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
                       color: Colors.white,
                       size: 44,
                     ),
@@ -6222,7 +7525,8 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
             ),
             const SizedBox(height: 35),
             Container(
-              height: 54, // Stricte hauteur fixe pour éviter le jiggling de toute la page
+              height:
+                  54, // Stricte hauteur fixe pour éviter le jiggling de toute la page
               padding: const EdgeInsets.symmetric(horizontal: 24),
               decoration: BoxDecoration(
                 color: Colors.black26,
@@ -6233,10 +7537,15 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Icon(Icons.mic_rounded, color: Color(0xFFC13584), size: 20),
+                  const Icon(
+                    Icons.mic_rounded,
+                    color: Color(0xFFC13584),
+                    size: 20,
+                  ),
                   const SizedBox(width: 12),
                   SizedBox(
-                    height: 30, // Hauteur fixe pour le conteneur interne de waves
+                    height:
+                        30, // Hauteur fixe pour le conteneur interne de waves
                     child: _AudioWaveformsWidget(isPlaying: isPlaying),
                   ),
                 ],
@@ -6262,11 +7571,17 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32.0),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.06),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withOpacity(0.08), width: 0.8),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.08),
+                      width: 0.8,
+                    ),
                   ),
                   child: Text(
                     caption,
@@ -6298,19 +7613,25 @@ class _StatusViewerSheetState extends State<_StatusViewerSheet> with SingleTicke
       }
       return const ColoredBox(
         color: Colors.black,
-        child: Center(child: CircularProgressIndicator(color: Color(0xFFC13584))),
+        child: Center(
+          child: CircularProgressIndicator(color: Color(0xFFC13584)),
+        ),
       );
     }
 
     // Image
     if (mediaUrl.isNotEmpty && mediaUrl != 'text') {
-      final fullUrl = mediaUrl.startsWith('http') ? mediaUrl : 'https://trasx.com$mediaUrl';
+      final fullUrl = mediaUrl.startsWith('http')
+          ? mediaUrl
+          : 'https://trasx.com$mediaUrl';
       return CachedNetworkImage(
         imageUrl: fullUrl,
         fit: BoxFit.cover,
         placeholder: (_, __) => const ColoredBox(
           color: Colors.black,
-          child: Center(child: CircularProgressIndicator(color: Color(0xFFC13584))),
+          child: Center(
+            child: CircularProgressIndicator(color: Color(0xFFC13584)),
+          ),
         ),
         errorWidget: (_, __, ___) => const ColoredBox(
           color: Colors.black54,
@@ -6360,7 +7681,13 @@ class _StatusRingPainter extends CustomPainter {
         final double arcLength = (360.0 / statusCount) - spaceAngle;
         for (int i = 0; i < statusCount; i++) {
           final double startAngle = (i * (360.0 / statusCount)) - 90.0;
-          canvas.drawArc(rect, _radians(startAngle), _radians(arcLength), false, paint);
+          canvas.drawArc(
+            rect,
+            _radians(startAngle),
+            _radians(arcLength),
+            false,
+            paint,
+          );
         }
       }
       return;
@@ -6380,7 +7707,13 @@ class _StatusRingPainter extends CustomPainter {
       final double arcLength = (360.0 / statusCount) - spaceAngle;
       for (int i = 0; i < statusCount; i++) {
         final double startAngle = (i * (360.0 / statusCount)) - 90.0;
-        canvas.drawArc(rect, _radians(startAngle), _radians(arcLength), false, paint);
+        canvas.drawArc(
+          rect,
+          _radians(startAngle),
+          _radians(arcLength),
+          false,
+          paint,
+        );
       }
     }
   }
@@ -6406,10 +7739,35 @@ class _AudioWaveformsWidget extends StatefulWidget {
   State<_AudioWaveformsWidget> createState() => _AudioWaveformsWidgetState();
 }
 
-class _AudioWaveformsWidgetState extends State<_AudioWaveformsWidget> with SingleTickerProviderStateMixin {
+class _AudioWaveformsWidgetState extends State<_AudioWaveformsWidget>
+    with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   final List<double> _baseHeights = [
-    8, 16, 12, 22, 10, 18, 28, 16, 11, 20, 16, 12, 24, 14, 10, 20, 26, 16, 12, 18, 8, 16, 12, 22, 10
+    8,
+    16,
+    12,
+    22,
+    10,
+    18,
+    28,
+    16,
+    11,
+    20,
+    16,
+    12,
+    24,
+    14,
+    10,
+    20,
+    26,
+    16,
+    12,
+    18,
+    8,
+    16,
+    12,
+    22,
+    10,
   ];
 
   @override
@@ -6454,16 +7812,20 @@ class _AudioWaveformsWidgetState extends State<_AudioWaveformsWidget> with Singl
           children: List.generate(_baseHeights.length, (index) {
             double factor = 1.0;
             if (widget.isPlaying) {
-              final wave = sin((_animationController.value * 2 * pi) + (index * 0.8));
+              final wave = sin(
+                (_animationController.value * 2 * pi) + (index * 0.8),
+              );
               factor = 0.3 + (wave.abs() * 0.7);
             }
             final height = _baseHeights[index] * factor;
-            
+
             // Simuler la progression de lecture sur les barres
             final double progression = index / _baseHeights.length;
             // Pour l'instant on garde une couleur constante ou progressive
-            final Color color = widget.isPlaying 
-                ? const Color(0xFFC13584).withOpacity(0.5 + (1 - progression) * 0.5)
+            final Color color = widget.isPlaying
+                ? const Color(
+                    0xFFC13584,
+                  ).withOpacity(0.5 + (1 - progression) * 0.5)
                 : Colors.white38;
 
             return Container(
@@ -6513,7 +7875,7 @@ class HashtagModalDialog extends StatefulWidget {
 class _HashtagModalDialogState extends State<HashtagModalDialog> {
   bool _isLoading = true;
   String? _errorMessage;
-  
+
   // Hashtag Info
   String _name = '';
   int _creatorId = 0;
@@ -6557,18 +7919,25 @@ class _HashtagModalDialogState extends State<HashtagModalDialog> {
     final String hashtagLower = _name.toLowerCase();
 
     // Regex to match hashtag usage
-    final RegExp regex = RegExp('(^|[^a-z0-9_])#$hashtagLower([^a-z0-9_]|\$)', caseSensitive: false);
+    final RegExp regex = RegExp(
+      '(^|[^a-z0-9_])#$hashtagLower([^a-z0-9_]|\$)',
+      caseSensitive: false,
+    );
     if (regex.hasMatch(content)) {
       if (mounted) {
         setState(() {
           _usageCount += 1;
-          
+
           final authorId = data['author_id'] ?? data['user_id'];
           if (authorId != null) {
-            final authorUsername = data['author_username'] ?? data['username'] ?? 'User';
-            final authorDisplayName = data['author_display_name'] ?? data['display_name'] ?? authorUsername;
+            final authorUsername =
+                data['author_username'] ?? data['username'] ?? 'User';
+            final authorDisplayName =
+                data['author_display_name'] ??
+                data['display_name'] ??
+                authorUsername;
             final authorAvatar = data['author_avatar'] ?? data['avatar'] ?? '';
-            
+
             final userObj = {
               'id': authorId,
               'username': authorUsername,
@@ -6597,7 +7966,9 @@ class _HashtagModalDialogState extends State<HashtagModalDialog> {
   Future<void> _fetchHashtagDetails() async {
     try {
       final response = await http.get(
-        Uri.parse('https://trasx.com/api/hashtags/check?name=${Uri.encodeComponent(_name)}'),
+        Uri.parse(
+          'https://trasx.com/api/hashtags/check?name=${Uri.encodeComponent(_name)}',
+        ),
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': '${widget.currentUserId}',
@@ -6607,12 +7978,15 @@ class _HashtagModalDialogState extends State<HashtagModalDialog> {
         final data = jsonDecode(response.body);
         if (mounted) {
           setState(() {
-            _isPaid = data['is_paid'] == 1 || data['is_paid'] == true || data['is_paid'] == 'true';
+            _isPaid =
+                data['is_paid'] == 1 ||
+                data['is_paid'] == true ||
+                data['is_paid'] == 'true';
             _price = double.tryParse('${data['price']}') ?? 0.0;
             _usageCount = int.tryParse('${data['usage_count']}') ?? 0;
             _creatorId = int.tryParse('${data['creator_id']}') ?? 0;
             _creatorUsername = data['username'] ?? 'admin';
-            _creatorDisplayName = data['first_name'] != null 
+            _creatorDisplayName = data['first_name'] != null
                 ? '${data['first_name']} ${data['last_name'] ?? ""}'.trim()
                 : _creatorUsername;
             _creatorAvatar = data['avatar'] ?? '';
@@ -6652,12 +8026,18 @@ class _HashtagModalDialogState extends State<HashtagModalDialog> {
         errorWidget: (_, __, ___) => Container(
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            gradient: LinearGradient(colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)]),
+            gradient: LinearGradient(
+              colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
+            ),
           ),
           child: Center(
             child: Text(
               initial,
-              style: TextStyle(color: Colors.white, fontSize: size * 0.38, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: size * 0.38,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ),
@@ -6668,12 +8048,18 @@ class _HashtagModalDialogState extends State<HashtagModalDialog> {
         height: size,
         decoration: const BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)]),
+          gradient: LinearGradient(
+            colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
+          ),
         ),
         child: Center(
           child: Text(
             initial,
-            style: TextStyle(color: Colors.white, fontSize: size * 0.38, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: size * 0.38,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       );
@@ -6694,201 +8080,282 @@ class _HashtagModalDialogState extends State<HashtagModalDialog> {
         child: _isLoading
             ? const SizedBox(
                 height: 200,
-                child: Center(child: CircularProgressIndicator(color: Color(0xFFC13584))),
+                child: Center(
+                  child: CircularProgressIndicator(color: Color(0xFFC13584)),
+                ),
               )
             : _errorMessage != null
-                ? Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+            ? Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      color: Colors.redAccent,
+                      size: 40,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _errorMessage!,
+                      style: textStyle,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFC13584),
+                      ),
+                      child: const Text(
+                        'Fermer',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header: Title with hashtag status badge
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 40),
-                        const SizedBox(height: 16),
-                        Text(_errorMessage!, style: textStyle, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC13584)),
-                          child: const Text('Fermer', style: TextStyle(color: Colors.white)),
-                        )
+                        Expanded(
+                          child: Text(
+                            '#$_name',
+                            style: TextStyle(
+                              color: _isPaid
+                                  ? const Color(0xFFFF2A54)
+                                  : const Color(0xFF00B0FF),
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              fontStyle: FontStyle.italic,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _isPaid
+                                ? const Color(0xFFFF2A54).withOpacity(0.15)
+                                : const Color(0xFF00B0FF).withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: _isPaid
+                                  ? const Color(0xFFFF2A54)
+                                  : const Color(0xFF00B0FF),
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Text(
+                            _isPaid ? 'PAYANT' : 'GRATUIT',
+                            style: TextStyle(
+                              color: _isPaid
+                                  ? const Color(0xFFFF2A54)
+                                  : const Color(0xFF00B0FF),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Icon(
+                            Icons.close,
+                            color: widget.textSecondaryColor,
+                            size: 20,
+                          ),
+                        ),
                       ],
                     ),
-                  )
-                : Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header: Title with hashtag status badge
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '#$_name',
-                                style: TextStyle(
-                                  color: _isPaid ? const Color(0xFFFF2A54) : const Color(0xFF00B0FF),
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _isPaid 
-                                    ? const Color(0xFFFF2A54).withOpacity(0.15) 
-                                    : const Color(0xFF00B0FF).withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: _isPaid ? const Color(0xFFFF2A54) : const Color(0xFF00B0FF),
-                                  width: 0.5,
-                                ),
-                              ),
-                              child: Text(
-                                _isPaid ? 'PAYANT' : 'GRATUIT',
-                                style: TextStyle(
-                                  color: _isPaid ? const Color(0xFFFF2A54) : const Color(0xFF00B0FF),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            GestureDetector(
-                              onTap: () => Navigator.pop(context),
-                              child: Icon(Icons.close, color: widget.textSecondaryColor, size: 20),
-                            ),
-                          ],
+                    if (_isPaid) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Tarif de mention : ${_price.toStringAsFixed(2)}\$',
+                        style: const TextStyle(
+                          color: Color(0xFFFFB300),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
                         ),
-                        if (_isPaid) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            'Tarif de mention : ${_price.toStringAsFixed(2)}\$',
-                            style: const TextStyle(color: Color(0xFFFFB300), fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    Divider(
+                      height: 0.5,
+                      thickness: 0.5,
+                      color: widget.borderColor,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Creator Details
+                    Text(
+                      'Créateur :',
+                      style: TextStyle(
+                        color: widget.textSecondaryColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.onUserProfileTap(_creatorId);
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
+                        children: [
+                          _buildAvatar(_creatorAvatar, _creatorUsername, 38),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _creatorDisplayName,
+                                  style: textStyle.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Text(
+                                  '@$_creatorUsername',
+                                  style: secondaryTextStyle.copyWith(
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            color: widget.textSecondaryColor.withOpacity(0.5),
+                            size: 14,
                           ),
                         ],
-                        const SizedBox(height: 16),
-                        Divider(height: 0.5, thickness: 0.5, color: widget.borderColor),
-                        const SizedBox(height: 16),
-                        
-                        // Creator Details
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Usage stats
+                    Row(
+                      children: [
+                        Text('Utilisé ', style: textStyle),
                         Text(
-                          'Créateur :',
-                          style: TextStyle(color: widget.textSecondaryColor, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        GestureDetector(
-                          onTap: () {
-                            Navigator.pop(context);
-                            widget.onUserProfileTap(_creatorId);
-                          },
-                          behavior: HitTestBehavior.opaque,
-                          child: Row(
-                            children: [
-                              _buildAvatar(_creatorAvatar, _creatorUsername, 38),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _creatorDisplayName,
-                                      style: textStyle.copyWith(fontWeight: FontWeight.bold, fontSize: 14),
-                                    ),
-                                    Text('@$_creatorUsername', style: secondaryTextStyle.copyWith(fontSize: 12)),
-                                  ],
-                                ),
-                              ),
-                              Icon(Icons.arrow_forward_ios_rounded, color: widget.textSecondaryColor.withOpacity(0.5), size: 14),
-                            ],
+                          '$_usageCount fois',
+                          style: TextStyle(
+                            color: widget.textPrimaryColor,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                        
-                        const SizedBox(height: 20),
-                        
-                        // Usage stats
-                        Row(
-                          children: [
-                            Text('Utilisé ', style: textStyle),
-                            Text(
-                              '$_usageCount fois',
-                              style: TextStyle(
-                                color: widget.textPrimaryColor, 
-                                fontWeight: FontWeight.bold,
-                              ),
+                        if (_isPaid) ...[
+                          const SizedBox(width: 6),
+                          const Text(
+                            'en temps réel ⚡',
+                            style: TextStyle(
+                              color: Color(0xFFFF2A54),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
                             ),
-                            if (_isPaid) ...[
-                              const SizedBox(width: 6),
-                              const Text('en temps réel ⚡', style: TextStyle(color: Color(0xFFFF2A54), fontSize: 11, fontWeight: FontWeight.bold)),
-                            ],
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 16),
-                        Text(
-                          'Utilisé par :',
-                          style: TextStyle(color: widget.textSecondaryColor, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        
-                        // Users list
-                        Expanded(
-                          child: _usedBy.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    'Aucune utilisation enregistrée.',
-                                    style: secondaryTextStyle.copyWith(fontSize: 12),
-                                  ),
-                                )
-                              : ListView.builder(
-                                  itemCount: _usedBy.length,
-                                  itemBuilder: (context, index) {
-                                    final user = _usedBy[index];
-                                    final uId = int.tryParse('${user['id']}') ?? 0;
-                                    final username = user['username'] ?? 'user';
-                                    final displayName = user['first_name'] != null 
-                                        ? '${user['first_name']} ${user['last_name'] ?? ""}'.trim()
-                                        : username;
-                                    final avatar = user['avatar'] ?? '';
-
-                                    return Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 6.0),
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          Navigator.pop(context);
-                                          widget.onUserProfileTap(uId);
-                                        },
-                                        behavior: HitTestBehavior.opaque,
-                                        child: Row(
-                                          children: [
-                                            _buildAvatar(avatar, username, 30),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    displayName,
-                                                    style: textStyle.copyWith(fontWeight: FontWeight.bold, fontSize: 12.5),
-                                                  ),
-                                                  Text('@$username', style: secondaryTextStyle.copyWith(fontSize: 11)),
-                                                ],
-                                              ),
-                                            ),
-                                            Icon(Icons.arrow_forward_ios_rounded, color: widget.textSecondaryColor.withOpacity(0.3), size: 12),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                        ),
+                          ),
+                        ],
                       ],
                     ),
-                  ),
+
+                    const SizedBox(height: 16),
+                    Text(
+                      'Utilisé par :',
+                      style: TextStyle(
+                        color: widget.textSecondaryColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Users list
+                    Expanded(
+                      child: _usedBy.isEmpty
+                          ? Center(
+                              child: Text(
+                                'Aucune utilisation enregistrée.',
+                                style: secondaryTextStyle.copyWith(
+                                  fontSize: 12,
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: _usedBy.length,
+                              itemBuilder: (context, index) {
+                                final user = _usedBy[index];
+                                final uId = int.tryParse('${user['id']}') ?? 0;
+                                final username = user['username'] ?? 'user';
+                                final displayName = user['first_name'] != null
+                                    ? '${user['first_name']} ${user['last_name'] ?? ""}'
+                                          .trim()
+                                    : username;
+                                final avatar = user['avatar'] ?? '';
+
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 6.0,
+                                  ),
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      Navigator.pop(context);
+                                      widget.onUserProfileTap(uId);
+                                    },
+                                    behavior: HitTestBehavior.opaque,
+                                    child: Row(
+                                      children: [
+                                        _buildAvatar(avatar, username, 30),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                displayName,
+                                                style: textStyle.copyWith(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 12.5,
+                                                ),
+                                              ),
+                                              Text(
+                                                '@$username',
+                                                style: secondaryTextStyle
+                                                    .copyWith(fontSize: 11),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Icon(
+                                          Icons.arrow_forward_ios_rounded,
+                                          color: widget.textSecondaryColor
+                                              .withOpacity(0.3),
+                                          size: 12,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
       ),
     );
   }
@@ -6918,14 +8385,24 @@ class PostDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardColor = isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
+    final cardColor = isDarkMode
+        ? const Color(0xFF1E1E1E)
+        : const Color(0xFFF5F5F5);
     final textPrimaryColor = isDarkMode ? Colors.white : Colors.black;
     final textSecondaryColor = isDarkMode ? Colors.white70 : Colors.black87;
-    final borderColor = isDarkMode ? const Color(0xFF2E2E2E) : const Color(0xFFE2E2E2);
+    final borderColor = isDarkMode
+        ? const Color(0xFF2E2E2E)
+        : const Color(0xFFE2E2E2);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Publication", style: TextStyle(fontFamily: 'Montserrat', fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Publication",
+          style: TextStyle(
+            fontFamily: 'Montserrat',
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         backgroundColor: isDarkMode ? Colors.black : Colors.white,
         foregroundColor: textPrimaryColor,
         elevation: 0,
@@ -6935,13 +8412,19 @@ class PostDetailPage extends StatelessWidget {
         future: _fetchSinglePost(postId, currentUserId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFFC13584)));
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFFC13584)),
+            );
           }
           if (snapshot.hasError || snapshot.data == null) {
             return Center(
               child: Text(
                 "Publication introuvable",
-                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontFamily: 'Montserrat'),
+                style: TextStyle(
+                  color: textPrimaryColor,
+                  fontSize: 16,
+                  fontFamily: 'Montserrat',
+                ),
               ),
             );
           }
@@ -6955,13 +8438,16 @@ class PostDetailPage extends StatelessWidget {
                 authorId: post.authorId,
                 socket: socket,
                 isFollowing: post.isAuthorFollowing,
-                showFollowButton: !post.isAuthorFollowing && post.authorId != currentUserId,
+                showFollowButton:
+                    !post.isAuthorFollowing && post.authorId != currentUserId,
                 currentUserId: currentUserId,
                 currentUsername: currentUsername,
                 currentDisplayName: currentDisplayName,
                 currentUserAvatar: currentUserAvatar,
                 username: post.authorDisplayName,
-                avatarInitial: post.authorUsername.isNotEmpty ? post.authorUsername[0].toUpperCase() : 'A',
+                avatarInitial: post.authorUsername.isNotEmpty
+                    ? post.authorUsername[0].toUpperCase()
+                    : 'A',
                 authorAvatarUrl: post.authorAvatar,
                 postText: post.content,
                 imageUrl: post.imageUrl,
@@ -6997,10 +8483,7 @@ class PostDetailPage extends StatelessWidget {
     try {
       final response = await http.get(
         Uri.parse('https://trasx.com/api/posts/$postId'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': '$userId',
-        },
+        headers: {'Content-Type': 'application/json', 'x-user-id': '$userId'},
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -7074,17 +8557,23 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     for (final url in endpoints) {
       try {
         final uri = Uri.parse(url);
-        debugPrint('[ShareSheet] Trying $uri with x-user-id=${widget.currentUserId}');
-        final response = await http.get(
-          uri,
-          headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': '${widget.currentUserId}',
-          },
-        ).timeout(const Duration(seconds: 10));
+        debugPrint(
+          '[ShareSheet] Trying $uri with x-user-id=${widget.currentUserId}',
+        );
+        final response = await http
+            .get(
+              uri,
+              headers: {
+                'Content-Type': 'application/json',
+                'x-user-id': '${widget.currentUserId}',
+              },
+            )
+            .timeout(const Duration(seconds: 10));
 
         debugPrint('[ShareSheet] Status: ${response.statusCode}');
-        debugPrint('[ShareSheet] Body: ${response.body.substring(0, response.body.length.clamp(0, 300))}');
+        debugPrint(
+          '[ShareSheet] Body: ${response.body.substring(0, response.body.length.clamp(0, 300))}',
+        );
 
         if (response.statusCode == 404) {
           debugPrint('[ShareSheet] 404 on $url, trying next...');
@@ -7097,8 +8586,12 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
             final raw = (data['contacts'] as List<dynamic>? ?? []);
             // Sort: mutual first, then following, then followers
             raw.sort((a, b) {
-              final aMutual = a['is_mutual'] == true ? 0 : (a['is_following'] == true ? 1 : 2);
-              final bMutual = b['is_mutual'] == true ? 0 : (b['is_following'] == true ? 1 : 2);
+              final aMutual = a['is_mutual'] == true
+                  ? 0
+                  : (a['is_following'] == true ? 1 : 2);
+              final bMutual = b['is_mutual'] == true
+                  ? 0
+                  : (b['is_following'] == true ? 1 : 2);
               return aMutual.compareTo(bMutual);
             });
             if (mounted) {
@@ -7113,24 +8606,40 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
           } else {
             final msg = data['error'] ?? data['message'] ?? 'Réponse invalide';
             debugPrint('[ShareSheet] API error: $msg');
-            if (mounted) setState(() { _errorMsg = msg; _isLoading = false; });
+            if (mounted)
+              setState(() {
+                _errorMsg = msg;
+                _isLoading = false;
+              });
             return;
           }
         } else {
           final msg = 'Erreur HTTP ${response.statusCode}';
           debugPrint('[ShareSheet] $msg — ${response.body}');
-          if (mounted) setState(() { _errorMsg = msg; _isLoading = false; });
+          if (mounted)
+            setState(() {
+              _errorMsg = msg;
+              _isLoading = false;
+            });
           return;
         }
       } catch (e) {
         debugPrint('[ShareSheet] Exception on $url: $e');
-        if (mounted) setState(() { _errorMsg = e.toString(); _isLoading = false; });
+        if (mounted)
+          setState(() {
+            _errorMsg = e.toString();
+            _isLoading = false;
+          });
         return;
       }
     }
 
     // All endpoints failed
-    if (mounted) setState(() { _errorMsg = 'Endpoint introuvable (404)'; _isLoading = false; });
+    if (mounted)
+      setState(() {
+        _errorMsg = 'Endpoint introuvable (404)';
+        _isLoading = false;
+      });
   }
 
   void _toggleContactSelection(dynamic contact) {
@@ -7155,24 +8664,26 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
 
     final messageText = _messageController.text.trim();
     int successCount = 0;
-    
+
     // Copy the selected set to iterate
     final selectedIds = List<int>.from(_selectedUserIds);
 
     for (final contactId in selectedIds) {
       try {
-        final response = await http.post(
-          Uri.parse('https://trasx.com/api/posts/${widget.postId}/shares'),
-          headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': '${widget.currentUserId}',
-          },
-          body: jsonEncode({
-            'recipientUserId': contactId,
-            'channel': 'social',
-            'message': messageText.isNotEmpty ? messageText : null,
-          }),
-        ).timeout(const Duration(seconds: 10));
+        final response = await http
+            .post(
+              Uri.parse('https://trasx.com/api/posts/${widget.postId}/shares'),
+              headers: {
+                'Content-Type': 'application/json',
+                'x-user-id': '${widget.currentUserId}',
+              },
+              body: jsonEncode({
+                'recipientUserId': contactId,
+                'channel': 'social',
+                'message': messageText.isNotEmpty ? messageText : null,
+              }),
+            )
+            .timeout(const Duration(seconds: 10));
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
@@ -7195,26 +8706,28 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
 
     if (successCount > 0) {
       _messageController.clear();
-      
+
       final dynamic contactMap = _contacts.firstWhere(
-        (c) => selectedIds.contains(c['id']), 
-        orElse: () => null
+        (c) => selectedIds.contains(c['id']),
+        orElse: () => null,
       );
-      final String displayName = contactMap != null 
-          ? '@${contactMap['username']}' 
+      final String displayName = contactMap != null
+          ? '@${contactMap['username']}'
           : '${selectedIds.length} amis';
-          
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(selectedIds.length == 1 
-              ? 'Partagé avec $displayName !' 
-              : 'Partagé avec ${selectedIds.length} amis !'),
+          content: Text(
+            selectedIds.length == 1
+                ? 'Partagé avec $displayName !'
+                : 'Partagé avec ${selectedIds.length} amis !',
+          ),
           duration: const Duration(seconds: 1),
           backgroundColor: const Color(0xFFC13584),
         ),
       );
       SystemSound.play(SystemSoundType.click);
-      
+
       // Close the bottom sheet after sending
       Navigator.pop(context);
     } else {
@@ -7236,7 +8749,8 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
         _filteredContacts = _contacts.where((c) {
           final name = (c['name'] ?? '').toString().toLowerCase();
           final username = (c['username'] ?? '').toString().toLowerCase();
-          return name.contains(query.toLowerCase()) || username.contains(query.toLowerCase());
+          return name.contains(query.toLowerCase()) ||
+              username.contains(query.toLowerCase());
         }).toList();
       }
     });
@@ -7246,20 +8760,26 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
     final shareUrl = 'https://www.trasx.com/post/${widget.postId}';
     await Share.share(
       shareUrl,
-      subject: 'Regardez cette publication de @${widget.postAuthorUsername} sur TRASX !',
+      subject:
+          'Regardez cette publication de @${widget.postAuthorUsername} sur TRASX !',
     );
   }
 
   Future<void> _shareToWhatsApp() async {
     final shareUrl = 'https://www.trasx.com/post/${widget.postId}';
-    final text = Uri.encodeComponent('Regardez cette publication sur TRASX ! $shareUrl');
+    final text = Uri.encodeComponent(
+      'Regardez cette publication sur TRASX ! $shareUrl',
+    );
     final whatsappUrl = 'whatsapp://send?text=$text';
     try {
       if (await canLaunchUrl(Uri.parse(whatsappUrl))) {
         await launchUrl(Uri.parse(whatsappUrl));
       } else {
         final webUrl = 'https://api.whatsapp.com/send?text=$text';
-        await launchUrl(Uri.parse(webUrl), mode: LaunchMode.externalApplication);
+        await launchUrl(
+          Uri.parse(webUrl),
+          mode: LaunchMode.externalApplication,
+        );
       }
     } catch (_) {
       final webUrl = 'https://api.whatsapp.com/send?text=$text';
@@ -7269,14 +8789,19 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
 
   Future<void> _shareToWhatsAppStatus() async {
     final shareUrl = 'https://www.trasx.com/post/${widget.postId}';
-    final text = Uri.encodeComponent('Regardez mon statut / post TRASX ! $shareUrl');
+    final text = Uri.encodeComponent(
+      'Regardez mon statut / post TRASX ! $shareUrl',
+    );
     final whatsappUrl = 'whatsapp://send?text=$text';
     try {
       if (await canLaunchUrl(Uri.parse(whatsappUrl))) {
         await launchUrl(Uri.parse(whatsappUrl));
       } else {
         final webUrl = 'https://api.whatsapp.com/send?text=$text';
-        await launchUrl(Uri.parse(webUrl), mode: LaunchMode.externalApplication);
+        await launchUrl(
+          Uri.parse(webUrl),
+          mode: LaunchMode.externalApplication,
+        );
       }
     } catch (_) {
       final webUrl = 'https://api.whatsapp.com/send?text=$text';
@@ -7315,10 +8840,7 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
             Container(
               width: 52,
               height: 52,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color,
-              ),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color),
               child: Center(
                 child: customIcon ?? Icon(icon, color: iconColor, size: 24),
               ),
@@ -7350,7 +8872,9 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
 
     final bottomInset = MediaQuery.of(context).padding.bottom;
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: SafeArea(
         top: false,
         child: Container(
@@ -7372,7 +8896,10 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 4.0,
+                ),
                 child: Text(
                   'Partager',
                   style: TextStyle(
@@ -7385,7 +8912,10 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
               ),
               // Search Box & Group Button
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 8.0,
+                ),
                 child: Row(
                   children: [
                     Expanded(
@@ -7395,11 +8925,21 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                         style: TextStyle(color: textPrimary),
                         decoration: InputDecoration(
                           hintText: 'Rechercher',
-                          hintStyle: TextStyle(color: textSecondary, fontSize: 14),
-                          prefixIcon: Icon(CupertinoIcons.search, color: textSecondary, size: 20),
+                          hintStyle: TextStyle(
+                            color: textSecondary,
+                            fontSize: 14,
+                          ),
+                          prefixIcon: Icon(
+                            CupertinoIcons.search,
+                            color: textSecondary,
+                            size: 20,
+                          ),
                           fillColor: cardBg,
                           filled: true,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 0,
+                            horizontal: 16,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
@@ -7416,11 +8956,17 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                         color: cardBg,
                       ),
                       child: IconButton(
-                        icon: Icon(Icons.group_add_outlined, color: textPrimary, size: 22),
+                        icon: Icon(
+                          Icons.group_add_outlined,
+                          color: textPrimary,
+                          size: 22,
+                        ),
                         onPressed: () {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text("Créer un groupe n'est pas encore disponible"),
+                              content: Text(
+                                "Créer un groupe n'est pas encore disponible",
+                              ),
                               duration: Duration(seconds: 1),
                             ),
                           );
@@ -7433,131 +8979,166 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
               // Contacts List in Grid format (Instagram-style)
               Expanded(
                 child: _isLoading
-                    ? const Center(child: CircularProgressIndicator(color: Color(0xFFC13584)))
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFC13584),
+                        ),
+                      )
                     : _filteredContacts.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(CupertinoIcons.person_2, color: textSecondary, size: 36),
-                                const SizedBox(height: 10),
-                                Text(
-                                  _errorMsg != null
-                                      ? 'Erreur : $_errorMsg'
-                                      : 'Aucun abonné ou suivi trouvé',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(color: textSecondary, fontFamily: 'Montserrat', fontSize: 13),
-                                ),
-                                if (_errorMsg != null) ...
-                                  [
-                                    const SizedBox(height: 12),
-                                    TextButton.icon(
-                                      onPressed: () { setState(() { _isLoading = true; _errorMsg = null; }); _fetchContacts(); },
-                                      icon: const Icon(Icons.refresh, size: 16),
-                                      label: const Text('Réessayer'),
-                                    ),
-                                  ],
-                              ],
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              CupertinoIcons.person_2,
+                              color: textSecondary,
+                              size: 36,
                             ),
-                          )
-                        : GridView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            physics: const BouncingScrollPhysics(),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            const SizedBox(height: 10),
+                            Text(
+                              _errorMsg != null
+                                  ? 'Erreur : $_errorMsg'
+                                  : 'Aucun abonné ou suivi trouvé',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: textSecondary,
+                                fontFamily: 'Montserrat',
+                                fontSize: 13,
+                              ),
+                            ),
+                            if (_errorMsg != null) ...[
+                              const SizedBox(height: 12),
+                              TextButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _isLoading = true;
+                                    _errorMsg = null;
+                                  });
+                                  _fetchContacts();
+                                },
+                                icon: const Icon(Icons.refresh, size: 16),
+                                label: const Text('Réessayer'),
+                              ),
+                            ],
+                          ],
+                        ),
+                      )
+                    : GridView.builder(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        physics: const BouncingScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 4,
                               crossAxisSpacing: 10,
                               mainAxisSpacing: 14,
                               childAspectRatio: 0.78,
                             ),
-                            itemCount: _filteredContacts.length,
-                            itemBuilder: (context, index) {
-                              final c = _filteredContacts[index];
-                              final int cid = c['id'];
-                              final bool isSent = _sentUserIds.contains(cid);
-                              final bool isSelected = _selectedUserIds.contains(cid);
-                              final avatar = c['avatar'] as String?;
-                              final name = c['name'] ?? c['username'] ?? '';
-                              final username = c['username'] ?? '';
+                        itemCount: _filteredContacts.length,
+                        itemBuilder: (context, index) {
+                          final c = _filteredContacts[index];
+                          final int cid = c['id'];
+                          final bool isSent = _sentUserIds.contains(cid);
+                          final bool isSelected = _selectedUserIds.contains(
+                            cid,
+                          );
+                          final avatar = c['avatar'] as String?;
+                          final name = c['name'] ?? c['username'] ?? '';
+                          final username = c['username'] ?? '';
 
-                              return GestureDetector(
-                                onTap: isSent ? null : () => _toggleContactSelection(c),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
+                          return GestureDetector(
+                            onTap: isSent
+                                ? null
+                                : () => _toggleContactSelection(c),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Stack(
+                                  alignment: Alignment.center,
                                   children: [
-                                    Stack(
-                                      alignment: Alignment.center,
-                                      children: [
-                                        if (c['is_mutual'] == true)
-                                          Container(
-                                            width: 62,
-                                            height: 62,
-                                            decoration: const BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              gradient: LinearGradient(
-                                                colors: [Color(0xFF833AB4), Color(0xFFC13584), Color(0xFFE1306C)],
-                                                begin: Alignment.topLeft,
-                                                end: Alignment.bottomRight,
-                                              ),
-                                            ),
+                                    if (c['is_mutual'] == true)
+                                      Container(
+                                        width: 62,
+                                        height: 62,
+                                        decoration: const BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              Color(0xFF833AB4),
+                                              Color(0xFFC13584),
+                                              Color(0xFFE1306C),
+                                            ],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
                                           ),
-                                        buildPremiumAvatar(avatar, name.isNotEmpty ? name : username, radius: 27, fontSize: 15),
-                                        if (isSent)
-                                          Positioned(
-                                            right: 0,
-                                            bottom: 0,
-                                            child: Container(
-                                              padding: const EdgeInsets.all(3),
-                                              decoration: const BoxDecoration(
-                                                color: Colors.green,
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: const Icon(
-                                                Icons.check,
-                                                color: Colors.white,
-                                                size: 12,
-                                              ),
-                                            ),
-                                          ),
-                                        if (isSelected)
-                                          Positioned(
-                                            right: 0,
-                                            bottom: 0,
-                                            child: Container(
-                                              padding: const EdgeInsets.all(3),
-                                              decoration: const BoxDecoration(
-                                                color: Colors.blue,
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: const Icon(
-                                                Icons.check,
-                                                color: Colors.white,
-                                                size: 12,
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 2.0),
-                                      child: Text(
-                                        name,
-                                        maxLines: 1,
-                                        textAlign: TextAlign.center,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: textPrimary,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w500,
                                         ),
                                       ),
+                                    buildPremiumAvatar(
+                                      avatar,
+                                      name.isNotEmpty ? name : username,
+                                      radius: 27,
+                                      fontSize: 15,
                                     ),
-
+                                    if (isSent)
+                                      Positioned(
+                                        right: 0,
+                                        bottom: 0,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(3),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.green,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.check,
+                                            color: Colors.white,
+                                            size: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    if (isSelected)
+                                      Positioned(
+                                        right: 0,
+                                        bottom: 0,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(3),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.blue,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.check,
+                                            color: Colors.white,
+                                            size: 12,
+                                          ),
+                                        ),
+                                      ),
                                   ],
                                 ),
-                              );
-                            },
-                          ),
+                                const SizedBox(height: 6),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 2.0,
+                                  ),
+                                  child: Text(
+                                    name,
+                                    maxLines: 1,
+                                    textAlign: TextAlign.center,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: textPrimary,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
               ),
               Divider(
                 height: 1,
@@ -7580,7 +9161,11 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                           width: 52,
                           height: 52,
                           fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.chat_bubble, color: Colors.white),
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                                Icons.chat_bubble,
+                                color: Colors.white,
+                              ),
                         ),
                         label: 'WhatsApp',
                         color: Colors.transparent,
@@ -7600,7 +9185,11 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                               height: 32,
                               fit: BoxFit.contain,
                               color: Colors.white,
-                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.chat_bubble_outline, color: Colors.white),
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Icon(
+                                    Icons.chat_bubble_outline,
+                                    color: Colors.white,
+                                  ),
                             ),
                           ),
                         ),
@@ -7611,14 +9200,18 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                       _buildActionButton(
                         icon: CupertinoIcons.share,
                         label: 'Partager',
-                        color: isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE2E2E2),
+                        color: isDark
+                            ? const Color(0xFF2E2E2E)
+                            : const Color(0xFFE2E2E2),
                         iconColor: textPrimary,
                         onTap: _shareExternally,
                       ),
                       _buildActionButton(
                         icon: CupertinoIcons.link,
                         label: 'Copier',
-                        color: isDark ? const Color(0xFF2E2E2E) : const Color(0xFFE2E2E2),
+                        color: isDark
+                            ? const Color(0xFF2E2E2E)
+                            : const Color(0xFFE2E2E2),
                         iconColor: textPrimary,
                         onTap: _copyLink,
                       ),
@@ -7628,7 +9221,10 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
               else
                 // Message input & Envoyer Button Panel
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 4.0,
+                  ),
                   color: isDark ? const Color(0xFF121212) : Colors.white,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -7645,7 +9241,9 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                             fontFamily: 'Montserrat',
                           ),
                           border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 4.0),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 4.0,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -7656,8 +9254,12 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
                         child: ElevatedButton(
                           onPressed: _isSending ? null : _sendToSelectedUsers,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF3897F0), // Instagram blue
-                            disabledBackgroundColor: const Color(0xFF3897F0).withOpacity(0.5),
+                            backgroundColor: const Color(
+                              0xFF3897F0,
+                            ), // Instagram blue
+                            disabledBackgroundColor: const Color(
+                              0xFF3897F0,
+                            ).withOpacity(0.5),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -7695,12 +9297,18 @@ class _ShareBottomSheetState extends State<ShareBottomSheet> {
   }
 }
 
-Widget buildPremiumAvatar(String? avatarUrl, String displayName, {double radius = 20, double fontSize = 14}) {
-  final bool hasAvatar = avatarUrl != null &&
-                         avatarUrl.isNotEmpty &&
-                         !avatarUrl.contains('default.png') &&
-                         !avatarUrl.contains('placeholder') &&
-                         !avatarUrl.contains('default');
+Widget buildPremiumAvatar(
+  String? avatarUrl,
+  String displayName, {
+  double radius = 20,
+  double fontSize = 14,
+}) {
+  final bool hasAvatar =
+      avatarUrl != null &&
+      avatarUrl.isNotEmpty &&
+      !avatarUrl.contains('default.png') &&
+      !avatarUrl.contains('placeholder') &&
+      !avatarUrl.contains('default');
   final String cleanName = displayName.trim();
 
   String initials = '?';
@@ -7709,12 +9317,16 @@ Widget buildPremiumAvatar(String? avatarUrl, String displayName, {double radius 
     if (parts.length >= 2) {
       initials = '${parts[0][0]}${parts[1][0]}'.toUpperCase();
     } else {
-      initials = cleanName.length >= 2 ? cleanName.substring(0, 2).toUpperCase() : cleanName.toUpperCase();
+      initials = cleanName.length >= 2
+          ? cleanName.substring(0, 2).toUpperCase()
+          : cleanName.toUpperCase();
     }
   }
 
   if (hasAvatar) {
-    final String resolved = avatarUrl.startsWith('http') ? avatarUrl : 'https://trasx.com$avatarUrl';
+    final String resolved = avatarUrl.startsWith('http')
+        ? avatarUrl
+        : 'https://trasx.com$avatarUrl';
     return CircleAvatar(
       radius: radius,
       backgroundColor: Colors.transparent,
@@ -7812,12 +9424,20 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: textPrimaryColor, size: 20),
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: textPrimaryColor,
+            size: 20,
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
           "Sécurité & Mot de passe",
-          style: TextStyle(color: textPrimaryColor, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(
+            color: textPrimaryColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
         ),
         centerTitle: true,
       ),
@@ -7831,15 +9451,22 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
               children: [
                 Text(
                   "Modifier le mot de passe",
-                  style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: textPrimaryColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 _buildPasswordField(
                   controller: _currentPasswordController,
                   label: "Mot de passe actuel",
                   obscure: _obscureCurrent,
-                  onToggle: () => setState(() => _obscureCurrent = !_obscureCurrent),
-                  validator: (val) => val == null || val.isEmpty ? "Veuillez entrer votre mot de passe actuel." : null,
+                  onToggle: () =>
+                      setState(() => _obscureCurrent = !_obscureCurrent),
+                  validator: (val) => val == null || val.isEmpty
+                      ? "Veuillez entrer votre mot de passe actuel."
+                      : null,
                   isDark: isDark,
                 ),
                 const SizedBox(height: 12),
@@ -7849,8 +9476,10 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                   obscure: _obscureNew,
                   onToggle: () => setState(() => _obscureNew = !_obscureNew),
                   validator: (val) {
-                    if (val == null || val.isEmpty) return "Veuillez entrer un nouveau mot de passe.";
-                    if (val.length < 6) return "Le mot de passe doit faire au moins 6 caractères.";
+                    if (val == null || val.isEmpty)
+                      return "Veuillez entrer un nouveau mot de passe.";
+                    if (val.length < 6)
+                      return "Le mot de passe doit faire au moins 6 caractères.";
                     return null;
                   },
                   isDark: isDark,
@@ -7860,10 +9489,13 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                   controller: _confirmPasswordController,
                   label: "Confirmer le nouveau mot de passe",
                   obscure: _obscureConfirm,
-                  onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  onToggle: () =>
+                      setState(() => _obscureConfirm = !_obscureConfirm),
                   validator: (val) {
-                    if (val == null || val.isEmpty) return "Veuillez confirmer votre mot de passe.";
-                    if (val != _newPasswordController.text) return "Les mots de passe ne correspondent pas.";
+                    if (val == null || val.isEmpty)
+                      return "Veuillez confirmer votre mot de passe.";
+                    if (val != _newPasswordController.text)
+                      return "Les mots de passe ne correspondent pas.";
                     return null;
                   },
                   isDark: isDark,
@@ -7875,20 +9507,30 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                   child: ElevatedButton(
                     onPressed: _isUpdating ? null : _submitUpdate,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFC13584), // Gradient color
+                      backgroundColor: const Color(
+                        0xFFC13584,
+                      ), // Gradient color
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       elevation: 0,
                     ),
                     child: _isUpdating
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Text(
                             "Enregistrer les modifications",
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                   ),
                 ),
@@ -7897,23 +9539,36 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                 const SizedBox(height: 12),
                 Text(
                   "Sécurité supplémentaire",
-                  style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: textPrimaryColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Container(
                   decoration: BoxDecoration(
                     color: cardColor,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
+                    border: Border.all(
+                      color: textPrimaryColor.withValues(alpha: 0.06),
+                    ),
                   ),
                   child: SwitchListTile(
                     title: Text(
                       "Double authentification (2FA)",
-                      style: TextStyle(color: textPrimaryColor, fontSize: 14, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: textPrimaryColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     subtitle: Text(
                       "Protégez votre compte avec une vérification supplémentaire.",
-                      style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 11),
+                      style: TextStyle(
+                        color: isDark ? Colors.white54 : Colors.black54,
+                        fontSize: 11,
+                      ),
                     ),
                     value: _is2FAEnabled,
                     activeColor: const Color(0xFFC13584),
@@ -7923,9 +9578,11 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                       });
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(val
-                              ? 'Double authentification activée.'
-                              : 'Double authentification désactivée.'),
+                          content: Text(
+                            val
+                                ? 'Double authentification activée.'
+                                : 'Double authentification désactivée.',
+                          ),
                           duration: const Duration(seconds: 2),
                         ),
                       );
@@ -7952,10 +9609,16 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
       controller: controller,
       obscureText: obscure,
       validator: validator,
-      style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 14),
+      style: TextStyle(
+        color: isDark ? Colors.white : Colors.black,
+        fontSize: 14,
+      ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 13),
+        labelStyle: TextStyle(
+          color: isDark ? Colors.white60 : Colors.black54,
+          fontSize: 13,
+        ),
         filled: true,
         fillColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
         border: OutlineInputBorder(
@@ -8013,7 +9676,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
   bool _isSubmittingKyc = false;
 
   // Real-time Dispute management states
-  String _accountStatus = 'Active'; // 'Active', 'KycBlockFirst', 'KycBlockSecond'
+  String _accountStatus =
+      'Active'; // 'Active', 'KycBlockFirst', 'KycBlockSecond'
   String? _kycDisputeStatus; // 'pending', 'resolved', 'rejected', 'none'
   String? _kycDisputeMessage;
   String? _kycDisputeAdminResponse;
@@ -8026,7 +9690,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     _fetchBalances();
     _fetchTransactions();
     _fetchWalletAddress();
-    
+
     // Register socket listeners for instant updates
     if (widget.socket != null) {
       widget.socket!.on('balance-updated', _onBalanceUpdated);
@@ -8066,13 +9730,16 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
           _hasPassedKyc = (_kycStatus == 'approved');
         }
         _kycDisputeStatus = data['kycDisputeStatus'] ?? _kycDisputeStatus;
-        _kycDisputeAdminResponse = data['kycDisputeAdminResponse'] ?? _kycDisputeAdminResponse;
+        _kycDisputeAdminResponse =
+            data['kycDisputeAdminResponse'] ?? _kycDisputeAdminResponse;
       });
       if (data['message'] != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(data['message']),
-            backgroundColor: data['accountStatus'] == 'Active' ? Colors.green : Colors.red,
+            backgroundColor: data['accountStatus'] == 'Active'
+                ? Colors.green
+                : Colors.red,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -8096,10 +9763,15 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     debugPrint("WalletSettingsPage: received balance-updated: $data");
     if (mounted && data != null) {
       setState(() {
-        _depositBalance = double.tryParse(data['depositBalance']?.toString() ?? '0') ?? 0.0;
-        _withdrawalBalance = double.tryParse(data['withdrawalBalance']?.toString() ?? '0') ?? 0.0;
-        _bonusBalance = double.tryParse(data['bonusBalance']?.toString() ?? '0') ?? 0.0;
-        _tokenBalance = double.tryParse(data['tokenBalance']?.toString() ?? '0') ?? 0.0;
+        _depositBalance =
+            double.tryParse(data['depositBalance']?.toString() ?? '0') ?? 0.0;
+        _withdrawalBalance =
+            double.tryParse(data['withdrawalBalance']?.toString() ?? '0') ??
+            0.0;
+        _bonusBalance =
+            double.tryParse(data['bonusBalance']?.toString() ?? '0') ?? 0.0;
+        _tokenBalance =
+            double.tryParse(data['tokenBalance']?.toString() ?? '0') ?? 0.0;
         _isLoadingBalances = false;
       });
       _fetchTransactions();
@@ -8112,7 +9784,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     if (mounted && data != null) {
       final String? type = data['type'];
       final String? message = data['message'];
-      
+
       if (type == 'confirmed') {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -8173,10 +9845,24 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
         final data = jsonDecode(response.body);
         if (mounted) {
           setState(() {
-            _depositBalance = double.tryParse(data['deposit_account_balance']?.toString() ?? '0') ?? 0.0;
-            _withdrawalBalance = double.tryParse(data['withdrawal_account_balance']?.toString() ?? '0') ?? 0.0;
-            _bonusBalance = double.tryParse(data['bonus_account_balance']?.toString() ?? '0') ?? 0.0;
-            _tokenBalance = double.tryParse(data['token_balance']?.toString() ?? '0') ?? 0.0;
+            _depositBalance =
+                double.tryParse(
+                  data['deposit_account_balance']?.toString() ?? '0',
+                ) ??
+                0.0;
+            _withdrawalBalance =
+                double.tryParse(
+                  data['withdrawal_account_balance']?.toString() ?? '0',
+                ) ??
+                0.0;
+            _bonusBalance =
+                double.tryParse(
+                  data['bonus_account_balance']?.toString() ?? '0',
+                ) ??
+                0.0;
+            _tokenBalance =
+                double.tryParse(data['token_balance']?.toString() ?? '0') ??
+                0.0;
             _isLoadingBalances = false;
           });
         }
@@ -8194,7 +9880,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
         final infoData = jsonDecode(infoResponse.body);
         if (mounted) {
           setState(() {
-            _minWithdrawalAmount = double.tryParse(infoData['minWithdrawalAmount']?.toString() ?? '50.0') ?? 50.0;
+            _minWithdrawalAmount =
+                double.tryParse(
+                  infoData['minWithdrawalAmount']?.toString() ?? '50.0',
+                ) ??
+                50.0;
             _hasPassedKyc = infoData['hasPassedKyc'] ?? false;
             _kycStatus = infoData['kycStatus'] ?? 'none';
             _accountStatus = infoData['accountStatus'] ?? 'Active';
@@ -8235,8 +9925,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
           for (var d in depData['deposits']) {
             combined.add({
               'title': 'Dépôt de pièces',
-              'subtitle': d['status'] == 'confirmed' ? 'Confirmé' : 'En attente',
-              'amount': '+${double.tryParse(d['amount_usdt']?.toString() ?? '0')?.toStringAsFixed(2) ?? '0.00'} 💎',
+              'subtitle': d['status'] == 'confirmed'
+                  ? 'Confirmé'
+                  : 'En attente',
+              'amount':
+                  '+${double.tryParse(d['amount_usdt']?.toString() ?? '0')?.toStringAsFixed(2) ?? '0.00'} 💎',
               'date': d['created_at'] ?? '',
               'isPositive': true,
             });
@@ -8251,7 +9944,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
             combined.add({
               'title': 'Retrait de fonds',
               'subtitle': w['status'] == 'completed' ? 'Traité' : 'En attente',
-              'amount': '-${double.tryParse(w['amount_usdt']?.toString() ?? '0')?.toStringAsFixed(2) ?? '0.00'} 💎',
+              'amount':
+                  '-${double.tryParse(w['amount_usdt']?.toString() ?? '0')?.toStringAsFixed(2) ?? '0.00'} 💎',
               'date': w['created_at'] ?? '',
               'isPositive': false,
             });
@@ -8260,7 +9954,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
       }
 
       // Sort descending by date
-      combined.sort((a, b) => b['date'].toString().compareTo(a['date'].toString()));
+      combined.sort(
+        (a, b) => b['date'].toString().compareTo(a['date'].toString()),
+      );
 
       if (mounted) {
         setState(() {
@@ -8277,7 +9973,20 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     if (dateStr.isEmpty) return '';
     try {
       final parsed = DateTime.parse(dateStr).toLocal();
-      final months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sept', 'Oct', 'Nov', 'Déc'];
+      final months = [
+        'Jan',
+        'Fév',
+        'Mar',
+        'Avr',
+        'Mai',
+        'Juin',
+        'Juil',
+        'Août',
+        'Sept',
+        'Oct',
+        'Nov',
+        'Déc',
+      ];
       final month = months[parsed.month - 1];
       final day = parsed.day.toString().padLeft(2, '0');
       final hour = parsed.hour.toString().padLeft(2, '0');
@@ -8305,19 +10014,21 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(resData['error'] ?? 'Format d\'adresse invalide.')),
+          SnackBar(
+            content: Text(resData['error'] ?? 'Format d\'adresse invalide.'),
+          ),
         );
         _fetchWalletAddress(); // revert to last address
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Erreur lors de la mise à jour de l\'adresse.')),
+        const SnackBar(
+          content: Text('Erreur lors de la mise à jour de l\'adresse.'),
+        ),
       );
       _fetchWalletAddress();
     }
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -8326,7 +10037,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     final textSecondaryColor = isDark ? Colors.white54 : Colors.black54;
     final cardColor = isDark ? const Color(0xFF161618) : Colors.white;
     final bgColor = isDark ? const Color(0xFF000000) : const Color(0xFFF8F8F9);
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08);
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -8334,23 +10047,38 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
         backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: textPrimaryColor, size: 20),
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: textPrimaryColor,
+            size: 20,
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
           "Solde (Wallet)",
-          style: TextStyle(color: textPrimaryColor, fontWeight: FontWeight.bold, fontSize: 17),
+          style: TextStyle(
+            color: textPrimaryColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 17,
+          ),
         ),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: Icon(Icons.history_rounded, color: textPrimaryColor, size: 22),
+            icon: Icon(
+              Icons.history_rounded,
+              color: textPrimaryColor,
+              size: 22,
+            ),
             onPressed: () {
               // Refresh manually
               _fetchBalances();
               _fetchTransactions();
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Portefeuille rafraîchi.'), duration: Duration(seconds: 1)),
+                const SnackBar(
+                  content: Text('Portefeuille rafraîchi.'),
+                  duration: Duration(seconds: 1),
+                ),
               );
             },
           ),
@@ -8365,7 +10093,10 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 12.0,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -8377,7 +10108,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.monetization_on_rounded, color: Color(0xFFFFB000), size: 36),
+                          const Icon(
+                            Icons.monetization_on_rounded,
+                            color: Color(0xFFFFB000),
+                            size: 36,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             _depositBalance.toStringAsFixed(0),
@@ -8393,310 +10128,409 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                       const SizedBox(height: 4),
                       Text(
                         "Solde de pièces actuel",
-                        style: TextStyle(color: textSecondaryColor, fontSize: 13, fontWeight: FontWeight.w500),
+                        style: TextStyle(
+                          color: textSecondaryColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                       const SizedBox(height: 24),
                     ],
                   ),
                 ),
 
-                if (_accountStatus == 'KycBlockFirst' || _accountStatus == 'KycBlockSecond') ...[
-                  _buildDisputeLayout(cardColor, borderColor, textPrimaryColor, textSecondaryColor, isDark),
+                if (_accountStatus == 'KycBlockFirst' ||
+                    _accountStatus == 'KycBlockSecond') ...[
+                  _buildDisputeLayout(
+                    cardColor,
+                    borderColor,
+                    textPrimaryColor,
+                    textSecondaryColor,
+                    isDark,
+                  ),
                 ] else ...[
                   Text(
                     "Mes comptes",
-                    style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
-                  ),
-                const SizedBox(height: 12),
-
-                // 1. Coins Account (Deposit)
-                _buildAccountTile(
-                  icon: Icons.monetization_on_rounded,
-                  iconColor: const Color(0xFFFFB000),
-                  title: "Pièces TRASX (Dépôt)",
-                  subtitle: "Acheter des cadeaux et débloquer du contenu",
-                  value: "${_depositBalance.toStringAsFixed(2)} 🪙",
-                  buttonText: "Recharger",
-                  onAction: () => _showDepositDialog(context),
-                  cardColor: cardColor,
-                  borderColor: borderColor,
-                  textPrimaryColor: textPrimaryColor,
-                  textSecondaryColor: textSecondaryColor,
-                  isDark: isDark,
-                  actionColor: const Color(0xFFFE2C55),
-                ),
-
-                // 2. LIVE Earnings / Gift Account (Withdrawal)
-                _buildAccountTile(
-                  icon: Icons.stars_rounded,
-                  iconColor: const Color(0xFFC13584),
-                  title: "Revenus des Cadeaux (Retrait)",
-                  subtitle: "Cadeaux LIVE convertibles en argent réel",
-                  value: "\$${_withdrawalBalance.toStringAsFixed(2)}",
-                  buttonText: "Retirer",
-                  onAction: () => _showWithdrawDialog(context),
-                  cardColor: cardColor,
-                  borderColor: borderColor,
-                  textPrimaryColor: textPrimaryColor,
-                  textSecondaryColor: textSecondaryColor,
-                  isDark: isDark,
-                  actionColor: textPrimaryColor,
-                  outlineButton: true,
-                  isEnabled: _withdrawalBalance >= _minWithdrawalAmount && _hasPassedKyc,
-                ),
-
-                // Withdrawal activation checks & alerts
-                if (_withdrawalBalance < _minWithdrawalAmount) ...[
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 12, top: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0x15FFB000),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0x30FFB000)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.info_outline_rounded, color: Color(0xFFFFB000), size: 16),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            "Le bouton de retrait sera activé dès que vous aurez atteint le montant minimum de \$${_minWithdrawalAmount.toStringAsFixed(2)} USD.",
-                            style: TextStyle(color: isDark ? Colors.white.withValues(alpha: 0.87) : Colors.black87, fontSize: 11),
-                          ),
-                        ),
-                      ],
+                    style: TextStyle(
+                      color: textPrimaryColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ] else if (!_hasPassedKyc) ...[
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 12, top: 4),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0x15FE2C55),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0x30FE2C55)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.warning_amber_rounded, color: Color(0xFFFE2C55), size: 16),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            "Montant minimum atteint, mais vous devez valider votre KYC pour pouvoir retirer.",
-                            style: TextStyle(color: isDark ? Colors.white.withValues(alpha: 0.87) : Colors.black87, fontSize: 11),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  const SizedBox(height: 12),
 
-                // 3. Bonus Account
-                _buildAccountTile(
-                  icon: Icons.card_giftcard_rounded,
-                  iconColor: const Color(0xFF833AB4),
-                  title: "Compte Bonus",
-                  subtitle: "Jetons promotionnels offerts pour tester",
-                  value: "${_bonusBalance.toStringAsFixed(2)} 💎",
-                  buttonText: "Info",
-                  onAction: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text("Compte Bonus"),
-                        content: const Text("Le Compte Bonus contient des crédits publicitaires et promotionnels offerts lors d'événements spéciaux. Ces crédits ne sont pas transférables."),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK")),
-                        ],
+                  // 1. Coins Account (Deposit)
+                  _buildAccountTile(
+                    icon: Icons.monetization_on_rounded,
+                    iconColor: const Color(0xFFFFB000),
+                    title: "Pièces TRASX (Dépôt)",
+                    subtitle: "Acheter des cadeaux et débloquer du contenu",
+                    value: "${_depositBalance.toStringAsFixed(2)} 🪙",
+                    buttonText: "Recharger",
+                    onAction: () => _showDepositDialog(context),
+                    cardColor: cardColor,
+                    borderColor: borderColor,
+                    textPrimaryColor: textPrimaryColor,
+                    textSecondaryColor: textSecondaryColor,
+                    isDark: isDark,
+                    actionColor: const Color(0xFFFE2C55),
+                  ),
+
+                  // 2. LIVE Earnings / Gift Account (Withdrawal)
+                  _buildAccountTile(
+                    icon: Icons.stars_rounded,
+                    iconColor: const Color(0xFFC13584),
+                    title: "Revenus des Cadeaux (Retrait)",
+                    subtitle: "Cadeaux LIVE convertibles en argent réel",
+                    value: "\$${_withdrawalBalance.toStringAsFixed(2)}",
+                    buttonText: "Retirer",
+                    onAction: () => _showWithdrawDialog(context),
+                    cardColor: cardColor,
+                    borderColor: borderColor,
+                    textPrimaryColor: textPrimaryColor,
+                    textSecondaryColor: textSecondaryColor,
+                    isDark: isDark,
+                    actionColor: textPrimaryColor,
+                    outlineButton: true,
+                    isEnabled:
+                        _withdrawalBalance >= _minWithdrawalAmount &&
+                        _hasPassedKyc,
+                  ),
+
+                  // Withdrawal activation checks & alerts
+                  if (_withdrawalBalance < _minWithdrawalAmount) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12, top: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
                       ),
-                    );
-                  },
-                  cardColor: cardColor,
-                  borderColor: borderColor,
-                  textPrimaryColor: textPrimaryColor,
-                  textSecondaryColor: textSecondaryColor,
-                  isDark: isDark,
-                  actionColor: textSecondaryColor,
-                  outlineButton: true,
-                ),
-
-                // 4. TrasX Tokens (Web3 Crypto)
-                _buildAccountTile(
-                  icon: Icons.token_rounded,
-                  iconColor: const Color(0xFF00D2FF),
-                  title: "Tokens TRASX (\$TRASX)",
-                  subtitle: "Crypto-monnaie native de gouvernance Web3",
-                  value: "${_tokenBalance.toStringAsFixed(4)} T",
-                  buttonText: "Échanger",
-                  onAction: () => _showSwapDialog(context),
-                  cardColor: cardColor,
-                  borderColor: borderColor,
-                  textPrimaryColor: textPrimaryColor,
-                  textSecondaryColor: textSecondaryColor,
-                  isDark: isDark,
-                  actionColor: const Color(0xFF00D2FF),
-                  outlineButton: true,
-                ),
-
-                const SizedBox(height: 24),
-                Text(
-                  "Validation de compte",
-                  style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: cardColor,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: borderColor),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      decoration: BoxDecoration(
+                        color: const Color(0x15FFB000),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0x30FFB000)),
+                      ),
+                      child: Row(
                         children: [
-                          Text(
-                            "Statut de votre KYC",
-                            style: TextStyle(color: textPrimaryColor, fontSize: 13, fontWeight: FontWeight.bold),
+                          const Icon(
+                            Icons.info_outline_rounded,
+                            color: Color(0xFFFFB000),
+                            size: 16,
                           ),
-                          _buildKycStatusBadge(_kycStatus),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              "Le bouton de retrait sera activé dès que vous aurez atteint le montant minimum de \$${_minWithdrawalAmount.toStringAsFixed(2)} USD.",
+                              style: TextStyle(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.87)
+                                    : Colors.black87,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _getKycStatusDescription(_kycStatus),
-                        style: TextStyle(color: textSecondaryColor, fontSize: 11),
+                    ),
+                  ] else if (!_hasPassedKyc) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12, top: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
                       ),
-                      if (_kycStatus == 'none' || _kycStatus == 'rejected') ...[
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 40,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFFE2C55),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                              elevation: 0,
-                            ),
-                            onPressed: () => _showKycUploadSheet(context),
+                      decoration: BoxDecoration(
+                        color: const Color(0x15FE2C55),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0x30FE2C55)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.warning_amber_rounded,
+                            color: Color(0xFFFE2C55),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
                             child: Text(
-                              _kycStatus == 'rejected' ? "Re-soumettre mon KYC" : "Passer mon KYC",
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              "Montant minimum atteint, mais vous devez valider votre KYC pour pouvoir retirer.",
+                              style: TextStyle(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.87)
+                                    : Colors.black87,
+                                fontSize: 11,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-                Text(
-                  "Adresse Web3 / Retrait BSC",
-                  style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: cardColor,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: borderColor),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _isEditingAddress
-                            ? TextField(
-                                controller: _bscAddressController,
-                                autofocus: true,
-                                style: TextStyle(color: textPrimaryColor, fontSize: 13, fontFamily: 'monospace'),
-                                decoration: const InputDecoration(
-                                  isDense: true,
-                                  hintText: "Adresse BEP-20 (0x...)",
-                                  hintStyle: TextStyle(color: Colors.white24, fontSize: 13),
-                                  contentPadding: EdgeInsets.symmetric(vertical: 8),
-                                  border: InputBorder.none,
-                                ),
-                              )
-                            : Text(
-                                _bscAddressController.text.isEmpty
-                                    ? "Aucune adresse BSC liée"
-                                    : _bscAddressController.text,
-                                style: TextStyle(
-                                  color: _bscAddressController.text.isEmpty ? textSecondaryColor : textPrimaryColor,
-                                  fontSize: 13,
-                                  fontFamily: 'monospace',
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            if (_isEditingAddress) {
-                              _updateWalletAddress(_bscAddressController.text);
-                            }
-                            _isEditingAddress = !_isEditingAddress;
-                          });
-                        },
-                        child: Text(
-                          _isEditingAddress ? "Sauver" : "Modifier",
-                          style: const TextStyle(color: Color(0xFFFE2C55), fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 28),
-                Text(
-                  "Historique des Transactions",
-                  style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-
-                if (_isLoadingTransactions)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24.0),
-                    child: Center(
-                      child: CircularProgressIndicator(color: Color(0xFFFE2C55), strokeWidth: 2),
-                    ),
-                  )
-                else if (_transactions.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 32.0),
-                    child: Center(
-                      child: Text(
-                        "Aucune transaction récente",
-                        style: TextStyle(color: textSecondaryColor, fontSize: 13),
+                        ],
                       ),
                     ),
-                  )
-                else
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _transactions.length,
-                    itemBuilder: (context, index) {
-                      final tx = _transactions[index];
-                      return _buildTransactionItem(
-                        title: tx['title'],
-                        subtitle: tx['subtitle'],
-                        amount: tx['amount'],
-                        date: _formatDate(tx['date']),
-                        isPositive: tx['isPositive'],
-                        cardColor: cardColor,
-                        borderColor: borderColor,
-                        textPrimaryColor: textPrimaryColor,
-                        textSecondaryColor: textSecondaryColor,
+                  ],
+
+                  // 3. Bonus Account
+                  _buildAccountTile(
+                    icon: Icons.card_giftcard_rounded,
+                    iconColor: const Color(0xFF833AB4),
+                    title: "Compte Bonus",
+                    subtitle: "Jetons promotionnels offerts pour tester",
+                    value: "${_bonusBalance.toStringAsFixed(2)} 💎",
+                    buttonText: "Info",
+                    onAction: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text("Compte Bonus"),
+                          content: const Text(
+                            "Le Compte Bonus contient des crédits publicitaires et promotionnels offerts lors d'événements spéciaux. Ces crédits ne sont pas transférables.",
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text("OK"),
+                            ),
+                          ],
+                        ),
                       );
                     },
+                    cardColor: cardColor,
+                    borderColor: borderColor,
+                    textPrimaryColor: textPrimaryColor,
+                    textSecondaryColor: textSecondaryColor,
+                    isDark: isDark,
+                    actionColor: textSecondaryColor,
+                    outlineButton: true,
                   ),
+
+                  // 4. TrasX Tokens (Web3 Crypto)
+                  _buildAccountTile(
+                    icon: Icons.token_rounded,
+                    iconColor: const Color(0xFF00D2FF),
+                    title: "Tokens TRASX (\$TRASX)",
+                    subtitle: "Crypto-monnaie native de gouvernance Web3",
+                    value: "${_tokenBalance.toStringAsFixed(4)} T",
+                    buttonText: "Échanger",
+                    onAction: () => _showSwapDialog(context),
+                    cardColor: cardColor,
+                    borderColor: borderColor,
+                    textPrimaryColor: textPrimaryColor,
+                    textSecondaryColor: textSecondaryColor,
+                    isDark: isDark,
+                    actionColor: const Color(0xFF00D2FF),
+                    outlineButton: true,
+                  ),
+
+                  const SizedBox(height: 24),
+                  Text(
+                    "Validation de compte",
+                    style: TextStyle(
+                      color: textPrimaryColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              "Statut de votre KYC",
+                              style: TextStyle(
+                                color: textPrimaryColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            _buildKycStatusBadge(_kycStatus),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _getKycStatusDescription(_kycStatus),
+                          style: TextStyle(
+                            color: textSecondaryColor,
+                            fontSize: 11,
+                          ),
+                        ),
+                        if (_kycStatus == 'none' ||
+                            _kycStatus == 'rejected') ...[
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 40,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFFE2C55),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                elevation: 0,
+                              ),
+                              onPressed: () => _showKycUploadSheet(context),
+                              child: Text(
+                                _kycStatus == 'rejected'
+                                    ? "Re-soumettre mon KYC"
+                                    : "Passer mon KYC",
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+                  Text(
+                    "Adresse Web3 / Retrait BSC",
+                    style: TextStyle(
+                      color: textPrimaryColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _isEditingAddress
+                              ? TextField(
+                                  controller: _bscAddressController,
+                                  autofocus: true,
+                                  style: TextStyle(
+                                    color: textPrimaryColor,
+                                    fontSize: 13,
+                                    fontFamily: 'monospace',
+                                  ),
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    hintText: "Adresse BEP-20 (0x...)",
+                                    hintStyle: TextStyle(
+                                      color: Colors.white24,
+                                      fontSize: 13,
+                                    ),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
+                                    border: InputBorder.none,
+                                  ),
+                                )
+                              : Text(
+                                  _bscAddressController.text.isEmpty
+                                      ? "Aucune adresse BSC liée"
+                                      : _bscAddressController.text,
+                                  style: TextStyle(
+                                    color: _bscAddressController.text.isEmpty
+                                        ? textSecondaryColor
+                                        : textPrimaryColor,
+                                    fontSize: 13,
+                                    fontFamily: 'monospace',
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              if (_isEditingAddress) {
+                                _updateWalletAddress(
+                                  _bscAddressController.text,
+                                );
+                              }
+                              _isEditingAddress = !_isEditingAddress;
+                            });
+                          },
+                          child: Text(
+                            _isEditingAddress ? "Sauver" : "Modifier",
+                            style: const TextStyle(
+                              color: Color(0xFFFE2C55),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 28),
+                  Text(
+                    "Historique des Transactions",
+                    style: TextStyle(
+                      color: textPrimaryColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  if (_isLoadingTransactions)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24.0),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFE2C55),
+                          strokeWidth: 2,
+                        ),
+                      ),
+                    )
+                  else if (_transactions.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 32.0),
+                      child: Center(
+                        child: Text(
+                          "Aucune transaction récente",
+                          style: TextStyle(
+                            color: textSecondaryColor,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _transactions.length,
+                      itemBuilder: (context, index) {
+                        final tx = _transactions[index];
+                        return _buildTransactionItem(
+                          title: tx['title'],
+                          subtitle: tx['subtitle'],
+                          amount: tx['amount'],
+                          date: _formatDate(tx['date']),
+                          isPositive: tx['isPositive'],
+                          cardColor: cardColor,
+                          borderColor: borderColor,
+                          textPrimaryColor: textPrimaryColor,
+                          textSecondaryColor: textSecondaryColor,
+                        );
+                      },
+                    ),
                 ],
               ],
             ),
@@ -8748,7 +10582,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
               children: [
                 Text(
                   title,
-                  style: TextStyle(color: textPrimaryColor, fontSize: 14, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: textPrimaryColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -8758,7 +10596,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                 const SizedBox(height: 6),
                 Text(
                   value,
-                  style: TextStyle(color: textPrimaryColor, fontSize: 18, fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    color: textPrimaryColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ],
             ),
@@ -8769,7 +10611,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: isEnabled
                   ? (outlineButton ? Colors.transparent : actionColor)
-                  : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                  : (isDark
+                        ? Colors.white10
+                        : Colors.black.withValues(alpha: 0.05)),
               foregroundColor: isEnabled
                   ? (outlineButton ? textPrimaryColor : Colors.white)
                   : textSecondaryColor.withValues(alpha: 0.3),
@@ -8778,7 +10622,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
                 side: outlineButton
-                    ? BorderSide(color: isEnabled ? textSecondaryColor.withValues(alpha: 0.3) : textSecondaryColor.withValues(alpha: 0.1))
+                    ? BorderSide(
+                        color: isEnabled
+                            ? textSecondaryColor.withValues(alpha: 0.3)
+                            : textSecondaryColor.withValues(alpha: 0.1),
+                      )
                     : BorderSide.none,
               ),
             ),
@@ -8819,7 +10667,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: isPositive ? Colors.green.withValues(alpha: 0.08) : Colors.red.withValues(alpha: 0.08),
+                  color: isPositive
+                      ? Colors.green.withValues(alpha: 0.08)
+                      : Colors.red.withValues(alpha: 0.08),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -8832,9 +10682,19 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: TextStyle(color: textPrimaryColor, fontSize: 13, fontWeight: FontWeight.bold)),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: textPrimaryColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(subtitle, style: TextStyle(color: textSecondaryColor, fontSize: 11)),
+                  Text(
+                    subtitle,
+                    style: TextStyle(color: textSecondaryColor, fontSize: 11),
+                  ),
                 ],
               ),
             ],
@@ -8851,7 +10711,10 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(date, style: TextStyle(color: textSecondaryColor, fontSize: 10)),
+              Text(
+                date,
+                style: TextStyle(color: textSecondaryColor, fontSize: 10),
+              ),
             ],
           ),
         ],
@@ -8859,7 +10722,13 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     );
   }
 
-  Widget _buildDisputeLayout(Color cardColor, Color borderColor, Color textPrimary, Color textSecondary, bool isDark) {
+  Widget _buildDisputeLayout(
+    Color cardColor,
+    Color borderColor,
+    Color textPrimary,
+    Color textSecondary,
+    bool isDark,
+  ) {
     if (_accountStatus == 'KycBlockSecond') {
       return Container(
         width: double.infinity,
@@ -8875,7 +10744,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
             const SizedBox(height: 16),
             Text(
               "Compte Bloqué Définitivement",
-              style: TextStyle(color: textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -8899,7 +10772,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                   Expanded(
                     child: Text(
                       "Décision finale : Non contestable",
-                      style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -8924,17 +10801,29 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
           ),
           child: Column(
             children: [
-              const Icon(Icons.shield_outlined, color: Color(0xFFFFB000), size: 48),
+              const Icon(
+                Icons.shield_outlined,
+                color: Color(0xFFFFB000),
+                size: 48,
+              ),
               const SizedBox(height: 16),
               Text(
                 "Suspension de Sécurité",
-                style: TextStyle(color: textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
               Text(
                 "Votre pièce d'identité a été détectée sur un autre compte. Par mesure de sécurité, vos retraits ont été gelés.\n\nVous pouvez soumettre un litige pour prouver que vous êtes le propriétaire légitime de ce document d'identité.",
-                style: TextStyle(color: textSecondary, fontSize: 13, height: 1.5),
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 13,
+                  height: 1.5,
+                ),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -8943,10 +10832,14 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
         const SizedBox(height: 24),
         Text(
           "Suivi du litige en temps réel",
-          style: TextStyle(color: textPrimary, fontSize: 15, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: textPrimary,
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         const SizedBox(height: 16),
-        
+
         // Timeline steps
         _buildTimelineStep(
           stepNumber: 1,
@@ -8960,7 +10853,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
           title: "Ouverture du litige",
           description: _kycDisputeStatus == 'pending'
               ? "Explications envoyées : '${_kycDisputeMessage ?? ''}'"
-              : (_kycDisputeStatus == 'rejected' ? "Explication refusée par l'admin. Motif : '${_kycDisputeAdminResponse ?? ''}'" : "En attente de vos explications."),
+              : (_kycDisputeStatus == 'rejected'
+                    ? "Explication refusée par l'admin. Motif : '${_kycDisputeAdminResponse ?? ''}'"
+                    : "En attente de vos explications."),
           status: _kycDisputeStatus == 'pending'
               ? "completed"
               : (_kycDisputeStatus == 'rejected' ? "error" : "pending"),
@@ -8972,8 +10867,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
           description: _kycDisputeStatus == 'resolved'
               ? "Compte réactivé."
               : (_kycDisputeStatus == 'rejected'
-                  ? "Rejeté. Motif : ${_kycDisputeAdminResponse ?? ''}"
-                  : "En attente d'examen."),
+                    ? "Rejeté. Motif : ${_kycDisputeAdminResponse ?? ''}"
+                    : "En attente d'examen."),
           status: _kycDisputeStatus == 'resolved'
               ? "completed"
               : (_kycDisputeStatus == 'rejected' ? "error" : "idle"),
@@ -8986,7 +10881,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
         if (_kycDisputeStatus == null || _kycDisputeStatus == 'rejected') ...[
           Text(
             "Formulaire de contestation",
-            style: TextStyle(color: textPrimary, fontSize: 14, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -8994,7 +10893,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
             maxLines: 4,
             style: TextStyle(color: textPrimary, fontSize: 13),
             decoration: InputDecoration(
-              hintText: "Expliquez précisément la situation (ex: J'ai créé ce deuxième compte par erreur, ou mon identité a été usurpée...)",
+              hintText:
+                  "Expliquez précisément la situation (ex: J'ai créé ce deuxième compte par erreur, ou mon identité a été usurpée...)",
               hintStyle: TextStyle(color: textSecondary, fontSize: 12),
               filled: true,
               fillColor: cardColor,
@@ -9004,7 +10904,10 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Color(0xFFFE2C55), width: 1.5),
+                borderSide: const BorderSide(
+                  color: Color(0xFFFE2C55),
+                  width: 1.5,
+                ),
               ),
             ),
           ),
@@ -9016,7 +10919,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFE2C55),
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
+                ),
                 elevation: 0,
               ),
               onPressed: _isSubmittingDispute
@@ -9025,7 +10930,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                       final msg = _disputeMessageController.text.trim();
                       if (msg.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Veuillez saisir votre message d'explication.")),
+                          const SnackBar(
+                            content: Text(
+                              "Veuillez saisir votre message d'explication.",
+                            ),
+                          ),
                         );
                         return;
                       }
@@ -9044,11 +10953,20 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                           _disputeMessageController.clear();
                           _fetchBalances();
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Votre litige a été transmis en temps réel.")),
+                            const SnackBar(
+                              content: Text(
+                                "Votre litige a été transmis en temps réel.",
+                              ),
+                            ),
                           );
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(data['error'] ?? "Erreur lors de la soumission.")),
+                            SnackBar(
+                              content: Text(
+                                data['error'] ??
+                                    "Erreur lors de la soumission.",
+                              ),
+                            ),
                           );
                         }
                       } catch (e) {
@@ -9060,8 +10978,14 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                       }
                     },
               child: _isSubmittingDispute
-                  ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
-                  : const Text("Envoyer mon explication", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ? const CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    )
+                  : const Text(
+                      "Envoyer mon explication",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
             ),
           ),
         ] else if (_kycDisputeStatus == 'pending') ...[
@@ -9074,12 +10998,19 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.hourglass_top_rounded, color: Colors.orange, size: 20),
+                const Icon(
+                  Icons.hourglass_top_rounded,
+                  color: Colors.orange,
+                  size: 20,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     "Votre litige est en cours d'examen en temps réel par l'administration. Veuillez patienter.",
-                    style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 12),
+                    style: TextStyle(
+                      color: isDark ? Colors.white70 : Colors.black87,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ],
@@ -9139,7 +11070,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                 Text(
                   title,
                   style: TextStyle(
-                    color: status != 'idle' ? (isDark ? Colors.white : Colors.black) : (isDark ? Colors.white30 : Colors.black38),
+                    color: status != 'idle'
+                        ? (isDark ? Colors.white : Colors.black)
+                        : (isDark ? Colors.white30 : Colors.black38),
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
                   ),
@@ -9173,7 +11106,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: widget.isDarkMode ? const Color(0xFF161618) : Colors.white,
+      backgroundColor: widget.isDarkMode
+          ? const Color(0xFF161618)
+          : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -9183,12 +11118,18 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
             final isDark = widget.isDarkMode;
             final textCol = isDark ? Colors.white : Colors.black;
             final subCol = isDark ? Colors.white54 : Colors.black54;
-            final cardBg = isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03);
+            final cardBg = isDark
+                ? Colors.white.withValues(alpha: 0.04)
+                : Colors.black.withValues(alpha: 0.03);
             final borderCol = isDark ? Colors.white10 : Colors.black12;
 
-            if (paymentData != null && socketListener == null && widget.socket != null) {
+            if (paymentData != null &&
+                socketListener == null &&
+                widget.socket != null) {
               final listener = (dynamic data) {
-                if (data != null && data['paymentId']?.toString() == paymentData!['paymentId']?.toString()) {
+                if (data != null &&
+                    data['paymentId']?.toString() ==
+                        paymentData!['paymentId']?.toString()) {
                   final String? newType = data['type'];
                   if (newType != null) {
                     setSheetState(() {
@@ -9228,14 +11169,24 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            paymentData == null ? "Recharger des pièces" : "Détails du dépôt",
-                            style: TextStyle(color: textCol, fontSize: 18, fontWeight: FontWeight.bold),
+                            paymentData == null
+                                ? "Recharger des pièces"
+                                : "Détails du dépôt",
+                            style: TextStyle(
+                              color: textCol,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           IconButton(
                             icon: Icon(Icons.close_rounded, color: textCol),
                             onPressed: () {
-                              if (socketListener != null && widget.socket != null) {
-                                widget.socket!.off('deposit-status', socketListener);
+                              if (socketListener != null &&
+                                  widget.socket != null) {
+                                widget.socket!.off(
+                                  'deposit-status',
+                                  socketListener,
+                                );
                               }
                               Navigator.pop(context);
                             },
@@ -9253,19 +11204,29 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
 
                         Text(
                           "Actif de dépôt",
-                          style: TextStyle(color: textCol, fontSize: 14, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: textCol,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 10),
                         Row(
                           children: [
                             Expanded(
                               child: GestureDetector(
-                                onTap: () => setSheetState(() => selectedCurrency = "USDT"),
+                                onTap: () => setSheetState(
+                                  () => selectedCurrency = "USDT",
+                                ),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: selectedCurrency == "USDT"
-                                        ? const Color(0xFFFE2C55).withValues(alpha: 0.1)
+                                        ? const Color(
+                                            0xFFFE2C55,
+                                          ).withValues(alpha: 0.1)
                                         : cardBg,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
@@ -9278,13 +11239,19 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      const Icon(Icons.monetization_on_rounded, color: Colors.green, size: 20),
+                                      const Icon(
+                                        Icons.monetization_on_rounded,
+                                        color: Colors.green,
+                                        size: 20,
+                                      ),
                                       const SizedBox(width: 8),
                                       Text(
                                         "USDT (BEP-20)",
                                         style: TextStyle(
                                           color: textCol,
-                                          fontWeight: selectedCurrency == "USDT" ? FontWeight.bold : FontWeight.normal,
+                                          fontWeight: selectedCurrency == "USDT"
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
                                           fontSize: 13,
                                         ),
                                       ),
@@ -9296,12 +11263,18 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: GestureDetector(
-                                onTap: () => setSheetState(() => selectedCurrency = "BNB"),
+                                onTap: () => setSheetState(
+                                  () => selectedCurrency = "BNB",
+                                ),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: selectedCurrency == "BNB"
-                                        ? const Color(0xFFFE2C55).withValues(alpha: 0.1)
+                                        ? const Color(
+                                            0xFFFE2C55,
+                                          ).withValues(alpha: 0.1)
                                         : cardBg,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
@@ -9314,13 +11287,19 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      const Icon(Icons.monetization_on_rounded, color: Color(0xFFFFB000), size: 20),
+                                      const Icon(
+                                        Icons.monetization_on_rounded,
+                                        color: Color(0xFFFFB000),
+                                        size: 20,
+                                      ),
                                       const SizedBox(width: 8),
                                       Text(
                                         "BNB (BSC)",
                                         style: TextStyle(
                                           color: textCol,
-                                          fontWeight: selectedCurrency == "BNB" ? FontWeight.bold : FontWeight.normal,
+                                          fontWeight: selectedCurrency == "BNB"
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
                                           fontSize: 13,
                                         ),
                                       ),
@@ -9335,26 +11314,42 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
 
                         Text(
                           "Montant à créditer (USD)",
-                          style: TextStyle(color: textCol, fontSize: 14, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: textCol,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 10),
                         TextField(
                           controller: amountController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          style: TextStyle(color: textCol, fontWeight: FontWeight.bold, fontSize: 16),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          style: TextStyle(
+                            color: textCol,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                           decoration: InputDecoration(
                             hintText: "0.00",
                             hintStyle: TextStyle(color: subCol),
                             filled: true,
                             fillColor: cardBg,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide(color: borderCol),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFFFE2C55), width: 2),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFFE2C55),
+                                width: 2,
+                              ),
                             ),
                           ),
                         ),
@@ -9363,21 +11358,32 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [18.84, 25.0, 50.0, 100.0].map((amt) {
-                            final labelStr = amt == 18.84 ? "18.84" : "${amt.toInt()}";
+                            final labelStr = amt == 18.84
+                                ? "18.84"
+                                : "${amt.toInt()}";
                             return Expanded(
                               child: Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 4),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                ),
                                 child: ActionChip(
                                   label: Text(
                                     "\$$labelStr",
-                                    style: TextStyle(color: textCol, fontSize: 12, fontWeight: FontWeight.bold),
+                                    style: TextStyle(
+                                      color: textCol,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                   backgroundColor: cardBg,
                                   side: BorderSide(color: borderCol),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
                                   onPressed: () {
                                     setSheetState(() {
-                                      amountController.text = amt.toStringAsFixed(2);
+                                      amountController.text = amt
+                                          .toStringAsFixed(2);
                                     });
                                   },
                                 ),
@@ -9389,7 +11395,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
 
                         Row(
                           children: [
-                            const Icon(Icons.info_outline_rounded, color: Colors.blue, size: 16),
+                            const Icon(
+                              Icons.info_outline_rounded,
+                              color: Colors.blue,
+                              size: 16,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -9404,7 +11414,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                         if (errorMessage != null) ...[
                           Text(
                             errorMessage!,
-                            style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(height: 12),
                         ],
@@ -9416,16 +11430,23 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFFFE2C55),
                               foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24),
+                              ),
                               elevation: 0,
                             ),
                             onPressed: isLoading
                                 ? null
                                 : () async {
-                                    final amt = double.tryParse(amountController.text) ?? 0.0;
+                                    final amt =
+                                        double.tryParse(
+                                          amountController.text,
+                                        ) ??
+                                        0.0;
                                     if (amt < 18.84) {
                                       setSheetState(() {
-                                        errorMessage = "Le montant de dépôt minimum est de 18.84 USD.";
+                                        errorMessage =
+                                            "Le montant de dépôt minimum est de 18.84 USD.";
                                       });
                                       return;
                                     }
@@ -9436,7 +11457,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
 
                                     try {
                                       final response = await http.post(
-                                        Uri.parse('https://trasx.com/api/deposits/create'),
+                                        Uri.parse(
+                                          'https://trasx.com/api/deposits/create',
+                                        ),
                                         headers: {
                                           'Content-Type': 'application/json',
                                           'x-user-id': '${widget.userId}',
@@ -9447,30 +11470,42 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                         }),
                                       );
                                       final data = jsonDecode(response.body);
-                                      if (response.statusCode == 200 && data['success'] == true) {
+                                      if (response.statusCode == 200 &&
+                                          data['success'] == true) {
                                         setSheetState(() {
                                           paymentData = data;
-                                          depositStatus = data['paymentStatus'] ?? 'pending';
+                                          depositStatus =
+                                              data['paymentStatus'] ??
+                                              'pending';
                                           isLoading = false;
                                         });
                                       } else {
                                         setSheetState(() {
-                                          errorMessage = data['error'] ?? "Le service est temporairement indisponible.";
+                                          errorMessage =
+                                              data['error'] ??
+                                              "Le service est temporairement indisponible.";
                                           isLoading = false;
                                         });
                                       }
                                     } catch (e) {
                                       setSheetState(() {
-                                        errorMessage = "Erreur de connexion au serveur.";
+                                        errorMessage =
+                                            "Erreur de connexion au serveur.";
                                         isLoading = false;
                                       });
                                     }
                                   },
                             child: isLoading
-                                ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                                ? const CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  )
                                 : const Text(
                                     "Générer le paiement",
-                                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                           ),
                         ),
@@ -9478,7 +11513,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                         Center(
                           child: Column(
                             children: [
-                              if (paymentData!['qrDataUrl'] != null && paymentData!['qrDataUrl'].isNotEmpty) ...[
+                              if (paymentData!['qrDataUrl'] != null &&
+                                  paymentData!['qrDataUrl'].isNotEmpty) ...[
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
@@ -9486,7 +11522,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                     borderRadius: BorderRadius.circular(16),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.1),
+                                        color: Colors.black.withValues(
+                                          alpha: 0.1,
+                                        ),
                                         blurRadius: 10,
                                         offset: const Offset(0, 4),
                                       ),
@@ -9495,7 +11533,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(8),
                                     child: Image.memory(
-                                      const Base64Decoder().convert(paymentData!['qrDataUrl'].split(',').last),
+                                      const Base64Decoder().convert(
+                                        paymentData!['qrDataUrl']
+                                            .split(',')
+                                            .last,
+                                      ),
                                       width: 160,
                                       height: 160,
                                       fit: BoxFit.cover,
@@ -9506,40 +11548,55 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                               ],
 
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
                                 decoration: BoxDecoration(
                                   color: depositStatus == 'confirmed'
                                       ? Colors.green.withValues(alpha: 0.1)
                                       : (depositStatus == 'failed'
-                                          ? Colors.red.withValues(alpha: 0.1)
-                                          : Colors.blue.withValues(alpha: 0.1)),
+                                            ? Colors.red.withValues(alpha: 0.1)
+                                            : Colors.blue.withValues(
+                                                alpha: 0.1,
+                                              )),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
                                     color: depositStatus == 'confirmed'
                                         ? Colors.green
-                                        : (depositStatus == 'failed' ? Colors.red : Colors.blue),
+                                        : (depositStatus == 'failed'
+                                              ? Colors.red
+                                              : Colors.blue),
                                     width: 1,
                                   ),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    if (depositStatus != 'confirmed' && depositStatus != 'failed') ...[
+                                    if (depositStatus != 'confirmed' &&
+                                        depositStatus != 'failed') ...[
                                       const SizedBox(
                                         width: 8,
                                         height: 8,
-                                        child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.blue),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 1.5,
+                                          color: Colors.blue,
+                                        ),
                                       ),
                                       const SizedBox(width: 8),
                                     ],
                                     Text(
                                       depositStatus == 'confirmed'
                                           ? "Confirmé et crédité !"
-                                          : (depositStatus == 'failed' ? "Échoué / Expiré" : "En attente de paiement..."),
+                                          : (depositStatus == 'failed'
+                                                ? "Échoué / Expiré"
+                                                : "En attente de paiement..."),
                                       style: TextStyle(
                                         color: depositStatus == 'confirmed'
                                             ? Colors.green
-                                            : (depositStatus == 'failed' ? Colors.red : Colors.blue),
+                                            : (depositStatus == 'failed'
+                                                  ? Colors.red
+                                                  : Colors.blue),
                                         fontSize: 12,
                                         fontWeight: FontWeight.bold,
                                       ),
@@ -9556,7 +11613,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                               const SizedBox(height: 4),
                               Text(
                                 "${paymentData!['payAmount']} ${paymentData!['payCurrency']}",
-                                style: const TextStyle(color: Colors.green, fontSize: 22, fontWeight: FontWeight.w800),
+                                style: const TextStyle(
+                                  color: Colors.green,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                               const SizedBox(height: 16),
 
@@ -9564,12 +11625,19 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                 alignment: Alignment.centerLeft,
                                 child: Text(
                                   "Adresse de dépôt (BEP-20)",
-                                  style: TextStyle(color: textCol, fontSize: 12, fontWeight: FontWeight.bold),
+                                  style: TextStyle(
+                                    color: textCol,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 6),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
                                 decoration: BoxDecoration(
                                   color: cardBg,
                                   borderRadius: BorderRadius.circular(10),
@@ -9589,11 +11657,27 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                       ),
                                     ),
                                     IconButton(
-                                      icon: const Icon(Icons.copy_rounded, color: Color(0xFFFE2C55), size: 20),
+                                      icon: const Icon(
+                                        Icons.copy_rounded,
+                                        color: Color(0xFFFE2C55),
+                                        size: 20,
+                                      ),
                                       onPressed: () {
-                                        Clipboard.setData(ClipboardData(text: paymentData!['payAddress'] ?? ''));
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Adresse copiée dans le presse-papiers.')),
+                                        Clipboard.setData(
+                                          ClipboardData(
+                                            text:
+                                                paymentData!['payAddress'] ??
+                                                '',
+                                          ),
+                                        );
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Adresse copiée dans le presse-papiers.',
+                                            ),
+                                          ),
                                         );
                                       },
                                     ),
@@ -9609,17 +11693,25 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFFFE2C55),
                                     foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(22),
+                                    ),
                                   ),
                                   onPressed: () {
-                                    if (socketListener != null && widget.socket != null) {
-                                      widget.socket!.off('deposit-status', socketListener);
+                                    if (socketListener != null &&
+                                        widget.socket != null) {
+                                      widget.socket!.off(
+                                        'deposit-status',
+                                        socketListener,
+                                      );
                                     }
                                     Navigator.pop(context);
                                   },
                                   child: const Text(
                                     "Fermer",
-                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -9647,8 +11739,12 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     final textCol = isDark ? Colors.white : Colors.black;
     final subCol = isDark ? Colors.white54 : Colors.black54;
     final cardBg = isDark ? const Color(0xFF161618) : Colors.white;
-    final borderCol = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.08);
-    final scaffoldBg = isDark ? const Color(0xFF000000) : const Color(0xFFF8F8F9);
+    final borderCol = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.08);
+    final scaffoldBg = isDark
+        ? const Color(0xFF000000)
+        : const Color(0xFFF8F8F9);
 
     showModalBottomSheet(
       context: context,
@@ -9690,7 +11786,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                         children: [
                           Text(
                             "Faire un retrait",
-                            style: TextStyle(color: textCol, fontSize: 18, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: textCol,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           IconButton(
                             icon: Icon(Icons.close_rounded, color: textCol),
@@ -9716,7 +11816,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                             const SizedBox(height: 6),
                             Text(
                               "\$${_withdrawalBalance.toStringAsFixed(2)}",
-                              style: TextStyle(color: textCol, fontSize: 28, fontWeight: FontWeight.w800),
+                              style: TextStyle(
+                                color: textCol,
+                                fontSize: 28,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ],
                         ),
@@ -9724,18 +11828,30 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                       const SizedBox(height: 24),
                       Text(
                         "Montant à retirer (USD)",
-                        style: TextStyle(color: textCol, fontSize: 14, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          color: textCol,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       TextFormField(
                         controller: amountController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        style: TextStyle(color: textCol, fontWeight: FontWeight.bold),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        style: TextStyle(
+                          color: textCol,
+                          fontWeight: FontWeight.bold,
+                        ),
                         validator: (val) {
                           final parsed = double.tryParse(val ?? '');
-                          if (parsed == null || parsed <= 0) return "Montant invalide";
-                          if (parsed > _withdrawalBalance) return "Solde insuffisant";
-                          if (parsed < 50) return "Le minimum requis est de \$50 USD";
+                          if (parsed == null || parsed <= 0)
+                            return "Montant invalide";
+                          if (parsed > _withdrawalBalance)
+                            return "Solde insuffisant";
+                          if (parsed < 50)
+                            return "Le minimum requis est de \$50 USD";
                           return null;
                         },
                         decoration: InputDecoration(
@@ -9743,21 +11859,31 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                           hintStyle: TextStyle(color: subCol),
                           filled: true,
                           fillColor: cardBg,
-                          prefixIcon: Icon(Icons.attach_money_rounded, color: subCol),
+                          prefixIcon: Icon(
+                            Icons.attach_money_rounded,
+                            color: subCol,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide(color: borderCol),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFFFE2C55), width: 2),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFFE2C55),
+                              width: 2,
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         "PIN secret de retrait",
-                        style: TextStyle(color: textCol, fontSize: 14, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          color: textCol,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       TextFormField(
@@ -9765,22 +11891,33 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                         keyboardType: TextInputType.number,
                         obscureText: true,
                         maxLength: 6,
-                        style: TextStyle(color: textCol, fontWeight: FontWeight.bold),
-                        validator: (val) => (val ?? '').length != 6 ? "PIN requis (6 chiffres)" : null,
+                        style: TextStyle(
+                          color: textCol,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        validator: (val) => (val ?? '').length != 6
+                            ? "PIN requis (6 chiffres)"
+                            : null,
                         decoration: InputDecoration(
                           hintText: "PIN (6 chiffres)",
                           hintStyle: TextStyle(color: subCol),
                           filled: true,
                           fillColor: cardBg,
                           counterText: "",
-                          prefixIcon: Icon(Icons.lock_outline_rounded, color: subCol),
+                          prefixIcon: Icon(
+                            Icons.lock_outline_rounded,
+                            color: subCol,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide(color: borderCol),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFFFE2C55), width: 2),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFFE2C55),
+                              width: 2,
+                            ),
                           ),
                         ),
                       ),
@@ -9792,7 +11929,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFFE2C55),
                             foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
                             elevation: 0,
                           ),
                           onPressed: () {
@@ -9806,7 +11945,10 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                           },
                           child: const Text(
                             "Confirmer le retrait",
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                         ),
                       ),
@@ -9828,7 +11970,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     final textCol = isDark ? Colors.white : Colors.black;
     final subCol = isDark ? Colors.white54 : Colors.black54;
     final cardBg = isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF2F2F7);
-    final borderCol = isDark ? Colors.white.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.1);
+    final borderCol = isDark
+        ? Colors.white.withValues(alpha: 0.1)
+        : Colors.black.withValues(alpha: 0.1);
     final scaffoldBg = isDark ? const Color(0xFF0F0F10) : Colors.white;
     final picker = ImagePicker();
 
@@ -9866,7 +12010,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    
+
                     // Header
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -9903,29 +12047,45 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                               color: borderCol,
                               shape: BoxShape.circle,
                             ),
-                            child: Icon(Icons.close_rounded, color: textCol, size: 18),
+                            child: Icon(
+                              Icons.close_rounded,
+                              color: textCol,
+                              size: 18,
+                            ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // Main description card
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFE2C55).withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFFE2C55).withValues(alpha: 0.15)),
+                        border: Border.all(
+                          color: const Color(
+                            0xFFFE2C55,
+                          ).withValues(alpha: 0.15),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.shield_outlined, color: Color(0xFFFE2C55), size: 22),
+                          const Icon(
+                            Icons.shield_outlined,
+                            color: Color(0xFFFE2C55),
+                            size: 22,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               "Vos données sont cryptées de bout en bout et traitées instantanément par notre IA de sécurité en temps réel.",
-                              style: TextStyle(color: textCol.withValues(alpha: 0.8), fontSize: 11.5, height: 1.4),
+                              style: TextStyle(
+                                color: textCol.withValues(alpha: 0.8),
+                                fontSize: 11.5,
+                                height: 1.4,
+                              ),
                             ),
                           ),
                         ],
@@ -9936,7 +12096,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                     // 1. Selfie Selector Card
                     _buildSelectionRow(
                       title: "1. Selfie de Vivacité",
-                      subtitle: "Doit inclure le clignement d'yeux et la rotation",
+                      subtitle:
+                          "Doit inclure le clignement d'yeux et la rotation",
                       imageFile: selfieImage,
                       onTap: () {
                         _showLivenessChallenge(context, (file) {
@@ -9956,17 +12117,24 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                     // 2. ID Document Selector Card
                     _buildSelectionRow(
                       title: "2. Pièce d'identité",
-                      subtitle: "Passeport, Carte Nationale d'Identité ou Permis",
+                      subtitle:
+                          "Passeport, Carte Nationale d'Identité ou Permis",
                       imageFile: identityDocument,
                       onTap: () async {
-                        final doc = await picker.pickImage(source: ImageSource.gallery, imageQuality: 90);
+                        final doc = await picker.pickImage(
+                          source: ImageSource.gallery,
+                          imageQuality: 90,
+                        );
                         if (doc != null) {
                           if (context.mounted) {
-                            final File? cropped = await Navigator.of(context).push<File>(
-                              MaterialPageRoute(
-                                builder: (context) => ImageCropperPage(imageFile: File(doc.path)),
-                              ),
-                            );
+                            final File? cropped = await Navigator.of(context)
+                                .push<File>(
+                                  MaterialPageRoute(
+                                    builder: (context) => ImageCropperPage(
+                                      imageFile: File(doc.path),
+                                    ),
+                                  ),
+                                );
                             if (cropped != null) {
                               setSheetState(() {
                                 identityDocument = cropped;
@@ -9989,21 +12157,27 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                       height: 52,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(26),
-                        gradient: (selfieImage != null && identityDocument != null)
+                        gradient:
+                            (selfieImage != null && identityDocument != null)
                             ? const LinearGradient(
                                 colors: [Color(0xFFFE2C55), Color(0xFFFF5277)],
                                 begin: Alignment.centerLeft,
                                 end: Alignment.centerRight,
                               )
                             : null,
-                        color: (selfieImage != null && identityDocument != null) ? null : cardBg,
-                        boxShadow: (selfieImage != null && identityDocument != null)
+                        color: (selfieImage != null && identityDocument != null)
+                            ? null
+                            : cardBg,
+                        boxShadow:
+                            (selfieImage != null && identityDocument != null)
                             ? [
                                 BoxShadow(
-                                  color: const Color(0xFFFE2C55).withValues(alpha: 0.25),
+                                  color: const Color(
+                                    0xFFFE2C55,
+                                  ).withValues(alpha: 0.25),
                                   blurRadius: 12,
                                   offset: const Offset(0, 4),
-                                )
+                                ),
                               ]
                             : null,
                       ),
@@ -10012,18 +12186,29 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                           backgroundColor: Colors.transparent,
                           foregroundColor: Colors.white,
                           shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(26),
+                          ),
                         ),
-                        onPressed: (selfieImage == null || identityDocument == null)
+                        onPressed:
+                            (selfieImage == null || identityDocument == null)
                             ? null
                             : () {
                                 Navigator.pop(context);
-                                _showRealtimeVerificationDialog(context, selfieImage!, identityDocument!);
+                                _showRealtimeVerificationDialog(
+                                  context,
+                                  selfieImage!,
+                                  identityDocument!,
+                                );
                               },
                         child: Text(
                           "Lancer la vérification instantanée",
                           style: TextStyle(
-                            color: (selfieImage != null && identityDocument != null) ? Colors.white : subCol,
+                            color:
+                                (selfieImage != null &&
+                                    identityDocument != null)
+                                ? Colors.white
+                                : subCol,
                             fontWeight: FontWeight.bold,
                             fontSize: 15,
                           ),
@@ -10056,13 +12241,14 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
       children: [
         Text(
           title,
-          style: TextStyle(color: textCol, fontSize: 14, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: textCol,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 4),
-        Text(
-          subtitle,
-          style: TextStyle(color: subCol, fontSize: 11),
-        ),
+        Text(subtitle, style: TextStyle(color: subCol, fontSize: 11)),
         const SizedBox(height: 10),
         GestureDetector(
           onTap: onTap,
@@ -10073,7 +12259,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
               color: cardBg,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: imageFile != null ? const Color(0xFFFE2C55).withValues(alpha: 0.4) : borderCol,
+                color: imageFile != null
+                    ? const Color(0xFFFE2C55).withValues(alpha: 0.4)
+                    : borderCol,
                 width: imageFile != null ? 1.5 : 1.0,
               ),
             ),
@@ -10100,7 +12288,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        imageFile != null ? "Document importé" : "Appuyer pour numériser",
+                        imageFile != null
+                            ? "Document importé"
+                            : "Appuyer pour numériser",
                         style: TextStyle(
                           color: textCol,
                           fontSize: 13,
@@ -10113,7 +12303,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                             ? "Cliquez pour modifier le fichier"
                             : "Format photo haute définition requis",
                         style: TextStyle(
-                          color: imageFile != null ? const Color(0xFFFE2C55) : subCol,
+                          color: imageFile != null
+                              ? const Color(0xFFFE2C55)
+                              : subCol,
                           fontSize: 10.5,
                         ),
                       ),
@@ -10134,7 +12326,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                     ),
                   )
                 else
-                  Icon(Icons.arrow_forward_ios_rounded, color: subCol, size: 14),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: subCol,
+                    size: 14,
+                  ),
               ],
             ),
           ),
@@ -10162,7 +12358,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     }
   }
 
-  void _showRealtimeVerificationDialog(BuildContext context, File selfieFile, File docFile) {
+  void _showRealtimeVerificationDialog(
+    BuildContext context,
+    File selfieFile,
+    File docFile,
+  ) {
     // Steps: 0=Loading DB, 1=OCR+FaceMatch (uploading), 2=Name concordance, 3=Face match, 4=Done
     int currentStep = 0;
     String userFirstName = "";
@@ -10189,7 +12389,6 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-
             // Launch the pipeline once after the dialog opens
             if (!pipelineStarted) {
               pipelineStarted = true;
@@ -10198,13 +12397,16 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                 try {
                   final response = await http.get(
                     Uri.parse('https://trasx.com/api/users/${widget.userId}'),
-                    headers: {'Content-Type': 'application/json', 'x-user-id': '${widget.userId}'},
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'x-user-id': '${widget.userId}',
+                    },
                   );
                   if (isCancelled) return;
                   if (response.statusCode == 200) {
                     final data = jsonDecode(response.body);
                     userFirstName = data['first_name'] ?? "Inconnu";
-                    userLastName  = data['last_name']  ?? "Inconnu";
+                    userLastName = data['last_name'] ?? "Inconnu";
                     userDob = data['dob'] != null
                         ? data['dob'].toString().split('T')[0]
                         : "Non renseigné";
@@ -10215,7 +12417,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                 } catch (e) {
                   if (isCancelled) return;
                   setDialogState(() {
-                    verificationError = "Impossible de récupérer les données de votre compte.";
+                    verificationError =
+                        "Impossible de récupérer les données de votre compte.";
                     currentStep = 4;
                   });
                   return;
@@ -10235,38 +12438,48 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                   request.headers['x-user-id'] = '${widget.userId}';
                   request.fields['selfie_image_data'] = selfieDataUrl;
 
-                  request.files.add(await http.MultipartFile.fromPath(
-                    'identity_document',
-                    docFile.path,
-                    contentType: MediaType('image', 'jpeg'),
-                  ));
+                  request.files.add(
+                    await http.MultipartFile.fromPath(
+                      'identity_document',
+                      docFile.path,
+                      contentType: MediaType('image', 'jpeg'),
+                    ),
+                  );
 
                   if (isCancelled) return;
                   final streamedResponse = await request.send();
                   if (isCancelled) return;
-                  final responseBody = await streamedResponse.stream.bytesToString();
+                  final responseBody = await streamedResponse.stream
+                      .bytesToString();
                   if (isCancelled) return;
                   final resData = jsonDecode(responseBody);
 
                   final debugOcr = resData['debugOcrText'];
                   if (debugOcr != null) {
-                    debugPrint('[WithdrawKYC Client Debug] OCR Text from server:');
+                    debugPrint(
+                      '[WithdrawKYC Client Debug] OCR Text from server:',
+                    );
                     debugPrint('----------------------------------------');
                     debugPrint(debugOcr.toString());
                     debugPrint('----------------------------------------');
                   }
 
-                  final details = resData['details'] as Map<String, dynamic>? ?? {};
-                  nameMatched    = details['nameMatched'] as bool?;
-                  dobMatched     = details['dobMatched']  as bool?;
-                  faceMatchScore = (details['faceMatchScore'] as num?)?.toInt() ?? 0;
+                  final details =
+                      resData['details'] as Map<String, dynamic>? ?? {};
+                  nameMatched = details['nameMatched'] as bool?;
+                  dobMatched = details['dobMatched'] as bool?;
+                  faceMatchScore =
+                      (details['faceMatchScore'] as num?)?.toInt() ?? 0;
 
-                  if (streamedResponse.statusCode != 200 || resData['success'] != true) {
+                  if (streamedResponse.statusCode != 200 ||
+                      resData['success'] != true) {
                     // Fast-reject or server error — jump straight to final error state
                     setDialogState(() {
                       currentStep = 4;
                       success = false;
-                      verificationError = resData['error'] ?? "Échec de la validation du document.";
+                      verificationError =
+                          resData['error'] ??
+                          "Échec de la validation du document.";
                     });
                     return;
                   }
@@ -10291,7 +12504,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                   if (isCancelled) return;
                   setDialogState(() {
                     currentStep = 4;
-                    verificationError = "Erreur de connexion lors du téléversement.";
+                    verificationError =
+                        "Erreur de connexion lors du téléversement.";
                   });
                 }
               });
@@ -10301,7 +12515,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
               onWillPop: () async => false,
               child: Dialog(
                 backgroundColor: cardBg,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(24.0),
                   child: Column(
@@ -10314,7 +12530,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                           Expanded(
                             child: Text(
                               "Analyse de sécurité par IA",
-                              style: TextStyle(color: textCol, fontSize: 17, fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                color: textCol,
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                           if (currentStep < 4)
@@ -10329,7 +12549,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                                   color: textCol.withValues(alpha: 0.08),
                                   shape: BoxShape.circle,
                                 ),
-                                child: Icon(Icons.close_rounded, color: textCol, size: 16),
+                                child: Icon(
+                                  Icons.close_rounded,
+                                  color: textCol,
+                                  size: 16,
+                                ),
                               ),
                             ),
                         ],
@@ -10347,7 +12571,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                         subtitle: currentStep > 0
                             ? "Nom: $userLastName  •  Prénom: $userFirstName  •  Naissance: $userDob"
                             : "Récupération des données en base...",
-                        status: currentStep > 0 ? "success" : (currentStep == 0 ? "loading" : "idle"),
+                        status: currentStep > 0
+                            ? "success"
+                            : (currentStep == 0 ? "loading" : "idle"),
                         textCol: textCol,
                         subCol: subCol,
                       ),
@@ -10357,24 +12583,31 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                         title: "2. Lecture OCR du document d'identité",
                         subtitle: currentStep > 1
                             ? "Extraction du texte réussie"
-                            : (currentStep == 1 ? "Envoi du document et analyse IA en cours..." : "En attente..."),
-                        status: currentStep > 1 ? "success" : (currentStep == 1 ? "loading" : "idle"),
+                            : (currentStep == 1
+                                  ? "Envoi du document et analyse IA en cours..."
+                                  : "En attente..."),
+                        status: currentStep > 1
+                            ? "success"
+                            : (currentStep == 1 ? "loading" : "idle"),
                         textCol: textCol,
                         subCol: subCol,
                       ),
 
                       // Step 3: Name/DOB concordance
                       _buildVerificationStepTile(
-                        title: "3. Concordance nom, prénom et date de naissance",
+                        title:
+                            "3. Concordance nom, prénom et date de naissance",
                         subtitle: currentStep > 2
                             ? (nameMatched == true && dobMatched == true
-                                ? "✓ Nom et date de naissance concordants"
-                                : nameMatched == false
-                                    ? "✗ Le nom ne correspond pas à votre compte"
-                                    : dobMatched == false
-                                        ? "✗ La date de naissance ne correspond pas"
-                                        : "Résultat de concordance partiel")
-                            : (currentStep == 2 ? "Comparaison nom/prénom/naissance avec le document..." : "En attente..."),
+                                  ? "✓ Nom et date de naissance concordants"
+                                  : nameMatched == false
+                                  ? "✗ Le nom ne correspond pas à votre compte"
+                                  : dobMatched == false
+                                  ? "✗ La date de naissance ne correspond pas"
+                                  : "Résultat de concordance partiel")
+                            : (currentStep == 2
+                                  ? "Comparaison nom/prénom/naissance avec le document..."
+                                  : "En attente..."),
                         status: currentStep > 2
                             ? (nameMatched == true ? "success" : "error")
                             : (currentStep == 2 ? "loading" : "idle"),
@@ -10387,9 +12620,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                         title: "4. Reconnaissance faciale (Face Match IA)",
                         subtitle: currentStep > 3
                             ? (faceMatchScore >= 60
-                                ? "✓ Correspondance faciale : $faceMatchScore%"
-                                : "✗ Le selfie ne correspond pas à la photo du document")
-                            : (currentStep == 3 ? "Comparaison biométrique selfie ↔ photo de pièce..." : "En attente..."),
+                                  ? "✓ Correspondance faciale : $faceMatchScore%"
+                                  : "✗ Le selfie ne correspond pas à la photo du document")
+                            : (currentStep == 3
+                                  ? "Comparaison biométrique selfie ↔ photo de pièce..."
+                                  : "En attente..."),
                         status: currentStep > 3
                             ? (faceMatchScore >= 60 ? "success" : "error")
                             : (currentStep == 3 ? "loading" : "idle"),
@@ -10406,12 +12641,20 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                         if (success) ...[
                           Row(
                             children: [
-                              const Icon(Icons.check_circle_rounded, color: Colors.green, size: 24),
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: Colors.green,
+                                size: 24,
+                              ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
                                   "Vérification validée avec succès ! Vos retraits sont maintenant activés.",
-                                  style: TextStyle(color: textCol, fontSize: 13, fontWeight: FontWeight.bold),
+                                  style: TextStyle(
+                                    color: textCol,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ],
@@ -10424,21 +12667,36 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.green,
                                 foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(22),
+                                ),
                               ),
                               onPressed: () => Navigator.pop(context),
-                              child: const Text("Terminer", style: TextStyle(fontWeight: FontWeight.bold)),
+                              child: const Text(
+                                "Terminer",
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
                             ),
                           ),
                         ] else ...[
                           Row(
                             children: [
-                              const Icon(Icons.cancel_rounded, color: Colors.red, size: 24),
+                              const Icon(
+                                Icons.cancel_rounded,
+                                color: Colors.red,
+                                size: 24,
+                              ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  verificationError.isNotEmpty ? verificationError : "Échec de validation KYC.",
-                                  style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold),
+                                  verificationError.isNotEmpty
+                                      ? verificationError
+                                      : "Échec de validation KYC.",
+                                  style: const TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ],
@@ -10451,10 +12709,15 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFFFE2C55),
                                 foregroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(22),
+                                ),
                               ),
                               onPressed: () => Navigator.pop(context),
-                              child: const Text("Fermer", style: TextStyle(fontWeight: FontWeight.bold)),
+                              child: const Text(
+                                "Fermer",
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
                             ),
                           ),
                         ],
@@ -10465,10 +12728,20 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                             const SizedBox(
                               width: 16,
                               height: 16,
-                              child: CircularProgressIndicator(color: Color(0xFFFE2C55), strokeWidth: 2),
+                              child: CircularProgressIndicator(
+                                color: Color(0xFFFE2C55),
+                                strokeWidth: 2,
+                              ),
                             ),
                             const SizedBox(width: 12),
-                            Text("Analyse en cours...", style: TextStyle(color: subCol, fontSize: 12, fontWeight: FontWeight.bold)),
+                            Text(
+                              "Analyse en cours...",
+                              style: TextStyle(
+                                color: subCol,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ],
                         ),
                       ],
@@ -10483,8 +12756,6 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     );
   }
 
-
-
   Widget _buildVerificationStepTile({
     required String title,
     required String subtitle,
@@ -10495,8 +12766,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     Color tileColor = status == 'success'
         ? Colors.green
         : status == 'error'
-            ? Colors.red
-            : (status == 'loading' ? const Color(0xFFFE2C55) : subCol);
+        ? Colors.red
+        : (status == 'loading' ? const Color(0xFFFE2C55) : subCol);
     return Padding(
       padding: const EdgeInsets.only(bottom: 18.0),
       child: Row(
@@ -10509,14 +12780,16 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
             child: status == 'loading'
                 ? const CircularProgressIndicator(
                     strokeWidth: 2.5,
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFE2C55)),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Color(0xFFFE2C55),
+                    ),
                   )
                 : Icon(
                     status == 'success'
                         ? Icons.check_circle_rounded
                         : status == 'error'
-                            ? Icons.cancel_rounded
-                            : Icons.radio_button_off_rounded,
+                        ? Icons.cancel_rounded
+                        : Icons.radio_button_off_rounded,
                     color: tileColor,
                     size: 18,
                   ),
@@ -10529,7 +12802,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                 Text(
                   title,
                   style: TextStyle(
-                    color: status != 'idle' ? textCol : textCol.withValues(alpha: 0.35),
+                    color: status != 'idle'
+                        ? textCol
+                        : textCol.withValues(alpha: 0.35),
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
                   ),
@@ -10538,7 +12813,9 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: status != 'idle' ? subCol : subCol.withValues(alpha: 0.3),
+                    color: status != 'idle'
+                        ? subCol
+                        : subCol.withValues(alpha: 0.3),
                     fontSize: 11,
                   ),
                 ),
@@ -10591,7 +12868,11 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(color: badgeColor, fontSize: 11, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: badgeColor,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
@@ -10619,21 +12900,22 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
           'Content-Type': 'application/json',
           'x-user-id': '${widget.userId}',
         },
-        body: jsonEncode({
-          'amount': amount,
-          'pin': pin,
-        }),
+        body: jsonEncode({'amount': amount, 'pin': pin}),
       );
       final resData = jsonDecode(response.body);
       if (response.statusCode == 200 && resData['success'] == true) {
         _fetchBalances();
         _fetchTransactions();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Demande de retrait transmise avec succès.')),
+          const SnackBar(
+            content: Text('Demande de retrait transmise avec succès.'),
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(resData['error'] ?? 'Code secret ou solde invalide.')),
+          SnackBar(
+            content: Text(resData['error'] ?? 'Code secret ou solde invalide.'),
+          ),
         );
       }
     } catch (e) {
@@ -10648,16 +12930,26 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Échanger des \$TRASX"),
-        content: const Text("L'échange décentralisé (Swap) de jetons \$TRASX vers du BNB ou du BUSD est disponible via PancakeSwap. Connectez votre adresse de retrait BSC pour interagir directement."),
+        content: const Text(
+          "L'échange décentralisé (Swap) de jetons \$TRASX vers du BNB ou du BUSD est disponible via PancakeSwap. Connectez votre adresse de retrait BSC pour interagir directement.",
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Fermer")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Fermer"),
+          ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFE2C55)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFE2C55),
+            ),
             onPressed: () {
               Navigator.pop(context);
               launchUrl(Uri.parse("https://pancakeswap.finance"));
             },
-            child: const Text("Ouvrir PancakeSwap", style: TextStyle(color: Colors.white)),
+            child: const Text(
+              "Ouvrir PancakeSwap",
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -10697,12 +12989,20 @@ class _LanguageSettingsPageState extends State<LanguageSettingsPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: textPrimaryColor, size: 20),
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: textPrimaryColor,
+            size: 20,
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
           "Langue & Préférences",
-          style: TextStyle(color: textPrimaryColor, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(
+            color: textPrimaryColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
         ),
         centerTitle: true,
       ),
@@ -10714,20 +13014,32 @@ class _LanguageSettingsPageState extends State<LanguageSettingsPage> {
             children: [
               Text(
                 "Langue de l'application",
-                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: textPrimaryColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 12),
               Container(
                 decoration: BoxDecoration(
                   color: cardColor,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
+                  border: Border.all(
+                    color: textPrimaryColor.withValues(alpha: 0.06),
+                  ),
                 ),
                 child: Column(
                   children: [
                     RadioListTile<String>(
-                      title: Text("Français", style: TextStyle(color: textPrimaryColor, fontSize: 14)),
-                      secondary: const Text("🇫🇷", style: TextStyle(fontSize: 20)),
+                      title: Text(
+                        "Français",
+                        style: TextStyle(color: textPrimaryColor, fontSize: 14),
+                      ),
+                      secondary: const Text(
+                        "🇫🇷",
+                        style: TextStyle(fontSize: 20),
+                      ),
                       value: "fr",
                       groupValue: _selectedLanguage,
                       activeColor: const Color(0xFFC13584),
@@ -10736,14 +13048,25 @@ class _LanguageSettingsPageState extends State<LanguageSettingsPage> {
                           _selectedLanguage = val!;
                         });
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Langue changée en Français.')),
+                          const SnackBar(
+                            content: Text('Langue changée en Français.'),
+                          ),
                         );
                       },
                     ),
-                    Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
+                    Divider(
+                      height: 1,
+                      color: isDark ? Colors.white10 : Colors.black12,
+                    ),
                     RadioListTile<String>(
-                      title: Text("English", style: TextStyle(color: textPrimaryColor, fontSize: 14)),
-                      secondary: const Text("🇬🇧", style: TextStyle(fontSize: 20)),
+                      title: Text(
+                        "English",
+                        style: TextStyle(color: textPrimaryColor, fontSize: 14),
+                      ),
+                      secondary: const Text(
+                        "🇬🇧",
+                        style: TextStyle(fontSize: 20),
+                      ),
                       value: "en",
                       groupValue: _selectedLanguage,
                       activeColor: const Color(0xFFC13584),
@@ -10752,7 +13075,9 @@ class _LanguageSettingsPageState extends State<LanguageSettingsPage> {
                           _selectedLanguage = val!;
                         });
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Language changed to English.')),
+                          const SnackBar(
+                            content: Text('Language changed to English.'),
+                          ),
                         );
                       },
                     ),
@@ -10762,23 +13087,36 @@ class _LanguageSettingsPageState extends State<LanguageSettingsPage> {
               const SizedBox(height: 32),
               Text(
                 "Thème d'affichage",
-                style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: textPrimaryColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 12),
               Container(
                 decoration: BoxDecoration(
                   color: cardColor,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
+                  border: Border.all(
+                    color: textPrimaryColor.withValues(alpha: 0.06),
+                  ),
                 ),
                 child: SwitchListTile(
                   title: Text(
                     "Mode Sombre",
-                    style: TextStyle(color: textPrimaryColor, fontSize: 14, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: textPrimaryColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   subtitle: Text(
                     "Activer l'affichage avec des couleurs sombres.",
-                    style: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 11),
+                    style: TextStyle(
+                      color: isDark ? Colors.white54 : Colors.black54,
+                      fontSize: 11,
+                    ),
                   ),
                   value: isDark,
                   activeColor: const Color(0xFFC13584),
@@ -10817,7 +13155,7 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
     "Bug technique / Problème d'affichage",
     "Question sur mon solde (Diamonds)",
     "Création de challenge ou hashtag",
-    "Autre demande"
+    "Autre demande",
   ];
 
   @override
@@ -10880,12 +13218,20 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: textPrimaryColor, size: 20),
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: textPrimaryColor,
+            size: 20,
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
           "Assistance Client",
-          style: TextStyle(color: textPrimaryColor, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(
+            color: textPrimaryColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
         ),
         centerTitle: true,
       ),
@@ -10899,7 +13245,11 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
               children: [
                 Text(
                   "Contactez le support TRASX",
-                  style: TextStyle(color: textPrimaryColor, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: textPrimaryColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -10914,9 +13264,14 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
                   style: TextStyle(color: textPrimaryColor, fontSize: 13),
                   decoration: InputDecoration(
                     labelText: "Sujet de votre demande",
-                    labelStyle: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 13),
+                    labelStyle: TextStyle(
+                      color: isDark ? Colors.white60 : Colors.black54,
+                      fontSize: 13,
+                    ),
                     filled: true,
-                    fillColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
+                    fillColor: isDark
+                        ? const Color(0xFF121212)
+                        : const Color(0xFFF5F5F5),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -10939,14 +13294,21 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
                 TextFormField(
                   controller: _descriptionController,
                   maxLines: 6,
-                  validator: (val) => val == null || val.trim().isEmpty ? "Veuillez détailler votre problème." : null,
+                  validator: (val) => val == null || val.trim().isEmpty
+                      ? "Veuillez détailler votre problème."
+                      : null,
                   style: TextStyle(color: textPrimaryColor, fontSize: 14),
                   decoration: InputDecoration(
                     labelText: "Description de votre demande",
                     alignLabelWithHint: true,
-                    labelStyle: TextStyle(color: isDark ? Colors.white60 : Colors.black54, fontSize: 13),
+                    labelStyle: TextStyle(
+                      color: isDark ? Colors.white60 : Colors.black54,
+                      fontSize: 13,
+                    ),
                     filled: true,
-                    fillColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
+                    fillColor: isDark
+                        ? const Color(0xFF121212)
+                        : const Color(0xFFF5F5F5),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
@@ -10962,18 +13324,26 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFC13584),
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       elevation: 0,
                     ),
                     child: _isSending
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Text(
                             "Envoyer ma demande",
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                   ),
                 ),
@@ -10982,7 +13352,11 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
                 const SizedBox(height: 20),
                 Text(
                   "Autres moyens de contact",
-                  style: TextStyle(color: textPrimaryColor, fontSize: 15, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: textPrimaryColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _buildContactTile(
@@ -10998,7 +13372,8 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
                   icon: Icons.chat_rounded,
                   title: "Canal Telegram",
                   subtitle: "@trasx_support",
-                  onTap: () => launchUrl(Uri.parse("https://t.me/trasx_support")),
+                  onTap: () =>
+                      launchUrl(Uri.parse("https://t.me/trasx_support")),
                   cardColor: cardColor,
                   textPrimaryColor: textPrimaryColor,
                   textSecondaryColor: textSecondaryColor,
@@ -11029,13 +13404,25 @@ class _SupportSettingsPageState extends State<SupportSettingsPage> {
       ),
       child: ListTile(
         leading: Icon(icon, color: const Color(0xFFC13584)),
-        title: Text(title, style: TextStyle(color: textPrimaryColor, fontSize: 13, fontWeight: FontWeight.bold)),
-        subtitle: Text(subtitle, style: TextStyle(color: textSecondaryColor, fontSize: 11)),
-        trailing: Icon(Icons.open_in_new_rounded, color: textSecondaryColor.withValues(alpha: 0.5), size: 16),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: textPrimaryColor,
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(color: textSecondaryColor, fontSize: 11),
+        ),
+        trailing: Icon(
+          Icons.open_in_new_rounded,
+          color: textSecondaryColor.withValues(alpha: 0.5),
+          size: 16,
+        ),
         onTap: onTap,
       ),
     );
   }
 }
-
-

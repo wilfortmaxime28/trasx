@@ -130,6 +130,43 @@ class ShortsFeedController extends ChangeNotifier {
     }
   }
 
+  int insertOrPromoteReel(dynamic reel) {
+    final reelId = int.tryParse(reel['id']?.toString() ?? '');
+    if (reelId == null) return -1;
+
+    final existingIndex = _reels.indexWhere(
+      (item) => int.tryParse(item['id']?.toString() ?? '') == reelId,
+    );
+
+    dynamic normalizedReel = reel;
+    if (reel is Map) {
+      normalizedReel = reel.map(
+        (key, value) => MapEntry(key.toString(), value),
+      );
+    }
+
+    if (existingIndex != -1) {
+      final existing = _reels.removeAt(existingIndex);
+      if (existing is Map && normalizedReel is Map) {
+        final merged = existing.map(
+          (key, value) => MapEntry(key.toString(), value),
+        );
+        merged.addAll(
+          normalizedReel.map((key, value) => MapEntry(key.toString(), value)),
+        );
+        _reels.insert(0, merged);
+      } else {
+        _reels.insert(0, normalizedReel);
+      }
+    } else {
+      _reels.insert(0, normalizedReel);
+    }
+
+    _state = ShortsFeedState.success;
+    notifyListeners();
+    return 0;
+  }
+
   void toggleReelLikeLocal(int index, bool isLiked) {
     if (index < 0 || index >= _reels.length) return;
     final reel = _reels[index];

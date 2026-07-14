@@ -98,6 +98,10 @@ const getStatusMessagePreviewText = (message) => {
 const getMessagePreviewText = (message) => {
   if (!message) return 'Start a conversation...';
 
+  if (Number(message.deleted_for_everyone || 0) === 1) {
+    return 'Ce message a ete supprime.';
+  }
+
   const content = String(message.content || '').trim();
   if (content) {
     const gamePreview = getGameInvitationPreviewText(content);
@@ -195,6 +199,9 @@ function buildMessageInboxSections(currentUserId, contacts = [], messages = []) 
       is_online: isOnline,
       last_seen_at: contact.last_seen_at || null,
       presence_text: isOnline ? 'Online now' : lastSeenText,
+      has_blocked_user: !!contact.has_blocked_user,
+      is_blocked_by_user: !!contact.is_blocked_by_user,
+      can_chat: contact.can_chat !== false,
       category,
       last_message: lastMessage,
       preview,
