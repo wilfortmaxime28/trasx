@@ -5077,7 +5077,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const initiateMockCall = (contactName, avatarUrl, isVideo, isOnline, onCallEnd, contactsList = [], contactId = null, otherSocketId = null) => {
+  const initiateMockCall = (contactName, avatarUrl, isVideo, isOnline, onCallEnd, contactsList = [], contactId = null, otherSocketId = null, passedRoomId = null) => {
+    let currentRoomId = passedRoomId;
     if (contactId && Number(contactId) === Number(window.currentUserId)) {
       showToast(getPageLocale() === 'fr' 
         ? "Vous ne pouvez pas vous appeler vous-même !" 
@@ -5156,38 +5157,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     let mediaStream = null;
 
+    let outgoingAudio = null;
     const playRingSequence = () => {
       try {
-        if (!audioCtx) {
-          const AudioCtx = window.AudioContext || window.webkitAudioContext;
-          if (AudioCtx) audioCtx = new AudioCtx();
+        if (!outgoingAudio) {
+          outgoingAudio = new Audio('/assets/sounds/ringback.wav');
+          outgoingAudio.loop = true;
         }
-        if (audioCtx && audioCtx.state !== 'closed') {
-          const osc1 = audioCtx.createOscillator();
-          const osc2 = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          
-          osc1.type = 'sine';
-          osc2.type = 'sine';
-          osc1.frequency.setValueAtTime(400, audioCtx.currentTime);
-          osc2.frequency.setValueAtTime(450, audioCtx.currentTime);
-          
-          gain.gain.setValueAtTime(0, audioCtx.currentTime);
-          gain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 0.05);
-          gain.gain.setValueAtTime(0.08, audioCtx.currentTime + 1.5);
-          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.8);
-          
-          osc1.connect(gain);
-          osc2.connect(gain);
-          gain.connect(audioCtx.destination);
-          
-          osc1.start();
-          osc2.start();
-          osc1.stop(audioCtx.currentTime + 1.8);
-          osc2.stop(audioCtx.currentTime + 1.8);
-        }
-      } catch (e) {
-        console.warn(e);
+        outgoingAudio.play().catch(e => console.warn(e));
+      } catch (e) {}
+    };
+
+    const stopOutgoingRing = () => {
+      if (outgoingAudio) {
+        outgoingAudio.pause();
+        outgoingAudio.currentTime = 0;
+        outgoingAudio = null;
       }
     };
 
@@ -5499,172 +5484,188 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    const createPeerConnection = (targetSocketId) => {
-      if (callPC) {
-        addCallDebugLog("createPeerConnection: callPC existe déjà, ignoré.");
+    let msDevice = null;
+    let msSendTransport = null;
+    let msRecvTransport = null;
+    const msProducers = new Map();
+    const msConsumers = new Map();
+
+    const initMediasoupCall = async (roomId, peerId) => {
+      addCallDebugLog(`initMediasoupCall: roomId=${roomId}, peerId=${peerId}`);
+      return new Promise((resolve, reject) => {
+        socket.emit('mediasoup:getRtpCapabilities', { roomId }, async ({ rtpCapabilities, error }) => {
+          if (error) {
+            addCallDebugLog(`getRtpCapabilities error: ${error}`);
+            return reject(new Error(error));
+          }
+          try {
+            msDevice = new mediasoupClient.Device();
+            await msDevice.load({ routerRtpCapabilities: rtpCapabilities });
+            await createCallTransports(roomId, peerId);
+            resolve();
+          } catch (e) {
+            addCallDebugLog(`Device load/transports error: ${e.message}`);
+            reject(e);
+          }
+        });
+      });
+    };
+
+    const loadIceServers = () => {
+      return new Promise((resolve) => {
+        if (window.callIceServers) {
+          resolve(window.callIceServers);
+          return;
+        }
+        socket.emit('call:getConfig', {}, (res) => {
+          window.callIceServers = (res && res.success) ? res.iceServers : [];
+          resolve(window.callIceServers);
+        });
+      });
+    };
+
+    const createCallTransports = async (roomId, peerId) => {
+      addCallDebugLog("Création des transports Mediasoup...");
+      const iceServers = await loadIceServers();
+      return new Promise((resolve) => {
+        socket.emit('mediasoup:createTransport', { roomId, peerId }, async ({ params, error }) => {
+          if (error) {
+            addCallDebugLog(`createSendTransport error: ${error}`);
+            return;
+          }
+          msSendTransport = msDevice.createSendTransport({
+            ...params,
+            iceServers: iceServers || []
+          });
+          msSendTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
+            socket.emit('mediasoup:connectTransport', { roomId, peerId, transportId: msSendTransport.id, dtlsParameters }, ({ error }) => {
+              if (error) return errback(error);
+              callback();
+            });
+          });
+          msSendTransport.on('produce', ({ kind, rtpParameters, appData }, callback, errback) => {
+            socket.emit('mediasoup:produce', { roomId, peerId, transportId: msSendTransport.id, kind, rtpParameters, appData }, ({ id, error }) => {
+              if (error) return errback(error);
+              callback({ id });
+            });
+          });
+        });
+
+        socket.emit('mediasoup:createTransport', { roomId, peerId }, async ({ params, error }) => {
+          if (error) {
+            addCallDebugLog(`createRecvTransport error: ${error}`);
+            return;
+          }
+          msRecvTransport = msDevice.createRecvTransport({
+            ...params,
+            iceServers: iceServers || []
+          });
+          msRecvTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
+            socket.emit('mediasoup:connectTransport', { roomId, peerId, transportId: msRecvTransport.id, dtlsParameters }, ({ error }) => {
+              if (error) return errback(error);
+              callback();
+            });
+          });
+          resolve();
+        });
+      });
+    };
+
+    const publishCallStream = async () => {
+      if (!mediaStream || !msSendTransport) {
+        addCallDebugLog("publishCallStream: mediaStream ou sendTransport manquant.");
         return;
       }
-
-      addCallDebugLog(`Création de RTCPeerConnection pour targetSocketId: ${targetSocketId}`);
-      callPC = new RTCPeerConnection(rtcConfig);
-      remoteStream = null;
-
-      // ICE state listeners for troubleshooting
-      callPC.oniceconnectionstatechange = () => {
-        addCallDebugLog(`ICE Connection State: ${callPC.iceConnectionState}`);
-        if (callPC.iceConnectionState === 'failed') {
-          showToast(getPageLocale() === 'fr' 
-            ? "Échec de connexion WebRTC (Pare-feu/NAT bloquant)" 
-            : "WebRTC connection failed (Firewall/NAT blocking)");
-        }
-      };
-
-      callPC.onconnectionstatechange = () => {
-        addCallDebugLog(`Peer Connection State: ${callPC.connectionState}`);
-      };
-
-      if (mediaStream) {
-        addCallDebugLog(`Ajout de ${mediaStream.getTracks().length} pistes locales à RTCPeerConnection.`);
-        mediaStream.getTracks().forEach(track => {
-          callPC.addTrack(track, mediaStream);
-        });
-      } else {
-        addCallDebugLog("Attention: Aucun mediaStream local disponible lors de la création de PeerConnection.");
-      }
-
-      callPC.ontrack = (event) => {
-        const incomingStream = event.streams[0] || new MediaStream([event.track]);
-        addCallDebugLog(`ontrack reçu: type=${event.track.kind}, id=${event.track.id}`);
-
-        if (event.track.kind === 'video') {
-          remoteStream = incomingStream;
-          const rVideo = document.getElementById('mock-remote-video');
-          if (rVideo) {
-            rVideo.srcObject = remoteStream;
-            rVideo.muted = true;
-            addCallDebugLog("Liaison du flux vidéo distant à la balise vidéo.");
-            rVideo.play()
-              .then(() => {
-                addCallDebugLog("Lecture vidéo distante commencée.");
-                applyVideoLayout();
-              })
-              .catch(e => {
-                addCallDebugLog(`Erreur lecture vidéo distante: ${e.message || e}`);
-                applyVideoLayout();
-              });
-          } else {
-            addCallDebugLog("Erreur: Balise mock-remote-video introuvable dans le DOM.");
-          }
-        } else if (event.track.kind === 'audio') {
-          let remoteAudio = document.getElementById('mock-remote-audio');
-          if (!remoteAudio) {
-            remoteAudio = document.createElement('audio');
-            remoteAudio.id = 'mock-remote-audio';
-            remoteAudio.autoplay = true;
-            document.body.appendChild(remoteAudio);
-            addCallDebugLog("Création dynamique de la balise audio distante.");
-          }
-          remoteAudio.srcObject = incomingStream;
-          remoteAudio.volume = isSpeakerMuted ? 0 : 1;
-          addCallDebugLog("Liaison du flux audio distant à la balise audio.");
-          remoteAudio.play()
-            .then(() => addCallDebugLog("Lecture audio distante commencée."))
-            .catch(e => addCallDebugLog(`Erreur lecture audio distante: ${e.message || e}`));
-        }
-      };
-
-      callPC.onicecandidate = (event) => {
-        if (event.candidate && targetSocketId) {
-          addCallDebugLog(`Génération candidat ICE local: ${event.candidate.candidate.substring(0, 40)}...`);
-          socket.emit('ice-candidate', {
-            to: targetSocketId,
-            candidate: event.candidate
-          });
-        } else if (!event.candidate) {
-          addCallDebugLog("Collecte des candidats ICE locaux terminée.");
-        }
-      };
-    };
-
-    const initiateCallConnection = async (targetSocketId) => {
-      addCallDebugLog(`initiateCallConnection vers: ${targetSocketId}`);
-      createPeerConnection(targetSocketId);
-      try {
-        addCallDebugLog("Création de l'offre (offer)...");
-        const offer = await callPC.createOffer();
-        addCallDebugLog("Offre créée.");
-        await callPC.setLocalDescription(offer);
-        addCallDebugLog("Description locale (offer) définie.");
-        socket.emit('offer', {
-          to: targetSocketId,
-          offer
-        });
-        addCallDebugLog("Offre émise via Socket.io.");
-      } catch (err) {
-        addCallDebugLog(`Erreur lors de la création de l'offre: ${err.message || err}`);
-      }
-    };
-
-    // Setup signaling event handlers
-    offerHandler = async (data) => {
-      addCallDebugLog(`Socket.io: Offre WebRTC reçue de ${data.from}`);
-      otherSocketId = data.from;
-      createPeerConnection(data.from);
-      try {
-        addCallDebugLog("Définition de la description distante (offer)...");
-        await callPC.setRemoteDescription(new RTCSessionDescription(data.offer));
-        addCallDebugLog("Description distante (offer) définie.");
-        addCallDebugLog("Création de la réponse (answer)...");
-        const answer = await callPC.createAnswer();
-        addCallDebugLog("Réponse (answer) créée.");
-        await callPC.setLocalDescription(answer);
-        addCallDebugLog("Description locale (answer) définie.");
-        socket.emit('answer', {
-          to: data.from,
-          answer
-        });
-        addCallDebugLog("Réponse émise via Socket.io.");
-        await drainIceCandidates();
-      } catch (err) {
-        addCallDebugLog(`Erreur traitement de l'offre: ${err.message || err}`);
-      }
-    };
-    socket.on('offer', offerHandler);
-
-    answerHandler = async (data) => {
-      addCallDebugLog("Socket.io: Réponse WebRTC reçue");
-      try {
-        if (callPC) {
-          addCallDebugLog("Définition de la description distante (answer)...");
-          await callPC.setRemoteDescription(new RTCSessionDescription(data.answer));
-          addCallDebugLog("Description distante (answer) définie.");
-          await drainIceCandidates();
-        } else {
-          addCallDebugLog("Avertissement: Réponse reçue mais callPC est null.");
-        }
-      } catch (err) {
-        addCallDebugLog(`Erreur traitement de la réponse: ${err.message || err}`);
-      }
-    };
-    socket.on('answer', answerHandler);
-
-    iceCandidateHandler = async (data) => {
-      addCallDebugLog("Socket.io: Candidat ICE distant reçu");
-      if (callPC && callPC.remoteDescription) {
+      addCallDebugLog("Publication du flux local...");
+      const audioTrack = mediaStream.getAudioTracks()[0];
+      const videoTrack = mediaStream.getVideoTracks()[0];
+      if (audioTrack) {
         try {
-          await callPC.addIceCandidate(new RTCIceCandidate(data.candidate));
-          addCallDebugLog("Candidat ICE distant ajouté avec succès.");
+          const p = await msSendTransport.produce({ track: audioTrack, appData: { mediaType: 'audio' } });
+          msProducers.set('audio', p);
         } catch (e) {
-          addCallDebugLog(`Erreur d'ajout de candidat ICE: ${e.message || e}`);
+          addCallDebugLog(`Erreur production audio: ${e.message}`);
         }
-      } else if (callPC) {
-        addCallDebugLog("Candidat ICE mis en file d'attente (description distante non définie).");
-        iceCandidateQueue.push(data.candidate);
-      } else {
-        addCallDebugLog("Avertissement: Candidat ICE reçu mais callPC est null.");
+      }
+      if (videoTrack && isVideo) {
+        try {
+          const p = await msSendTransport.produce({ track: videoTrack, appData: { mediaType: 'video' } });
+          msProducers.set('video', p);
+        } catch (e) {
+          addCallDebugLog(`Erreur production vidéo: ${e.message}`);
+        }
+      }
+      addCallDebugLog("Flux local publié.");
+    };
+
+    const consumeCallProducer = async (producerId, kind, producerPeerId) => {
+      if (!msRecvTransport) {
+        addCallDebugLog("consumeCallProducer: recvTransport non initialisé.");
+        return;
+      }
+      addCallDebugLog(`Consommation du producteur distant: id=${producerId}, kind=${kind}`);
+      socket.emit('mediasoup:consume', {
+        roomId: currentRoomId,
+        peerId: window.currentUserId,
+        transportId: msRecvTransport.id,
+        producerId,
+        rtpCapabilities: msDevice.rtpCapabilities
+      }, async ({ params, error }) => {
+        if (error) {
+          addCallDebugLog(`mediasoup:consume error: ${error}`);
+          return;
+        }
+        try {
+          const consumer = await msRecvTransport.consume(params);
+          msConsumers.set(consumer.id, consumer);
+          await consumer.resume();
+          socket.emit('mediasoup:resumeConsumer', { roomId: currentRoomId, peerId: window.currentUserId, consumerId: consumer.id });
+          
+          const stream = new MediaStream([consumer.track]);
+          if (kind === 'audio') {
+            let remoteAudio = document.getElementById('mock-remote-audio');
+            if (!remoteAudio) {
+              remoteAudio = document.createElement('audio');
+              remoteAudio.id = 'mock-remote-audio';
+              remoteAudio.autoplay = true;
+              document.body.appendChild(remoteAudio);
+            }
+            remoteAudio.srcObject = stream;
+            remoteAudio.volume = isSpeakerMuted ? 0 : 1;
+            remoteAudio.play().catch(e => addCallDebugLog(`Audio play error: ${e}`));
+          } else if (kind === 'video') {
+            const remoteVideo = document.getElementById('mock-remote-video');
+            if (remoteVideo) {
+              remoteVideo.srcObject = stream;
+              remoteVideo.muted = true;
+              remoteVideo.play()
+                .then(() => applyVideoLayout())
+                .catch(e => addCallDebugLog(`Video play error: ${e}`));
+            }
+          }
+        } catch (e) {
+          addCallDebugLog(`consume error: ${e.message}`);
+        }
+      });
+    };
+
+    const msNewProducerHandler = async ({ producerId, peerId, kind }) => {
+      if (String(peerId) !== String(window.currentUserId)) {
+        await consumeCallProducer(producerId, kind, peerId);
       }
     };
-    socket.on('ice-candidate', iceCandidateHandler);
+    socket.on('mediasoup:newProducer', msNewProducerHandler);
+
+    const msProducerClosedHandler = ({ producerId }) => {
+      msConsumers.forEach((consumer, consumerId) => {
+        if (consumer.producerId === producerId) {
+          consumer.close();
+          msConsumers.delete(consumerId);
+          addCallDebugLog(`Consommateur fermé pour le producteur: ${producerId}`);
+        }
+      });
+    };
+    socket.on('mediasoup:producerClosed', msProducerClosedHandler);
 
     const updateStatusText = (text, iconName = null, iconColor = 'var(--primary)') => {
       const statusTextEl = document.getElementById('call-status-text');
@@ -5713,16 +5714,30 @@ document.addEventListener('DOMContentLoaded', () => {
       if (ringInterval) clearInterval(ringInterval);
       if (callTimerInterval) clearInterval(callTimerInterval);
       if (stateTimeout) clearTimeout(stateTimeout);
+      stopOutgoingRing();
       if (audioCtx) {
         audioCtx.close().catch(() => {});
       }
       if (mediaStream) {
         mediaStream.getTracks().forEach((track) => track.stop());
       }
-      if (callPC) {
-        try { callPC.close(); } catch(e) {}
-        callPC = null;
+      
+      // Stop and close Mediasoup transports, producers, and consumers
+      msProducers.forEach(p => p.close());
+      msProducers.clear();
+      msConsumers.forEach(c => c.close());
+      msConsumers.clear();
+      if (msSendTransport) {
+        try { msSendTransport.close(); } catch (e) {}
+        msSendTransport = null;
       }
+      if (msRecvTransport) {
+        try { msRecvTransport.close(); } catch (e) {}
+        msRecvTransport = null;
+      }
+      socket.off('mediasoup:newProducer', msNewProducerHandler);
+      socket.off('mediasoup:producerClosed', msProducerClosedHandler);
+
       window.handleCallSignal = null;
       const remoteAudio = document.getElementById('mock-remote-audio');
       if (remoteAudio) remoteAudio.remove();
@@ -5730,14 +5745,11 @@ document.addEventListener('DOMContentLoaded', () => {
       // Remove socket listeners
       if (callResponseHandler) socket.off('call-response-received', callResponseHandler);
       if (callEndedHandler) socket.off('call-ended', callEndedHandler);
-      if (offerHandler) socket.off('offer', offerHandler);
-      if (answerHandler) socket.off('answer', answerHandler);
-      if (iceCandidateHandler) socket.off('ice-candidate', iceCandidateHandler);
     };
 
     const hangUp = () => {
       // Notify remote side that the call ended
-      if (contactId) socket.emit('call-end', { receiverId: contactId });
+      if (contactId) socket.emit('call:end', { roomId: currentRoomId, peerId: window.currentUserId });
       cleanUpAudioAndVideo();
       overlay.remove();
 
@@ -6314,22 +6326,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }
 
-          // If the RTC connection was already established before the stream was ready,
-          // add the tracks now so the remote peer receives audio/video.
-          if (callPC && callPC.signalingState !== 'closed') {
-            stream.getTracks().forEach(track => {
-              // Avoid adding duplicates
-              const senders = callPC.getSenders();
-              const alreadyAdded = senders.some(s => s.track && s.track.id === track.id);
-              if (!alreadyAdded) {
-                callPC.addTrack(track, stream);
-              }
-            });
-          }
-
           // 1. If initiator and online: emit call-invite and start ringing now that mediaStream is ready
           if (contactId && isOnline && !otherSocketId) {
-            socket.emit('call-invite', { receiverId: contactId, isVideo: !!isVideo });
+            socket.emit('call-invite', { receiverId: contactId, isVideo: !!isVideo }, (res) => {
+              if (res && res.success) {
+                currentRoomId = res.roomId;
+                addCallDebugLog(`Appel initié avec succès: roomId=${currentRoomId}`);
+              } else {
+                addCallDebugLog(`Échec de l'appel: ${res?.error || 'unknown'}`);
+                showToast(res?.error || "Impossible d'initier l'appel");
+                hangUp();
+              }
+            });
             playRingSequence();
             if (ringInterval) clearInterval(ringInterval);
             ringInterval = setInterval(playRingSequence, 3000);
@@ -6338,31 +6346,36 @@ document.addEventListener('DOMContentLoaded', () => {
           // 2. If receiver: connect now and notify caller
           if (otherSocketId) {
             connectCallUI(otherSocketId, false);
-            socket.emit('call-response', { callerId: contactId, status: 'accepted' });
+            socket.emit('call-response', { callerId: contactId, roomId: currentRoomId, status: 'accepted' });
           }
         })
         .catch((err) => {
           console.warn('Media access denied:', err);
           // If local media access fails, skip showing any banner and proceed so they can receive remote streams
           if (contactId && isOnline && !otherSocketId) {
-            socket.emit('call-invite', { receiverId: contactId, isVideo: !!isVideo });
+            socket.emit('call-invite', { receiverId: contactId, isVideo: !!isVideo }, (res) => {
+              if (res && res.success) {
+                currentRoomId = res.roomId;
+              }
+            });
             playRingSequence();
             if (ringInterval) clearInterval(ringInterval);
             ringInterval = setInterval(playRingSequence, 3000);
           }
           if (otherSocketId) {
             connectCallUI(otherSocketId, false);
-            socket.emit('call-response', { callerId: contactId, status: 'accepted' });
+            socket.emit('call-response', { callerId: contactId, roomId: currentRoomId, status: 'accepted' });
           }
         });
     }
 
-    const connectCallUI = (targetSocketId = null, isInitiator = false) => {
+    const connectCallUI = async (targetSocketId = null, isInitiator = false) => {
       if (currentCallState === 'connected') return;
       currentCallState = 'connected';
       
       if (ringInterval) { clearInterval(ringInterval); ringInterval = null; }
       if (stateTimeout) { clearTimeout(stateTimeout); stateTimeout = null; }
+      stopOutgoingRing();
 
       updateStatusText('Appel connecté', 'shield-check', '#10b981');
       playTone(523.25, 0.15, 'sine');
@@ -6372,20 +6385,39 @@ document.addEventListener('DOMContentLoaded', () => {
       const timerEl = document.getElementById('call-duration-timer');
       if (timerEl) timerEl.style.display = 'block';
 
-      const remoteAvatarImg = document.getElementById('remote-avatar-img');
-      const avatarRing = document.getElementById('call-avatar-ring');
-      const remoteVideo = document.getElementById('mock-remote-video');
-
       if (isVideo) {
         applyVideoLayout();
       }
 
-      if (targetSocketId) {
+      try {
+        await initMediasoupCall(currentRoomId, window.currentUserId);
+        
         if (isInitiator) {
-          initiateCallConnection(targetSocketId);
+          socket.emit('call:start', { roomId: currentRoomId, callerId: window.currentUserId }, async (res) => {
+            if (res && res.success) {
+              await publishCallStream();
+            } else {
+              addCallDebugLog(`call:start failed: ${res?.error || 'unknown'}`);
+            }
+          });
         } else {
-          createPeerConnection(targetSocketId);
+          socket.emit('call:join', { roomId: currentRoomId, peerId: window.currentUserId }, async (res) => {
+            if (res && res.success) {
+              await publishCallStream();
+              if (res.activeProducers) {
+                for (const p of res.activeProducers) {
+                  if (String(p.peerId) !== String(window.currentUserId)) {
+                    await consumeCallProducer(p.producerId, p.kind, p.peerId);
+                  }
+                }
+              }
+            } else {
+              addCallDebugLog(`call:join failed: ${res?.error || 'unknown'}`);
+            }
+          });
         }
+      } catch (err) {
+        addCallDebugLog(`Mediasoup initialization failed: ${err.message}`);
       }
 
       callTimerInterval = setInterval(() => {
@@ -6956,6 +6988,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatSendBtn = chatBox.querySelector('.chat-send-btn');
     if (input && chatLikeBtn && chatSendBtn) {
       input.addEventListener('input', () => {
+        playMechanicalKeyClick();
         if (input.value.trim().length > 0) {
           chatLikeBtn.style.display = 'none';
           chatSendBtn.style.display = 'flex';
@@ -7056,7 +7089,7 @@ document.addEventListener('DOMContentLoaded', () => {
       osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
       
       gain.gain.setValueAtTime(0, audioCtx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.012, audioCtx.currentTime + 0.002);
+      gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.002);
       gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.015);
       
       osc.connect(gain);
@@ -7080,7 +7113,7 @@ document.addEventListener('DOMContentLoaded', () => {
       filter.Q.value = 3;
 
       const noiseGain = audioCtx.createGain();
-      noiseGain.gain.setValueAtTime(0.006, audioCtx.currentTime);
+      noiseGain.gain.setValueAtTime(0.1, audioCtx.currentTime);
       noiseGain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.018);
 
       noise.connect(filter);
@@ -7131,19 +7164,7 @@ document.addEventListener('DOMContentLoaded', () => {
         osc.frequency.exponentialRampToValueAtTime(523.25, audioCtx.currentTime + 0.15); // C5
         gain.gain.setValueAtTime(0, audioCtx.currentTime);
         gain.gain.linearRampToValueAtTime(0.06, audioCtx.currentTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.25);
-        setTimeout(() => audioCtx.close(), 350);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  socket.on('call-incoming', ({ callerId, callerName, callerAvatar, isVideo, callerSocketId }) => {
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.cu  socket.on('call-incoming', ({ roomId, callerId, callerName, callerAvatar, isVideo, callerSocketId }) => {
     if (document.getElementById('incoming-call-overlay')) return;
 
     // Pause any other playing video/audio elements on the page (anti-disturbance)
@@ -7151,45 +7172,24 @@ document.addEventListener('DOMContentLoaded', () => {
       try { el.pause(); } catch(e) {}
     });
 
-    let incomingRingInterval = null;
-    let incomingAudioCtx = null;
+    let incomingAudio = null;
 
     const playRing = () => {
       try {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (!AC) return;
-        if (!incomingAudioCtx) incomingAudioCtx = new AC();
-        const ctx = incomingAudioCtx;
-        if (ctx.state === 'closed') return;
-        const osc = ctx.createOscillator(), gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(1046.5, ctx.currentTime + 0.1);
-        gain.gain.setValueAtTime(0, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + 0.02);
-        gain.gain.setValueAtTime(0.22, ctx.currentTime + 0.15);
-        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.35);
-        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
-        setTimeout(() => {
-          try {
-            if (!incomingAudioCtx || incomingAudioCtx.state === 'closed') return;
-            const o2 = incomingAudioCtx.createOscillator(), g2 = incomingAudioCtx.createGain();
-            o2.connect(g2); g2.connect(incomingAudioCtx.destination);
-            o2.type = 'sine'; o2.frequency.setValueAtTime(1046.5, incomingAudioCtx.currentTime);
-            g2.gain.setValueAtTime(0, incomingAudioCtx.currentTime);
-            g2.gain.linearRampToValueAtTime(0.2, incomingAudioCtx.currentTime + 0.02);
-            g2.gain.setValueAtTime(0.2, incomingAudioCtx.currentTime + 0.15);
-            g2.gain.linearRampToValueAtTime(0, incomingAudioCtx.currentTime + 0.35);
-            o2.start(incomingAudioCtx.currentTime); o2.stop(incomingAudioCtx.currentTime + 0.4);
-          } catch (e) {}
-        }, 450);
+        if (!incomingAudio) {
+          incomingAudio = new Audio('/assets/sounds/ringtone.wav');
+          incomingAudio.loop = true;
+        }
+        incomingAudio.play().catch(e => console.warn(e));
       } catch (e) {}
     };
 
     const stopRing = () => {
-      clearInterval(incomingRingInterval); incomingRingInterval = null;
-      if (incomingAudioCtx) { incomingAudioCtx.close().catch(() => {}); incomingAudioCtx = null; }
+      if (incomingAudio) {
+        incomingAudio.pause();
+        incomingAudio.currentTime = 0;
+        incomingAudio = null;
+      }
     };
 
     const overlay = document.createElement('div');
@@ -7221,7 +7221,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <div style="text-align:center;">
         <p style="margin:0 0 6px;font-size:14px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.55);font-weight:500;">${callTypeLabel}</p>
         <h2 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-0.5px;">${safeCallerName}</h2>
-        <p style="margin:8px 0 0;font-size:14px;color:rgba(255,255,255,0.55);">Sonne…</p>
+        <p style="margin:8px 0 0;font-size:14px;color:rgba(255,255,255,0.555);">Sonne…</p>
       </div>
       <div style="position:relative;display:flex;align-items:center;justify-content:center;width:260px;height:260px;">
         <div class="ic-ring" style="width:160px;height:160px;animation-delay:0s;"></div>
@@ -7232,25 +7232,24 @@ document.addEventListener('DOMContentLoaded', () => {
       <div style="display:flex;align-items:center;gap:64px;">
         <div style="text-align:center;">
           <button id="ic-decline-btn" class="ic-btn ic-decline" aria-label="Refuser l'appel">✕</button>
-          <p style="margin:10px 0 0;font-size:12px;color:rgba(255,255,255,0.5);">Refuser</p>
+          <p style="margin:10px 0 0;font-size:12px;color:rgba(255,255,255,0.55);">Refuser</p>
         </div>
         <div style="text-align:center;">
           <button id="ic-accept-btn" class="ic-btn ic-accept" aria-label="Accepter l'appel">✓</button>
-          <p style="margin:10px 0 0;font-size:12px;color:rgba(255,255,255,0.5);">Accepter</p>
+          <p style="margin:10px 0 0;font-size:12px;color:rgba(255,255,255,0.55);">Accepter</p>
         </div>
       </div>
     `;
 
     document.body.appendChild(overlay);
     playRing();
-    incomingRingInterval = setInterval(playRing, 2800);
 
     const handleCallerHangup = () => { stopRing(); overlay.remove(); socket.off('call-ended', handleCallerHangup); };
     socket.on('call-ended', handleCallerHangup);
 
     document.getElementById('ic-decline-btn').addEventListener('click', () => {
       stopRing(); overlay.remove(); socket.off('call-ended', handleCallerHangup);
-      socket.emit('call-response', { callerId, status: 'declined' });
+      socket.emit('call-response', { callerId, roomId, status: 'declined' });
     });
 
     document.getElementById('ic-accept-btn').addEventListener('click', async () => {
@@ -7260,11 +7259,11 @@ document.addEventListener('DOMContentLoaded', () => {
           ? "Permission micro/caméra requise pour accepter l'appel." 
           : "Microphone/camera permission required to accept the call.");
         stopRing(); overlay.remove(); socket.off('call-ended', handleCallerHangup);
-        socket.emit('call-response', { callerId, status: 'declined' });
+        socket.emit('call-response', { callerId, roomId, status: 'declined' });
         return;
       }
       stopRing(); overlay.remove(); socket.off('call-ended', handleCallerHangup);
-      initiateMockCall(callerName, callerAvatar, isVideo, true, () => {}, [], callerId, callerSocketId);
+      initiateMockCall(callerName, callerAvatar, isVideo, true, () => {}, [], callerId, callerSocketId, roomId);
     });
   });
   // ───────────────────────────────────────────────────────────────────────────

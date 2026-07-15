@@ -650,6 +650,18 @@ class _DashboardPageState extends State<DashboardPage> {
         }
       });
 
+      _socket!.on('message-unread-count-updated', (data) {
+        debugPrint('Socket.IO: Received message-unread-count-updated: $data');
+        if (data is Map && data['unreadCount'] != null) {
+          final count = int.tryParse(data['unreadCount'].toString()) ?? 0;
+          if (mounted) {
+            setState(() {
+              _messagesUnreadCount = count;
+            });
+          }
+        }
+      });
+
       _socket!.onDisconnect((_) {
         debugPrint('Socket.IO: Disconnected from server');
       });

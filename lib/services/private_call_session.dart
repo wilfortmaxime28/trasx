@@ -1,6 +1,7 @@
 // ignore_for_file: implementation_imports
 
 import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -63,6 +64,7 @@ class PrivateCallSession extends ChangeNotifier {
   Timer? _callTimer;
   Timer? _ringbackTimer;
   DateTime? _connectedAt;
+  final AudioPlayer _ringbackPlayer = AudioPlayer();
 
   bool _initialized = false;
   bool _initializing = false;
@@ -123,6 +125,7 @@ class PrivateCallSession extends ChangeNotifier {
 
       _attachSocketListeners();
       if (role == PrivateCallRole.caller) {
+        await _ringbackPlayer.setSource(AssetSource('sounds/ringback.wav'));
         _startRingbackTone();
       }
 
@@ -228,6 +231,9 @@ class PrivateCallSession extends ChangeNotifier {
 
   Future<void> release() async {
     await _disposeResources(disposeRenderers: true);
+    try {
+      _ringbackPlayer.dispose();
+    } catch (_) {}
     if (!_disposed) {
       _disposed = true;
       super.dispose();
@@ -947,11 +953,15 @@ class PrivateCallSession extends ChangeNotifier {
   void _stopRingbackTone() {
     _ringbackTimer?.cancel();
     _ringbackTimer = null;
+    try {
+      _ringbackPlayer.stop();
+    } catch (_) {}
   }
 
   Future<void> _playRingbackTone() async {
     try {
-      await SystemSound.play(SystemSoundType.alert);
+      await _ringbackPlayer.seek(Duration.zero);
+      await _ringbackPlayer.resume();
     } catch (_) {}
   }
 

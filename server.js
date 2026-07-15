@@ -271,6 +271,18 @@ function buildDirectMessageConversationPayload({
   };
 }
 
+async function emitTotalMessageUnreadCount(userId) {
+  try {
+    const [[{ unread_count: totalUnread }]] = await db.query(
+      'SELECT COUNT(*) AS unread_count FROM messages WHERE receiver_id = ? AND read_at IS NULL AND deleted_by_receiver = 0',
+      [Number(userId)]
+    );
+    io.to(`user:${userId}`).emit('message-unread-count-updated', { unreadCount: totalUnread });
+  } catch (err) {
+    console.error('emitTotalMessageUnreadCount error:', err);
+  }
+}
+
 async function emitMarketNotification(recipientId, actorId, message) {
   try {
     const cleanMessage = String(message || '').slice(0, 255);
@@ -2884,6 +2896,11 @@ app.post('/api/posts/:postId/shares', requireAuth, async (req, res) => {
           },
         };
 
+        const [[{ unread_count: shareUnreadCount }]] = await db.query(
+          'SELECT COUNT(*) AS unread_count FROM messages WHERE sender_id = ? AND receiver_id = ? AND read_at IS NULL AND deleted_by_receiver = 0',
+          [currentUserId, numericReceiverId]
+        );
+
         const receiverPayload = {
           senderId: currentUserId,
           receiverId: numericReceiverId,
@@ -2908,11 +2925,13 @@ app.post('/api/posts/:postId/shares', requireAuth, async (req, res) => {
               requestStatus: null,
             }),
             preview: previewText,
+            unread_count: shareUnreadCount
           },
         };
 
         io.to(`user:${currentUserId}`).emit('chat-message-received', senderPayload);
         io.to(`user:${numericReceiverId}`).emit('chat-message-received', receiverPayload);
+        emitTotalMessageUnreadCount(numericReceiverId);
         if (deliveredAt) {
           await Message.markDelivered(messageId);
         }
@@ -6541,6 +6560,7 @@ io.on('connection', (socket) => {
   if (session?.userId) {
     socket.join(`user:${session.userId}`);
     socket.data.watchedPostRooms = new Set();
+    emitTotalMessageUnreadCount(session.userId);
     presence.markUserOnline(session.userId).then((state) => {
       io.emit('presence-updated', {
         userId: Number(session.userId),
@@ -8565,6 +8585,11 @@ io.on('connection', (socket) => {
         }
       };
 
+      const [[{ unread_count: unreadCount }]] = await db.query(
+        'SELECT COUNT(*) AS unread_count FROM messages WHERE sender_id = ? AND receiver_id = ? AND read_at IS NULL AND deleted_by_receiver = 0',
+        [currentUserId, numericReceiverId]
+      );
+
       const receiverPayload = {
         senderId: currentUserId,
         receiverId: numericReceiverId,
@@ -8594,12 +8619,14 @@ io.on('connection', (socket) => {
         created_at: messagePayload.created_at,
         conversation: {
           ...buildConversationPayload(numericReceiverId, sender, previewText, currentUserId, numericReceiverId, false, receiverFollowingIds, receiverFollowerIds, messageRequestStatus, inverseRelationshipState),
-          preview: previewText
+          preview: previewText,
+          unread_count: unreadCount
         }
       };
 
       io.to(`user:${currentUserId}`).emit('chat-message-received', senderPayload);
       io.to(`user:${numericReceiverId}`).emit('chat-message-received', receiverPayload);
+      emitTotalMessageUnreadCount(numericReceiverId);
       if (deliveredAt) {
         await Message.markDelivered(messageId);
         io.to(`user:${currentUserId}`).emit('chat-message-status', {
@@ -8910,6 +8937,7 @@ io.on('connection', (socket) => {
       if (!partnerId) return;
 
       const messageIds = await Message.markConversationRead(partnerId, currentUserId);
+      emitTotalMessageUnreadCount(currentUserId);
       if (messageIds.length > 0) {
         io.to(`user:${partnerId}`).emit('chat-message-status', {
           messageIds,

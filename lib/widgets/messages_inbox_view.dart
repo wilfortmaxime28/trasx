@@ -251,6 +251,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   Timer? _partnerTypingSoundTimer;
   final AudioPlayer _typingPlayer = AudioPlayer();
   final AudioPlayer _alertPlayer = AudioPlayer();
+  final AudioPlayer _incomingCallPlayer = AudioPlayer();
   bool _typingStateSent = false;
   bool _incomingCallDialogVisible = false;
   bool _isCallPageOpen = false;
@@ -262,6 +263,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     NetworkQualityService().initialize();
     _typingPlayer.setSource(AssetSource('sounds/typing.wav'));
     _alertPlayer.setSource(AssetSource('sounds/finished.wav'));
+    _incomingCallPlayer.setSource(AssetSource('sounds/ringtone.wav'));
     _typingAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -327,6 +329,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     _partnerTypingSoundTimer?.cancel();
     _typingPlayer.dispose();
     _alertPlayer.dispose();
+    _incomingCallPlayer.dispose();
     _typingAnimationController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -977,7 +980,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
     await _fetchConversationHistory(
       contactId,
-      forceRefresh: hasUnread || !_MessagesViewCache.isConversationFresh(contactId),
+      forceRefresh: true,
       silent: cachedMessages != null,
     );
     _markConversationRead(contactId);
@@ -1128,13 +1131,28 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       'time_text': _formatConversationTime(message['created_at'] as String),
     };
     final cachedThread = _MessagesViewCache.readConversation(partnerId);
-    if (cachedThread != null &&
-        !cachedThread.any((item) => item['id'] == message['id'])) {
-      _MessagesViewCache.saveConversation(partnerId, [
-        ...cachedThread,
-        message,
-      ]);
-      _persistConversationCache(partnerId, [...cachedThread, message]);
+    if (cachedThread != null) {
+      if (!cachedThread.any((item) => item['id'] == message['id'])) {
+        final updated = [...cachedThread, message];
+        _MessagesViewCache.saveConversation(partnerId, updated);
+        _persistConversationCache(partnerId, updated);
+      }
+    } else {
+      _MessagesViewCache.saveConversation(partnerId, [message]);
+      _persistConversationCache(partnerId, [message]);
+      unawaited(_hydrateConversationFromDisk(partnerId).then((diskMessages) {
+        if (diskMessages != null && diskMessages.isNotEmpty) {
+          final currentCached = _MessagesViewCache.readConversation(partnerId) ?? [];
+          final merged = [...diskMessages];
+          for (final msg in currentCached) {
+            if (!merged.any((item) => item['id'] == msg['id'])) {
+              merged.add(msg);
+            }
+          }
+          _MessagesViewCache.saveConversation(partnerId, merged);
+          _persistConversationCache(partnerId, merged);
+        }
+      }));
     }
 
     if (_selectedConversation != null &&
@@ -1160,7 +1178,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       return;
     }
 
-    _upsertConversation(mergedConversation, incrementUnread: incoming ? 1 : 0);
+    _upsertConversation(mergedConversation, incrementUnread: 0);
   }
 
   void _handleMessageStatus(dynamic data) {
@@ -1570,6 +1588,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         'status': responseStatus,
       });
       if (mounted && responseStatus == 'accepted') {
+        _stopIncomingCallAlert();
+        _incomingCallDialogVisible = false;
         await _openCallPage(
           roomId: roomId,
           isVideo: isVideo,
@@ -1603,11 +1623,15 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   void _stopIncomingCallAlert() {
     _incomingCallAlertTimer?.cancel();
     _incomingCallAlertTimer = null;
+    try {
+      _incomingCallPlayer.stop();
+    } catch (_) {}
   }
 
   Future<void> _playIncomingCallAlert() async {
     try {
-      await SystemSound.play(SystemSoundType.alert);
+      await _incomingCallPlayer.seek(Duration.zero);
+      await _incomingCallPlayer.resume();
     } catch (_) {}
   }
 

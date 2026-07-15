@@ -282,6 +282,7 @@ module.exports = function handleVideoCallSocket(socket, io) {
         callerName: `${caller.first_name} ${caller.last_name}`.trim(),
         callerAvatar: caller.avatar || '/assets/avatar_placeholder.jpg',
         isVideo,
+        callerSocketId: socket.id,
         createdAt: new Date().toISOString(),
       });
 
@@ -423,7 +424,7 @@ module.exports = function handleVideoCallSocket(socket, io) {
         return;
       }
 
-      const room = roomManager.getRoom(roomId);
+      const room = await roomManager.getOrCreateRoom(roomId);
       if (!room) {
         callback?.({ error: "L'appel a expire ou a ete annule" });
         return;
