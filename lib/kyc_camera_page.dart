@@ -214,7 +214,7 @@ class _KycCameraPageState extends State<KycCameraPage> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text(
-                  'Alignez votre visage dans le cadre ovale',
+                  'Alignez votre visage dans le cadre ovale,\npuis appuyez sur le bouton pour prendre la photo',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white,
