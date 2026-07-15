@@ -161,6 +161,7 @@ class MessagesInboxView extends StatefulWidget {
   final io.Socket? socket;
   final ValueChanged<bool>? onConversationStateChanged;
   final ValueChanged<Uri>? onOpenShareLink;
+  final ValueChanged<int>? onUnreadCountChanged;
 
   const MessagesInboxView({
     super.key,
@@ -172,6 +173,7 @@ class MessagesInboxView extends StatefulWidget {
     this.socket,
     this.onConversationStateChanged,
     this.onOpenShareLink,
+    this.onUnreadCountChanged,
   });
 
   @override
@@ -270,6 +272,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     _bootstrapInbox();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onConversationStateChanged?.call(false);
+      _notifyUnreadCount();
     });
   }
 
@@ -1099,6 +1102,11 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     final incoming =
         _asString(data['messageStatus']) == 'incoming' ||
         message['sender_id'] != widget.currentUserId;
+
+    if (incoming) {
+      unawaited(HapticFeedback.vibrate());
+      unawaited(SystemSound.play(SystemSoundType.alert));
+    }
     final previewText = _asString(
       conversation['preview'],
       fallback: _buildConversationPreview(message),
@@ -3173,6 +3181,17 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     }
   }
 
+  void _notifyUnreadCount() {
+    widget.onUnreadCountChanged?.call(_generalUnreadCount);
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    if (!mounted) return;
+    super.setState(fn);
+    _notifyUnreadCount();
+  }
+
   List<Map<String, dynamic>> get _activeList {
     final source = _activeTab == 'requests'
         ? _requestConversations
@@ -3382,13 +3401,6 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (_activeNowContacts.isNotEmpty) ...[
-                                  _buildStoryCarousel(
-                                    textPrimary,
-                                    textSecondary,
-                                  ),
-                                  const SizedBox(height: 18),
-                                ],
                                 _buildInboxQuickActions(
                                   textPrimary,
                                   textSecondary,
@@ -3642,69 +3654,80 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     required Color textSecondary,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        child: Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: backgroundColor,
-                shape: BoxShape.circle,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: backgroundColor,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: Colors.white, size: 28),
               ),
-              child: Icon(icon, color: Colors.white, size: 28),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: textPrimary,
-                      fontSize: 16,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: textSecondary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (badge > 0) ...[
+                Container(
+                  constraints: const BoxConstraints(minWidth: 28),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: const BoxDecoration(
+                    color: _tiktokPink,
+                    borderRadius: BorderRadius.all(Radius.circular(999)),
+                  ),
+                  child: Text(
+                    badge > 99 ? '99+' : '$badge',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (badge > 0)
-              Container(
-                constraints: const BoxConstraints(minWidth: 28),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: const BoxDecoration(
-                  color: _tiktokPink,
-                  borderRadius: BorderRadius.all(Radius.circular(999)),
                 ),
-                child: Text(
-                  badge > 99 ? '99+' : '$badge',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
+                const SizedBox(width: 8),
+              ],
+              Icon(
+                CupertinoIcons.chevron_right,
+                color: textSecondary.withValues(alpha: 0.45),
+                size: 16,
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -114,6 +114,7 @@ class _DashboardPageState extends State<DashboardPage> {
   int _activeViewIndex = 0;
   bool _isMessagesConversationOpen = false;
   int? _pendingSharedReelId;
+  int _messagesUnreadCount = 0;
 
   static const List<Color> instagramGradient = [
     Color(0xFF833AB4), // Purple
@@ -1760,6 +1761,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 CupertinoIcons.chat_bubble_2,
                 'Messages',
                 textPrimaryColor,
+                badgeCount: _messagesUnreadCount,
               ),
               _buildProfileBottomTab(3, 'Profil', textPrimaryColor),
             ],
@@ -1774,8 +1776,9 @@ class _DashboardPageState extends State<DashboardPage> {
     IconData activeIcon,
     IconData inactiveIcon,
     String label,
-    Color textPrimaryColor,
-  ) {
+    Color textPrimaryColor, {
+    int badgeCount = 0,
+  }) {
     final bool isSelected = _activeViewIndex == index;
     return GestureDetector(
       onTap: () => _switchView(index),
@@ -1785,12 +1788,44 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              isSelected ? activeIcon : inactiveIcon,
-              color: isSelected
-                  ? textPrimaryColor
-                  : textPrimaryColor.withValues(alpha: 0.5),
-              size: 24,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  isSelected ? activeIcon : inactiveIcon,
+                  color: isSelected
+                      ? textPrimaryColor
+                      : textPrimaryColor.withValues(alpha: 0.5),
+                  size: 24,
+                ),
+                if (badgeCount > 0)
+                  Positioned(
+                    right: -6,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFE2C55), // _tiktokPink
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 14,
+                        minHeight: 14,
+                      ),
+                      child: Center(
+                        child: Text(
+                          badgeCount > 99 ? '99+' : '$badgeCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 2),
             Text(
@@ -3298,6 +3333,12 @@ class _DashboardPageState extends State<DashboardPage> {
         });
       },
       onOpenShareLink: _handleDeepLink,
+      onUnreadCountChanged: (count) {
+        if (!mounted || _messagesUnreadCount == count) return;
+        setState(() {
+          _messagesUnreadCount = count;
+        });
+      },
     );
   }
 
