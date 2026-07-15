@@ -34,6 +34,7 @@ import 'widgets/shorts_view.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'pages/private_call_page.dart';
 import 'services/private_call_session.dart';
+import 'services/push_notification_service.dart';
 
 
 class DashboardPage extends StatefulWidget {
@@ -89,6 +90,8 @@ class _DashboardPageState extends State<DashboardPage> {
   // Connectivity
   bool _isOffline = false;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  StreamSubscription<Map<String, dynamic>>? _callAcceptedSubscription;
+  StreamSubscription<Map<String, dynamic>>? _callDeclinedSubscription;
 
   // Real-time Socket.IO
   IO.Socket? _socket;
@@ -187,6 +190,8 @@ class _DashboardPageState extends State<DashboardPage> {
   void dispose() {
     _incomingCallAlertTimer?.cancel();
     _incomingCallPlayer.dispose();
+    _callAcceptedSubscription?.cancel();
+    _callDeclinedSubscription?.cancel();
     _linkSubscription?.cancel();
     _statusPollingTimer?.cancel();
     _feedScrollController.dispose();
@@ -229,6 +234,7 @@ class _DashboardPageState extends State<DashboardPage> {
     unawaited(_fetchStatuses());
     unawaited(_fetchHashtagsInfo());
     _initSocket();
+    _initPushNotifications(userId);
   }
 
   // ── Statuses (Stories) ──────────────────────────────────────────────────────
@@ -1314,6 +1320,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _logout() async {
     final prefs = await SharedPreferences.getInstance();
+    if (_userId > 0) {
+      unawaited(PushNotificationService.unregisterTokenOnServer(_userId));
+    }
     await prefs.setBool('is_logged_in', false);
     await prefs.remove('user_name');
     await prefs.remove('user_id');
@@ -1324,6 +1333,59 @@ class _DashboardPageState extends State<DashboardPage> {
       MaterialPageRoute(builder: (context) => const OnboardingPage()),
       (route) => false,
     );
+  }
+
+  void _initPushNotifications(int userId) {
+    _callAcceptedSubscription?.cancel();
+    _callDeclinedSubscription?.cancel();
+
+    // Initialize Push Notification Service
+    unawaited(PushNotificationService.initialize(userId));
+
+    // Listen for call accepted event (e.g. from system CallKit screen)
+    _callAcceptedSubscription = PushNotificationService.onCallAccepted.listen((data) async {
+      debugPrint('[DashboardPage] Call accepted from Push Notification: $data');
+      if (!mounted) return;
+
+      final roomId = data['roomId']?.toString() ?? '';
+      final callerId = int.tryParse(data['callerId']?.toString() ?? '') ?? 0;
+      final callerName = data['callerName']?.toString() ?? 'Utilisateur';
+      final callerAvatar = data['callerAvatar']?.toString() ?? '';
+      final isVideo = data['isVideo'] == 'true' || data['isVideo'] == true;
+
+      if (roomId.isEmpty || callerId <= 0) return;
+
+      // 1. Switch to Messages tab
+      _switchView(2);
+
+      // 2. Open call page
+      await _openCallPage(
+        roomId: roomId,
+        isVideo: isVideo,
+        isCaller: false,
+        partnerId: callerId,
+        partnerName: callerName,
+        partnerAvatar: callerAvatar,
+      );
+    });
+
+    // Listen for call declined event (e.g. from system CallKit screen)
+    _callDeclinedSubscription = PushNotificationService.onCallDeclined.listen((data) async {
+      debugPrint('[DashboardPage] Call declined from Push Notification: $data');
+      final roomId = data['roomId']?.toString() ?? '';
+      final callerId = int.tryParse(data['callerId']?.toString() ?? '') ?? 0;
+
+      if (roomId.isEmpty || callerId <= 0) return;
+
+      // Send decline status back to server via Socket
+      try {
+        await _emitSocketAck('call-response', {
+          'callerId': callerId,
+          'roomId': roomId,
+          'status': 'declined',
+        });
+      } catch (_) {}
+    });
   }
 
   void _switchView(int index) {

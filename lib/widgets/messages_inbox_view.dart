@@ -4183,6 +4183,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     final presenceText = _asString(conversation['presence_text']);
     final isOnline = conversation['is_online'] == true;
     final canLaunchRealtimeActions = _canChatWithSelectedUser;
+    final canLaunchGame = _canChatWithSelectedUser && isOnline;
 
     return Container(
       key: ValueKey('conversation-${conversation['id']}'),
@@ -4271,7 +4272,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                           _buildHeaderActionButton(
                             icon: Icons.sports_esports_rounded,
                             color: textPrimary,
-                            onPressed: canLaunchRealtimeActions
+                            onPressed: canLaunchGame
                                 ? _openGameInviteComposer
                                 : null,
                           ),
