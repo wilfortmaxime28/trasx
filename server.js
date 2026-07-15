@@ -5599,6 +5599,23 @@ app.post('/api/message-requests/:requesterId/:action', requireAuth, async (req, 
   }
 });
 
+app.get('/api/messages/unread-count', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = req.session.userId;
+    if (!currentUserId) {
+      return res.status(401).json({ error: 'Non autorisé.' });
+    }
+    const [[{ unread_count: totalUnread }]] = await db.query(
+      'SELECT COUNT(*) AS unread_count FROM messages WHERE receiver_id = ? AND read_at IS NULL AND deleted_by_receiver = 0',
+      [currentUserId]
+    );
+    return res.json({ success: true, unreadCount: totalUnread });
+  } catch (err) {
+    console.error('GET /api/messages/unread-count error:', err);
+    return res.status(500).json({ error: 'Erreur interne du serveur.' });
+  }
+});
+
 app.get('/api/messages/inbox', requireAuth, async (req, res) => {
   try {
     const currentUserId = Number(req.session?.userId || 0);
