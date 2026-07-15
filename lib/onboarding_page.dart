@@ -646,20 +646,20 @@ class _OnboardingPageState extends State<OnboardingPage> with SingleTickerProvid
             child: Row(
               children: [
                 Expanded(
-                  child: _buildImageCard(
-                    path: 'assets/headset_3d.png',
+                  child: _buildNetworkImageCard(
+                    url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=400&fit=crop&q=80', // Gamer
                   ),
                 ),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: _buildImageCard(
-                    path: 'assets/logo.png',
+                  child: _buildNetworkImageCard(
+                    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&fit=crop&q=80', // Social girl
                   ),
                 ),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: _buildImageCard(
-                    path: 'assets/pop_shapes.png',
+                  child: _buildNetworkImageCard(
+                    url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&fit=crop&q=80', // Lifestyle
                   ),
                 ),
               ],
@@ -679,8 +679,8 @@ class _OnboardingPageState extends State<OnboardingPage> with SingleTickerProvid
                     children: [
                       Expanded(
                         flex: 7,
-                        child: _buildImageCard(
-                          path: 'assets/abstract_waves.png',
+                        child: _buildNetworkImageCard(
+                          url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&fit=crop&q=80', // Laughing guy
                         ),
                       ),
                       const Spacer(flex: 1), // Shorter empty space
@@ -690,8 +690,8 @@ class _OnboardingPageState extends State<OnboardingPage> with SingleTickerProvid
                 const SizedBox(width: 4),
                 Expanded(
                   flex: 3,
-                  child: _buildImageCard(
-                    path: 'assets/headset_3d.png',
+                  child: _buildNetworkImageCard(
+                    url: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400&fit=crop&q=80', // Gaming setup
                   ),
                 ),
               ],
@@ -702,13 +702,17 @@ class _OnboardingPageState extends State<OnboardingPage> with SingleTickerProvid
     );
   }
 
-  // Image card builder
-  Widget _buildImageCard({required String path}) {
+  // Network image card builder
+  Widget _buildNetworkImageCard({required String url}) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
-      child: Image.asset(
-        path,
+      child: Image.network(
+        url,
         fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildFallbackImagePlaceholder();
+        },
         errorBuilder: (context, error, stackTrace) {
           return _buildFallbackImagePlaceholder();
         },
