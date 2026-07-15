@@ -7166,7 +7166,19 @@ document.addEventListener('DOMContentLoaded', () => {
         osc.frequency.exponentialRampToValueAtTime(523.25, audioCtx.currentTime + 0.15); // C5
         gain.gain.setValueAtTime(0, audioCtx.currentTime);
         gain.gain.linearRampToValueAtTime(0.06, audioCtx.currentTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.cu  socket.on('call-incoming', ({ roomId, callerId, callerName, callerAvatar, isVideo, callerSocketId }) => {
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+        setTimeout(() => audioCtx.close(), 250);
+      }
+    } catch (err) {
+      // Ignored
+    }
+  };
+
+  socket.on('call-incoming', ({ roomId, callerId, callerName, callerAvatar, isVideo, callerSocketId }) => {
     if (document.getElementById('incoming-call-overlay')) return;
 
     // Pause any other playing video/audio elements on the page (anti-disturbance)
