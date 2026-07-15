@@ -21,6 +21,8 @@ import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 import '../pages/private_call_page.dart';
+import '../pages/activity_page.dart';
+import '../pages/new_followers_page.dart';
 import '../services/private_call_session.dart';
 import '../services/network_quality_service.dart';
 import '../services/video_cache_manager.dart';
@@ -3732,7 +3734,20 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
           icon: CupertinoIcons.person_2_fill,
           textPrimary: textPrimary,
           textSecondary: textSecondary,
-          onTap: () => setState(() => _activeTab = 'requests'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => NewFollowersPage(
+                  socket: widget.socket,
+                  isDarkMode: widget.isDarkMode,
+                  currentUserId: widget.currentUserId,
+                  currentUsername: widget.currentUsername,
+                  currentAvatarUrl: widget.currentAvatarUrl,
+                ),
+              ),
+            );
+          },
         ),
         const SizedBox(height: 8),
         _buildInboxQuickActionTile(
@@ -3745,7 +3760,20 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
           icon: CupertinoIcons.heart_fill,
           textPrimary: textPrimary,
           textSecondary: textSecondary,
-          onTap: () => setState(() => _activeTab = 'general'),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ActivityPage(
+                  socket: widget.socket,
+                  isDarkMode: widget.isDarkMode,
+                  currentUserId: widget.currentUserId,
+                  currentUsername: widget.currentUsername,
+                  currentAvatarUrl: widget.currentAvatarUrl,
+                ),
+              ),
+            );
+          },
         ),
       ],
     );

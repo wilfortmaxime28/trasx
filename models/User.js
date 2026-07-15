@@ -1086,6 +1086,43 @@ class User {
     
     return cleanName;
   }
+
+  static async getSuggestions(userId, limit = 10) {
+    await ensureEventAccessColumns();
+    const [rows] = await db.query(
+      `
+        SELECT
+          u.id,
+          u.username,
+          u.first_name,
+          u.last_name,
+          COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS name,
+          u.avatar,
+          u.certification_type,
+          EXISTS(
+            SELECT 1
+            FROM follows f
+            WHERE f.follower_id = u.id AND f.following_id = ?
+          ) AS is_follower_of_user
+        FROM users u
+        WHERE u.id <> ?
+          AND u.username <> 'botbank'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM follows f2
+            WHERE f2.follower_id = ? AND f2.following_id = u.id
+          )
+        ORDER BY RAND()
+        LIMIT ?
+      `,
+      [userId, userId, userId, Number(limit)]
+    );
+    return rows.map((row) => ({
+      ...row,
+      is_following: false,
+      is_follower_of_user: Number(row.is_follower_of_user) === 1
+    }));
+  }
 }
 
 module.exports = User;

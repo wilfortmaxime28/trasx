@@ -5441,6 +5441,30 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/users/suggestions', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = req.session.userId;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const suggestions = await User.getSuggestions(currentUserId, limit);
+    res.json({ success: true, suggestions });
+  } catch (err) {
+    console.error('Erreur API suggestions users:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch suggestions' });
+  }
+});
+
+app.get('/api/users/followers', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = req.session.userId;
+    const followers = await User.getFollowersForProfile(currentUserId, currentUserId);
+    res.json({ success: true, followers });
+  } catch (err) {
+    console.error('Erreur API followers users:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch followers' });
+  }
+});
+
+
 app.post('/api/user/update-display-name', requireAuth, async (req, res) => {
   try {
     const { display_name } = req.body;
