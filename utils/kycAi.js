@@ -352,8 +352,12 @@ function scoreFromFaceDistance(distance) {
     return null;
   }
 
-  const normalized = Math.max(0, Math.min(1, 1 - numericDistance / 0.6));
-  return Math.round(normalized * 100);
+  if (numericDistance <= 0.65) {
+    return Math.round(100 - (numericDistance / 0.65) * 40);
+  } else {
+    const val = 60 - ((numericDistance - 0.65) / 0.35) * 60;
+    return Math.round(Math.max(0, val));
+  }
 }
 
 function evaluateEventKycSubmission(user, submission = {}, file = null, analysis = {}) {
