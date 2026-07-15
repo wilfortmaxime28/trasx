@@ -44,7 +44,7 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
     _popScheduled = true;
     Future<void>.delayed(const Duration(milliseconds: 260), () async {
       if (!mounted) return;
-      Navigator.of(context).maybePop(_session.endingReason);
+      Navigator.of(context).pop(_session.endingReason);
     });
   }
 
@@ -89,28 +89,28 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope<void>(
-      canPop: _session.hasEnded,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        final navigator = Navigator.of(context);
-        final shouldPop = await _handleWillPop();
-        if (shouldPop && mounted) {
-          navigator.maybePop();
-        }
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF06070A),
-        body: AnimatedBuilder(
-          animation: _session,
-          builder: (context, _) {
-            final sessionEnded = _session.hasEnded || _session.isEnding;
-            final hasRemoteVideo =
-                !sessionEnded &&
-                _session.remoteVideoAvailable &&
-                _session.remoteRenderer.srcObject != null;
+    return AnimatedBuilder(
+      animation: _session,
+      builder: (context, _) {
+        final sessionEnded = _session.hasEnded || _session.isEnding;
+        final hasRemoteVideo =
+            !sessionEnded &&
+            _session.remoteVideoAvailable &&
+            _session.remoteRenderer.srcObject != null;
 
-            return Stack(
+        return PopScope<void>(
+          canPop: _session.hasEnded,
+          onPopInvokedWithResult: (didPop, _) async {
+            if (didPop) return;
+            final navigator = Navigator.of(context);
+            final shouldPop = await _handleWillPop();
+            if (shouldPop && mounted) {
+              navigator.pop();
+            }
+          },
+          child: Scaffold(
+            backgroundColor: const Color(0xFF06070A),
+            body: Stack(
               children: [
                 if (!sessionEnded &&
                     !hasRemoteVideo &&
@@ -210,10 +210,10 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
                     ),
                   ),
               ],
-            );
-          },
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -267,7 +267,7 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: GestureDetector(
-                  onTap: () => Navigator.of(context).maybePop(),
+                  onTap: () => Navigator.of(context).pop(),
                   child: Container(
                     width: 42,
                     height: 42,
@@ -308,7 +308,7 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        _session.endingReason ?? 'Appel termine.',
+                        _session.endingReason ?? 'Appel terminé.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.76),
@@ -319,7 +319,7 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
                       const SizedBox(height: 40),
                       // Bouton Fermer principal
                       GestureDetector(
-                        onTap: () => Navigator.of(context).maybePop(),
+                        onTap: () => Navigator.of(context).pop(),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 40,
