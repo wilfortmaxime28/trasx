@@ -149,12 +149,15 @@ async function validateDirectCall(callerId, receiverId) {
     };
   }
 
+  // Allow calling even if the receiver is offline (relying on FCM/APNs VoIP push notification to wake them up)
+  /*
   if (!presence.isUserOnline(receiverId)) {
     return {
       ok: false,
       error: 'Cet utilisateur n est pas en ligne.',
     };
   }
+  */
 
   if (getActiveRoomIdForUser(callerId) || getActiveRoomIdForUser(receiverId)) {
     return {
@@ -285,6 +288,29 @@ module.exports = function handleVideoCallSocket(socket, io) {
         callerSocketId: socket.id,
         createdAt: new Date().toISOString(),
       });
+
+      // Send FCM push notification to wake up device and ring even if app is closed
+      const fcmService = require('../services/fcmService');
+      (async () => {
+        try {
+          await fcmService.sendToUser({
+            userId: receiverId,
+            title: isVideo ? 'Appel vidéo entrant' : 'Appel audio entrant',
+            body: `${caller.first_name} ${caller.last_name} vous appelle.`,
+            data: {
+              type: 'incoming-call',
+              roomId: String(roomId),
+              callerId: String(callerId),
+              callerName: `${caller.first_name} ${caller.last_name}`.trim(),
+              callerAvatar: caller.avatar || '/assets/avatar_placeholder.jpg',
+              isVideo: String(isVideo),
+            },
+          });
+          console.log(`[Call FCM] Notification dispatched to user ${receiverId}`);
+        } catch (fcmErr) {
+          console.error('[Call FCM] Error dispatching Call FCM notification:', fcmErr);
+        }
+      })();
 
       socket.emit('call-ringing', {
         roomId,
