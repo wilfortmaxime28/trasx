@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 
-import 'package:face_camera/face_camera.dart';
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -19,195 +18,90 @@ class _KycCameraPageState extends State<KycCameraPage> {
   static const Color _textColor = Color(0xFF111827);
   static const Color _mutedColor = Color(0xFF6B7280);
 
-  FaceCameraController? _controller;
+  List<CameraDescription> _cameras = [];
+  CameraController? _cameraController;
   File? _capturedSelfieFile;
   bool _isPreparing = true;
   bool _isSavingCapture = false;
-  bool _isRetaking = false;
-  bool _hasHandledCapture = false;
   String? _errorMessage;
-
-  Timer? _faceLostTimer;
-  Timer? _stabilityTimer;
-  bool _hasFace = false;
-  bool _isReady = false;
-  bool _isCapturing = false;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_prepareCamera());
+    unawaited(_initializeCamera());
   }
 
-  Future<void> _prepareCamera() async {
+  Future<void> _initializeCamera() async {
     try {
-      await FaceCamera.initialize();
-      if (!mounted) return;
-
-      if (FaceCamera.cameras.isEmpty) {
+      _cameras = await availableCameras();
+      if (_cameras.isEmpty) {
         throw Exception('Aucune caméra disponible.');
       }
 
-      _controller = _createController();
-      _setupControllerListener();
+      // Find the front camera
+      final frontCamera = _cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+        orElse: () => _cameras.first,
+      );
+
+      _cameraController = CameraController(
+        frontCamera,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+
+      await _cameraController!.initialize();
+      if (!mounted) return;
+
       setState(() {
         _isPreparing = false;
         _errorMessage = null;
       });
-    } catch (error) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _isPreparing = false;
-        _errorMessage = 'Impossible d ouvrir la caméra KYC : $error';
+        _errorMessage = 'Impossible d\'ouvrir la caméra : $e';
       });
     }
   }
 
-  FaceCameraController _createController() {
-    return FaceCameraController(
-      autoCapture: false,
-      ignoreFacePositioning: false,
-      enableAudio: false,
-      imageResolution: ImageResolution.medium,
-      defaultCameraLens: CameraLens.front,
-      defaultFlashMode: CameraFlashMode.off,
-      orientation: CameraOrientation.portraitUp,
-      performanceMode: FaceDetectorMode.fast,
-      onCapture: _handleCapture,
-    );
-  }
-
-  void _setupControllerListener() {
-    _faceLostTimer?.cancel();
-    _stabilityTimer?.cancel();
-    _controller?.addListener(_onCameraControllerChanged);
-  }
-
-  void _onCameraControllerChanged() {
-    if (!mounted || _isCapturing) return;
-    final state = _controller?.value;
-    if (state == null) return;
-
-    final detectedFace = state.detectedFace as DetectedFace?;
-    final currentHasFace = detectedFace?.face != null;
-    final currentIsReady = detectedFace?.wellPositioned == true;
-
-    if (currentHasFace) {
-      _faceLostTimer?.cancel();
-      if (!_hasFace || _isReady != currentIsReady) {
-        setState(() {
-          _hasFace = true;
-          _isReady = currentIsReady;
-        });
-      }
-
-      // Stability-based auto-capture
-      if (currentIsReady) {
-        if (_stabilityTimer == null || !_stabilityTimer!.isActive) {
-          _stabilityTimer = Timer(const Duration(milliseconds: 1500), () {
-            if (mounted && _isReady && !_isCapturing) {
-              _triggerCapture();
-            }
-          });
-        }
-      } else {
-        _stabilityTimer?.cancel();
-      }
-    } else {
-      _stabilityTimer?.cancel();
-      // Debounce face loss slightly to reduce flickering on momentary losses
-      if (_faceLostTimer == null || !_faceLostTimer!.isActive) {
-        _faceLostTimer = Timer(const Duration(milliseconds: 400), () {
-          if (mounted) {
-            setState(() {
-              _hasFace = false;
-              _isReady = false;
-            });
-          }
-        });
-      }
-    }
-  }
-
-  void _triggerCapture() {
-    if (_isCapturing || _controller == null) return;
-    setState(() {
-      _isCapturing = true;
-    });
-    _controller?.captureImage();
-  }
-
-  Future<void> _handleCapture(File? image) async {
-    if (image == null || _isSavingCapture || _hasHandledCapture || !mounted) {
+  Future<void> _takePicture() async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized || _isSavingCapture) {
       return;
     }
-
-    _hasHandledCapture = true;
 
     setState(() {
       _isSavingCapture = true;
     });
 
     try {
-      final activeController = _controller;
-      activeController?.removeListener(_onCameraControllerChanged);
-      _faceLostTimer?.cancel();
-      _stabilityTimer?.cancel();
-
+      final file = await controller.takePicture();
       final tempDir = await getTemporaryDirectory();
       final destinationPath =
           '${tempDir.path}/kyc_selfie_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final savedFile = await image.copy(destinationPath);
+      final savedFile = await File(file.path).copy(destinationPath);
 
       if (!mounted) return;
       setState(() {
         _capturedSelfieFile = savedFile;
-        _controller = null;
         _isSavingCapture = false;
-        _isCapturing = false;
       });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(activeController?.dispose());
-      });
-    } catch (error) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
-        _hasHandledCapture = false;
         _isSavingCapture = false;
-        _isCapturing = false;
-        _errorMessage = 'La capture du selfie a échoué : $error';
+        _errorMessage = 'Échec de la prise de photo : $e';
       });
     }
   }
 
   Future<void> _retakeCapture() async {
-    if (_isRetaking) return;
-    final previousController = _controller;
-    previousController?.removeListener(_onCameraControllerChanged);
-    _faceLostTimer?.cancel();
-    _stabilityTimer?.cancel();
-
-    final nextController = _createController();
-
     setState(() {
-      _isRetaking = true;
       _capturedSelfieFile = null;
       _errorMessage = null;
-      _hasHandledCapture = false;
-      _hasFace = false;
-      _isReady = false;
-      _isCapturing = false;
-      _controller = nextController;
     });
-
-    _setupControllerListener();
-
-    unawaited(previousController?.dispose());
-    if (mounted) {
-      setState(() {
-        _isRetaking = false;
-      });
-    }
   }
 
   void _completeCapture() {
@@ -218,17 +112,14 @@ class _KycCameraPageState extends State<KycCameraPage> {
 
   @override
   void dispose() {
-    _faceLostTimer?.cancel();
-    _stabilityTimer?.cancel();
-    _controller?.removeListener(_onCameraControllerChanged);
-    unawaited(_controller?.dispose());
+    _cameraController?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.black,
       body: SafeArea(
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 220),
@@ -243,192 +134,212 @@ class _KycCameraPageState extends State<KycCameraPage> {
   }
 
   Widget _buildCameraState() {
-    final controller = _controller;
+    final controller = _cameraController;
 
-    return Column(
-      key: const ValueKey('camera'),
+    if (_isPreparing || controller == null || !controller.value.isInitialized) {
+      return _buildLoadingState();
+    }
+
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        _buildTopBar(),
-        Expanded(
-          child: _isPreparing || controller == null
-              ? _buildLoadingState()
-              : Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    SmartFaceCamera(
-                      controller: controller,
-                      showControls: false,
-                      showCaptureControl: false,
-                      showFlashControl: false,
-                      showCameraLensControl: false,
-                      autoDisableCaptureControl: true,
-                      indicatorShape: IndicatorShape.none,
-                      messageBuilder: _buildCameraMessage,
-                    ),
-                    _buildPersistentFaceFrame(controller),
-                    Positioned(
-                      left: 24,
-                      right: 24,
-                      bottom: 34,
-                      child: _buildBottomControls(),
-                    ),
-                    if (_isSavingCapture) _buildSavingOverlay(),
-                  ],
-                ),
+        // Camera Preview
+        CameraPreview(controller),
+        
+        // Semi-transparent cutout overlay
+        ClipPath(
+          clipper: OvalCutoutClipper(),
+          child: Container(
+            color: Colors.black.withOpacity(0.72),
+          ),
         ),
+        
+        // Oval border outline
+        CustomPaint(
+          size: Size.infinite,
+          painter: OvalBorderPainter(color: _accentColor.withOpacity(0.85)),
+        ),
+
+        // Custom Top Bar with Back Button
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withOpacity(0.65),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                const Spacer(),
+                const Text(
+                  'Scan Visage',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                const SizedBox(width: 48), // Balancing spacer
+              ],
+            ),
+          ),
+        ),
+
+        // Capture Controls at the bottom
+        Positioned(
+          left: 24,
+          right: 24,
+          bottom: 34,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.76),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'Alignez votre visage dans le cadre ovale',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              GestureDetector(
+                onTap: _takePicture,
+                child: Container(
+                  width: 76,
+                  height: 76,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white,
+                      width: 4,
+                    ),
+                    color: Colors.white.withOpacity(0.16),
+                  ),
+                  padding: const EdgeInsets.all(6),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.camera_alt_rounded,
+                        color: Colors.black,
+                        size: 26,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        if (_isSavingCapture) _buildSavingOverlay(),
       ],
     );
   }
 
-  Widget _buildTopBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 2, 14, 4),
-      child: Row(
+  Widget _buildCapturedState() {
+    final selfie = _capturedSelfieFile!;
+
+    return Container(
+      color: Colors.white,
+      child: Column(
+        key: const ValueKey('captured'),
         children: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            style: TextButton.styleFrom(
-              foregroundColor: _accentColor,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              textStyle: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            child: const Text('Annuler'),
-          ),
-          const Spacer(),
-          const Text(
-            'Scan visage',
-            style: TextStyle(
-              color: _textColor,
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const Spacer(),
-          const SizedBox(width: 76),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCameraMessage(BuildContext context, DetectedFace? detectedFace) {
-    final message = !_hasFace
-        ? 'Placez votre visage dans le cadre'
-        : _isReady
-        ? 'Parfait. Capture automatique...'
-        : 'Centrez votre visage et gardez la tête droite';
-
-    return Align(
-      alignment: Alignment.topCenter,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(22, 18, 22, 0),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Text(
-          message,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: _textColor,
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPersistentFaceFrame(FaceCameraController controller) {
-    final screenSize = MediaQuery.sizeOf(context);
-    final frameWidth = math.min(screenSize.width - 64, 286.0);
-    final frameHeight = frameWidth * 1.16;
-
-    final frameColor = _isReady
-        ? _successColor
-        : _hasFace
-        ? _accentColor
-        : Colors.white;
-    final label = _isReady
-        ? 'Ne bougez plus'
-        : _hasFace
-        ? 'Ajustez légèrement'
-        : 'Cadrez votre visage';
-
-    return IgnorePointer(
-      child: Center(
-        child: Transform.translate(
-          offset: const Offset(0, -12),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            width: frameWidth,
-            height: frameHeight,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(34),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.92),
-                width: 6,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.22),
-                  blurRadius: 24,
-                  spreadRadius: 1,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded, color: _textColor),
+                  onPressed: _retakeCapture,
                 ),
+                const Spacer(),
+                const Text(
+                  'Aperçu du selfie',
+                  style: TextStyle(
+                    color: _textColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                const SizedBox(width: 48),
               ],
             ),
-            child: Container(
-              margin: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: frameColor, width: 3),
-              ),
-              child: Stack(
-                clipBehavior: Clip.none,
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 18),
+              child: Column(
                 children: [
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: -20,
-                    child: Center(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: frameColor.withValues(alpha: 0.96),
-                          borderRadius: BorderRadius.circular(999),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.18),
-                              blurRadius: 12,
-                              offset: const Offset(0, 5),
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          label,
-                          style: TextStyle(
-                            color: _hasFace || _isReady
-                                ? Colors.white
-                                : _textColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      color: _successColor.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      color: _successColor,
+                      size: 48,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Photo capturée !',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _textColor,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Assurez-vous que votre visage est parfaitement visible et net.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _mutedColor,
+                      fontSize: 14,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(28),
+                      child: Image.file(
+                        selfie,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
                       ),
                     ),
                   ),
@@ -436,91 +347,49 @@ class _KycCameraPageState extends State<KycCameraPage> {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomControls() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.76),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            _isReady
-                ? 'Restez immobile pendant la capture...'
-                : _hasFace
-                ? 'Centrez votre visage dans le cercle bleu...'
-                : 'Placez votre visage au centre du cadre',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        GestureDetector(
-          onTap: _isReady && !_isCapturing ? _triggerCapture : null,
-          child: Container(
-            width: 76,
-            height: 76,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white,
-                width: 4,
-              ),
-              color: Colors.white.withValues(alpha: 0.16),
-            ),
-            padding: const EdgeInsets.all(6),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _isReady
-                    ? _successColor
-                    : Colors.white.withValues(alpha: 0.45),
-              ),
-              child: Center(
-                child: _isCapturing
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Icon(
-                        Icons.camera_alt_rounded,
-                        color: _isReady ? Colors.white : Colors.white.withValues(alpha: 0.7),
-                        size: 26,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _retakeCapture,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _textColor,
+                      side: const BorderSide(color: Color(0xFFD1D5DB)),
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
-              ),
+                    ),
+                    child: const Text(
+                      'Reprendre',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _completeCapture,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _accentColor,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Continuer',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSavingOverlay() {
-    return Container(
-      color: Colors.white.withValues(alpha: 0.72),
-      child: const Center(
-        child: SizedBox(
-          width: 34,
-          height: 34,
-          child: CircularProgressIndicator(strokeWidth: 3, color: _accentColor),
-        ),
+        ],
       ),
     );
   }
@@ -535,123 +404,29 @@ class _KycCameraPageState extends State<KycCameraPage> {
             height: 30,
             child: CircularProgressIndicator(
               strokeWidth: 2.8,
-              color: _accentColor,
+              color: Colors.white,
             ),
           ),
           SizedBox(height: 18),
           Text(
             'Préparation de la caméra...',
-            style: TextStyle(color: _mutedColor, fontSize: 14),
+            style: TextStyle(color: Colors.white70, fontSize: 14),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCapturedState() {
-    final selfie = _capturedSelfieFile!;
-
-    return Column(
-      key: const ValueKey('captured'),
-      children: [
-        _buildTopBar(),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
-            child: Column(
-              children: [
-                const SizedBox(height: 10),
-                Container(
-                  width: 112,
-                  height: 112,
-                  decoration: BoxDecoration(
-                    color: _successColor.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.check_rounded,
-                    color: _successColor,
-                    size: 58,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                const Text(
-                  'Scan facial terminé.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: _textColor,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Vérifiez que votre visage est clair avant de continuer.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: _mutedColor,
-                    fontSize: 14,
-                    height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 26),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: Image.file(
-                      selfie,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+  Widget _buildSavingOverlay() {
+    return Container(
+      color: Colors.black54,
+      child: const Center(
+        child: SizedBox(
+          width: 34,
+          height: 34,
+          child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _isRetaking ? null : _retakeCapture,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _textColor,
-                    side: const BorderSide(color: Color(0xFFD1D5DB)),
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: const Text(
-                    'Reprendre',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: _completeCapture,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _accentColor,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: const Text(
-                    'Continuer',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -667,12 +442,12 @@ class _KycCameraPageState extends State<KycCameraPage> {
               width: 74,
               height: 74,
               decoration: const BoxDecoration(
-                color: Color(0xFFF3F4F6),
+                color: Color(0xFF1F1F1F),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.camera_alt_outlined,
-                color: _mutedColor,
+                color: Colors.white30,
                 size: 34,
               ),
             ),
@@ -681,7 +456,7 @@ class _KycCameraPageState extends State<KycCameraPage> {
               _errorMessage ?? 'La caméra KYC est indisponible.',
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: _textColor,
+                color: Colors.white,
                 fontSize: 15,
                 height: 1.4,
               ),
@@ -704,4 +479,54 @@ class _KycCameraPageState extends State<KycCameraPage> {
       ),
     );
   }
+}
+
+class OvalCutoutClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    
+    final cutoutWidth = size.width * 0.70;
+    final cutoutHeight = cutoutWidth * 1.35;
+    final cutoutRect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2 - 40),
+      width: cutoutWidth,
+      height: cutoutHeight,
+    );
+    
+    path.addOval(cutoutRect);
+    path.fillType = PathFillType.evenOdd;
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+
+class OvalBorderPainter extends CustomPainter {
+  final Color color;
+  OvalBorderPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cutoutWidth = size.width * 0.70;
+    final cutoutHeight = cutoutWidth * 1.35;
+    final cutoutRect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2 - 40),
+      width: cutoutWidth,
+      height: cutoutHeight,
+    );
+
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.5;
+    
+    canvas.drawOval(cutoutRect, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant OvalBorderPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
