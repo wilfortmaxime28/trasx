@@ -245,6 +245,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   Timer? _typingDebounceTimer;
   Timer? _gameInviteTicker;
   Timer? _incomingCallAlertTimer;
+  Timer? _partnerTypingSoundTimer;
   bool _typingStateSent = false;
   bool _incomingCallDialogVisible = false;
   bool _isCallPageOpen = false;
@@ -315,6 +316,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     _typingDebounceTimer?.cancel();
     _gameInviteTicker?.cancel();
     _incomingCallAlertTimer?.cancel();
+    _partnerTypingSoundTimer?.cancel();
     _typingAnimationController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -970,6 +972,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   void _closeConversation() {
     _sendTypingState(false);
     widget.onConversationStateChanged?.call(false);
+    _stopPartnerTypingSound(playFinishedSound: false);
     setState(() {
       _selectedConversation = null;
       _messages = [];
@@ -1195,10 +1198,11 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     if (nextTyping) {
       _startTypingAnimation();
       _scrollMessagesToBottom();
+      _startPartnerTypingSound();
     } else {
       _stopTypingAnimation();
+      _stopPartnerTypingSound(playFinishedSound: true);
     }
-    unawaited(_playTypingFeedback());
     if (!mounted) return;
     setState(() {
       _partnerTyping = nextTyping;
@@ -3144,10 +3148,29 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     _typingAnimationController.reset();
   }
 
-  Future<void> _playTypingFeedback() async {
-    try {
-      await SystemSound.play(SystemSoundType.click);
-    } catch (_) {}
+  void _startPartnerTypingSound() {
+    _partnerTypingSoundTimer?.cancel();
+    
+    // Play the first click sound immediately
+    unawaited(SystemSound.play(SystemSoundType.click));
+    
+    // Play clicking sound at intervals to mimic active typing
+    _partnerTypingSoundTimer = Timer.periodic(
+      const Duration(milliseconds: 380),
+      (timer) {
+        unawaited(SystemSound.play(SystemSoundType.click));
+      },
+    );
+  }
+
+  void _stopPartnerTypingSound({bool playFinishedSound = false}) {
+    _partnerTypingSoundTimer?.cancel();
+    _partnerTypingSoundTimer = null;
+    
+    if (playFinishedSound) {
+      // Play a soft completion alert sound when typing finishes
+      unawaited(SystemSound.play(SystemSoundType.alert));
+    }
   }
 
   List<Map<String, dynamic>> get _activeList {
