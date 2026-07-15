@@ -18,6 +18,7 @@ import 'package:record/record.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'package:video_player/video_player.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 import '../pages/private_call_page.dart';
 import '../services/private_call_session.dart';
@@ -248,6 +249,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   Timer? _gameInviteTicker;
   Timer? _incomingCallAlertTimer;
   Timer? _partnerTypingSoundTimer;
+  final AudioPlayer _typingPlayer = AudioPlayer();
+  final AudioPlayer _alertPlayer = AudioPlayer();
   bool _typingStateSent = false;
   bool _incomingCallDialogVisible = false;
   bool _isCallPageOpen = false;
@@ -257,6 +260,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   void initState() {
     super.initState();
     NetworkQualityService().initialize();
+    _typingPlayer.setSource(AssetSource('sounds/typing.wav'));
+    _alertPlayer.setSource(AssetSource('sounds/finished.wav'));
     _typingAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -320,6 +325,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     _gameInviteTicker?.cancel();
     _incomingCallAlertTimer?.cancel();
     _partnerTypingSoundTimer?.cancel();
+    _typingPlayer.dispose();
+    _alertPlayer.dispose();
     _typingAnimationController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -3164,13 +3171,13 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     _partnerTypingSoundTimer?.cancel();
     
     // Play the first click sound immediately
-    unawaited(SystemSound.play(SystemSoundType.click));
+    unawaited(_typingPlayer.seek(Duration.zero).then((_) => _typingPlayer.resume()));
     
     // Play clicking sound at intervals to mimic active typing
     _partnerTypingSoundTimer = Timer.periodic(
       const Duration(milliseconds: 380),
       (timer) {
-        unawaited(SystemSound.play(SystemSoundType.click));
+        unawaited(_typingPlayer.seek(Duration.zero).then((_) => _typingPlayer.resume()));
       },
     );
   }
@@ -3180,8 +3187,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     _partnerTypingSoundTimer = null;
     
     if (playFinishedSound) {
-      // Play a soft completion alert sound when typing finishes
-      unawaited(SystemSound.play(SystemSoundType.alert));
+      // Play our synthesized double beep sound when typing finishes
+      unawaited(_alertPlayer.seek(Duration.zero).then((_) => _alertPlayer.resume()));
     }
   }
 

@@ -37,6 +37,7 @@ dependencies:
   http: ^1.6.0
   shared_preferences: ^2.5.5
   video_player: ^2.12.0
+  audioplayers: ^6.1.0
   visibility_detector: ^0.4.0+2
   cached_network_image: ^3.4.1
   wakelock_plus: ^1.6.1
@@ -82,6 +83,7 @@ flutter:
 
   assets:
     - assets/
+    - assets/sounds/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
