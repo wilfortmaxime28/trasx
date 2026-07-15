@@ -479,7 +479,7 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
       reasons.push('La comparaison faciale n\'a pas pu être effectuée.');
     } else if (faceMatchDistance <= 0.45) {
       score += 20;
-    } else if (faceMatchDistance <= 0.58) {
+    } else if (faceMatchDistance <= 0.65) {
       score += 8;
     } else {
       reasons.push('Le selfie ne correspond pas à la photo du document.');
@@ -491,7 +491,7 @@ function evaluateEventKycSubmission(user, submission = {}, file = null, analysis
   const formDobValid = formDobMatches;
   const ocrNameValid = nameMatches;
   const ocrDobValid = dobMatches;
-  const faceValid = docFaceDetected && selfieFaceDetected && faceMatchDistance <= 0.58;
+  const faceValid = docFaceDetected && selfieFaceDetected && faceMatchDistance <= 0.65;
 
   const approved = documentValid && 
                    formNameValid && 
@@ -539,6 +539,7 @@ async function ensureModelsLoaded() {
 
 async function imageToTensorResized(filePath, maxSize = 600) {
   const { data, info } = await sharp(filePath)
+    .rotate() // Auto-rotate using EXIF orientation metadata
     .resize(maxSize, maxSize, { fit: 'inside', withoutEnlargement: true })
     .raw()
     .toBuffer({ resolveWithObject: true });
@@ -570,7 +571,7 @@ async function compareFacesOnServer(selfiePath, docPath) {
     
     const detectorOptions = new faceapi.TinyFaceDetectorOptions({
       inputSize: 416,
-      scoreThreshold: 0.45
+      scoreThreshold: 0.25 // More lenient threshold for low-light or scanned doc photos
     });
     
     const [selfieDetection, docDetection] = await Promise.all([
@@ -617,7 +618,7 @@ async function documentHasFace(docPath) {
     docTensor = await imageToTensorResized(docPath, 600);
     const detectorOptions = new faceapi.TinyFaceDetectorOptions({
       inputSize: 224,
-      scoreThreshold: 0.35
+      scoreThreshold: 0.25 // More lenient threshold
     });
     const detection = await faceapi.detectSingleFace(docTensor, detectorOptions);
     return !!detection;

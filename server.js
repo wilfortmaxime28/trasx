@@ -4381,7 +4381,7 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
       docFaceDetected === true &&
       Number.isFinite(Number(evaluation.faceMatchScore)) &&
       Number(evaluation.faceMatchScore) >= 60 &&
-      faceMatchDistance <= 0.58;
+      faceMatchDistance <= 0.65;
 
     if (!hardIdentityMatch) {
       if (evaluation.matchedFullName !== true) {
