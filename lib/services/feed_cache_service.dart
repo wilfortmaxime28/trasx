@@ -2,6 +2,7 @@
 // Cache local du fil avec SharedPreferences (stale-while-revalidate)
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/post_model.dart';
 
@@ -18,10 +19,7 @@ class FeedCacheService {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_kPosts);
       if (raw == null || raw.isEmpty) return null;
-      final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
-      return decoded
-          .map((e) => Post.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return compute(_decodePostsPayload, raw);
     } catch (_) {
       return null;
     }
@@ -42,7 +40,10 @@ class FeedCacheService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final limited = posts.take(_maxCachedPosts).toList();
-      final encoded = jsonEncode(limited.map((p) => p.toJson()).toList());
+      final encoded = await compute(
+        _encodePostsPayload,
+        limited.map((p) => p.toJson()).toList(growable: false),
+      );
       await prefs.setString(_kPosts, encoded);
       await prefs.setInt(_kTimestamp, DateTime.now().millisecondsSinceEpoch);
       if (nextCursor != null) {
@@ -85,4 +86,15 @@ class FeedCacheService {
       await writePosts(posts);
     } catch (_) {}
   }
+}
+
+List<Post> _decodePostsPayload(String raw) {
+  final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
+  return decoded
+      .map((entry) => Post.fromJson(Map<String, dynamic>.from(entry as Map)))
+      .toList(growable: false);
+}
+
+String _encodePostsPayload(List<Map<String, dynamic>> payload) {
+  return jsonEncode(payload);
 }

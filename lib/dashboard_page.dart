@@ -141,9 +141,11 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
-    _loadUserData();
     _feedScrollController.addListener(_onFeedScroll);
     _initDeepLinks();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadUserData());
+    });
     // Poll statuses every 30 seconds
     _statusPollingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (_userId > 0) _fetchStatuses();
@@ -190,19 +192,30 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString('user_name') ?? 'Utilisateur';
+    final userId = prefs.getInt('user_id') ?? 0;
+    final userEmail = '${username.toLowerCase().replaceAll(' ', '')}@trasx.com';
+    if (!mounted) return;
     setState(() {
-      _username = prefs.getString('user_name') ?? 'Utilisateur';
-      _userId = prefs.getInt('user_id') ?? 0;
-      _userEmail = '${_username.toLowerCase().replaceAll(' ', '')}@trasx.com';
+      _username = username;
+      _userId = userId;
+      _userEmail = userEmail;
     });
 
-    if (_userId > 0) {
-      _fetchUserProfileAndPosts();
-      _fetchHomeFeed();
-      _fetchStatuses();
-      _fetchHashtagsInfo();
-      _initSocket();
+    if (userId > 0) {
+      unawaited(_fetchHomeFeed());
+      unawaited(_loadSecondaryStartupData(userId));
     }
+  }
+
+  Future<void> _loadSecondaryStartupData(int userId) async {
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted || _userId != userId) return;
+
+    unawaited(_fetchUserProfileAndPosts());
+    unawaited(_fetchStatuses());
+    unawaited(_fetchHashtagsInfo());
+    _initSocket();
   }
 
   // ── Statuses (Stories) ──────────────────────────────────────────────────────
@@ -1677,24 +1690,30 @@ class _DashboardPageState extends State<DashboardPage> {
     final bool isSelected = _activeViewIndex == targetIndex;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2.0),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        leading: Icon(
-          icon,
-          color: isSelected ? textPrimaryColor : textSecondaryColor,
-          size: 22,
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: isSelected ? textPrimaryColor : textSecondaryColor,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            fontSize: 14,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
+          leading: Icon(
+            icon,
+            color: isSelected ? textPrimaryColor : textSecondaryColor,
+            size: 22,
+          ),
+          title: Text(
+            title,
+            style: TextStyle(
+              color: isSelected ? textPrimaryColor : textSecondaryColor,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              fontSize: 14,
+            ),
+          ),
+          selected: isSelected,
+          selectedTileColor: textPrimaryColor.withValues(alpha: 0.06),
+          onTap: () => _switchView(targetIndex),
         ),
-        selected: isSelected,
-        selectedTileColor: textPrimaryColor.withValues(alpha: 0.06),
-        onTap: () => _switchView(targetIndex),
       ),
     );
   }
@@ -4308,17 +4327,21 @@ class _DashboardPageState extends State<DashboardPage> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: textPrimaryColor.withValues(alpha: 0.06)),
       ),
-      child: ListTile(
-        leading: Icon(icon, color: textPrimaryColor.withValues(alpha: 0.8)),
-        title: Text(
-          title,
-          style: TextStyle(color: textPrimaryColor, fontSize: 14),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: ListTile(
+          leading: Icon(icon, color: textPrimaryColor.withValues(alpha: 0.8)),
+          title: Text(
+            title,
+            style: TextStyle(color: textPrimaryColor, fontSize: 14),
+          ),
+          trailing: Icon(
+            Icons.chevron_right_rounded,
+            color: textPrimaryColor.withValues(alpha: 0.3),
+          ),
+          onTap: onTap,
         ),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: textPrimaryColor.withValues(alpha: 0.3),
-        ),
-        onTap: onTap,
       ),
     );
   }
@@ -4447,49 +4470,8 @@ class ReelThumbnail extends StatefulWidget {
 }
 
 class _ReelThumbnailState extends State<ReelThumbnail> {
-  VideoPlayerController? _controller;
-  bool _isInitialized = false;
-  bool _hasError = false;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.thumbnailUrl == null || widget.thumbnailUrl!.isEmpty) {
-      _initializeVideo();
-    }
-  }
-
-  void _initializeVideo() {
-    final fullUrl = widget.videoUrl.startsWith('http')
-        ? widget.videoUrl
-        : 'https://trasx.com${widget.videoUrl.startsWith('/') ? widget.videoUrl : '/${widget.videoUrl}'}';
-    _controller = VideoPlayerController.networkUrl(Uri.parse(fullUrl))
-      ..initialize()
-          .then((_) {
-            if (mounted) {
-              setState(() {
-                _isInitialized = true;
-              });
-            }
-          })
-          .catchError((_) {
-            if (mounted) {
-              setState(() {
-                _hasError = true;
-              });
-            }
-          });
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
-    // If a static thumbnail is available, render it directly
     if (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty) {
       final fullThumbUrl = widget.thumbnailUrl!.startsWith('http')
           ? widget.thumbnailUrl!
@@ -4508,23 +4490,13 @@ class _ReelThumbnailState extends State<ReelThumbnail> {
       );
     }
 
-    if (_hasError) {
-      return const Center(
-        child: Icon(Icons.play_arrow_rounded, color: Colors.white70, size: 32),
-      );
-    }
-
-    if (_controller == null || !_isInitialized) {
-      return Container(color: Colors.white10);
-    }
-    return SizedBox.expand(
-      child: FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: _controller!.value.size.width,
-          height: _controller!.value.size.height,
-          child: VideoPlayer(_controller!),
-        ),
+    return Container(
+      color: Colors.white10,
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.play_circle_fill_rounded,
+        color: Colors.white70,
+        size: 34,
       ),
     );
   }
@@ -4540,8 +4512,10 @@ class PostVideoPlayer extends StatefulWidget {
 }
 
 class _PostVideoPlayerState extends State<PostVideoPlayer> {
-  late VideoPlayerController _controller;
+  VideoPlayerController? _controller;
   bool _isInitialized = false;
+  bool _isInitializing = false;
+  bool _hasError = false;
   double _visibleFraction = 0.0;
   bool _isPlaying = false;
   bool _isMuted = false; // Sound enabled by default (not muted)
@@ -4550,43 +4524,72 @@ class _PostVideoPlayerState extends State<PostVideoPlayer> {
   @override
   void initState() {
     super.initState();
-    final fullUrl = widget.videoUrl.startsWith('http')
-        ? widget.videoUrl
-        : 'https://trasx.com${widget.videoUrl.startsWith('/') ? widget.videoUrl : '/${widget.videoUrl}'}';
-    _controller = VideoPlayerController.networkUrl(Uri.parse(fullUrl))
-      ..setLooping(true)
-      ..setVolume(_isMuted ? 0.0 : 1.0) // Enabled by default
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
-            _isPlaying = _controller.value.isPlaying;
-          });
-          // Immediately play if the user already has this post in view!
-          if (_visibleFraction > 0.5) {
-            _controller.play();
-            setState(() {
-              _isPlaying = true;
-            });
-          }
-        }
-      });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
-  void _togglePlayPause() {
-    if (!_isInitialized) return;
+  Future<void> _ensureVideoInitialized() async {
+    if (_isInitialized || _isInitializing) return;
+
+    final fullUrl = widget.videoUrl.startsWith('http')
+        ? widget.videoUrl
+        : 'https://trasx.com${widget.videoUrl.startsWith('/') ? widget.videoUrl : '/${widget.videoUrl}'}';
+    final controller = VideoPlayerController.networkUrl(Uri.parse(fullUrl));
+
     setState(() {
-      if (_controller.value.isPlaying) {
-        _controller.pause();
+      _isInitializing = true;
+      _hasError = false;
+    });
+
+    try {
+      await controller.setLooping(true);
+      await controller.setVolume(_isMuted ? 0.0 : 1.0);
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+
+      _controller = controller;
+      setState(() {
+        _isInitialized = true;
+        _isInitializing = false;
+        _isPlaying = controller.value.isPlaying;
+      });
+
+      if (_visibleFraction > 0.5 && !_DashboardPageState.pauseAllVideos) {
+        await controller.play();
+        if (mounted) {
+          setState(() {
+            _isPlaying = true;
+          });
+        }
+      }
+    } catch (_) {
+      await controller.dispose();
+      if (!mounted) return;
+      setState(() {
+        _controller = null;
+        _isInitialized = false;
+        _isInitializing = false;
+        _hasError = true;
+      });
+    }
+  }
+
+  void _togglePlayPause() {
+    final controller = _controller;
+    if (!_isInitialized || controller == null) return;
+    setState(() {
+      if (controller.value.isPlaying) {
+        controller.pause();
         _isPlaying = false;
       } else {
-        _controller.play();
+        controller.play();
         _isPlaying = true;
       }
       _showPlayPauseOverlay = true;
@@ -4603,17 +4606,22 @@ class _PostVideoPlayerState extends State<PostVideoPlayer> {
   }
 
   void _toggleMute() {
-    if (!_isInitialized) return;
+    final controller = _controller;
+    if (!_isInitialized || controller == null) return;
     setState(() {
       _isMuted = !_isMuted;
-      _controller.setVolume(_isMuted ? 0.0 : 1.0);
+      controller.setVolume(_isMuted ? 0.0 : 1.0);
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_DashboardPageState.pauseAllVideos && _isPlaying && _isInitialized) {
-      _controller.pause();
+    final controller = _controller;
+    if (_DashboardPageState.pauseAllVideos &&
+        _isPlaying &&
+        _isInitialized &&
+        controller != null) {
+      controller.pause();
       _isPlaying = false;
     }
 
@@ -4621,39 +4629,66 @@ class _PostVideoPlayerState extends State<PostVideoPlayer> {
       key: Key(widget.videoUrl),
       onVisibilityChanged: (info) {
         _visibleFraction = info.visibleFraction;
-        if (!mounted || !_isInitialized) return;
+        if (!mounted) return;
+
+        if (info.visibleFraction > 0.18) {
+          unawaited(_ensureVideoInitialized());
+        }
+
+        final activeController = _controller;
+        if (!_isInitialized || activeController == null) return;
         if (_DashboardPageState.pauseAllVideos) {
-          _controller.pause();
-          setState(() {
-            _isPlaying = false;
-          });
+          activeController.pause();
+          setState(() => _isPlaying = false);
           return;
         }
         if (_visibleFraction > 0.5) {
-          _controller.play();
-          setState(() {
-            _isPlaying = true;
-          });
+          activeController.play();
+          setState(() => _isPlaying = true);
         } else {
-          _controller.pause();
-          setState(() {
-            _isPlaying = false;
-          });
+          activeController.pause();
+          setState(() => _isPlaying = false);
         }
       },
       child: !_isInitialized
           ? (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: widget.thumbnailUrl!.startsWith('http')
-                        ? widget.thumbnailUrl!
-                        : 'https://trasx.com${widget.thumbnailUrl!.startsWith('/') ? widget.thumbnailUrl! : '/${widget.thumbnailUrl!}'}',
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    placeholder: (context, url) => Container(
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? const Color(0xFF121212)
-                          : const Color(0xFFFAFAFA),
-                    ),
+                ? Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CachedNetworkImage(
+                        imageUrl: widget.thumbnailUrl!.startsWith('http')
+                            ? widget.thumbnailUrl!
+                            : 'https://trasx.com${widget.thumbnailUrl!.startsWith('/') ? widget.thumbnailUrl! : '/${widget.thumbnailUrl!}'}',
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        placeholder: (context, url) => Container(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? const Color(0xFF121212)
+                              : const Color(0xFFFAFAFA),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? const Color(0xFF121212)
+                              : const Color(0xFFFAFAFA),
+                        ),
+                      ),
+                      _isInitializing
+                          ? const SizedBox(
+                              width: 26,
+                              height: 26,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.4,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white70,
+                                ),
+                              ),
+                            )
+                          : const Icon(
+                              Icons.play_circle_outline_rounded,
+                              color: Colors.white70,
+                              size: 56,
+                            ),
+                    ],
                   )
                 : Container(
                     color: Theme.of(context).brightness == Brightness.dark
@@ -4661,6 +4696,28 @@ class _PostVideoPlayerState extends State<PostVideoPlayer> {
                         : const Color(0xFFFAFAFA),
                     height: 300,
                     alignment: Alignment.center,
+                    child: _hasError
+                        ? const Icon(
+                            Icons.play_circle_outline_rounded,
+                            color: Colors.white54,
+                            size: 56,
+                          )
+                        : (_isInitializing
+                              ? const SizedBox(
+                                  width: 26,
+                                  height: 26,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.4,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white70,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.play_circle_outline_rounded,
+                                  color: Colors.white54,
+                                  size: 56,
+                                )),
                   ))
           : Stack(
               alignment: Alignment.center,
@@ -4669,8 +4726,8 @@ class _PostVideoPlayerState extends State<PostVideoPlayer> {
                 GestureDetector(
                   onTap: _togglePlayPause,
                   child: AspectRatio(
-                    aspectRatio: _controller.value.aspectRatio,
-                    child: VideoPlayer(_controller),
+                    aspectRatio: controller!.value.aspectRatio,
+                    child: VideoPlayer(controller),
                   ),
                 ),
 
@@ -9555,39 +9612,43 @@ class _SecuritySettingsPageState extends State<SecuritySettingsPage> {
                       color: textPrimaryColor.withValues(alpha: 0.06),
                     ),
                   ),
-                  child: SwitchListTile(
-                    title: Text(
-                      "Double authentification (2FA)",
-                      style: TextStyle(
-                        color: textPrimaryColor,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      "Protégez votre compte avec une vérification supplémentaire.",
-                      style: TextStyle(
-                        color: isDark ? Colors.white54 : Colors.black54,
-                        fontSize: 11,
-                      ),
-                    ),
-                    value: _is2FAEnabled,
-                    activeColor: const Color(0xFFC13584),
-                    onChanged: (val) {
-                      setState(() {
-                        _is2FAEnabled = val;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            val
-                                ? 'Double authentification activée.'
-                                : 'Double authentification désactivée.',
-                          ),
-                          duration: const Duration(seconds: 2),
+                  child: Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    child: SwitchListTile(
+                      title: Text(
+                        "Double authentification (2FA)",
+                        style: TextStyle(
+                          color: textPrimaryColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                         ),
-                      );
-                    },
+                      ),
+                      subtitle: Text(
+                        "Protégez votre compte avec une vérification supplémentaire.",
+                        style: TextStyle(
+                          color: isDark ? Colors.white54 : Colors.black54,
+                          fontSize: 11,
+                        ),
+                      ),
+                      value: _is2FAEnabled,
+                      activeColor: const Color(0xFFC13584),
+                      onChanged: (val) {
+                        setState(() {
+                          _is2FAEnabled = val;
+                        });
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              val
+                                  ? 'Double authentification activée.'
+                                  : 'Double authentification désactivée.',
+                            ),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ],
@@ -12348,8 +12409,8 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     );
   }
 
-  /// Opens the professional live-camera KYC page and runs the liveness
-  /// challenge (position → blink → head-turn → capture).
+  /// Opens the library-managed KYC face camera and returns its auto-captured
+  /// selfie once the face is detected and correctly positioned.
   /// Returns the captured [File] via [onChallengeSuccess], or does nothing
   /// if the user cancels.
   Future<void> _showLivenessChallenge(
@@ -12379,6 +12440,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
     String userDob = "";
     String verificationError = "";
     bool success = false;
+    bool isPending = false;
     bool? nameMatched;
     bool? dobMatched;
     int faceMatchScore = 0;
@@ -12492,13 +12554,13 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                             .where((item) => item.isNotEmpty)
                             .toList(growable: false)
                       : const <String>[];
+                  isPending = resData['status'] == 'pending';
                   final passedIdentityMatch =
                       nameMatched == true && dobMatched == true;
                   final passedFaceMatch = faceMatchScore >= 60;
                   final passedServerChecks =
                       resData['success'] == true &&
-                      passedIdentityMatch &&
-                      passedFaceMatch;
+                      (isPending || (passedIdentityMatch && passedFaceMatch));
 
                   if (streamedResponse.statusCode != 200 ||
                       !passedServerChecks) {
@@ -12674,15 +12736,17 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                         if (success) ...[
                           Row(
                             children: [
-                              const Icon(
-                                Icons.check_circle_rounded,
-                                color: Colors.green,
+                              Icon(
+                                isPending ? Icons.info_outline_rounded : Icons.check_circle_rounded,
+                                color: isPending ? Colors.orange : Colors.green,
                                 size: 24,
                               ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  "Vérification validée avec succès ! Vos retraits sont maintenant activés.",
+                                  isPending
+                                      ? "Demande soumise ! Vos documents sont en cours d'examen manuel par notre équipe."
+                                      : "Vérification validée avec succès ! Vos retraits sont maintenant activés.",
                                   style: TextStyle(
                                     color: textCol,
                                     fontSize: 13,
@@ -12698,7 +12762,7 @@ class _WalletSettingsPageState extends State<WalletSettingsPage> {
                             height: 44,
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
+                                backgroundColor: isPending ? Colors.orange : Colors.green,
                                 foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(22),
@@ -13142,27 +13206,31 @@ class _LanguageSettingsPageState extends State<LanguageSettingsPage> {
                     color: textPrimaryColor.withValues(alpha: 0.06),
                   ),
                 ),
-                child: SwitchListTile(
-                  title: Text(
-                    "Mode Sombre",
-                    style: TextStyle(
-                      color: textPrimaryColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                child: Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  child: SwitchListTile(
+                    title: Text(
+                      "Mode Sombre",
+                      style: TextStyle(
+                        color: textPrimaryColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  subtitle: Text(
-                    "Activer l'affichage avec des couleurs sombres.",
-                    style: TextStyle(
-                      color: isDark ? Colors.white54 : Colors.black54,
-                      fontSize: 11,
+                    subtitle: Text(
+                      "Activer l'affichage avec des couleurs sombres.",
+                      style: TextStyle(
+                        color: isDark ? Colors.white54 : Colors.black54,
+                        fontSize: 11,
+                      ),
                     ),
+                    value: isDark,
+                    activeColor: const Color(0xFFC13584),
+                    onChanged: (val) {
+                      widget.onThemeChanged(val);
+                    },
                   ),
-                  value: isDark,
-                  activeColor: const Color(0xFFC13584),
-                  onChanged: (val) {
-                    widget.onThemeChanged(val);
-                  },
                 ),
               ),
             ],

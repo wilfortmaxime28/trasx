@@ -4252,71 +4252,64 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
     const normalizeDateToIso = require('./utils/dateUtils').normalizeDateToIso;
     const dobVal = normalizeDateToIso(currentUser.dob) || '';
 
-    const [duplicateRows] = await db.query(
-      `SELECT user_id, id FROM kyc_requests 
-       WHERE user_id != ? 
-         AND status IN ('pending', 'approved', 'rejected')
-         AND (
-           (document_name = ? AND document_size = ?)
-           OR (submitted_full_name = ? AND submitted_dob = ?)
-           OR (submitted_email = ?)
-         )
-       LIMIT 1`,
-      [currentUserId, req.file.originalname, req.file.size, fullName, dobVal, currentUser.email]
-    );
-    
-    let isDuplicate = duplicateRows.length > 0;
-    let otherUserId = duplicateRows.length > 0 ? duplicateRows[0].user_id : null;
+    let isDuplicate = false;
+    let otherUserId = null;
 
-    if (!isDuplicate && dobVal) {
-      const [duplicateUserRows] = await db.query(
-        `SELECT id FROM users 
-         WHERE id != ? 
-           AND first_name = ? 
-           AND last_name = ? 
-           AND dob = ? 
+    if (dobVal && fullName) {
+      const [duplicateRows] = await db.query(
+        `SELECT user_id, id FROM kyc_requests 
+         WHERE user_id != ? 
+           AND status IN ('pending', 'approved')
+           AND (
+             (document_name = ? AND document_size = ?)
+             OR (submitted_full_name = ? AND submitted_dob = ?)
+             OR (submitted_email = ? AND submitted_email != '')
+           )
          LIMIT 1`,
-        [currentUserId, currentUser.first_name, currentUser.last_name, dobVal]
+        [currentUserId, req.file.originalname, req.file.size, fullName, dobVal, currentUser.email]
       );
-      if (duplicateUserRows.length > 0) {
+      if (duplicateRows.length > 0) {
         isDuplicate = true;
-        otherUserId = duplicateUserRows[0].id;
+        otherUserId = duplicateRows[0].user_id;
+      }
+
+      if (!isDuplicate) {
+        const [duplicateUserRows] = await db.query(
+          `SELECT id FROM users 
+           WHERE id != ? 
+             AND first_name = ? 
+             AND last_name = ? 
+             AND dob = ? 
+           LIMIT 1`,
+          [currentUserId, currentUser.first_name, currentUser.last_name, dobVal]
+        );
+        if (duplicateUserRows.length > 0) {
+          isDuplicate = true;
+          otherUserId = duplicateUserRows[0].id;
+        }
+      }
+    } else {
+      const [duplicateRows] = await db.query(
+        `SELECT user_id, id FROM kyc_requests 
+         WHERE user_id != ? 
+           AND status IN ('pending', 'approved')
+           AND (
+             (document_name = ? AND document_size = ?)
+             OR (submitted_email = ? AND submitted_email != '')
+           )
+         LIMIT 1`,
+        [currentUserId, req.file.originalname, req.file.size, currentUser.email]
+      );
+      if (duplicateRows.length > 0) {
+        isDuplicate = true;
+        otherUserId = duplicateRows[0].user_id;
       }
     }
     
     if (isDuplicate && otherUserId) {
-      // Automatically suspend both accounts with specific dispute access levels
-      // User A (otherUserId - original owner) -> KycBlockFirst (blocked but allowed to dispute)
-      // User B (currentUserId - current submitter) -> KycBlockSecond (blocked definitively)
-      await db.query("UPDATE users SET account_status = 'KycBlockFirst', kyc_dispute_status = NULL, kyc_dispute_message = NULL, kyc_dispute_admin_response = NULL WHERE id = ?", [otherUserId]);
-      await db.query("UPDATE users SET account_status = 'KycBlockSecond', kyc_dispute_status = NULL, kyc_dispute_message = NULL, kyc_dispute_admin_response = NULL WHERE id = ?", [currentUserId]);
-      
-      // Save this failed KYC request
-      await db.query(
-        `INSERT INTO kyc_requests (user_id, request_type, status, verification_notes, reviewed_at) 
-         VALUES (?, 'withdrawal', 'rejected', ?, NOW())`,
-        [currentUserId, `Double KYC détecté avec le compte ID ${otherUserId}`]
-      );
-
-      // Emit real-time status update to both rooms!
-      const io = req.app.get('socketio') || global.io;
-      if (io) {
-        io.to(`user:${otherUserId}`).emit('account-status-changed', {
-          accountStatus: 'KycBlockFirst',
-          kycStatus: 'rejected',
-          message: "Double KYC détecté. Votre compte a été suspendu par sécurité."
-        });
-        io.to(`user:${currentUserId}`).emit('account-status-changed', {
-          accountStatus: 'KycBlockSecond',
-          kycStatus: 'rejected',
-          message: "Double KYC détecté. Votre compte a été bloqué définitivement."
-        });
-      }
-
       return res.status(400).json({ 
         success: false, 
-        error: "Double KYC détecté. Votre compte a été suspendu pour des raisons de sécurité.",
-        accountStatus: 'KycBlockSecond'
+        error: "Ces informations ou ce document d'identité semblent déjà associés à un autre compte."
       });
     }
 
@@ -4330,29 +4323,12 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
 
     console.log(`[WithdrawKYC] Starting verification for user ${currentUserId}`);
 
-    // ── Fast document type check: reject immediately if not a passport, ID card, or driver's license ──
+    // ── Fast document type check ──
     const docCheckResult = await checkIsIdentityDocument(req.file.path);
-    if (!docCheckResult.isIdentityDoc) {
-      console.log('[WithdrawKYC] Document rejected: Not an identity document.', docCheckResult.reason);
-      return res.status(400).json({
-        success: false,
-        error: 'Le document soumis ne semble pas être un document d\'identité officiel (passeport, carte d\'identité nationale, ou permis de conduire). Veuillez soumettre une photo claire et lisible de votre pièce d\'identité.',
-        debugOcrText: docCheckResult.rawText
-      });
-    }
-    console.log(`[WithdrawKYC] Document type pre-check passed (${docCheckResult.docType}). Running fast face pre-check...`);
+    const docCheckPassed = docCheckResult.isIdentityDoc;
 
-    // ── Fast pre-check: reject immediately if the document has no face photo ──
-    console.log('[WithdrawKYC] Running fast face pre-check on document...');
+    // ── Fast pre-check ──
     const docHasFace = await documentHasFace(req.file.path);
-    if (!docHasFace) {
-      console.log('[WithdrawKYC] Document rejected: no face detected.');
-      return res.status(400).json({
-        success: false,
-        error: 'Le document soumis ne contient pas de photo de visage. Veuillez soumettre une pièce d\'identité valide (passeport, carte d\'identité, permis de conduire).'
-      });
-    }
-    console.log('[WithdrawKYC] Face detected in document. Proceeding with full OCR...');
 
     const ocrText = await extractWithdrawOcrText(req.file.path);
     const savedSelfie = await saveWithdrawSelfie(selfieImageData, withdrawKycSelfieDir, `selfie-${currentUserId}`);
@@ -4390,6 +4366,14 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
     const verificationReasons = Array.isArray(evaluation.reasons)
       ? [...evaluation.reasons]
       : [];
+
+    if (!docCheckPassed) {
+      verificationReasons.push("Le document soumis ne semble pas être un document d'identité officiel.");
+    }
+    if (!docHasFace) {
+      verificationReasons.push("Aucun visage n'a été détecté sur l'image du document d'identité.");
+    }
+
     const hardIdentityMatch =
       evaluation.matchedFullName === true && evaluation.matchedDob === true;
     const hardFaceMatch =
@@ -4424,10 +4408,12 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
       }
     }
 
-    const isApproved = evaluation.approved && hardIdentityMatch && hardFaceMatch;
+    const isApproved = evaluation.approved && hardIdentityMatch && hardFaceMatch && docCheckPassed && docHasFace;
+    const targetStatus = isApproved ? 'approved' : 'pending';
+    
     const verificationSummary = isApproved
       ? evaluation.summary
-      : 'La vérification a échoué. Les contrôles stricts d identité et de reconnaissance faciale ne sont pas remplis.';
+      : 'La vérification automatique a échoué. Transmis pour examen manuel. Raisons : ' + verificationReasons.join(', ');
 
     if (isApproved) {
       await db.query("UPDATE users SET account_status = 'Active' WHERE id = ?", [currentUserId]);
@@ -4473,7 +4459,7 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
              reviewed_at = NOW()
          WHERE id = ?`,
         [
-          isApproved ? 'approved' : 'rejected',
+          targetStatus,
           submission.full_name,
           submission.username,
           submission.email,
@@ -4512,7 +4498,7 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
         ) VALUES (?, 'withdrawal', ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         [
           currentUserId,
-          isApproved ? 'approved' : 'rejected',
+          targetStatus,
           submission.full_name,
           submission.username,
           submission.email,
@@ -4552,23 +4538,15 @@ app.post('/api/wallet/withdraw-kyc', requireAuth, uploadWithdrawKycDocument.sing
       reasons: verificationReasons
     };
 
-    if (isApproved) {
-      res.json({
-        success: true,
-        message: 'Félicitations, votre KYC de retrait a été vérifié et approuvé instantanément par l\'IA.',
-        details: verificationDetails,
-        debugOcrText: ocrText
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        error:
-          'Échec de la validation du document par l\'IA. Raisons : ' +
-          verificationReasons.join(', '),
-        details: verificationDetails,
-        debugOcrText: ocrText
-      });
-    }
+    res.json({
+      success: true,
+      status: targetStatus,
+      message: isApproved
+        ? 'Félicitations, votre KYC de retrait a été vérifié et approuvé instantanément par l\'IA.'
+        : 'La vérification automatique a échoué. Vos documents ont été transmis pour examen manuel.',
+      details: verificationDetails,
+      debugOcrText: ocrText
+    });
   } catch (err) {
     console.error('[WithdrawKYC] Error:', err);
     res.status(500).json({ success: false, error: 'Une erreur est survenue lors de la vérification instantanée du KYC.' });

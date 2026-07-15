@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,35 +7,104 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'onboarding_page.dart';
 import 'dashboard_page.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Keep the device screen turned on (prevent sleeping/dimming) while using TrasX
-  try {
-    await WakelockPlus.enable();
-  } catch (e) {
-    debugPrint('Wakelock enable error: $e');
-  }
-  
-  // Retrieve the persistent login session status and theme preference
-  final prefs = await SharedPreferences.getInstance();
-  final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
-  final bool isDarkMode = prefs.getBool('is_dark_mode') ?? true;
+  runApp(const _AppBootstrap());
+}
 
-  runApp(MyApp(isLoggedIn: isLoggedIn, initialDarkMode: isDarkMode));
+class _AppBootstrap extends StatefulWidget {
+  const _AppBootstrap();
+
+  @override
+  State<_AppBootstrap> createState() => _AppBootstrapState();
+}
+
+class _AppBootstrapState extends State<_AppBootstrap> {
+  bool? _isLoggedIn;
+  bool _isDarkMode = true;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_bootstrapApp());
+  }
+
+  Future<void> _bootstrapApp() async {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_enableWakelock());
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+        _isDarkMode = prefs.getBool('is_dark_mode') ?? true;
+      });
+    } catch (error) {
+      debugPrint('App bootstrap error: $error');
+      if (!mounted) return;
+      setState(() {
+        _isLoggedIn = false;
+        _isDarkMode = true;
+      });
+    }
+  }
+
+  Future<void> _enableWakelock() async {
+    try {
+      await WakelockPlus.enable();
+    } catch (error) {
+      debugPrint('Wakelock enable error: $error');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isReady = _isLoggedIn != null;
+    if (!isReady) {
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: Colors.black,
+          body: Center(
+            child: Text(
+              'TrasX',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.6,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return MyApp(
+      isLoggedIn: _isLoggedIn ?? false,
+      initialDarkMode: _isDarkMode,
+    );
+  }
+}
+
+abstract class AppThemeController {
+  bool get isDarkMode;
+  void toggleTheme(bool value);
 }
 
 class MyApp extends StatefulWidget {
   final bool isLoggedIn;
   final bool? initialDarkMode;
-  
+
   const MyApp({
     super.key,
     required this.isLoggedIn,
     this.initialDarkMode = true,
   });
 
-  static _MyAppState of(BuildContext context) {
+  static AppThemeController of(BuildContext context) {
     final _MyAppState? result = context.findAncestorStateOfType<_MyAppState>();
     if (result != null) return result;
     throw FlutterError('MyAppState not found in context');
@@ -43,38 +114,47 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> implements AppThemeController {
   late bool _isDarkMode;
 
+  @override
   bool get isDarkMode => _isDarkMode;
 
   @override
   void initState() {
     super.initState();
     _isDarkMode = widget.initialDarkMode ?? true;
+    _applySystemUiOverlayStyle();
   }
 
+  void _applySystemUiOverlayStyle() {
+    final overlayStyle = SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: _isDarkMode ? Brightness.light : Brightness.dark,
+      statusBarBrightness: _isDarkMode ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: _isDarkMode
+          ? const Color(0xFF000000)
+          : const Color(0xFFF9F9F9),
+      systemNavigationBarIconBrightness: _isDarkMode
+          ? Brightness.light
+          : Brightness.dark,
+      systemNavigationBarDividerColor: Colors.transparent,
+    );
+    SystemChrome.setSystemUIOverlayStyle(overlayStyle);
+  }
+
+  @override
   void toggleTheme(bool value) async {
     setState(() {
       _isDarkMode = value;
     });
+    _applySystemUiOverlayStyle();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_dark_mode', value);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Dynamic overlay styling to prevent default OS blur/gradients on notches
-    final overlayStyle = SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: _isDarkMode ? Brightness.light : Brightness.dark,
-      statusBarBrightness: _isDarkMode ? Brightness.dark : Brightness.light,
-      systemNavigationBarColor: _isDarkMode ? const Color(0xFF000000) : const Color(0xFFF9F9F9),
-      systemNavigationBarIconBrightness: _isDarkMode ? Brightness.light : Brightness.dark,
-      systemNavigationBarDividerColor: Colors.transparent,
-    );
-    SystemChrome.setSystemUIOverlayStyle(overlayStyle);
-
     return MaterialApp(
       title: 'TrasX',
       debugShowCheckedModeBanner: false,
@@ -113,7 +193,9 @@ class _MyAppState extends State<MyApp> {
         return AnimatedContainer(
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
-          color: _isDarkMode ? const Color(0xFF000000) : const Color(0xFFF9F9F9),
+          color: _isDarkMode
+              ? const Color(0xFF000000)
+              : const Color(0xFFF9F9F9),
           child: child!,
         );
       },
@@ -133,8 +215,6 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: Text('TrasX')),
-    );
+    return const Scaffold(body: Center(child: Text('TrasX')));
   }
 }
