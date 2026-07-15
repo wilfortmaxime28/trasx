@@ -25,8 +25,8 @@ import '../services/network_quality_service.dart';
 import '../services/video_cache_manager.dart';
 
 class _MessagesViewCache {
-  static const Duration inboxTtl = Duration(minutes: 2);
-  static const Duration conversationTtl = Duration(minutes: 6);
+  static const Duration inboxTtl = Duration(days: 30);
+  static const Duration conversationTtl = Duration(days: 30);
 
   static List<Map<String, dynamic>>? _generalConversations;
   static List<Map<String, dynamic>>? _requestConversations;
@@ -386,7 +386,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       await _hydrateInboxFromDisk();
     }
     await _fetchInbox(
-      forceRefresh: !_MessagesViewCache.isInboxFresh,
+      forceRefresh: true,
       silent: _MessagesViewCache.hasInbox,
     );
   }
@@ -964,9 +964,13 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       _scheduleConversationMediaWarmup(cachedMessages);
     }
 
+    final hasUnread = _asInt(conversation['unread_count']) > 0 ||
+        conversation['isUnread'] == true ||
+        conversation['is_unread'] == true;
+
     await _fetchConversationHistory(
       contactId,
-      forceRefresh: !_MessagesViewCache.isConversationFresh(contactId),
+      forceRefresh: hasUnread || !_MessagesViewCache.isConversationFresh(contactId),
       silent: cachedMessages != null,
     );
     _markConversationRead(contactId);
@@ -3138,7 +3142,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_messagesScrollController.hasClients) return;
       _messagesScrollController.animateTo(
-        _messagesScrollController.position.maxScrollExtent,
+        0.0,
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
@@ -4708,16 +4712,20 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       key: PageStorageKey<String>(
         'thread-${_selectedConversation?['id'] ?? 0}',
       ),
+      reverse: true,
       controller: _messagesScrollController,
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 18),
       itemCount: _messages.length + (_partnerTyping ? 1 : 0),
       itemBuilder: (context, index) {
-        if (_partnerTyping && index == _messages.length) {
+        if (_partnerTyping && index == 0) {
           return _buildTypingBubble(textSecondary);
         }
-        final message = _messages[index];
+        final messageIndex = _partnerTyping
+            ? (_messages.length - index)
+            : (_messages.length - 1 - index);
+        final message = _messages[messageIndex];
         final isMine = message['sender_id'] == widget.currentUserId;
-        final showSeparator = _shouldShowThreadSeparator(index);
+        final showSeparator = _shouldShowThreadSeparator(messageIndex);
         return Column(
           children: [
             if (showSeparator)
