@@ -4182,7 +4182,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     final username = _asString(conversation['username']);
     final presenceText = _asString(conversation['presence_text']);
     final isOnline = conversation['is_online'] == true;
-    final canLaunchRealtimeActions = _canChatWithSelectedUser && isOnline;
+    final canLaunchRealtimeActions = _canChatWithSelectedUser;
 
     return Container(
       key: ValueKey('conversation-${conversation['id']}'),
