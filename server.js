@@ -1669,6 +1669,29 @@ app.post('/api/register', authController.postRegisterApi);
 app.post('/api/verify', authController.postVerifyApi);
 
 // Mobile profile & posts APIs
+app.get('/api/users/suggestions', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = req.session.userId;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const suggestions = await User.getSuggestions(currentUserId, limit);
+    res.json({ success: true, suggestions });
+  } catch (err) {
+    console.error('Erreur API suggestions users:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch suggestions' });
+  }
+});
+
+app.get('/api/users/followers', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = req.session.userId;
+    const followers = await User.getFollowersForProfile(currentUserId, currentUserId);
+    res.json({ success: true, followers });
+  } catch (err) {
+    console.error('Erreur API followers users:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch followers' });
+  }
+});
+
 app.get('/api/users/:id', async (req, res) => {
   try {
     const userId = req.params.id;
@@ -5438,29 +5461,6 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Erreur API search users:', err);
     res.status(500).json({ error: 'Failed to search users' });
-  }
-});
-
-app.get('/api/users/suggestions', requireAuth, async (req, res) => {
-  try {
-    const currentUserId = req.session.userId;
-    const limit = parseInt(req.query.limit, 10) || 10;
-    const suggestions = await User.getSuggestions(currentUserId, limit);
-    res.json({ success: true, suggestions });
-  } catch (err) {
-    console.error('Erreur API suggestions users:', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch suggestions' });
-  }
-});
-
-app.get('/api/users/followers', requireAuth, async (req, res) => {
-  try {
-    const currentUserId = req.session.userId;
-    const followers = await User.getFollowersForProfile(currentUserId, currentUserId);
-    res.json({ success: true, followers });
-  } catch (err) {
-    console.error('Erreur API followers users:', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch followers' });
   }
 });
 

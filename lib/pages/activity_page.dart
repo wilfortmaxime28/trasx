@@ -46,12 +46,22 @@ class _ActivityPageState extends State<ActivityPage> {
 
   void _setupSocketListeners() {
     widget.socket?.on('follow-state-updated', _handleFollowStateUpdated);
+    widget.socket?.on('notification-created', _handleNotificationCreated);
   }
 
   @override
   void dispose() {
     widget.socket?.off('follow-state-updated', _handleFollowStateUpdated);
+    widget.socket?.off('notification-created', _handleNotificationCreated);
     super.dispose();
+  }
+
+  void _handleNotificationCreated(dynamic data) {
+    if (!mounted || data == null) return;
+    setState(() {
+      _notifications.removeWhere((n) => n['id'] == data['id']);
+      _notifications.insert(0, data);
+    });
   }
 
   void _handleFollowStateUpdated(dynamic data) {
@@ -449,19 +459,25 @@ class _ActivityPageState extends State<ActivityPage> {
           ),
           const SizedBox(width: 12),
           if (isFollow)
-            SizedBox(
-              height: 32,
-              child: FilledButton(
-                onPressed: () => _toggleFollow(notif['actor_id'] as int),
-                style: FilledButton.styleFrom(
-                  backgroundColor: isFollowing ? const Color(0xFFE5E7EB) : _tiktokPink,
-                  foregroundColor: isFollowing ? Colors.black : Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            GestureDetector(
+              onTap: () => _toggleFollow(notif['actor_id'] as int),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isFollowing
+                      ? (widget.isDarkMode ? Colors.grey.shade800 : const Color(0xFFE5E7EB))
+                      : _tiktokPink,
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  isFollowing ? 'Suivi' : 'Suivre en retour',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  isFollowing ? 'Suivi' : 'Retour',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: isFollowing
+                        ? (widget.isDarkMode ? Colors.white : Colors.black)
+                        : Colors.white,
+                  ),
                 ),
               ),
             )
@@ -518,19 +534,25 @@ class _ActivityPageState extends State<ActivityPage> {
             ),
           ),
           const SizedBox(width: 12),
-          SizedBox(
-            height: 34,
-            child: FilledButton(
-              onPressed: () => _toggleFollow(userId),
-              style: FilledButton.styleFrom(
-                backgroundColor: isFollowing ? const Color(0xFFE5E7EB) : _tiktokPink,
-                foregroundColor: isFollowing ? Colors.black : Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          GestureDetector(
+            onTap: () => _toggleFollow(userId),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: isFollowing
+                    ? (widget.isDarkMode ? Colors.grey.shade800 : const Color(0xFFE5E7EB))
+                    : _tiktokPink,
+                borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
                 isFollowing ? 'Abonné' : 'Suivre',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: isFollowing
+                      ? (widget.isDarkMode ? Colors.white : Colors.black)
+                      : Colors.white,
+                ),
               ),
             ),
           ),

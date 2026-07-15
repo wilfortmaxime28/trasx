@@ -55,8 +55,14 @@ class _NewFollowersPageState extends State<NewFollowersPage> {
 
   void _handleFollowStateUpdated(dynamic data) {
     if (!mounted || data == null) return;
+    final actorId = int.tryParse(data['actorId']?.toString() ?? '');
     final targetId = int.tryParse(data['targetId']?.toString() ?? '');
     final isFollowing = data['isFollowing'] == true;
+
+    if (targetId == widget.currentUserId && isFollowing) {
+      _fetchFollowers();
+      return;
+    }
 
     if (targetId != null) {
       setState(() {
@@ -411,19 +417,25 @@ class _NewFollowersPageState extends State<NewFollowersPage> {
             ),
           ),
           const SizedBox(width: 12),
-          SizedBox(
-            height: 32,
-            child: FilledButton(
-              onPressed: () => _toggleFollow(user['id'] as int),
-              style: FilledButton.styleFrom(
-                backgroundColor: isFollowing ? const Color(0xFFE5E7EB) : _tiktokPink,
-                foregroundColor: isFollowing ? Colors.black : Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          GestureDetector(
+            onTap: () => _toggleFollow(user['id'] as int),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isFollowing
+                    ? (widget.isDarkMode ? Colors.grey.shade800 : const Color(0xFFE5E7EB))
+                    : _tiktokPink,
+                borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                isFollowing ? 'Message' : 'Suivre en retour',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                isFollowing ? 'Message' : 'Retour',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: isFollowing
+                      ? (widget.isDarkMode ? Colors.white : Colors.black)
+                      : Colors.white,
+                ),
               ),
             ),
           ),
@@ -486,30 +498,40 @@ class _NewFollowersPageState extends State<NewFollowersPage> {
           Row(
             children: [
               Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _removeSuggestion(userId),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: textPrimary,
-                    side: BorderSide(color: textSecondary.withOpacity(0.3)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    minimumSize: const Size.fromHeight(40),
+                child: SizedBox(
+                  height: 32,
+                  child: OutlinedButton(
+                    onPressed: () => _removeSuggestion(userId),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: textPrimary,
+                      side: BorderSide(color: textSecondary.withOpacity(0.3)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      padding: EdgeInsets.zero,
+                    ),
+                    child: const Text('Supprimer', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
-                  child: const Text('Supprimer', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: FilledButton(
-                  onPressed: () => _toggleFollow(userId),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: isFollowing ? const Color(0xFFE5E7EB) : _tiktokPink,
-                    foregroundColor: isFollowing ? Colors.black : Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    minimumSize: const Size.fromHeight(40),
-                  ),
-                  child: Text(
-                    isFollowing ? 'Abonné' : 'Suivre en retour',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                child: SizedBox(
+                  height: 32,
+                  child: FilledButton(
+                    onPressed: () => _toggleFollow(userId),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: isFollowing
+                          ? (widget.isDarkMode ? Colors.grey.shade800 : const Color(0xFFE5E7EB))
+                          : _tiktokPink,
+                      foregroundColor: isFollowing
+                          ? (widget.isDarkMode ? Colors.white : Colors.black)
+                          : Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      padding: EdgeInsets.zero,
+                    ),
+                    child: Text(
+                      isFollowing ? 'Abonné' : 'Suivre',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
               ),
