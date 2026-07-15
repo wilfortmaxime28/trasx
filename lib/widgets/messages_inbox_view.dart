@@ -4534,45 +4534,40 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     required double dotSize,
     bool compact = false,
   }) {
-    final spacing = compact ? 3.0 : 4.0;
-    final width = compact ? 22.0 : 28.0;
+    final spacing = compact ? 1.8 : 2.4;
 
-    return SizedBox(
-      width: width,
-      height: dotSize + 4,
-      child: AnimatedBuilder(
-        animation: _typingAnimationController,
-        builder: (context, _) {
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(3, (index) {
-              final wave = math.sin(
-                ((_typingAnimationController.value + (index * 0.14)) *
-                    math.pi *
-                    2),
-              );
-              final opacity = 0.28 + ((wave + 1) / 2) * 0.72;
-              final scale = 0.84 + ((wave + 1) / 2) * 0.26;
+    return AnimatedBuilder(
+      animation: _typingAnimationController,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (index) {
+            final wave = math.sin(
+              ((_typingAnimationController.value + (index * 0.14)) *
+                  math.pi *
+                  2),
+            );
+            final opacity = 0.28 + ((wave + 1) / 2) * 0.72;
+            final scale = 0.84 + ((wave + 1) / 2) * 0.26;
 
-              return Opacity(
-                opacity: opacity.clamp(0.0, 1.0).toDouble(),
-                child: Transform.scale(
-                  scale: scale,
-                  child: Container(
-                    width: dotSize,
-                    height: dotSize,
-                    margin: EdgeInsets.symmetric(horizontal: spacing / 2),
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
+            return Opacity(
+              opacity: opacity.clamp(0.0, 1.0).toDouble(),
+              child: Transform.scale(
+                scale: scale,
+                child: Container(
+                  width: dotSize,
+                  height: dotSize,
+                  margin: EdgeInsets.symmetric(horizontal: spacing / 2),
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-              );
-            }),
-          );
-        },
-      ),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 
@@ -5256,7 +5251,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         children: [
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: 6),
             child: Row(
               children: _quickReactions.map((reaction) {
                 return Padding(
@@ -5267,8 +5262,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                         : () => _handleQuickReaction(reaction),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
+                        horizontal: 12,
+                        vertical: 6,
                       ),
                       decoration: BoxDecoration(
                         color: widget.isDarkMode
@@ -5278,7 +5273,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                       ),
                       child: Text(
                         reaction,
-                        style: const TextStyle(fontSize: 22),
+                        style: const TextStyle(fontSize: 16),
                       ),
                     ),
                   ),
@@ -5455,16 +5450,16 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       clipBehavior: Clip.none,
       children: [
         Container(
-          padding: const EdgeInsets.all(2),
+          padding: EdgeInsets.all(online ? 2.0 : 0.0),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: LinearGradient(
-              colors: online
-                  ? const [_tiktokCyan, _tiktokPink]
-                  : const [Color(0xFF303030), Color(0xFF1F1F1F)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            gradient: online
+                ? const LinearGradient(
+                    colors: [_tiktokCyan, _tiktokPink],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
           ),
           child: CircleAvatar(
             radius: radius,
