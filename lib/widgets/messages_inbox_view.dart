@@ -444,10 +444,13 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   }
 
   Future<List<Map<String, dynamic>>?> _hydrateConversationFromDisk(
-    int contactId,
-  ) async {
-    final cached = _MessagesViewCache.readConversation(contactId);
-    if (cached != null) return cached;
+    int contactId, {
+    bool forceReadDisk = false,
+  }) async {
+    if (!forceReadDisk) {
+      final cached = _MessagesViewCache.readConversation(contactId);
+      if (cached != null) return cached;
+    }
 
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -954,9 +957,17 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
   Future<void> _openConversation(Map<String, dynamic> conversation) async {
     final contactId = conversation['id'] as int;
-    final cachedMessages =
-        _MessagesViewCache.readConversation(contactId) ??
-        await _hydrateConversationFromDisk(contactId);
+    List<Map<String, dynamic>>? cachedMessages =
+        _MessagesViewCache.readConversation(contactId);
+    if (cachedMessages == null || cachedMessages.length <= 1) {
+      final diskMessages = await _hydrateConversationFromDisk(
+        contactId,
+        forceReadDisk: true,
+      );
+      if (diskMessages != null && diskMessages.isNotEmpty) {
+        cachedMessages = diskMessages;
+      }
+    }
 
     setState(() {
       _selectedConversation = Map<String, dynamic>.from(conversation);
