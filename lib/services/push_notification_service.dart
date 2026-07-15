@@ -75,19 +75,14 @@ class PushNotificationService {
       // 6. Listen to CallKit events
       FlutterCallkitIncoming.onEvent.listen((CallEvent? event) {
         if (event == null) return;
-        log('[PushNotificationService] CallKit event: ${event.event}');
+        log('[PushNotificationService] CallKit event: ${event.eventName}');
         
-        switch (event.event) {
-          case Event.actionCallAccept:
-            final extra = Map<String, dynamic>.from(event.body['extra'] ?? {});
-            _onCallAccepted.add(extra);
-            break;
-          case Event.actionCallDecline:
-            final extra = Map<String, dynamic>.from(event.body['extra'] ?? {});
-            _onCallDeclined.add(extra);
-            break;
-          default:
-            break;
+        if (event is CallEventActionCallAccept) {
+          final extra = Map<String, dynamic>.from(event.callKitParams.extra ?? {});
+          _onCallAccepted.add(extra);
+        } else if (event is CallEventActionCallDecline) {
+          final extra = Map<String, dynamic>.from(event.callKitParams.extra ?? {});
+          _onCallDeclined.add(extra);
         }
       });
 
@@ -111,12 +106,9 @@ class PushNotificationService {
       handle: isVideo ? 'Appel vidéo' : 'Appel audio',
       type: isVideo ? 1 : 0, // 0 - audio, 1 - video
       duration: 35000,
-      textAccept: 'Répondre',
-      textDecline: 'Refuser',
       missedCallNotification: const NotificationParams(
         showNotification: true,
-        title: 'Appel manqué',
-        body: 'Vous avez manqué un appel.',
+        subtitle: 'Vous avez manqué un appel.',
       ),
       extra: <String, dynamic>{
         'roomId': roomId,
@@ -133,6 +125,8 @@ class PushNotificationService {
         actionColor: '#FE2C55',
         incomingCallNotificationChannelName: 'Appels entrants',
         missedCallNotificationChannelName: 'Appels manqués',
+        textAccept: 'Répondre',
+        textDecline: 'Refuser',
       ),
       ios: const IOSParams(
         iconName: 'AppIcon',
