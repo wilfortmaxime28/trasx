@@ -80,12 +80,18 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>com.example.trasx</string>
+			<string>com.trasx.trasxwebview</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>trasx</string>
 			</array>
 		</dict>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+		<string>voip</string>
 	</array>
 </dict>
 </plist>
