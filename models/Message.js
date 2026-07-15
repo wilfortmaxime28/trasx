@@ -84,19 +84,29 @@ class Message {
         m.deleted_by_receiver,
         m.deleted_for_everyone,
         m.created_at,
-        mr.status AS request_status,
-        mr.requester_id AS request_requester_id,
-        mr.recipient_id AS request_recipient_id,
+        COALESCE(
+          (SELECT mr1.status FROM message_requests mr1
+           WHERE mr1.requester_id = m.sender_id AND mr1.recipient_id = m.receiver_id LIMIT 1),
+          (SELECT mr2.status FROM message_requests mr2
+           WHERE mr2.requester_id = m.receiver_id AND mr2.recipient_id = m.sender_id LIMIT 1)
+        ) AS request_status,
+        COALESCE(
+          (SELECT mr1.requester_id FROM message_requests mr1
+           WHERE mr1.requester_id = m.sender_id AND mr1.recipient_id = m.receiver_id LIMIT 1),
+          (SELECT mr2.requester_id FROM message_requests mr2
+           WHERE mr2.requester_id = m.receiver_id AND mr2.recipient_id = m.sender_id LIMIT 1)
+        ) AS request_requester_id,
+        COALESCE(
+          (SELECT mr1.recipient_id FROM message_requests mr1
+           WHERE mr1.requester_id = m.sender_id AND mr1.recipient_id = m.receiver_id LIMIT 1),
+          (SELECT mr2.recipient_id FROM message_requests mr2
+           WHERE mr2.requester_id = m.receiver_id AND mr2.recipient_id = m.sender_id LIMIT 1)
+        ) AS request_recipient_id,
         COALESCE(u.display_name, CONCAT(u.first_name, ' ', u.last_name)) AS sender_name,
         u.avatar AS sender_avatar,
         u.username AS sender_username
       FROM messages m
       JOIN users u ON m.sender_id = u.id
-      LEFT JOIN message_requests mr
-        ON (
-          (mr.requester_id = m.sender_id AND mr.recipient_id = m.receiver_id)
-          OR (mr.requester_id = m.receiver_id AND mr.recipient_id = m.sender_id)
-        )
       WHERE (m.receiver_id = ? OR m.sender_id = ?)
         AND (
           (m.sender_id = ? AND m.deleted_by_sender = 0)
