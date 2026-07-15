@@ -775,6 +775,12 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     final unreadCount =
         _asInt(map['unread_count']) +
         ((map['isUnread'] == true && _asInt(map['unread_count']) == 0) ? 1 : 0);
+    // Preserve last_message so _openConversation can show it instantly before
+    // the network fetch completes.
+    final rawLastMessage = map['last_message'];
+    final lastMessage = rawLastMessage is Map
+        ? _normalizeMessage(rawLastMessage)
+        : null;
     return {
       'id': _asInt(map['id'] ?? map['contactId']),
       'name': _asString(
@@ -812,6 +818,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       ),
       'unread_count': unreadCount,
       'is_unread': unreadCount > 0,
+      if (lastMessage != null) 'last_message': lastMessage,
     };
   }
 
@@ -964,11 +971,27 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     // Read from memory cache immediately (non-blocking)
     final cachedMessages = _MessagesViewCache.readConversation(contactId);
 
-    // Open conversation UI instantly
+    // If no memory cache, try to seed with the last known message from the
+    // conversation object so the user sees content instantly rather than a
+    // blank spinner while the network fetch runs.
+    final rawLastMessage = conversation['last_message'];
+    final seedMessage = rawLastMessage is Map<String, dynamic>
+        ? rawLastMessage
+        : null;
+    final List<Map<String, dynamic>> initialMessages;
+    if (cachedMessages != null && cachedMessages.isNotEmpty) {
+      initialMessages = cachedMessages;
+    } else if (seedMessage != null) {
+      initialMessages = [seedMessage];
+    } else {
+      initialMessages = [];
+    }
+
+    // Open conversation UI instantly — never show a spinner if we have any data
     setState(() {
       _selectedConversation = Map<String, dynamic>.from(conversation);
-      _messages = cachedMessages ?? [];
-      _isLoadingConversation = cachedMessages == null;
+      _messages = initialMessages;
+      _isLoadingConversation = initialMessages.isEmpty;
       _conversationError = null;
       _partnerTyping = false;
       _replyingToMessage = null;
@@ -976,13 +999,13 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     _stopTypingAnimation();
     widget.onConversationStateChanged?.call(true);
 
-    if (cachedMessages != null) {
+    if (initialMessages.isNotEmpty) {
       _scrollMessagesToBottom();
-      _scheduleConversationMediaWarmup(cachedMessages);
+      _scheduleConversationMediaWarmup(initialMessages);
     }
 
-    // Hydrate from disk in background (non-blocking)
-    if (cachedMessages == null || cachedMessages.length <= 1) {
+    // Hydrate from disk in background (non-blocking) when we have few messages
+    if (initialMessages.length <= 1) {
       _hydrateConversationFromDisk(contactId, forceReadDisk: true).then((diskMessages) {
         if (diskMessages != null && diskMessages.isNotEmpty && mounted) {
           if (_selectedConversation != null &&
@@ -1002,7 +1025,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     unawaited(_fetchConversationHistory(
       contactId,
       forceRefresh: true,
-      silent: cachedMessages != null,
+      silent: initialMessages.isNotEmpty,
     ));
   }
 
@@ -1149,6 +1172,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       ...conversation,
       'preview': previewText,
       'time_text': _formatConversationTime(message['created_at'] as String),
+      // Keep the latest message so _openConversation can display it instantly
+      'last_message': message,
     };
     final cachedThread = _MessagesViewCache.readConversation(partnerId);
     if (cachedThread != null) {
@@ -2424,10 +2449,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   }
 
   void _markConversationRead(int partnerId) {
-    widget.socket?.emitWithAck('chat-mark-read', {
-      'partnerId': partnerId,
-    }, ack: (_) {});
-
+    // 1. Clear badge locally right away for instant UI feedback
     if (!mounted) return;
     setState(() {
       _generalConversations = _generalConversations.map((item) {
@@ -2448,6 +2470,36 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       }
     });
     _cacheInboxState();
+
+    // 2. Notify server via socket (preferred, fast path)
+    widget.socket?.emitWithAck(
+      'chat-mark-read',
+      {'partnerId': partnerId},
+      ack: (dynamic ackData) {
+        // Socket succeeded — nothing more to do
+        final success = ackData is Map && ackData['success'] == true;
+        if (!success) {
+          // Socket ack reported failure; fall back to HTTP
+          unawaited(_markConversationReadViaHttp(partnerId));
+        }
+      },
+    );
+  }
+
+  /// HTTP fallback for mark-read — used when the socket ack fails or the
+  /// socket is offline, to ensure the server DB is always kept in sync.
+  Future<void> _markConversationReadViaHttp(int partnerId) async {
+    try {
+      await http.post(
+        Uri.parse('https://trasx.com/api/messages/$partnerId/read'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.currentUserId}',
+        },
+      ).timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Best-effort; ignore network errors for mark-read
+    }
   }
 
   void _handleComposerChanged() {

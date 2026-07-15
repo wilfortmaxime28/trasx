@@ -5660,6 +5660,33 @@ app.get('/api/messages/:contactId', requireAuth, async (req, res) => {
   }
 });
 
+// API Marquer une conversation comme lue (fallback HTTP pour le socket chat-mark-read)
+app.post('/api/messages/:partnerId/read', requireAuth, async (req, res) => {
+  try {
+    const currentUserId = Number(req.session?.userId || 0);
+    if (!currentUserId) {
+      return res.status(401).json({ success: false, error: 'Non authentifié.' });
+    }
+    const partnerId = parseInt(req.params.partnerId, 10);
+    if (!Number.isFinite(partnerId) || partnerId <= 0) {
+      return res.status(400).json({ success: false, error: 'partnerId invalide.' });
+    }
+    const messageIds = await Message.markConversationRead(partnerId, currentUserId);
+    emitTotalMessageUnreadCount(currentUserId);
+    if (messageIds.length > 0) {
+      io.to(`user:${partnerId}`).emit('chat-message-status', {
+        messageIds,
+        status: 'read',
+        receiverId: currentUserId
+      });
+    }
+    return res.json({ success: true, messageIds });
+  } catch (err) {
+    console.error('POST /api/messages/:partnerId/read error:', err);
+    return res.status(500).json({ success: false, error: 'Erreur serveur.' });
+  }
+});
+
 const messageUploadDir = path.join(__dirname, 'public/uploads/messages');
 if (!fs.existsSync(messageUploadDir)) {
   fs.mkdirSync(messageUploadDir, { recursive: true });

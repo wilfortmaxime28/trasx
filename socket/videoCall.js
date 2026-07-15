@@ -92,7 +92,7 @@ function buildIceServers() {
     process.env.CALL_TURN_URLS ||
       process.env.TURN_URLS ||
       process.env.COTURN_URLS ||
-      '',
+      'turn:turn.trasx.com:3478?transport=udp,turn:turn.trasx.com:3478?transport=tcp,turns:turn.trasx.com:5349?transport=tcp',
   )
     .split(',')
     .map((value) => value.trim())
@@ -102,14 +102,14 @@ function buildIceServers() {
     process.env.CALL_TURN_USERNAME ||
       process.env.TURN_USERNAME ||
       process.env.COTURN_USERNAME ||
-      '',
+      'trasx',
   ).trim();
 
   const turnCredential = String(
     process.env.CALL_TURN_CREDENTIAL ||
       process.env.TURN_CREDENTIAL ||
       process.env.COTURN_CREDENTIAL ||
-      '',
+      'MotDePasseTresFort123',
   ).trim();
 
   const servers = [];

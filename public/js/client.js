@@ -5744,7 +5744,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Remove socket listeners
       if (callResponseHandler) socket.off('call-response-received', callResponseHandler);
-      if (callEndedHandler) socket.off('call-ended', callEndedHandler);
+      if (callEndedHandler) {
+        socket.off('call-ended', callEndedHandler);
+        socket.off('call:end', callEndedHandler);
+      }
     };
 
     const hangUp = () => {
@@ -6457,12 +6460,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // If remote hangs up
     callEndedHandler = () => {
-      if (currentCallState === 'connected') {
-        showToast(`${contactName} a raccroché`);
-        hangUp();
-      }
+      showToast(getPageLocale() === 'fr' ? `${contactName} a raccroché ou décliné` : `${contactName} hung up or declined`);
+      hangUp();
     };
     socket.on('call-ended', callEndedHandler);
+    socket.on('call:end', callEndedHandler);
 
     if (otherSocketId) {
       // Receiver side: we wait for getUserMedia to resolve before connecting and responding
@@ -7244,11 +7246,20 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(overlay);
     playRing();
 
-    const handleCallerHangup = () => { stopRing(); overlay.remove(); socket.off('call-ended', handleCallerHangup); };
+    const handleCallerHangup = () => {
+      stopRing();
+      overlay.remove();
+      socket.off('call-ended', handleCallerHangup);
+      socket.off('call:end', handleCallerHangup);
+    };
     socket.on('call-ended', handleCallerHangup);
+    socket.on('call:end', handleCallerHangup);
 
     document.getElementById('ic-decline-btn').addEventListener('click', () => {
-      stopRing(); overlay.remove(); socket.off('call-ended', handleCallerHangup);
+      stopRing();
+      overlay.remove();
+      socket.off('call-ended', handleCallerHangup);
+      socket.off('call:end', handleCallerHangup);
       socket.emit('call-response', { callerId, roomId, status: 'declined' });
     });
 
@@ -7258,11 +7269,17 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(getPageLocale() === 'fr' 
           ? "Permission micro/caméra requise pour accepter l'appel." 
           : "Microphone/camera permission required to accept the call.");
-        stopRing(); overlay.remove(); socket.off('call-ended', handleCallerHangup);
+        stopRing();
+        overlay.remove();
+        socket.off('call-ended', handleCallerHangup);
+        socket.off('call:end', handleCallerHangup);
         socket.emit('call-response', { callerId, roomId, status: 'declined' });
         return;
       }
-      stopRing(); overlay.remove(); socket.off('call-ended', handleCallerHangup);
+      stopRing();
+      overlay.remove();
+      socket.off('call-ended', handleCallerHangup);
+      socket.off('call:end', handleCallerHangup);
       initiateMockCall(callerName, callerAvatar, isVideo, true, () => {}, [], callerId, callerSocketId, roomId);
     });
   });
