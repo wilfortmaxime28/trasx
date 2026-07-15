@@ -11,6 +11,7 @@ class PrivateCallPage extends StatefulWidget {
   const PrivateCallPage({super.key, required this.session});
 
   final PrivateCallSession session;
+  static bool isCallActive = false;
 
   @override
   State<PrivateCallPage> createState() => _PrivateCallPageState();
@@ -25,12 +26,14 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
   @override
   void initState() {
     super.initState();
+    PrivateCallPage.isCallActive = true;
     _session.addListener(_handleSessionUpdate);
     unawaited(_session.initialize());
   }
 
   @override
   void dispose() {
+    PrivateCallPage.isCallActive = false;
     _session.removeListener(_handleSessionUpdate);
     unawaited(_session.release());
     super.dispose();

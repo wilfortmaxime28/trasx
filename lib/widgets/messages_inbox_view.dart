@@ -307,7 +307,6 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
         _handleBlockStatusUpdated,
       );
       oldWidget.socket?.off('chat-action-error', _handleChatActionError);
-      oldWidget.socket?.off('call-incoming', _handleIncomingCall);
       oldWidget.socket?.off('call-response-received', _handleCallResponse);
       oldWidget.socket?.off('call-ended', _handleCallEnded);
       _attachSocketListeners();
@@ -351,7 +350,6 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     widget.socket?.on('game-invitation-updated', _handleGameInvitationUpdated);
     widget.socket?.on('chat-block-status-updated', _handleBlockStatusUpdated);
     widget.socket?.on('chat-action-error', _handleChatActionError);
-    widget.socket?.on('call-incoming', _handleIncomingCall);
     widget.socket?.on('call-response-received', _handleCallResponse);
     widget.socket?.on('call-ended', _handleCallEnded);
   }
@@ -366,7 +364,6 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     widget.socket?.off('game-invitation-updated', _handleGameInvitationUpdated);
     widget.socket?.off('chat-block-status-updated', _handleBlockStatusUpdated);
     widget.socket?.off('chat-action-error', _handleChatActionError);
-    widget.socket?.off('call-incoming', _handleIncomingCall);
     widget.socket?.off('call-response-received', _handleCallResponse);
     widget.socket?.off('call-ended', _handleCallEnded);
   }

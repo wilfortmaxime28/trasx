@@ -31,6 +31,10 @@ import 'kyc_camera_page.dart';
 import 'image_cropper_page.dart';
 import 'widgets/messages_inbox_view.dart';
 import 'widgets/shorts_view.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'pages/private_call_page.dart';
+import 'services/private_call_session.dart';
+
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -89,6 +93,13 @@ class _DashboardPageState extends State<DashboardPage> {
   // Real-time Socket.IO
   IO.Socket? _socket;
 
+  // Global video call state
+  String? _activeCallRoomId;
+  bool _incomingCallDialogVisible = false;
+  Timer? _incomingCallAlertTimer;
+  final AudioPlayer _incomingCallPlayer = AudioPlayer();
+
+
   // Stats State
   int _followersCount = 0;
   int _followingCount = 0;
@@ -142,6 +153,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+    _incomingCallPlayer.setSource(AssetSource('sounds/ringtone.wav'));
     _feedScrollController.addListener(_onFeedScroll);
     _initDeepLinks();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -166,15 +178,15 @@ class _DashboardPageState extends State<DashboardPage> {
     // Initial connectivity check
     Connectivity().checkConnectivity().then((results) {
       if (mounted) {
-        setState(() {
-          _isOffline = results.every((r) => r == ConnectivityResult.none);
-        });
+        setState(() => _isOffline = results.every((r) => r == ConnectivityResult.none));
       }
     });
   }
 
   @override
   void dispose() {
+    _incomingCallAlertTimer?.cancel();
+    _incomingCallPlayer.dispose();
     _linkSubscription?.cancel();
     _statusPollingTimer?.cancel();
     _feedScrollController.dispose();
@@ -662,6 +674,8 @@ class _DashboardPageState extends State<DashboardPage> {
         }
       });
 
+      _socket!.on('call-incoming', _handleIncomingCall);
+
       _socket!.onDisconnect((_) {
         debugPrint('Socket.IO: Disconnected from server');
       });
@@ -671,6 +685,205 @@ class _DashboardPageState extends State<DashboardPage> {
       });
     } catch (e) {
       debugPrint('Error initializing Socket.IO: $e');
+    }
+  }
+
+  Future<dynamic> _emitSocketAck(
+    String event,
+    Map<String, dynamic> payload, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final socket = _socket;
+    if (socket == null) {
+      throw Exception('Messagerie temps réel indisponible.');
+    }
+
+    final completer = Completer<dynamic>();
+    late Timer timer;
+    timer = Timer(timeout, () {
+      if (!completer.isCompleted) {
+        completer.completeError(
+          Exception('Le serveur de messagerie ne répond pas.'),
+        );
+      }
+    });
+
+    socket.emitWithAck(
+      event,
+      payload,
+      ack: (dynamic response) {
+        timer.cancel();
+        if (completer.isCompleted) return;
+        completer.complete(response);
+      },
+    );
+
+    return completer.future;
+  }
+
+  Future<void> _handleIncomingCall(dynamic data) async {
+    if (!mounted || data == null || _incomingCallDialogVisible) return;
+    
+    final int callerId = int.tryParse(data['callerId']?.toString() ?? '') ?? 0;
+    final String callerName = data['callerName']?.toString() ?? 'Utilisateur';
+    final String callerAvatar = data['callerAvatar']?.toString() ?? '';
+    final String roomId = data['roomId']?.toString() ?? '';
+    final bool isVideo = data['isVideo'] == true;
+    
+    if (callerId <= 0 || roomId.isEmpty) return;
+
+    if (PrivateCallPage.isCallActive) {
+      try {
+        await _emitSocketAck('call-response', {
+          'callerId': callerId,
+          'roomId': roomId,
+          'status': 'busy',
+        });
+      } catch (_) {}
+      return;
+    }
+
+    _incomingCallDialogVisible = true;
+    _startIncomingCallAlert();
+
+    if (!mounted) {
+      _stopIncomingCallAlert();
+      _incomingCallDialogVisible = false;
+      return;
+    }
+
+    var responseStatus = 'declined';
+    await showCupertinoDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return CupertinoAlertDialog(
+          title: Text(isVideo ? 'Appel vidéo' : 'Appel audio'),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('$callerName essaie de vous joindre.'),
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () {
+                responseStatus = 'declined';
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text('Refuser'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                responseStatus = 'accepted';
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text('Répondre'),
+            ),
+          ],
+        );
+      },
+    );
+    _stopIncomingCallAlert();
+
+    try {
+      await _emitSocketAck('call-response', {
+        'callerId': callerId,
+        'roomId': roomId,
+        'status': responseStatus,
+      });
+      if (mounted && responseStatus == 'accepted') {
+        _stopIncomingCallAlert();
+        _incomingCallDialogVisible = false;
+        
+        // 1. Directly switch to the message page (index 2)
+        _switchView(2);
+        
+        // 2. Open the call page
+        await _openCallPage(
+          roomId: roomId,
+          isVideo: isVideo,
+          isCaller: false,
+          partnerId: callerId,
+          partnerName: callerName,
+          partnerAvatar: callerAvatar,
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    }
+    _stopIncomingCallAlert();
+    _incomingCallDialogVisible = false;
+  }
+
+  void _startIncomingCallAlert() {
+    _incomingCallAlertTimer?.cancel();
+    unawaited(_playIncomingCallAlert());
+    _incomingCallAlertTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!_incomingCallDialogVisible || !mounted) {
+        _stopIncomingCallAlert();
+        return;
+      }
+      unawaited(_playIncomingCallAlert());
+    });
+  }
+
+  void _stopIncomingCallAlert() {
+    _incomingCallAlertTimer?.cancel();
+    _incomingCallAlertTimer = null;
+    try {
+      _incomingCallPlayer.stop();
+    } catch (_) {}
+  }
+
+  Future<void> _playIncomingCallAlert() async {
+    try {
+      await _incomingCallPlayer.seek(Duration.zero);
+      await _incomingCallPlayer.resume();
+    } catch (_) {}
+  }
+
+  Future<void> _openCallPage({
+    required String roomId,
+    required bool isVideo,
+    required bool isCaller,
+    required int partnerId,
+    required String partnerName,
+    required String partnerAvatar,
+  }) async {
+    if (!mounted || PrivateCallPage.isCallActive) return;
+    final socket = _socket;
+    if (socket == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Messagerie temps réel indisponible.')),
+      );
+      return;
+    }
+
+    _activeCallRoomId = roomId;
+
+    final session = PrivateCallSession(
+      socket: socket,
+      roomId: roomId,
+      currentUserId: _userId,
+      remoteUserId: partnerId,
+      remoteName: partnerName,
+      remoteAvatarUrl: partnerAvatar,
+      isVideo: isVideo,
+      role: isCaller ? PrivateCallRole.caller : PrivateCallRole.callee,
+    );
+
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (_) => PrivateCallPage(session: session),
+        ),
+      );
+    } finally {
+      _activeCallRoomId = null;
     }
   }
 
