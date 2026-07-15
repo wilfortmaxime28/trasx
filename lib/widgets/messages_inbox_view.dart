@@ -3183,9 +3183,28 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   @override
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 280),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        final isConversation = child.key.toString().contains('conversation');
+        if (isConversation) {
+          final slideIn = Tween<Offset>(
+            begin: const Offset(1.0, 0.0),
+            end: Offset.zero,
+          ).animate(animation);
+
+          return SlideTransition(
+            position: slideIn,
+            child: child,
+          );
+        } else {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        }
+      },
       child: _selectedConversation == null
           ? _buildInboxShell()
           : _buildConversationShell(),
@@ -3197,17 +3216,17 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       child: Stack(
         children: [
           Positioned(
-            top: -90,
-            right: -40,
+            top: -120,
+            right: -60,
             child: Container(
-              width: 220,
-              height: 220,
+              width: 380,
+              height: 380,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
                     _tiktokPink.withValues(
-                      alpha: widget.isDarkMode ? 0.18 : 0.11,
+                      alpha: widget.isDarkMode ? 0.08 : 0.05,
                     ),
                     Colors.transparent,
                   ],
@@ -3216,17 +3235,17 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
             ),
           ),
           Positioned(
-            top: 120,
-            left: -80,
+            top: 160,
+            left: -120,
             child: Container(
-              width: 200,
-              height: 200,
+              width: 320,
+              height: 320,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
                     _tiktokCyan.withValues(
-                      alpha: widget.isDarkMode ? 0.12 : 0.08,
+                      alpha: widget.isDarkMode ? 0.06 : 0.04,
                     ),
                     Colors.transparent,
                   ],
@@ -4186,6 +4205,7 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   }) {
     if (_partnerTyping) {
       return Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 7,
@@ -4196,14 +4216,16 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
             ),
           ),
           const SizedBox(width: 6),
-          const Text(
-            'En train d’ecrire',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: _tiktokCyan,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
+          Flexible(
+            child: const Text(
+              'En train d’ecrire',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _tiktokCyan,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           const SizedBox(width: 6),
@@ -4739,10 +4761,10 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(
-                              alpha: widget.isDarkMode ? 0.12 : 0.04,
+                              alpha: widget.isDarkMode ? 0.05 : 0.02,
                             ),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
@@ -5301,9 +5323,15 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
                     color: widget.isDarkMode
-                        ? const Color(0xFF151515)
-                        : const Color(0xFFF2F2F4),
-                    borderRadius: BorderRadius.circular(26),
+                        ? const Color(0xFF131313)
+                        : const Color(0xFFF0F1F4),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: widget.isDarkMode
+                          ? Colors.white.withValues(alpha: 0.04)
+                          : Colors.black.withValues(alpha: 0.03),
+                      width: 1,
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -5397,6 +5425,8 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
     return IconButton(
       onPressed: (_isSendingMessage || _isUploadingAttachment) ? null : onTap,
       splashRadius: 18,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      constraints: const BoxConstraints(),
       icon: Icon(icon, color: color, size: 20),
     );
   }
