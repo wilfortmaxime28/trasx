@@ -957,18 +957,14 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
 
   Future<void> _openConversation(Map<String, dynamic> conversation) async {
     final contactId = conversation['id'] as int;
-    List<Map<String, dynamic>>? cachedMessages =
-        _MessagesViewCache.readConversation(contactId);
-    if (cachedMessages == null || cachedMessages.length <= 1) {
-      final diskMessages = await _hydrateConversationFromDisk(
-        contactId,
-        forceReadDisk: true,
-      );
-      if (diskMessages != null && diskMessages.isNotEmpty) {
-        cachedMessages = diskMessages;
-      }
-    }
 
+    // Mark as read immediately so badges clear instantly in UI and server
+    _markConversationRead(contactId);
+
+    // Read from memory cache immediately (non-blocking)
+    final cachedMessages = _MessagesViewCache.readConversation(contactId);
+
+    // Open conversation UI instantly
     setState(() {
       _selectedConversation = Map<String, dynamic>.from(conversation);
       _messages = cachedMessages ?? [];
@@ -985,16 +981,29 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
       _scheduleConversationMediaWarmup(cachedMessages);
     }
 
-    final hasUnread = _asInt(conversation['unread_count']) > 0 ||
-        conversation['isUnread'] == true ||
-        conversation['is_unread'] == true;
+    // Hydrate from disk in background (non-blocking)
+    if (cachedMessages == null || cachedMessages.length <= 1) {
+      _hydrateConversationFromDisk(contactId, forceReadDisk: true).then((diskMessages) {
+        if (diskMessages != null && diskMessages.isNotEmpty && mounted) {
+          if (_selectedConversation != null &&
+              _selectedConversation!['id'] == contactId) {
+            setState(() {
+              _messages = diskMessages;
+              _isLoadingConversation = false;
+            });
+            _scrollMessagesToBottom();
+            _scheduleConversationMediaWarmup(diskMessages);
+          }
+        }
+      });
+    }
 
-    await _fetchConversationHistory(
+    // Fetch fresh messages from network in background (non-blocking)
+    unawaited(_fetchConversationHistory(
       contactId,
       forceRefresh: true,
       silent: cachedMessages != null,
-    );
-    _markConversationRead(contactId);
+    ));
   }
 
   void _closeConversation() {
