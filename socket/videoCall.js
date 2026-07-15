@@ -208,6 +208,25 @@ function emitCallEnded(io, session, actorId) {
   io.to(session.roomId).emit('call:end', payload);
   io.to(`user:${session.callerId}`).emit('call-ended', payload);
   io.to(`user:${session.receiverId}`).emit('call-ended', payload);
+
+  const fcmService = require('../services/fcmService');
+  const targetReceiverId = Number(actorId) === Number(session.callerId) ? session.receiverId : session.callerId;
+  (async () => {
+    try {
+      await fcmService.sendToUser({
+        userId: targetReceiverId,
+        title: 'Appel terminé',
+        body: 'L\'appel est terminé.',
+        data: {
+          type: 'cancel-call',
+          roomId: String(session.roomId),
+        },
+      });
+      console.log(`[Call FCM] Cancel notification sent to user ${targetReceiverId}`);
+    } catch (fcmErr) {
+      console.error('[Call FCM] Error sending cancel Call FCM:', fcmErr);
+    }
+  })();
 }
 
 module.exports = function handleVideoCallSocket(socket, io) {
@@ -272,6 +291,23 @@ module.exports = function handleVideoCallSocket(socket, io) {
           roomId: activeSession.roomId,
           isVideo: activeSession.isVideo,
         });
+
+        // Send cancel call FCM to receiver
+        const fcmService = require('../services/fcmService');
+        (async () => {
+          try {
+            await fcmService.sendToUser({
+              userId: activeSession.receiverId,
+              title: 'Appel manqué',
+              body: 'Vous avez manqué un appel.',
+              data: {
+                type: 'cancel-call',
+                roomId: String(roomId),
+              },
+            });
+          } catch (_) {}
+        })();
+
         destroySession(roomId);
       }, CALL_RING_TIMEOUT_MS);
 

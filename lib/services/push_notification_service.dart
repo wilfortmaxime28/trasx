@@ -19,6 +19,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   
   if (message.data['type'] == 'incoming-call') {
     await PushNotificationService.showIncomingCallKit(message.data);
+  } else if (message.data['type'] == 'cancel-call') {
+    await FlutterCallkitIncoming.endAllCalls();
   }
 }
 
@@ -56,6 +58,8 @@ class PushNotificationService {
         log('[PushNotificationService] Foreground message received: ${message.data}');
         if (message.data['type'] == 'incoming-call') {
           await showIncomingCallKit(message.data);
+        } else if (message.data['type'] == 'cancel-call') {
+          await FlutterCallkitIncoming.endAllCalls();
         }
       });
 
