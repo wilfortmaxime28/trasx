@@ -1574,6 +1574,10 @@ const sessionMiddleware = session({
   }
 });
 app.use(sessionMiddleware);
+app.use((req, res, next) => {
+  res.locals.isMobileView = (req.query.mobile === 'true');
+  next();
+});
 io.engine.use(sessionMiddleware);
 io.use((socket, next) => {
   console.log('[Socket Auth] Incoming headers:', JSON.stringify(socket.request.headers));
@@ -2078,7 +2082,7 @@ app.get('/api/auth/mobile-session', async (req, res) => {
     req.session.userId = Number(userId);
 
     // Redirect to games page (or other specified page)
-    let redirectUrl = `/?view=${view || 'games'}`;
+    let redirectUrl = `/?view=${view || 'games'}&mobile=true`;
     if (opponentId) {
       redirectUrl += `&opponentId=${opponentId}`;
     }

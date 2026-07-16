@@ -41,17 +41,21 @@ class _GamePlayPageState extends State<GamePlayPage> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {
-            // progress updates can be logged here if needed
+            if (progress > 35 && _isLoading && mounted) {
+              setState(() {
+                _isLoading = false;
+              });
+            }
           },
           onPageStarted: (String url) {
-            setState(() {
-              _isLoading = true;
-            });
+            // Keep WebView rendering visible as early as possible
           },
           onPageFinished: (String url) {
-            setState(() {
-              _isLoading = false;
-            });
+            if (_isLoading && mounted) {
+              setState(() {
+                _isLoading = false;
+              });
+            }
           },
           onWebResourceError: (WebResourceError error) {
             debugPrint("WebView error: ${error.description}");

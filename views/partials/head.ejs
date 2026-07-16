@@ -23,6 +23,33 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
   <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="/css/styles.css?v=196">
+  <% if (typeof isMobileView !== 'undefined' && isMobileView) { %>
+  <style>
+    .app-header, .mobile-header, .mobile-nav, .left-sidebar, .right-sidebar {
+      display: none !important;
+    }
+    .main-layout {
+      grid-template-columns: 1fr !important;
+      gap: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      height: 100vh !important;
+    }
+    .app-wrapper {
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      margin: 0 !important;
+      max-width: 100% !important;
+      min-height: 100vh !important;
+    }
+    body, html {
+      padding: 0 !important;
+      margin: 0 !important;
+      background-color: #121317 !important;
+      overflow-x: hidden !important;
+    }
+  </style>
+  <% } %>
   <!-- Lucide Icons CDN -->
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.407.0/dist/umd/lucide.min.js" defer crossorigin></script>
   <!-- Chess Engine -->
