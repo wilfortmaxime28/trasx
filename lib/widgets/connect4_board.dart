@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
-/// Native Flutter Puissance 4 (Connect 4) board.
+/// Native Flutter Puissance 4 (Connect 4) board matching the web design exactly.
 /// Board is 6 rows × 7 columns.
-/// Player 1 = symbol 1 (red), Player 2 = symbol 2 (yellow).
+/// Player 1 = symbol 1 (red disc), Player 2 = symbol 2 (yellow disc).
 class Connect4Board extends StatefulWidget {
   final List<List<int>> board; // 6×7 grid, 0=empty 1=p1 2=p2
   final int currentPlayerSymbol; // 1 or 2
@@ -13,6 +13,7 @@ class Connect4Board extends StatefulWidget {
   final List<Map<String, dynamic>>? winningStones;
   final Function(int column) onColumnTap;
   final Map<String, dynamic>? lastMove;
+  final bool isDarkMode;
 
   const Connect4Board({
     super.key,
@@ -22,6 +23,7 @@ class Connect4Board extends StatefulWidget {
     required this.myTurn,
     required this.gameOver,
     required this.onColumnTap,
+    required this.isDarkMode,
     this.winningStones,
     this.lastMove,
   });
@@ -36,11 +38,14 @@ class _Connect4BoardState extends State<Connect4Board>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
-  static const Color _p1Color = Color(0xFFEF4444); // red
-  static const Color _p2Color = Color(0xFFFACC15); // yellow
-  static const Color _boardColor = Color(0xFF1E3A8A); // deep blue
-  static const Color _boardEdgeColor = Color(0xFF1E40AF);
-  static const Color _emptyColor = Color(0xFF0F172A);
+  // Web Design Colors
+  static const Color _p1DiscLight = Color(0xFFFF4D4D);
+  static const Color _p1DiscDark = Color(0xFFC81010);
+  static const Color _p1DiscBorder = Color(0xFF990000);
+
+  static const Color _p2DiscLight = Color(0xFFFFD000);
+  static const Color _p2DiscDark = Color(0xFFD48B00);
+  static const Color _p2DiscBorder = Color(0xFF996000);
 
   @override
   void initState() {
@@ -49,7 +54,7 @@ class _Connect4BoardState extends State<Connect4Board>
       duration: const Duration(milliseconds: 900),
       vsync: this,
     )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
   }
@@ -74,33 +79,56 @@ class _Connect4BoardState extends State<Connect4Board>
 
   @override
   Widget build(BuildContext context) {
+    // Web: .connectfour-grid-container and .connectfour-grid
+    final cardBgColor = widget.isDarkMode ? const Color(0xFF151F32) : const Color(0xFFFFFFFF);
+    final borderColor = widget.isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFEBEDF0);
+    
+    // Web board background:
+    // Light: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)
+    // Dark: linear-gradient(135deg, #1e3a8a 0%, #1e293b 100%)
+    final boardGradient = widget.isDarkMode
+        ? const LinearGradient(
+            colors: [Color(0xFF1E3A8A), Color(0xFF1E293B)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          )
+        : const LinearGradient(
+            colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          );
+
     return LayoutBuilder(builder: (context, constraints) {
       final cellSize = math.min(
-        (constraints.maxWidth - 16) / 7,
-        (constraints.maxHeight - 16) / 7,
+        (constraints.maxWidth - 28) / 7,
+        (constraints.maxHeight - 28) / 7,
       );
 
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Column drop indicators
+          // Column drop indicators matching the drop header behavior
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(7, (col) {
               final active = widget.myTurn &&
                   !widget.gameOver &&
                   _hoveredCol == col;
+              final dropColor = widget.mySymbol == 1
+                  ? const Color(0xFFFF4D4D)
+                  : const Color(0xFFFFD000);
+
               return SizedBox(
                 width: cellSize,
-                height: cellSize * 0.5,
+                height: cellSize * 0.4,
                 child: Center(
                   child: AnimatedOpacity(
                     opacity: active ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 150),
                     child: Icon(
-                      Icons.arrow_drop_down_rounded,
-                      color: widget.mySymbol == 1 ? _p1Color : _p2Color,
-                      size: cellSize * 0.7,
+                      Icons.arrow_downward_rounded,
+                      color: dropColor,
+                      size: cellSize * 0.5,
                     ),
                   ),
                 ),
@@ -108,63 +136,79 @@ class _Connect4BoardState extends State<Connect4Board>
             }),
           ),
 
-          // Board
+          // Main board container (replicates web's .connectfour-grid-container and .connectfour-grid)
           Container(
             decoration: BoxDecoration(
-              color: _boardColor,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: const [
+              color: cardBgColor,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: borderColor, width: 1.5),
+              boxShadow: [
                 BoxShadow(
-                  color: Color(0x441E3A8A),
-                  blurRadius: 24,
-                  offset: Offset(0, 8),
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
                 ),
               ],
-              border: Border.all(color: _boardEdgeColor, width: 3),
             ),
-            padding: const EdgeInsets.all(6),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(6, (row) {
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: List.generate(7, (col) {
-                    final isWin = _isWinning(row, col);
-                    final isLast = _isLastMove(row, col);
-                    final cellVal = widget.board[row][col];
+            padding: const EdgeInsets.all(12),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: boardGradient,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.25),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(6, (row) {
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(7, (col) {
+                      final isWin = _isWinning(row, col);
+                      final isLast = _isLastMove(row, col);
+                      final cellVal = widget.board[row][col];
 
-                    return GestureDetector(
-                      onTap: widget.myTurn && !widget.gameOver && cellVal == 0
-                          ? () => widget.onColumnTap(col)
-                          : null,
-                      onTapDown: (_) {
-                        if (widget.myTurn && !widget.gameOver) {
-                          setState(() => _hoveredCol = col);
-                        }
-                      },
-                      onTapUp: (_) => setState(() => _hoveredCol = null),
-                      onTapCancel: () => setState(() => _hoveredCol = null),
-                      child: Container(
-                        width: cellSize,
-                        height: cellSize,
-                        padding: const EdgeInsets.all(3),
-                        child: isWin
-                            ? AnimatedBuilder(
-                                animation: _pulseAnimation,
-                                builder: (_, __) => _buildCell(
-                                  cellVal,
-                                  isWin: true,
-                                  isLast: isLast,
-                                  scale: _pulseAnimation.value,
-                                ),
-                              )
-                            : _buildCell(cellVal,
-                                isWin: false, isLast: isLast),
-                      ),
-                    );
-                  }),
-                );
-              }),
+                      return GestureDetector(
+                        onTap: widget.myTurn && !widget.gameOver && cellVal == 0
+                            ? () => widget.onColumnTap(col)
+                            : null,
+                        onTapDown: (_) {
+                          if (widget.myTurn && !widget.gameOver) {
+                            setState(() => _hoveredCol = col);
+                          }
+                        },
+                        onTapUp: (_) => setState(() => _hoveredCol = null),
+                        onTapCancel: () => setState(() => _hoveredCol = null),
+                        child: Container(
+                          width: cellSize,
+                          height: cellSize,
+                          padding: const EdgeInsets.all(4),
+                          child: isWin
+                              ? AnimatedBuilder(
+                                  animation: _pulseAnimation,
+                                  builder: (_, __) => _buildCell(
+                                    cellVal,
+                                    cardBgColor,
+                                    isWin: true,
+                                    isLast: isLast,
+                                    scale: _pulseAnimation.value,
+                                  ),
+                                )
+                              : _buildCell(cellVal, cardBgColor,
+                                  isWin: false, isLast: isLast),
+                        ),
+                      );
+                    }),
+                  );
+                }),
+              ),
             ),
           ),
         ],
@@ -172,48 +216,69 @@ class _Connect4BoardState extends State<Connect4Board>
     });
   }
 
-  Widget _buildCell(int val, {bool isWin = false, bool isLast = false, double scale = 1.0}) {
-    final color = val == 1
-        ? _p1Color
-        : val == 2
-            ? _p2Color
-            : _emptyColor;
-
-    final shadow = isWin
-        ? [BoxShadow(color: color.withOpacity(0.8), blurRadius: 12, spreadRadius: 2)]
-        : isLast
-            ? [BoxShadow(color: color.withOpacity(0.5), blurRadius: 6)]
-            : val != 0
-                ? [BoxShadow(color: color.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))]
-                : [];
-
+  Widget _buildCell(int val, Color cardBgColor, {bool isWin = false, bool isLast = false, double scale = 1.0}) {
+    // 0 = empty, 1 = player1, 2 = player2
     return Transform.scale(
       scale: scale,
       child: Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: color,
-          boxShadow: List<BoxShadow>.from(shadow),
-          border: isLast && val != 0
-              ? Border.all(color: Colors.white.withOpacity(0.5), width: 2)
-              : null,
+          // If empty, cell background matches card background, with an inner shadow shadow-like overlay
+          color: val == 0 ? cardBgColor : null,
+          gradient: val == 1
+              ? const RadialGradient(
+                  center: Alignment(-0.3, -0.3),
+                  colors: [_p1DiscLight, _p1DiscDark],
+                  stops: [0.0, 0.8],
+                )
+              : val == 2
+                  ? const RadialGradient(
+                      center: Alignment(-0.3, -0.3),
+                      colors: [_p2DiscLight, _p2DiscDark],
+                      stops: [0.0, 0.8],
+                    )
+                  : null,
+          border: val == 1
+              ? Border.all(color: _p1DiscBorder, width: 1)
+              : val == 2
+                  ? Border.all(color: _p2DiscBorder, width: 1)
+                  : null,
+          boxShadow: [
+            // Deep inner shadow for empty holes (replicates box-shadow: inset 0 3px 6px rgba(0,0,0,0.85))
+            if (val == 0)
+              BoxShadow(
+                color: Colors.black.withOpacity(0.75),
+                blurRadius: 4,
+                spreadRadius: -1,
+                offset: const Offset(0, 3),
+              ),
+            // Outer shadow and highlight for discs
+            if (val > 0) ...[
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 4,
+                offset: const Offset(0, 3),
+              ),
+              if (isLast)
+                const BoxShadow(
+                  color: Colors.white70,
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                ),
+              if (isWin)
+                BoxShadow(
+                  color: (val == 1 ? Colors.redAccent : Colors.yellowAccent).withOpacity(0.6),
+                  blurRadius: 14,
+                  spreadRadius: 3,
+                ),
+            ]
+          ],
         ),
-        child: val == 0
+        child: val > 0
             ? Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: RadialGradient(
-                    center: const Alignment(-0.3, -0.3),
-                    colors: [
-                      Colors.white.withOpacity(0.05),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              )
-            : Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
+                  // Glassmorphic shine on discs (radial gradient overlay)
                   gradient: RadialGradient(
                     center: const Alignment(-0.35, -0.35),
                     colors: [
@@ -222,8 +287,13 @@ class _Connect4BoardState extends State<Connect4Board>
                     ],
                     stops: const [0.0, 0.55],
                   ),
+                  // Last played highlight: inner white ring
+                  border: isLast
+                      ? Border.all(color: Colors.white, width: 2.5)
+                      : null,
                 ),
-              ),
+              )
+            : null,
       ),
     );
   }

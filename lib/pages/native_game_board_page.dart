@@ -7,11 +7,7 @@ import '../widgets/connect4_board.dart';
 import '../widgets/gomoku_board.dart';
 
 /// Shown after the user picks a game type in the lobby.
-/// Handles:
-///  1. Creating the game via REST  → gets gameId
-///  2. Connecting to Socket.IO and joining the room
-///  3. Rendering the correct native board widget
-///  4. Emitting moves and reacting to game-state-updated / game-over
+/// Replicates the web active match layout, including the scoreboard, headers, and status bars.
 class NativeGameBoardPage extends StatefulWidget {
   final int currentUserId;
   final String gameType;     // connect4 | gomoku
@@ -40,7 +36,8 @@ class NativeGameBoardPage extends StatefulWidget {
   State<NativeGameBoardPage> createState() => _NativeGameBoardPageState();
 }
 
-class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
+class _NativeGameBoardPageState extends State<NativeGameBoardPage>
+    with SingleTickerProviderStateMixin {
   // ── State ────────────────────────────────────────────────────────────────
   String _phase = 'creating'; // creating | playing | over | error
   String? _errorMsg;
@@ -53,15 +50,27 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
 
   final List<StreamSubscription> _subs = [];
 
+  // Active turn ring animation
+  late AnimationController _turnRingController;
+  late Animation<double> _turnRingAnimation;
+
   // ── Init ─────────────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
+    _turnRingController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    )..repeat(reverse: true);
+    _turnRingAnimation = Tween<double>(begin: 1.0, end: 1.3).animate(
+      CurvedAnimation(parent: _turnRingController, curve: Curves.easeInOut),
+    );
     _createGame();
   }
 
   @override
   void dispose() {
+    _turnRingController.dispose();
     for (final s in _subs) {
       s.cancel();
     }
@@ -144,6 +153,35 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
         _errorMsg = e.toString().replaceFirst('Exception: ', '');
       });
     }
+  }
+
+  // ── Forfeit game ─────────────────────────────────────────────────────────
+  void _forfeitGame() {
+    if (_gameId == null) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Abandonner', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Outfit')),
+        content: const Text('Êtes-vous sûr de vouloir abandonner la partie ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // In client.js, forfeit is done by emitting forfeitGame socket message
+              // Let's implement it inside GameSocketService
+              GameSocketService.instance.leaveRoom();
+              widget.onBackToLobby();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text('Abandonner', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   // ── Socket listeners ──────────────────────────────────────────────────────
@@ -253,8 +291,8 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
 
   String get _turnLabel {
     if (_phase == 'over') return _gameOverLabel;
-    if (_myTurn) return 'Votre tour';
-    return 'Tour de l\'adversaire…';
+    if (_myTurn) return "C'est à votre tour";
+    return "Tour de l'adversaire…";
   }
 
   String get _gameOverLabel {
@@ -262,19 +300,17 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
     if (data == null) return 'Partie terminée';
     final winnerId = data['winnerId'];
     if (winnerId == null || winnerId == 'draw') return 'Match nul !';
-    if (winnerId.toString() == '${widget.currentUserId}') return '🏆 Victoire !';
-    return '😔 Défaite…';
+    if (winnerId.toString() == '${widget.currentUserId}') return 'Victoire !';
+    return 'Défaite…';
   }
 
-  Color get _turnLabelColor {
-    if (_phase == 'over') {
-      final winnerId = _gameOverData?['winnerId'];
-      if (winnerId == null || winnerId == 'draw') return Colors.orange;
-      if (winnerId.toString() == '${widget.currentUserId}') return Colors.greenAccent;
-      return Colors.redAccent;
-    }
-    return _myTurn ? Colors.greenAccent : Colors.white54;
-  }
+  // Web design variables mapped to Flutter colors
+  Color get _primaryColor => widget.isDarkMode ? const Color(0xFF38BDF8) : const Color(0xFF1877F2);
+  Color get _primaryLightColor => widget.isDarkMode ? const Color(0x1F38BDF8) : const Color(0x1A1877F2);
+  Color get _cardBgColor => widget.isDarkMode ? const Color(0xFF151F32) : const Color(0xFFFFFFFF);
+  Color get _borderColor => widget.isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFEBEDF0);
+  Color get _textPrimaryColor => widget.isDarkMode ? const Color(0xFFF8FAFC) : const Color(0xFF1C1E21);
+  Color get _textSecondaryColor => widget.isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF606770);
 
   Map<String, dynamic>? get _opponent {
     final g = _game;
@@ -315,7 +351,6 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
   Widget build(BuildContext context) {
     final isDark = widget.isDarkMode;
     final bg = isDark ? const Color(0xFF0B0F19) : const Color(0xFFF4F6FA);
-    final surfaceColor = isDark ? const Color(0xFF151F32) : Colors.white;
 
     return Scaffold(
       backgroundColor: bg,
@@ -324,7 +359,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
             ? _buildLoading()
             : _phase == 'error'
                 ? _buildError()
-                : _buildGameUI(surfaceColor, isDark),
+                : _buildGameUI(isDark),
       ),
     );
   }
@@ -390,45 +425,29 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
     );
   }
 
-  Widget _buildGameUI(Color surfaceColor, bool isDark) {
+  Widget _buildGameUI(bool isDark) {
     return Column(
       children: [
-        // ── Top Bar ──────────────────────────────────────────────────────
-        _buildTopBar(surfaceColor, isDark),
+        // ── active-game-header ──────────────────────────────────────────
+        _buildActiveGameHeader(isDark),
 
-        // ── Players Row ──────────────────────────────────────────────────
-        _buildPlayersRow(isDark),
+        const SizedBox(height: 12),
 
-        // ── Status chip ──────────────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: Container(
-              key: ValueKey(_turnLabel),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                color: _turnLabelColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _turnLabelColor.withOpacity(0.3)),
-              ),
-              child: Text(
-                _turnLabel,
-                style: TextStyle(
-                  color: _turnLabelColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ),
-        ),
+        // ── game-scoreboard ──────────────────────────────────────────────
+        _buildGameScoreboard(isDark),
 
-        // ── Board ─────────────────────────────────────────────────────────
+        const SizedBox(height: 12),
+
+        // ── game-turn-status-bar ─────────────────────────────────────────
+        _buildGameTurnStatusBar(),
+
+        const SizedBox(height: 12),
+
+        // ── Board area ────────────────────────────────────────────────────
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Center(child: _buildBoard()),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Center(child: _buildBoardWidget()),
           ),
         ),
 
@@ -440,188 +459,372 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
     );
   }
 
-  Widget _buildTopBar(Color surfaceColor, bool isDark) {
-    final gameTitle = _gameTitleMap[widget.gameType] ?? 'Jeu';
+  Widget _buildActiveGameHeader(bool isDark) {
+    final gameTitle = widget.gameType == 'connect4' ? 'Puissance 4' : 'Gomoku';
+    final entryModeText = widget.entryMode == 'paid' ? '${widget.betAmount.toStringAsFixed(2)} Tokens' : 'Mode Gratuit';
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: surfaceColor,
+        color: _cardBgColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _borderColor, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 6,
-            offset: const Offset(0, 2),
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Row(
         children: [
-          IconButton(
-            onPressed: widget.onBackToLobby,
-            icon: const Icon(Icons.arrow_back_ios_new_rounded),
-            color: isDark ? Colors.white : Colors.black87,
-            iconSize: 20,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+          // Leave / Back button
+          GestureDetector(
+            onTap: widget.onBackToLobby,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.arrow_back, color: _textPrimaryColor, size: 20),
+            ),
           ),
           const SizedBox(width: 12),
-          Text(
-            gameTitle,
-            style: TextStyle(
-              fontFamily: 'Outfit',
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-              color: isDark ? Colors.white : Colors.black87,
+
+          // Title & Mode Subtitle
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  gameTitle,
+                  style: TextStyle(
+                    fontFamily: 'Outfit',
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    color: _textPrimaryColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  entryModeText,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: _textSecondaryColor,
+                  ),
+                ),
+              ],
             ),
           ),
-          const Spacer(),
-          // Round badge
-          if ((_game?['rounds'] ?? 1) > 1) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFF6F63FF).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                'Manche ${_game?['currentRound'] ?? 1}/${_game?['rounds'] ?? 1}',
-                style: const TextStyle(
-                  color: Color(0xFF8B7FFF),
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+
+          // Forfeit Button (Abandonner)
+          if (_phase == 'playing')
+            TextButton(
+              onPressed: _forfeitGame,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.redAccent,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: const BorderSide(color: Colors.redAccent, width: 1),
                 ),
               ),
+              child: const Text(
+                'Abandonner',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Outfit'),
+              ),
             ),
-          ],
         ],
       ),
     );
   }
 
-  Widget _buildPlayersRow(bool isDark) {
+  Widget _buildGameScoreboard(bool isDark) {
     final me = _me;
     final opp = _opponent;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    final mySymbol = _mySymbol;
+    final oppSymbol = mySymbol == 1 ? 2 : 1;
+
+    final myWins = _game?['roundWins']?['player${mySymbol == 1 ? 1 : 2}'] ?? 0;
+    final oppWins = _game?['roundWins']?['player${mySymbol == 1 ? 2 : 1}'] ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: _cardBgColor,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _borderColor, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Row(
         children: [
-          _buildPlayerCard(
-            name: me?['name'] ?? 'Vous',
-            avatar: me?['avatar'],
-            symbol: _mySymbol,
-            isActive: _myTurn && _phase == 'playing',
-            wins: (_game?['roundWins']?['player${_mySymbol == 1 ? 1 : 2}'] ?? 0),
-            isDark: isDark,
+          // Player 1 (Me)
+          Expanded(
+            child: _buildScoreboardPlayerCard(
+              name: me?['name'] ?? 'Vous',
+              avatar: me?['avatar'],
+              symbol: mySymbol,
+              isActive: _myTurn && _phase == 'playing',
+              wins: myWins,
+              isDark: isDark,
+              isP1: true,
+            ),
           ),
-          const Expanded(
-            child: Center(
-              child: Text(
-                'VS',
-                style: TextStyle(
-                  fontFamily: 'Outfit',
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                  color: Colors.white38,
-                ),
+
+          // VS circle
+          Container(
+            width: 38,
+            height: 38,
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: const Text(
+              'VS',
+              style: TextStyle(
+                fontFamily: 'Outfit',
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+                color: Colors.grey,
               ),
             ),
           ),
-          _buildPlayerCard(
-            name: opp?['name'] ?? 'Adversaire',
-            avatar: opp?['avatar'],
-            symbol: _mySymbol == 1 ? 2 : 1,
-            isActive: !_myTurn && _phase == 'playing',
-            wins: (_game?['roundWins']?['player${_mySymbol == 1 ? 2 : 1}'] ?? 0),
-            isDark: isDark,
-            isRight: true,
+
+          // Player 2 (Opponent)
+          Expanded(
+            child: _buildScoreboardPlayerCard(
+              name: opp?['name'] ?? 'Adversaire',
+              avatar: opp?['avatar'],
+              symbol: oppSymbol,
+              isActive: !_myTurn && _phase == 'playing',
+              wins: oppWins,
+              isDark: isDark,
+              isP1: false,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPlayerCard({
+  Widget _buildScoreboardPlayerCard({
     required String name,
     String? avatar,
     required int symbol,
     required bool isActive,
     required int wins,
     required bool isDark,
-    bool isRight = false,
+    required bool isP1,
   }) {
-    final symbolColor = symbol == 1
-        ? const Color(0xFFEF4444)
-        : widget.gameType == 'gomoku'
-            ? const Color(0xFFF5F5DC)
-            : const Color(0xFFFACC15);
+    // Player colors mapping to Web:
+    // P1 (Me): blue, P2 (Opponent): pink
+    final playerColor = isP1 ? _primaryColor : const Color(0xFFEC4899);
+    final score = wins.toString();
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isActive
-            ? symbolColor.withOpacity(0.12)
-            : (isDark ? const Color(0xFF1A2540) : Colors.white),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isActive ? symbolColor.withOpacity(0.5) : Colors.transparent,
-          width: 1.5,
-        ),
-      ),
-      child: Column(
-        children: [
-          // Avatar
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: symbolColor.withOpacity(0.2),
-            backgroundImage: avatar != null && avatar.isNotEmpty
-                ? NetworkImage(avatar)
-                : null,
-            child: avatar == null || avatar.isEmpty
-                ? Text(
-                    name.substring(0, 1).toUpperCase(),
-                    style: TextStyle(
-                      color: symbolColor,
-                      fontWeight: FontWeight.bold,
+    // Symbol Badge details
+    final String symbolLabel = widget.gameType == 'connect4'
+        ? (symbol == 1 ? 'Rouge' : 'Jaune')
+        : (symbol == 1 ? 'Noir (X)' : 'Blanc (O)');
+        
+    final Color symbolBadgeBg = isP1
+        ? _primaryLightColor
+        : const Color(0xFFEC4899).withOpacity(0.1);
+    
+    final Color symbolBadgeText = isP1
+        ? _primaryColor
+        : const Color(0xFFEC4899);
+
+    return Row(
+      textDirection: isP1 ? TextDirection.ltr : TextDirection.rtl,
+      children: [
+        // Avatar stack (shows pulsing green ring on turn active)
+        Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            if (isActive)
+              AnimatedBuilder(
+                animation: _turnRingAnimation,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: _turnRingAnimation.value,
+                    child: Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4), width: 2.5),
+                      ),
                     ),
-                  )
-                : null,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            name.length > 10 ? '${name.substring(0, 9)}…' : name,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-              color: isDark ? Colors.white70 : Colors.black87,
+                  );
+                },
+              ),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: playerColor, width: 2),
+                image: avatar != null && avatar.isNotEmpty
+                    ? DecorationImage(image: NetworkImage(avatar), fit: BoxFit.cover)
+                    : null,
+              ),
+              alignment: Alignment.center,
+              child: avatar == null || avatar.isEmpty
+                  ? Text(
+                      name.substring(0, 1).toUpperCase(),
+                      style: TextStyle(
+                        color: playerColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    )
+                  : null,
             ),
-          ),
-          if ((_game?['rounds'] ?? 1) > 1) ...[
-            const SizedBox(height: 2),
-            Row(
-              children: List.generate(
-                _game?['rounds'] ?? 1,
-                (i) => Container(
-                  width: 6,
-                  height: 6,
-                  margin: const EdgeInsets.only(right: 2),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: i < wins
-                        ? symbolColor
-                        : Colors.white12,
+          ],
+        ),
+        const SizedBox(width: 10),
+
+        // Meta Column
+        Expanded(
+          child: Column(
+            crossAxisAlignment: isP1 ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                name,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: _textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Niveau 1',
+                style: TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w600,
+                  color: _textSecondaryColor,
+                ),
+              ),
+              const SizedBox(height: 2),
+              // Symbol badge (.player-symbol-badge)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                decoration: BoxDecoration(
+                  color: symbolBadgeBg,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  symbolLabel,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: symbolBadgeText,
                   ),
                 ),
               ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // Score Badge
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1B273F) : const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _borderColor, width: 1),
+          ),
+          child: Text(
+            score,
+            style: TextStyle(
+              fontFamily: 'Outfit',
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: playerColor,
             ),
-          ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGameTurnStatusBar() {
+    // Replicates web .game-turn-status-bar
+    final label = _turnLabel;
+    final isWin = _phase == 'over' && _gameOverData?['winnerId']?.toString() == '${widget.currentUserId}';
+    final isDraw = _phase == 'over' && (_gameOverData?['winnerId'] == null || _gameOverData?['winnerId'] == 'draw');
+
+    Color bg;
+    Color text;
+    Color border;
+
+    if (_phase == 'over') {
+      if (isWin) {
+        bg = const Color(0x1F10B981); // rgba(16, 185, 129, 0.1)
+        text = const Color(0xFF10B981);
+        border = const Color(0x3310B981);
+      } else if (isDraw) {
+        bg = const Color(0x1F64748B); // rgba(100, 116, 139, 0.1)
+        text = const Color(0xFF64748B);
+        border = const Color(0x3364748B);
+      } else {
+        bg = const Color(0x1FEF4444); // red
+        text = const Color(0xFFEF4444);
+        border = const Color(0x33EF4444);
+      }
+    } else {
+      // Normal playing turn
+      bg = _primaryLightColor;
+      text = _primaryColor;
+      border = _primaryColor.withOpacity(0.15);
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border, width: 1),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: text,
+              fontWeight: FontWeight.w700,
+              fontSize: 13.5,
+              fontFamily: 'Outfit',
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBoard() {
+  Widget _buildBoardWidget() {
     final board = _board;
     final isOver = _phase == 'over';
 
@@ -635,6 +838,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
         winningStones: _winningStones,
         lastMove: _lastMove,
         onColumnTap: _onConnect4ColTap,
+        isDarkMode: widget.isDarkMode,
       );
     } else if (widget.gameType == 'gomoku') {
       return GomokuBoard(
@@ -646,10 +850,10 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
         winningStones: _winningStones,
         lastMove: _lastMove,
         onCellTap: _onGomokuCellTap,
+        isDarkMode: widget.isDarkMode,
       );
     }
 
-    // Fallback text for unsupported boards (ludo, chess, tablefootball)
     return Center(
       child: Text(
         'Tableau pour ${widget.gameType} à venir.',
@@ -659,75 +863,43 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage> {
   }
 
   Widget _buildGameOverActions() {
-    final label = _gameOverLabel;
-    final isWin = _gameOverData?['winnerId']?.toString() ==
-        '${widget.currentUserId}';
-    final isDraw = _gameOverData?['winnerId'] == null ||
-        _gameOverData?['winnerId'] == 'draw';
-
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-      child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontFamily: 'Outfit',
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: isDraw
-                  ? Colors.orange
-                  : isWin
-                      ? Colors.greenAccent
-                      : Colors.redAccent,
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: widget.onBackToLobby,
+              icon: const Icon(Icons.home_outlined),
+              label: const Text('Lobby'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _textPrimaryColor,
+                side: BorderSide(color: _borderColor),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
             ),
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: widget.onBackToLobby,
-                  icon: const Icon(Icons.home_outlined),
-                  label: const Text('Accueil'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: const BorderSide(color: Colors.white24),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: _createGame,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Rejouer'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _createGame,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Rejouer'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6F63FF),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
     );
   }
-
-  static const Map<String, String> _gameTitleMap = {
-    'connect4': 'Puissance 4',
-    'gomoku': 'Gomoku',
-    'ludo': 'Ludo',
-    'tablefootball': 'Baby-foot',
-    'echecs': 'Échecs',
-  };
 }
