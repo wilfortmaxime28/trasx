@@ -23,6 +23,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../pages/private_call_page.dart';
 import '../pages/activity_page.dart';
 import '../pages/new_followers_page.dart';
+import '../pages/game_play_page.dart';
 import '../services/private_call_session.dart';
 import '../services/network_quality_service.dart';
 import '../services/video_cache_manager.dart';
@@ -2389,9 +2390,18 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
   }
 
   void _openAcceptedGameInvite(Map<String, dynamic> structuredContent) {
-    final gameLabel = _gameLabel(_asString(structuredContent['game']));
-    _showSnackBar(
-      'La partie $gameLabel est prete. L ouverture de la salle Flutter reste a finaliser.',
+    final int oppId = _asInt(structuredContent['opponentId']);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => GamePlayPage(
+          currentUserId: widget.currentUserId,
+          view: 'games',
+          opponentId: oppId > 0 ? oppId : null,
+          opponentName: _asString(structuredContent['opponentName']).isNotEmpty ? _asString(structuredContent['opponentName']) : null,
+          opponentAvatar: _asString(structuredContent['opponentAvatar']).isNotEmpty ? _asString(structuredContent['opponentAvatar']) : null,
+          opponentUsername: _asString(structuredContent['opponentUsername']).isNotEmpty ? _asString(structuredContent['opponentUsername']) : null,
+        ),
+      ),
     );
   }
 
@@ -3619,6 +3629,39 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
               ),
             ),
           ),
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: widget.isDarkMode
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(
+                    alpha: widget.isDarkMode ? 0.18 : 0.04,
+                  ),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: IconButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => GamePlayPage(
+                      currentUserId: widget.currentUserId,
+                      view: 'games',
+                    ),
+                  ),
+                );
+              },
+              icon: Icon(CupertinoIcons.gamecontroller, color: textPrimary, size: 20),
+            ),
+          ),
+          const SizedBox(width: 8),
           Container(
             width: 42,
             height: 42,
