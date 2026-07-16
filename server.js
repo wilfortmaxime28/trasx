@@ -1428,7 +1428,7 @@ function customRateLimiter(options = {}) {
 
 // ANTI-BOT & ANTI-SCRAPING MIDDLEWARE
 function antiScrapingMiddleware(req, res, next) {
-  if (req.path === '/api/nowpayments/ipn') {
+  if (req.path === '/api/nowpayments/ipn' || req.headers['x-user-id']) {
     return next();
   }
 
