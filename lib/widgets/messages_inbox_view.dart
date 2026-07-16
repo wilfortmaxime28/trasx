@@ -3648,39 +3648,6 @@ class _MessagesInboxViewState extends State<MessagesInboxView>
               ],
             ),
             child: IconButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => GamePlayPage(
-                      currentUserId: widget.currentUserId,
-                      view: 'games',
-                    ),
-                  ),
-                );
-              },
-              icon: Icon(CupertinoIcons.gamecontroller, color: textPrimary, size: 20),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: widget.isDarkMode
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(
-                    alpha: widget.isDarkMode ? 0.18 : 0.04,
-                  ),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: IconButton(
               onPressed: () => _searchFocusNode.requestFocus(),
               icon: Icon(CupertinoIcons.search, color: textPrimary, size: 20),
             ),

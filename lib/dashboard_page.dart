@@ -35,6 +35,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'pages/private_call_page.dart';
 import 'services/private_call_session.dart';
 import 'services/push_notification_service.dart';
+import 'pages/game_play_page.dart';
 
 
 class DashboardPage extends StatefulWidget {
@@ -4203,39 +4204,10 @@ class _DashboardPageState extends State<DashboardPage> {
     Color textPrimaryColor,
     Color textSecondaryColor,
   ) {
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        _buildSectionHeader("Jeux de société mondiaux", textPrimaryColor),
-        const SizedBox(height: 12),
-        _buildGameCard(
-          "Monopoly Classique",
-          "Entrée : 10 diamants (Payant)",
-          "4 joueurs en cours",
-          true,
-          cardColor,
-          textPrimaryColor,
-          textSecondaryColor,
-        ),
-        _buildGameCard(
-          "Échecs amical",
-          "Entrée : Gratuit",
-          "1 joueur en attente",
-          false,
-          cardColor,
-          textPrimaryColor,
-          textSecondaryColor,
-        ),
-        _buildGameCard(
-          "Ludo Pro",
-          "Entrée : 5 diamants (Payant)",
-          "Prêt à démarrer",
-          true,
-          cardColor,
-          textPrimaryColor,
-          textSecondaryColor,
-        ),
-      ],
+    return GamePlayPage(
+      currentUserId: _userId,
+      view: 'games',
+      embedded: true,
     );
   }
 

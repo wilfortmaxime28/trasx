@@ -10,6 +10,7 @@ class GamePlayPage extends StatefulWidget {
   final String? opponentName;
   final String? opponentAvatar;
   final String? opponentUsername;
+  final bool embedded;
 
   const GamePlayPage({
     super.key,
@@ -19,6 +20,7 @@ class GamePlayPage extends StatefulWidget {
     this.opponentName,
     this.opponentAvatar,
     this.opponentUsername,
+    this.embedded = false,
   });
 
   @override
@@ -117,6 +119,62 @@ class _GamePlayPageState extends State<GamePlayPage> {
 
   @override
   Widget build(BuildContext context) {
+    final body = Stack(
+      children: [
+        WebViewWidget(controller: _controller),
+        if (_isLoading)
+          const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6F63FF)),
+            ),
+          ),
+        if (_errorMsg != null)
+          Container(
+            color: const Color(0xFF121317),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.redAccent, size: 64),
+                    const SizedBox(height: 16),
+                    Text(
+                      _errorMsg!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          _errorMsg = null;
+                          _isLoading = true;
+                        });
+                        _authenticateAndLoadUrl();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6F63FF),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Réessayer'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return body;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -131,57 +189,7 @@ class _GamePlayPageState extends State<GamePlayPage> {
         elevation: 0,
       ),
       backgroundColor: const Color(0xFF121317),
-      body: Stack(
-        children: [
-          WebViewWidget(controller: _controller),
-          if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6F63FF)),
-              ),
-            ),
-          if (_errorMsg != null)
-            Container(
-              color: const Color(0xFF121317),
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.error_outline, color: Colors.redAccent, size: 64),
-                      const SizedBox(height: 16),
-                      Text(
-                        _errorMsg!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white, fontSize: 16),
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _errorMsg = null;
-                            _isLoading = true;
-                          });
-                          _authenticateAndLoadUrl();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6F63FF),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text('Réessayer'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+      body: body,
     );
   }
 }
