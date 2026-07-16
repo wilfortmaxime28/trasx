@@ -50,6 +50,77 @@
     }
   </style>
   <% } %>
+  <style>
+    /* Clean, flat design system integration for games setup */
+    .lobby-setup-card {
+      border-radius: 0 !important;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+    }
+    .game-choice-option, 
+    .sub-choice-option, 
+    .bot-select-card, 
+    #gamePlayerSearchInput, 
+    #selectedGameOpponentWrapper, 
+    #gamePlayerSearchResults,
+    .lobby-start-btn {
+      border-radius: 0 !important;
+    }
+    .game-choice-option, 
+    .sub-choice-option, 
+    .bot-select-card {
+      border: 1px solid var(--border-color) !important;
+      background: var(--bg-card) !important;
+      transition: all 0.2s ease !important;
+      box-shadow: none !important;
+    }
+    .game-choice-option:hover, 
+    .sub-choice-option:hover, 
+    .bot-select-card:hover {
+      background: var(--bg-hover) !important;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+    .game-choice-option.active, 
+    .sub-choice-option.active, 
+    .bot-select-card.active {
+      border-color: var(--primary) !important;
+      background: var(--bg-input) !important;
+      box-shadow: none !important;
+      transform: none !important;
+    }
+    .game-choice-option.active .choice-card-content, 
+    .sub-choice-option.active .choice-card-content,
+    .bot-select-card.active .bot-select-card-name {
+      color: var(--primary) !important;
+    }
+    #gamePlayerSearchInput {
+      background: var(--bg-input) !important;
+      border: 1px solid var(--border-color) !important;
+      color: var(--text-primary) !important;
+    }
+    #gamePlayerSearchInput:focus {
+      border-color: var(--primary) !important;
+    }
+    #selectedGameOpponentWrapper {
+      background: var(--bg-card) !important;
+      border: 1px solid var(--border-color) !important;
+    }
+    #selectedGameOpponentName {
+      color: var(--text-primary) !important;
+    }
+    .lobby-start-btn {
+      background: var(--primary) !important;
+      color: #fff !important;
+      font-weight: 700 !important;
+      border: none !important;
+    }
+    .lobby-start-btn:hover {
+      opacity: 0.9 !important;
+    }
+  </style>
   <!-- Lucide Icons CDN -->
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.407.0/dist/umd/lucide.min.js" defer crossorigin></script>
   <!-- Chess Engine -->
