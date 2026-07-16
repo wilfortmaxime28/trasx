@@ -2341,7 +2341,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  // --- BODY VIEW RENDERING ---
   Widget _buildBodyContent(
     Color bgColor,
     Color cardColor,
@@ -2349,36 +2348,41 @@ class _DashboardPageState extends State<DashboardPage> {
     Color textSecondaryColor,
     Color borderColor,
   ) {
-    return IndexedStack(
-      index: _activeViewIndex,
-      children: [
-        _buildFeedView(
+    switch (_activeViewIndex) {
+      case 0:
+        return _buildFeedView(
           cardColor,
           textPrimaryColor,
           textSecondaryColor,
           borderColor,
-        ),
-        _buildShortsView(
+        );
+      case 1:
+        return _buildShortsView(
           cardColor,
           textPrimaryColor,
           textSecondaryColor,
-        ),
-        _buildMessagesView(),
-        _buildProfileView(
+        );
+      case 2:
+        return _buildMessagesView();
+      case 3:
+        return _buildProfileView(
           bgColor,
           cardColor,
           textPrimaryColor,
           textSecondaryColor,
           borderColor,
-        ),
-        _buildP2PView(cardColor, textPrimaryColor, textSecondaryColor),
-        _buildBookmarksView(
+        );
+      case 4:
+        return _buildP2PView(cardColor, textPrimaryColor, textSecondaryColor);
+      case 5:
+        return _buildBookmarksView(
           cardColor,
           textPrimaryColor,
           textSecondaryColor,
           borderColor,
-        ),
-        _userId > 0
+        );
+      case 6:
+        return _userId > 0
             ? GamePlayPage(
                 currentUserId: _userId,
                 view: 'games',
@@ -2389,19 +2393,27 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: CircularProgressIndicator(
                   valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6F63FF)),
                 ),
-              ),
-        _buildEventsView(
+              );
+      case 7:
+        return _buildEventsView(
           cardColor,
           textPrimaryColor,
           textSecondaryColor,
-        ),
-        _buildSettingsView(
+        );
+      case 8:
+        return _buildSettingsView(
           cardColor,
           textPrimaryColor,
           textSecondaryColor,
-        ),
-      ],
-    );
+        );
+      default:
+        return _buildFeedView(
+          cardColor,
+          textPrimaryColor,
+          textSecondaryColor,
+          borderColor,
+        );
+    }
   }
 
   // 1. DYNAMIC HOME FEED VIEW (Accueil)

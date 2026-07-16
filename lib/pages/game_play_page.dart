@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'native_game_board_page.dart';
+
 
 class GamePlayPage extends StatefulWidget {
   final int currentUserId;
@@ -33,6 +35,7 @@ class _GamePlayPageState extends State<GamePlayPage> {
   late final WebViewController _controller;
   bool _isLoading = false;
   bool _showNativeLobby = true;
+  bool _showNativeBoard = false; // true when playing native connect4/gomoku
   String? _errorMsg;
 
   // Selected game options
@@ -42,6 +45,9 @@ class _GamePlayPageState extends State<GamePlayPage> {
   String _entryMode = 'free'; // free, paid
   double _betAmount = 1.00;
   int _rounds = 1;
+
+  /// Games rendered natively (no WebView)
+  static const _nativeBoardGames = {'connect4', 'gomoku'};
 
   final Map<String, Map<String, dynamic>> _gameDetails = {
     'connect4': {
@@ -190,9 +196,19 @@ class _GamePlayPageState extends State<GamePlayPage> {
   }
 
   void _startGame() {
+    // Connect4 and Gomoku use native Flutter boards
+    if (_nativeBoardGames.contains(_selectedGame)) {
+      setState(() {
+        _showNativeLobby = false;
+        _showNativeBoard = true;
+        _errorMsg = null;
+      });
+      return;
+    }
     setState(() {
       _isLoading = true;
       _showNativeLobby = false;
+      _showNativeBoard = false;
       _errorMsg = null;
     });
 
@@ -227,6 +243,24 @@ class _GamePlayPageState extends State<GamePlayPage> {
       return Scaffold(
         backgroundColor: widget.isDarkMode ? const Color(0xFF0B0F19) : const Color(0xFFF4F6FA),
         body: _buildNativeLobby(),
+      );
+    }
+
+    // Native board (connect4, gomoku)
+    if (_showNativeBoard) {
+      return NativeGameBoardPage(
+        currentUserId: widget.currentUserId,
+        gameType: _selectedGame,
+        opponentType: _opponentType,
+        entryMode: _entryMode,
+        betAmount: _betAmount,
+        rounds: _rounds,
+        botDifficulty: _botDifficulty,
+        isDarkMode: widget.isDarkMode,
+        onBackToLobby: () => setState(() {
+          _showNativeBoard = false;
+          _showNativeLobby = true;
+        }),
       );
     }
 

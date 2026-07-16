@@ -2061,6 +2061,47 @@ app.get('/post/:postId', async (req, res) => {
   }
 });
 
+// ─── Mobile Native Game Create API ───────────────────────────────────────────
+// POST /api/games/create-mobile
+// Creates a game for native Flutter clients and returns gameId in JSON.
+// Auth via x-user-id header (mobile session bypass).
+app.post('/api/games/create-mobile', async (req, res) => {
+  try {
+    const currentUserId = Number(req.session?.userId || req.headers['x-user-id'] || 0);
+    if (!currentUserId) {
+      return res.status(401).json({ success: false, error: 'Non authentifié.' });
+    }
+
+    const User = require('./models/User');
+    const user = await User.getById(currentUserId);
+    if (!user) return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
+
+    const { gameType, opponentType, entryMode, betAmount, rounds, botId } = req.body || {};
+
+    const type = gameType || 'connect4';
+    const oppType = opponentType || 'bot';
+    const mode = entryMode || 'free';
+    const bet = parseFloat(betAmount || 1.00);
+    const rds = parseInt(rounds || 1, 10);
+    const bot_id = botId || '1';
+    const oppId = oppType === 'bot' ? `bot_${bot_id}` : null;
+
+    const game = await gamesManager.createGame(
+      user.id, user, type, oppType, mode, oppId, bet, rds, 'free', 0.50, 'FR', 'BR',
+      {
+        ludoPartyMode: oppType === 'bot' ? 'bots' : 'players',
+        ludoOpponentCount: 1,
+        ludoBotIds: oppType === 'bot' ? [parseInt(bot_id, 10)] : []
+      }
+    );
+
+    return res.json({ success: true, gameId: game.id, gameType: game.gameType, status: game.status, board: game.board, currentPlayer: game.currentPlayer, player1: game.player1, player2: game.player2, rounds: game.rounds, currentRound: game.currentRound, roundWins: game.roundWins });
+  } catch (err) {
+    console.error('[Mobile Game Create Error]:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Erreur interne.' });
+  }
+});
+
 app.get('/api/auth/mobile-session', async (req, res) => {
   try {
     const { userId, token, timestamp, view, opponentId, opponentName, opponentAvatar, opponentUsername, createGame, gameType, opponentType, entryMode, betAmount, rounds, botId } = req.query;
