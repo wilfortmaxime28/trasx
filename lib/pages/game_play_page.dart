@@ -721,7 +721,9 @@ class _GamePlayPageState extends State<GamePlayPage> {
             width: double.infinity,
             height: 52,
             child: ElevatedButton(
-              onPressed: _opponentType == 'bot' ? _startGame : _openOnlineLobby,
+              onPressed: (_nativeBoardGames.contains(_selectedGame) || _opponentType == 'bot')
+                  ? _startGame
+                  : _openOnlineLobby,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _gameDetails[_selectedGame]!['gradient'][0] as Color,
                 foregroundColor: Colors.white,
@@ -744,8 +746,8 @@ class _GamePlayPageState extends State<GamePlayPage> {
           ),
           const SizedBox(height: 12),
 
-          // Online lobbies quick link
-          if (_opponentType == 'bot')
+          // Online lobbies quick link (only for Web View games)
+          if (_opponentType == 'bot' && !_nativeBoardGames.contains(_selectedGame))
             SizedBox(
               width: double.infinity,
               height: 48,
