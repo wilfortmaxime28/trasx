@@ -20574,8 +20574,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const initialTheme = getSavedTheme() || getSystemTheme();
+  const initialTheme = document.body.getAttribute('data-theme') || getSavedTheme() || getSystemTheme();
   applyTheme(initialTheme);
+  if (initialTheme === 'dark') {
+    localStorage.setItem('theme', 'dark');
+  } else {
+    localStorage.setItem('theme', 'light');
+  }
 
   themeToggleBtns.forEach(btn => {
     btn.addEventListener('click', () => {

@@ -337,4 +337,4 @@
     : (_headView === 'games') ? 'viewing-games'
     : '';
 %>
-<body class="<%= _bodyClass %>" data-initial-view="<%= _headView %>">
+<body class="<%= _bodyClass %>" data-initial-view="<%= _headView %>" <%= (typeof activeTheme !== 'undefined' && activeTheme === 'dark') ? 'data-theme="dark"' : '' %>>

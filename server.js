@@ -1576,6 +1576,13 @@ const sessionMiddleware = session({
 app.use(sessionMiddleware);
 app.use((req, res, next) => {
   res.locals.isMobileView = (req.query.mobile === 'true');
+  let theme = req.query.theme || req.session?.theme;
+  if (req.query.theme === 'dark' || req.query.theme === 'light') {
+    if (req.session) {
+      req.session.theme = req.query.theme;
+    }
+  }
+  res.locals.activeTheme = theme;
   next();
 });
 io.engine.use(sessionMiddleware);
@@ -2083,6 +2090,9 @@ app.get('/api/auth/mobile-session', async (req, res) => {
 
     // Redirect to games page (or other specified page)
     let redirectUrl = `/?view=${view || 'games'}&mobile=true`;
+    if (req.query.theme) {
+      redirectUrl += `&theme=${req.query.theme}`;
+    }
     if (opponentId) {
       redirectUrl += `&opponentId=${opponentId}`;
     }

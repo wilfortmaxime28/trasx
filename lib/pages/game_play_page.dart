@@ -11,6 +11,7 @@ class GamePlayPage extends StatefulWidget {
   final String? opponentAvatar;
   final String? opponentUsername;
   final bool embedded;
+  final bool isDarkMode;
 
   const GamePlayPage({
     super.key,
@@ -21,6 +22,7 @@ class GamePlayPage extends StatefulWidget {
     this.opponentAvatar,
     this.opponentUsername,
     this.embedded = false,
+    this.isDarkMode = false,
   });
 
   @override
@@ -94,7 +96,8 @@ class _GamePlayPageState extends State<GamePlayPage> {
           '?userId=${widget.currentUserId}'
           '&token=$token'
           '&timestamp=$timestamp'
-          '&view=${widget.view}';
+          '&view=${widget.view}'
+          '&theme=${widget.isDarkMode ? 'dark' : 'light'}';
 
       if (widget.opponentId != null) {
         sessionUrl += '&opponentId=${widget.opponentId}';

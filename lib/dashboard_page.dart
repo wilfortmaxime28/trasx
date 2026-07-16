@@ -2383,6 +2383,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 currentUserId: _userId,
                 view: 'games',
                 embedded: true,
+                isDarkMode: _isDarkMode,
               )
             : const Center(
                 child: CircularProgressIndicator(
