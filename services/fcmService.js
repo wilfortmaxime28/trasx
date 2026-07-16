@@ -141,14 +141,15 @@ async function removeAllTokens(userId) {
  *
  * @private
  */
-function _buildMessage(token, { title, body, imageUrl, data = {}, url }) {
-  const isCall = data && (data.type === 'incoming-call' || data.type === 'cancel-call');
+function _buildMessage(token, { title, body, imageUrl, data, url }) {
+  const safeData = data || {};
+  const isCall = safeData.type === 'incoming-call' || safeData.type === 'cancel-call';
 
   const message = {
     token,
     data: {
       ...Object.fromEntries(
-        Object.entries(data).map(([k, v]) => [k, String(v)])
+        Object.entries(safeData).map(([k, v]) => [k, String(v)])
       ),
       ...(url ? { url: String(url) } : {}),
       click_action: 'FLUTTER_NOTIFICATION_CLICK',
