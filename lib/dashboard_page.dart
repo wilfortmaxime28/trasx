@@ -99,6 +99,8 @@ class _DashboardPageState extends State<DashboardPage> {
   // Global video call state
   String? _activeCallRoomId;
   bool _incomingCallDialogVisible = false;
+  String? _incomingCallRoomId;
+  BuildContext? _incomingCallDialogContext;
   Timer? _incomingCallAlertTimer;
   final AudioPlayer _incomingCallPlayer = AudioPlayer();
 
@@ -681,6 +683,8 @@ class _DashboardPageState extends State<DashboardPage> {
       });
 
       _socket!.on('call-incoming', _handleIncomingCall);
+      _socket!.on('call:end', _handleCallEndedExternally);
+      _socket!.on('call-ended', _handleCallEndedExternally);
 
       _socket!.onDisconnect((_) {
         debugPrint('Socket.IO: Disconnected from server');
@@ -749,12 +753,14 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
 
+    _incomingCallRoomId = roomId;
     _incomingCallDialogVisible = true;
     _startIncomingCallAlert();
 
     if (!mounted) {
       _stopIncomingCallAlert();
       _incomingCallDialogVisible = false;
+      _incomingCallRoomId = null;
       return;
     }
 
@@ -762,6 +768,7 @@ class _DashboardPageState extends State<DashboardPage> {
     await showCupertinoDialog<void>(
       context: context,
       builder: (dialogContext) {
+        _incomingCallDialogContext = dialogContext;
         return CupertinoAlertDialog(
           title: Text(isVideo ? 'Appel vidéo' : 'Appel audio'),
           content: Padding(
@@ -788,6 +795,8 @@ class _DashboardPageState extends State<DashboardPage> {
         );
       },
     );
+    _incomingCallDialogContext = null;
+    _incomingCallRoomId = null;
     _stopIncomingCallAlert();
 
     try {
@@ -822,6 +831,26 @@ class _DashboardPageState extends State<DashboardPage> {
     }
     _stopIncomingCallAlert();
     _incomingCallDialogVisible = false;
+  }
+
+  void _handleCallEndedExternally(dynamic data) {
+    if (data == null || !mounted) return;
+    final String endedRoomId = data['roomId']?.toString() ?? '';
+    
+    if (_incomingCallDialogVisible) {
+      if (endedRoomId.isEmpty || _incomingCallRoomId == null || endedRoomId == _incomingCallRoomId) {
+        final ctx = _incomingCallDialogContext;
+        if (ctx != null) {
+          try {
+            Navigator.of(ctx).pop();
+          } catch (_) {}
+        }
+        _stopIncomingCallAlert();
+        _incomingCallDialogVisible = false;
+        _incomingCallDialogContext = null;
+        _incomingCallRoomId = null;
+      }
+    }
   }
 
   void _startIncomingCallAlert() {

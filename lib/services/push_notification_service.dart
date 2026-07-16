@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_callkit_incoming/entities/android_params.dart';
@@ -9,18 +8,26 @@ import 'package:flutter_callkit_incoming/entities/notification_params.dart';
 import 'package:flutter_callkit_incoming/entities/call_kit_params.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
 // Global background message handler for Firebase Messaging
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  log('[PushNotificationService] Background message received: ${message.data}');
-  
-  if (message.data['type'] == 'incoming-call') {
-    await PushNotificationService.showIncomingCallKit(message.data);
-  } else if (message.data['type'] == 'cancel-call') {
-    await FlutterCallkitIncoming.endAllCalls();
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    await Firebase.initializeApp();
+    print('[PushNotificationService] Background message received: ${message.data}');
+    
+    final type = message.data['type'];
+    if (type == 'incoming-call') {
+      await PushNotificationService.showIncomingCallKit(message.data);
+    } else if (type == 'cancel-call') {
+      await FlutterCallkitIncoming.endAllCalls();
+    }
+  } catch (error, stackTrace) {
+    print('[PushNotificationService] Error in background handler: $error');
+    print(stackTrace);
   }
 }
 
@@ -48,14 +55,14 @@ class PushNotificationService {
         provisional: false,
         sound: true,
       );
-      log('[PushNotificationService] Permission status: ${settings.authorizationStatus}');
+      print('[PushNotificationService] Permission status: ${settings.authorizationStatus}');
 
       // 3. Set up background messaging handler
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
       // 4. Set up foreground messaging listener
       FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-        log('[PushNotificationService] Foreground message received: ${message.data}');
+        print('[PushNotificationService] Foreground message received: ${message.data}');
         if (message.data['type'] == 'incoming-call') {
           await showIncomingCallKit(message.data);
         } else if (message.data['type'] == 'cancel-call') {
@@ -66,20 +73,20 @@ class PushNotificationService {
       // 5. Get Token and register it on the server
       final token = await messaging.getToken();
       if (token != null) {
-        log('[PushNotificationService] FCM Token: $token');
+        print('[PushNotificationService] FCM Token: $token');
         await _registerTokenOnServer(currentUserId, token);
       }
 
       // Listen for token updates
       messaging.onTokenRefresh.listen((newToken) async {
-        log('[PushNotificationService] FCM Token Refreshed: $newToken');
+        print('[PushNotificationService] FCM Token Refreshed: $newToken');
         await _registerTokenOnServer(currentUserId, newToken);
       });
 
       // 6. Listen to CallKit events
       FlutterCallkitIncoming.onEvent.listen((CallEvent? event) {
         if (event == null) return;
-        log('[PushNotificationService] CallKit event: ${event.eventName}');
+        print('[PushNotificationService] CallKit event: ${event.eventName}');
         
         if (event is CallEventActionCallAccept) {
           final extra = Map<String, dynamic>.from(event.callKitParams.extra ?? {});
@@ -91,66 +98,73 @@ class PushNotificationService {
       });
 
     } catch (e) {
-      log('[PushNotificationService] Error initializing push notifications: $e');
+      print('[PushNotificationService] Error initializing push notifications: $e');
     }
   }
 
   static Future<void> showIncomingCallKit(Map<String, dynamic> data) async {
-    final roomId = data['roomId'] ?? '';
-    final callerId = data['callerId'] ?? '';
-    final callerName = data['callerName'] ?? 'Appelant';
-    final callerAvatar = data['callerAvatar'] ?? '';
-    final isVideo = data['isVideo'] == 'true';
+    try {
+      print('[PushNotificationService] showIncomingCallKit: $data');
+      final roomId = data['roomId'] ?? '';
+      final callerId = data['callerId'] ?? '';
+      final callerName = data['callerName'] ?? 'Appelant';
+      final callerAvatar = data['callerAvatar'] ?? '';
+      final isVideo = data['isVideo'] == 'true' || data['isVideo'] == true;
 
-    final params = CallKitParams(
-      id: roomId.isNotEmpty ? roomId : DateTime.now().millisecondsSinceEpoch.toString(),
-      nameCaller: callerName,
-      appName: 'TrasX',
-      avatar: callerAvatar,
-      handle: isVideo ? 'Appel vidéo' : 'Appel audio',
-      type: isVideo ? 1 : 0, // 0 - audio, 1 - video
-      duration: 35000,
-      missedCallNotification: const NotificationParams(
-        showNotification: true,
-        subtitle: 'Vous avez manqué un appel.',
-      ),
-      extra: <String, dynamic>{
-        'roomId': roomId,
-        'callerId': callerId,
-        'callerName': callerName,
-        'callerAvatar': callerAvatar,
-        'isVideo': isVideo.toString(),
-      },
-      android: const AndroidParams(
-        isCustomNotification: true,
-        isShowLogo: false,
-        ringtonePath: 'system_ringtone_default',
-        backgroundColor: '#090A10',
-        actionColor: '#FE2C55',
-        incomingCallNotificationChannelName: 'Appels entrants',
-        missedCallNotificationChannelName: 'Appels manqués',
-        textAccept: 'Répondre',
-        textDecline: 'Refuser',
-      ),
-      ios: const IOSParams(
-        iconName: 'AppIcon',
-        handleType: 'generic',
-        supportsVideo: true,
-        maximumCallGroups: 1,
-        maximumCallsPerCallGroup: 1,
-        audioSessionMode: 'default',
-        audioSessionActive: true,
-        audioSessionPreferredSampleRate: 44100.0,
-        audioSessionPreferredIOBufferDuration: 0.005,
-        supportsDTMF: true,
-        supportsHolding: false,
-        supportsGrouping: false,
-        supportsUngrouping: false,
-        ringtonePath: 'system_ringtone_default',
-      ),
-    );
+      final params = CallKitParams(
+        id: roomId.isNotEmpty ? roomId : DateTime.now().millisecondsSinceEpoch.toString(),
+        nameCaller: callerName,
+        appName: 'TrasX',
+        avatar: callerAvatar,
+        handle: isVideo ? 'Appel vidéo' : 'Appel audio',
+        type: isVideo ? 1 : 0, // 0 - audio, 1 - video
+        duration: 35000,
+        missedCallNotification: const NotificationParams(
+          showNotification: true,
+          subtitle: 'Vous avez manqué un appel.',
+        ),
+        extra: <String, dynamic>{
+          'roomId': roomId,
+          'callerId': callerId,
+          'callerName': callerName,
+          'callerAvatar': callerAvatar,
+          'isVideo': isVideo.toString(),
+        },
+        android: const AndroidParams(
+          isCustomNotification: true,
+          isShowLogo: false,
+          ringtonePath: 'system_ringtone_default',
+          backgroundColor: '#090A10',
+          actionColor: '#FE2C55',
+          incomingCallNotificationChannelName: 'Appels entrants',
+          missedCallNotificationChannelName: 'Appels manqués',
+          textAccept: 'Répondre',
+          textDecline: 'Refuser',
+        ),
+        ios: const IOSParams(
+          iconName: 'AppIcon',
+          handleType: 'generic',
+          supportsVideo: true,
+          maximumCallGroups: 1,
+          maximumCallsPerCallGroup: 1,
+          audioSessionMode: 'default',
+          audioSessionActive: true,
+          audioSessionPreferredSampleRate: 44100.0,
+          audioSessionPreferredIOBufferDuration: 0.005,
+          supportsDTMF: true,
+          supportsHolding: false,
+          supportsGrouping: false,
+          supportsUngrouping: false,
+          ringtonePath: 'system_ringtone_default',
+        ),
+      );
 
-    await FlutterCallkitIncoming.showCallkitIncoming(params);
+      await FlutterCallkitIncoming.showCallkitIncoming(params);
+      print('[PushNotificationService] showCallkitIncoming finished.');
+    } catch (e, stackTrace) {
+      print('[PushNotificationService] Error showing callkit: $e');
+      print(stackTrace);
+    }
   }
 
   static Future<void> _registerTokenOnServer(int userId, String token) async {
@@ -167,12 +181,12 @@ class PushNotificationService {
         }),
       );
       if (response.statusCode == 200) {
-        log('[PushNotificationService] FCM token registered on server successfully.');
+        print('[PushNotificationService] FCM token registered on server successfully.');
       } else {
-        log('[PushNotificationService] Failed to register FCM token. Status code: ${response.statusCode}');
+        print('[PushNotificationService] Failed to register FCM token. Status code: ${response.statusCode}');
       }
     } catch (e) {
-      log('[PushNotificationService] Error registering token on server: $e');
+      print('[PushNotificationService] Error registering token on server: $e');
     }
   }
 
@@ -186,10 +200,10 @@ class PushNotificationService {
         },
       );
       if (response.statusCode == 200) {
-        log('[PushNotificationService] FCM token unregistered from server.');
+        print('[PushNotificationService] FCM token unregistered from server.');
       }
     } catch (e) {
-      log('[PushNotificationService] Error unregistering token: $e');
+      print('[PushNotificationService] Error unregistering token: $e');
     }
   }
 }

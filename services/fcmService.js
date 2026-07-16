@@ -142,13 +142,10 @@ async function removeAllTokens(userId) {
  * @private
  */
 function _buildMessage(token, { title, body, imageUrl, data = {}, url }) {
-  return {
+  const isCall = data && (data.type === 'incoming-call' || data.type === 'cancel-call');
+
+  const message = {
     token,
-    notification: {
-      title: String(title || 'TrasX'),
-      body:  String(body  || ''),
-      ...(imageUrl ? { imageUrl } : {}),
-    },
     data: {
       ...Object.fromEntries(
         Object.entries(data).map(([k, v]) => [k, String(v)])
@@ -158,12 +155,6 @@ function _buildMessage(token, { title, body, imageUrl, data = {}, url }) {
     },
     android: {
       priority: 'high',
-      notification: {
-        channelId:    'trasx_notifications',
-        priority:     'high',
-        defaultSound: true,
-        ...(imageUrl ? { imageUrl } : {}),
-      },
     },
     apns: {
       payload: {
@@ -176,6 +167,22 @@ function _buildMessage(token, { title, body, imageUrl, data = {}, url }) {
       ...(imageUrl ? { fcmOptions: { imageUrl } } : {}),
     },
   };
+
+  if (!isCall) {
+    message.notification = {
+      title: String(title || 'TrasX'),
+      body:  String(body  || ''),
+      ...(imageUrl ? { imageUrl } : {}),
+    };
+    message.android.notification = {
+      channelId:    'trasx_notifications',
+      priority:     'high',
+      defaultSound: true,
+      ...(imageUrl ? { imageUrl } : {}),
+    };
+  }
+
+  return message;
 }
 
 /**

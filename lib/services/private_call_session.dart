@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:mediasfu_mediasoup_client/mediasfu_mediasoup_client.dart'
     as mediasoup;
@@ -39,16 +38,16 @@ class PrivateCallSession extends ChangeNotifier {
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
 
-  final Map<String, mediasoup.Producer> _producers =
-      <String, mediasoup.Producer>{};
+  final Map<String, dynamic> _producers =
+      <String, dynamic>{};
   final Map<String, mediasoup.Consumer> _consumers =
       <String, mediasoup.Consumer>{};
   final Set<String> _pendingConsumerProducerIds = <String>{};
-  static const Map<String, dynamic> _transportAdditionalSettings =
+  static Map<String, dynamic> get _transportAdditionalSettings =>
       <String, dynamic>{'encodedInsertableStreams': false};
-  static const Map<String, dynamic> _transportProprietaryConstraints =
+  static Map<String, dynamic> get _transportProprietaryConstraints =>
       <String, dynamic>{
-        'optional': <Map<String, dynamic>>[
+        'optional': <dynamic>[
           <String, dynamic>{'googDscp': true},
         ],
       };
@@ -432,11 +431,14 @@ class PrivateCallSession extends ChangeNotifier {
       iceServers: _iceServers,
       additionalSettings: _transportAdditionalSettings,
       proprietaryConstraints: _transportProprietaryConstraints,
-      appData: const {'scope': 'call'},
+      appData: <String, dynamic>{'scope': 'call'},
       producerCallback: (dynamic producer) {
-        if (producer is mediasoup.Producer) {
-          _producers[producer.id] = producer;
-          notifyListeners();
+        if (producer != null) {
+          final id = (producer.id ?? '').toString();
+          if (id.isNotEmpty) {
+            _producers[id] = producer;
+            notifyListeners();
+          }
         }
       },
     );
@@ -515,7 +517,7 @@ class PrivateCallSession extends ChangeNotifier {
       iceServers: _iceServers,
       additionalSettings: _transportAdditionalSettings,
       proprietaryConstraints: _transportProprietaryConstraints,
-      appData: const {'scope': 'call'},
+      appData: <String, dynamic>{'scope': 'call'},
       consumerCallback: (dynamic consumer, dynamic accept) async {
         if (consumer is! mediasoup.Consumer) return;
         _pendingConsumerProducerIds.remove(consumer.producerId);
@@ -709,37 +711,65 @@ class PrivateCallSession extends ChangeNotifier {
 
   Future<void> _syncRemoteStream() async {
     if (_shouldAbortOperations) return;
-    final nextStream = await createLocalMediaStream(
-      'private-call-remote-$roomId',
-    );
-    final addedTrackIds = <String>{};
+
+    if (_remoteStream == null) {
+      _remoteStream = await createLocalMediaStream('private-call-remote-$roomId');
+      remoteRenderer.srcObject = _remoteStream;
+    }
+
+    final currentStream = _remoteStream!;
+    final desiredTrackIds = <String>{};
+    final desiredTracks = <MediaStreamTrack>[];
 
     for (final consumer in _consumers.values) {
       final track = consumer.track;
       final trackId = track.id ?? '';
-      if (trackId.isEmpty || addedTrackIds.contains(trackId)) {
-        continue;
+      if (trackId.isNotEmpty) {
+        desiredTrackIds.add(trackId);
+        desiredTracks.add(track);
       }
-      await nextStream.addTrack(track);
-      addedTrackIds.add(trackId);
     }
 
-    final previousStream = _remoteStream;
-    _remoteStream = nextStream;
-    _remoteVideoAvailable = nextStream.getVideoTracks().isNotEmpty;
+    // 1. Remove tracks that are no longer needed
+    final existingAudioTracks = currentStream.getAudioTracks();
+    for (final track in existingAudioTracks) {
+      if (!desiredTrackIds.contains(track.id)) {
+        await currentStream.removeTrack(track);
+      }
+    }
+    final existingVideoTracks = currentStream.getVideoTracks();
+    for (final track in existingVideoTracks) {
+      if (!desiredTrackIds.contains(track.id)) {
+        await currentStream.removeTrack(track);
+      }
+    }
 
-    remoteRenderer.srcObject = addedTrackIds.isEmpty ? null : nextStream;
-    if (nextStream.getAudioTracks().isNotEmpty) {
+    // 2. Add new tracks that are not already in the stream
+    final currentAudioTrackIds = currentStream.getAudioTracks().map((t) => t.id).toSet();
+    final currentVideoTrackIds = currentStream.getVideoTracks().map((t) => t.id).toSet();
+
+    for (final track in desiredTracks) {
+      if (track.kind == 'audio' && !currentAudioTrackIds.contains(track.id)) {
+        await currentStream.addTrack(track);
+      } else if (track.kind == 'video' && !currentVideoTrackIds.contains(track.id)) {
+        await currentStream.addTrack(track);
+      }
+    }
+
+    _remoteVideoAvailable = currentStream.getVideoTracks().isNotEmpty;
+
+    // Trigger render update
+    if (desiredTracks.isEmpty) {
+      remoteRenderer.srcObject = null;
+    } else if (remoteRenderer.srcObject != currentStream) {
+      remoteRenderer.srcObject = currentStream;
+    }
+
+    if (currentStream.getAudioTracks().isNotEmpty) {
       try {
         await remoteRenderer.setVolume(1.0);
       } catch (_) {}
       await _applyAudioRoute();
-    }
-
-    if (previousStream != null && previousStream.id != nextStream.id) {
-      try {
-        await previousStream.dispose();
-      } catch (_) {}
     }
 
     notifyListeners();
@@ -760,9 +790,9 @@ class PrivateCallSession extends ChangeNotifier {
     }
   }
 
-  mediasoup.Producer? _findProducerByKind(String kind) {
+  dynamic _findProducerByKind(String kind) {
     for (final producer in _producers.values) {
-      if (producer.kind == kind) {
+      if (producer != null && producer.kind == kind) {
         return producer;
       }
     }

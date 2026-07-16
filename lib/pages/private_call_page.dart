@@ -93,10 +93,30 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
       animation: _session,
       builder: (context, _) {
         final sessionEnded = _session.hasEnded || _session.isEnding;
+        final isCallerRole = _session.role == PrivateCallRole.caller;
+
         final hasRemoteVideo =
             !sessionEnded &&
             _session.remoteVideoAvailable &&
             _session.remoteRenderer.srcObject != null;
+
+        final hasLocalVideo =
+            !sessionEnded &&
+            _session.isVideo &&
+            _session.cameraEnabled &&
+            _session.localRenderer.srcObject != null;
+
+        // Swapped assignment based on role:
+        // - If Caller: Full screen is remote, small preview is local
+        // - If Callee: Full screen is local, small preview is remote
+        final fullScreenRenderer = isCallerRole ? _session.remoteRenderer : _session.localRenderer;
+        final smallPreviewRenderer = isCallerRole ? _session.localRenderer : _session.remoteRenderer;
+
+        final hasFullScreenVideo = isCallerRole ? hasRemoteVideo : hasLocalVideo;
+        final hasSmallPreviewVideo = isCallerRole ? hasLocalVideo : hasRemoteVideo;
+
+        final mirrorFullScreen = !isCallerRole; // If callee, full screen is local, so mirror it
+        final mirrorSmallPreview = isCallerRole; // If caller, small preview is local, so mirror it
 
         return PopScope<void>(
           canPop: _session.hasEnded,
@@ -129,12 +149,13 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
                 Positioned.fill(
                   child: sessionEnded
                       ? _buildEndedState()
-                      : hasRemoteVideo
+                      : hasFullScreenVideo
                       ? RTCVideoView(
                           key: ValueKey<String>(
-                            'remote-${_session.remoteRenderer.srcObject?.id ?? 'empty'}',
+                            'full-${fullScreenRenderer.srcObject?.id ?? 'empty'}',
                           ),
-                          _session.remoteRenderer,
+                          fullScreenRenderer,
+                          mirror: mirrorFullScreen,
                           objectFit:
                               RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                         )
@@ -193,11 +214,14 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
                                   top: 10,
                                   child: _buildLiveStatusCard(),
                                 ),
-                              if (_session.shouldShowLocalVideo)
+                              if (hasSmallPreviewVideo)
                                 Positioned(
                                   right: 16,
                                   top: 10,
-                                  child: _buildLocalPreview(),
+                                  child: _buildSmallPreview(
+                                    smallPreviewRenderer,
+                                    mirror: mirrorSmallPreview,
+                                  ),
                                 ),
                             ],
                           ),
@@ -504,7 +528,7 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
     );
   }
 
-  Widget _buildLocalPreview() {
+  Widget _buildSmallPreview(RTCVideoRenderer renderer, {required bool mirror}) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(22),
       child: Container(
@@ -523,10 +547,10 @@ class _PrivateCallPageState extends State<PrivateCallPage> {
         ),
         child: RTCVideoView(
           key: ValueKey<String>(
-            'local-${_session.localRenderer.srcObject?.id ?? 'empty'}-${_session.cameraEnabled}',
+            'small-${renderer.srcObject?.id ?? 'empty'}',
           ),
-          _session.localRenderer,
-          mirror: true,
+          renderer,
+          mirror: mirror,
           objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
         ),
       ),
