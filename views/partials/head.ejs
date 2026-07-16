@@ -322,6 +322,28 @@
     };
     document.addEventListener('DOMContentLoaded', function () {
       window.__translateDomText(document.body);
+
+      // Auto-join active game from query parameter
+      const urlParams = new URLSearchParams(window.location.search);
+      const activeGameId = urlParams.get('activeGameId');
+      if (activeGameId) {
+        const checkSocketConnected = () => {
+          if (typeof socket !== 'undefined' && socket && socket.connected) {
+            console.log('[DEBUG] Auto joining active game from URL:', activeGameId);
+            socket.emit('game-room-join', { gameId: activeGameId });
+            socket.emit('game-spectate-join', { gameId: activeGameId }, (res) => {
+              if (res && res.game) {
+                if (typeof initActiveGame === 'function') {
+                  initActiveGame(res.game, false);
+                }
+              }
+            });
+          } else {
+            setTimeout(checkSocketConnected, 50);
+          }
+        };
+        checkSocketConnected();
+      }
     });
   </script>
   <!-- Socket.io client -->

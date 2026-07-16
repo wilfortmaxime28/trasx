@@ -2063,7 +2063,7 @@ app.get('/post/:postId', async (req, res) => {
 
 app.get('/api/auth/mobile-session', async (req, res) => {
   try {
-    const { userId, token, timestamp, view, opponentId, opponentName, opponentAvatar, opponentUsername } = req.query;
+    const { userId, token, timestamp, view, opponentId, opponentName, opponentAvatar, opponentUsername, createGame, gameType, opponentType, entryMode, betAmount, rounds, botId } = req.query;
     if (!userId || !token || !timestamp) {
       return res.status(400).send('Paramètres d\'authentification manquants.');
     }
@@ -2087,6 +2087,40 @@ app.get('/api/auth/mobile-session', async (req, res) => {
 
     // Log the user in
     req.session.userId = Number(userId);
+
+    // Auto-create game if requested
+    if (createGame === 'true') {
+      try {
+        const User = require('./models/User');
+        const user = await User.getById(Number(userId));
+        if (user) {
+          const type = gameType || 'connect4';
+          const oppType = opponentType || 'bot';
+          const mode = entryMode || 'free';
+          const bet = parseFloat(betAmount || 1.00);
+          const rds = parseInt(rounds || 1, 10);
+          const bot_id = botId || '1';
+          const oppId = oppType === 'bot' ? `bot_${bot_id}` : null;
+
+          const game = await gamesManager.createGame(
+            user.id, user, type, oppType, mode, oppId, bet, rds, 'free', 0.50, 'FR', 'BR',
+            {
+              ludoPartyMode: oppType === 'bot' ? 'bots' : 'players',
+              ludoOpponentCount: 1,
+              ludoBotIds: oppType === 'bot' ? [parseInt(bot_id, 10)] : []
+            }
+          );
+          
+          let redirectUrl = `/?view=games&mobile=true&activeGameId=${game.id}`;
+          if (req.query.theme) {
+            redirectUrl += `&theme=${req.query.theme}`;
+          }
+          return res.redirect(redirectUrl);
+        }
+      } catch (gameErr) {
+        console.error('[Mobile Auto Game Create Error]:', gameErr);
+      }
+    }
 
     // Redirect to games page (or other specified page)
     let redirectUrl = `/?view=${view || 'games'}&mobile=true`;
