@@ -2050,6 +2050,55 @@ app.get('/post/:postId', async (req, res) => {
   }
 });
 
+app.get('/api/auth/mobile-session', async (req, res) => {
+  try {
+    const { userId, token, timestamp, view, opponentId, opponentName, opponentAvatar, opponentUsername } = req.query;
+    if (!userId || !token || !timestamp) {
+      return res.status(400).send('Paramètres d\'authentification manquants.');
+    }
+
+    // Verify timestamp is within 10 minutes to prevent replay attacks
+    const timeDiff = Math.abs(Date.now() - Number(timestamp));
+    if (timeDiff > 10 * 60 * 1000) {
+      return res.status(401).send('Session mobile expirée. Veuillez réessayer.');
+    }
+
+    // Recalculate HMAC signature
+    const crypto = require('crypto');
+    const expectedToken = crypto
+      .createHmac('sha256', SESSION_SECRET)
+      .update(`${userId}:${timestamp}`)
+      .digest('hex');
+
+    if (token !== expectedToken) {
+      return res.status(401).send('Authentification mobile invalide.');
+    }
+
+    // Log the user in
+    req.session.userId = Number(userId);
+
+    // Redirect to games page (or other specified page)
+    let redirectUrl = `/?view=${view || 'games'}`;
+    if (opponentId) {
+      redirectUrl += `&opponentId=${opponentId}`;
+    }
+    if (opponentName) {
+      redirectUrl += `&opponentName=${encodeURIComponent(opponentName)}`;
+    }
+    if (opponentAvatar) {
+      redirectUrl += `&opponentAvatar=${encodeURIComponent(opponentAvatar)}`;
+    }
+    if (opponentUsername) {
+      redirectUrl += `&opponentUsername=${encodeURIComponent(opponentUsername)}`;
+    }
+
+    return res.redirect(redirectUrl);
+  } catch (err) {
+    console.error('[Mobile Auth Session Error]:', err);
+    return res.status(500).send('Erreur interne du serveur.');
+  }
+});
+
 // Middleware Auth global pour toutes les routes utilisateur (après /auth et admin)
 app.use(requireAuth);
 
@@ -2150,55 +2199,6 @@ app.get('/api/auth/mobile-token', requireAuth, (req, res) => {
   } catch (err) {
     console.error('[Mobile Auth Token Error]:', err);
     return res.status(500).json({ success: false, error: 'Server error.' });
-  }
-});
-
-app.get('/api/auth/mobile-session', async (req, res) => {
-  try {
-    const { userId, token, timestamp, view, opponentId, opponentName, opponentAvatar, opponentUsername } = req.query;
-    if (!userId || !token || !timestamp) {
-      return res.status(400).send('Paramètres d\'authentification manquants.');
-    }
-
-    // Verify timestamp is within 10 minutes to prevent replay attacks
-    const timeDiff = Math.abs(Date.now() - Number(timestamp));
-    if (timeDiff > 10 * 60 * 1000) {
-      return res.status(401).send('Session mobile expirée. Veuillez réessayer.');
-    }
-
-    // Recalculate HMAC signature
-    const crypto = require('crypto');
-    const expectedToken = crypto
-      .createHmac('sha256', SESSION_SECRET)
-      .update(`${userId}:${timestamp}`)
-      .digest('hex');
-
-    if (token !== expectedToken) {
-      return res.status(401).send('Authentification mobile invalide.');
-    }
-
-    // Log the user in
-    req.session.userId = Number(userId);
-
-    // Redirect to games page (or other specified page)
-    let redirectUrl = `/?view=${view || 'games'}`;
-    if (opponentId) {
-      redirectUrl += `&opponentId=${opponentId}`;
-    }
-    if (opponentName) {
-      redirectUrl += `&opponentName=${encodeURIComponent(opponentName)}`;
-    }
-    if (opponentAvatar) {
-      redirectUrl += `&opponentAvatar=${encodeURIComponent(opponentAvatar)}`;
-    }
-    if (opponentUsername) {
-      redirectUrl += `&opponentUsername=${encodeURIComponent(opponentUsername)}`;
-    }
-
-    return res.redirect(redirectUrl);
-  } catch (err) {
-    console.error('[Mobile Auth Session Error]:', err);
-    return res.status(500).send('Erreur interne du serveur.');
   }
 });
 
