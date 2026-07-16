@@ -87,16 +87,14 @@ class _GomokuBoardState extends State<GomokuBoard>
 
   @override
   Widget build(BuildContext context) {
-    // Web: .gomoku-board container has border-radius 16px, background var(--border-color), gap 1px
-    final gridBorderColor = widget.isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFEBEDF0);
+    // Web: .gomoku-board container has border-radius 16px, background var(--border-color)
+    // Platform borders: Dark uses Colors.white.withOpacity(0.1), Light uses Colors.black.withOpacity(0.1)
+    final gridBorderColor = widget.isDarkMode ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1);
 
     return LayoutBuilder(builder: (context, constraints) {
-      final boardSize = math.min(constraints.maxWidth, constraints.maxHeight);
+      // Subtract margins/paddings from boardSize to be absolutely overflow-free
+      final boardSize = math.min(constraints.maxWidth, constraints.maxHeight) - 8;
       
-      // Calculate cell sizes based on grid layout with 1px gaps
-      final gridTotalSpacing = _size - 1; // 14 gaps
-      final cellW = (boardSize - 4 - gridTotalSpacing) / _size;
-
       return Container(
         width: boardSize,
         height: boardSize,
@@ -113,6 +111,7 @@ class _GomokuBoardState extends State<GomokuBoard>
         ),
         padding: const EdgeInsets.all(2), // replicates web's padding: 2px
         child: GridView.builder(
+          padding: EdgeInsets.zero, // Crucial fix: prevents native scrollview vertical padding overflows
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: _size,

@@ -80,8 +80,9 @@ class _Connect4BoardState extends State<Connect4Board>
   @override
   Widget build(BuildContext context) {
     // Web: .connectfour-grid-container and .connectfour-grid
-    final cardBgColor = widget.isDarkMode ? const Color(0xFF151F32) : const Color(0xFFFFFFFF);
-    final borderColor = widget.isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFEBEDF0);
+    // Platform colors: Dark uses 0xFF0F0F0F, Light uses 0xFFF9F9F9
+    final cardBgColor = widget.isDarkMode ? const Color(0xFF0F0F0F) : const Color(0xFFF9F9F9);
+    final borderColor = widget.isDarkMode ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1);
     
     // Web board background:
     // Light: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)
@@ -99,10 +100,10 @@ class _Connect4BoardState extends State<Connect4Board>
           );
 
     return LayoutBuilder(builder: (context, constraints) {
-      // Math fix: account for 0.85 * cellSize required for the drop button header to avoid overflow
+      // Math fix: subtract 80px (for drop buttons + padding + borders) from maxHeight to prevent any overflow
       final cellSize = math.min(
         (constraints.maxWidth - 32) / 7,
-        (constraints.maxHeight - 32) / 6.8,
+        (constraints.maxHeight - 80) / 6.85,
       );
 
       final hoverBg = widget.isDarkMode ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04);

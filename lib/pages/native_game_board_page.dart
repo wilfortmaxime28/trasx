@@ -560,13 +560,13 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
     return 'Défaite…';
   }
 
-  // Web design variables mapped to Flutter colors
+  // Web design variables mapped to Flutter colors (Platform's Black & White theme)
   Color get _primaryColor => widget.isDarkMode ? const Color(0xFF38BDF8) : const Color(0xFF1877F2);
   Color get _primaryLightColor => widget.isDarkMode ? const Color(0x1F38BDF8) : const Color(0x1A1877F2);
-  Color get _cardBgColor => widget.isDarkMode ? const Color(0xFF151F32) : const Color(0xFFFFFFFF);
-  Color get _borderColor => widget.isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFEBEDF0);
-  Color get _textPrimaryColor => widget.isDarkMode ? const Color(0xFFF8FAFC) : const Color(0xFF1C1E21);
-  Color get _textSecondaryColor => widget.isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF606770);
+  Color get _cardBgColor => widget.isDarkMode ? const Color(0xFF0F0F0F) : const Color(0xFFF9F9F9);
+  Color get _borderColor => widget.isDarkMode ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.1);
+  Color get _textPrimaryColor => widget.isDarkMode ? Colors.white : Colors.black;
+  Color get _textSecondaryColor => widget.isDarkMode ? Colors.white60 : Colors.black54;
 
   Map<String, dynamic>? get _opponent {
     final g = _game;
@@ -605,7 +605,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
   @override
   Widget build(BuildContext context) {
     final isDark = widget.isDarkMode;
-    final bg = isDark ? const Color(0xFF0B0F19) : const Color(0xFFF4F6FA);
+    final bg = isDark ? Colors.black : Colors.white;
 
     return Scaffold(
       backgroundColor: bg,
@@ -905,8 +905,10 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
         ? _primaryColor
         : const Color(0xFFEC4899);
 
+    final scoreBg = isDark ? const Color(0xFF161616) : const Color(0xFFEEEEEE);
+
     return Row(
-      textDirection: isP1 ? TextDirection.ltr : TextDirection.rtl,
+      textDirection: TextDirection.ltr, // Both players are aligned LTR for perfect symmetry
       children: [
         // Avatar stack (shows pulsing green ring on turn active)
         Stack(
@@ -954,7 +956,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
         // Meta Column
         Expanded(
           child: Column(
-            crossAxisAlignment: isP1 ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
@@ -1000,7 +1002,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1B273F) : const Color(0xFFF1F5F9),
+            color: scoreBg,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: _borderColor, width: 1),
           ),
