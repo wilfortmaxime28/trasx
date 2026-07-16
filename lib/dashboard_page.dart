@@ -2385,6 +2385,7 @@ class _DashboardPageState extends State<DashboardPage> {
         return _userId > 0
             ? GamePlayPage(
                 currentUserId: _userId,
+                currentUserAvatar: _avatarUrl,
                 view: 'games',
                 embedded: true,
                 isDarkMode: _isDarkMode,

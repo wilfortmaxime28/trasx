@@ -7,6 +7,7 @@ import 'native_game_board_page.dart';
 
 class GamePlayPage extends StatefulWidget {
   final int currentUserId;
+  final String? currentUserAvatar;
   final String view; // e.g. "games"
   final int? opponentId;
   final String? opponentName;
@@ -18,6 +19,7 @@ class GamePlayPage extends StatefulWidget {
   const GamePlayPage({
     super.key,
     required this.currentUserId,
+    this.currentUserAvatar,
     this.view = 'games',
     this.opponentId,
     this.opponentName,
@@ -198,11 +200,23 @@ class _GamePlayPageState extends State<GamePlayPage> {
   void _startGame() {
     // Connect4 and Gomoku use native Flutter boards
     if (_nativeBoardGames.contains(_selectedGame)) {
-      setState(() {
-        _showNativeLobby = false;
-        _showNativeBoard = true;
-        _errorMsg = null;
-      });
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => NativeGameBoardPage(
+            currentUserId: widget.currentUserId,
+            currentUserAvatar: widget.currentUserAvatar,
+            gameType: _selectedGame,
+            opponentType: _opponentType,
+            entryMode: _entryMode,
+            betAmount: _betAmount,
+            rounds: _rounds,
+            botDifficulty: _botDifficulty,
+            isDarkMode: widget.isDarkMode,
+            onBackToLobby: () => Navigator.pop(context),
+          ),
+        ),
+      );
       return;
     }
     setState(() {
@@ -246,23 +260,7 @@ class _GamePlayPageState extends State<GamePlayPage> {
       );
     }
 
-    // Native board (connect4, gomoku)
-    if (_showNativeBoard) {
-      return NativeGameBoardPage(
-        currentUserId: widget.currentUserId,
-        gameType: _selectedGame,
-        opponentType: _opponentType,
-        entryMode: _entryMode,
-        betAmount: _betAmount,
-        rounds: _rounds,
-        botDifficulty: _botDifficulty,
-        isDarkMode: widget.isDarkMode,
-        onBackToLobby: () => setState(() {
-          _showNativeBoard = false;
-          _showNativeLobby = true;
-        }),
-      );
-    }
+    // WebView integration for other games (ludo, chess, etc.)
 
     final body = Stack(
       children: [

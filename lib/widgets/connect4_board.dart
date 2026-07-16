@@ -99,42 +99,72 @@ class _Connect4BoardState extends State<Connect4Board>
           );
 
     return LayoutBuilder(builder: (context, constraints) {
+      // Math fix: account for 0.85 * cellSize required for the drop button header to avoid overflow
       final cellSize = math.min(
-        (constraints.maxWidth - 28) / 7,
-        (constraints.maxHeight - 28) / 7,
+        (constraints.maxWidth - 32) / 7,
+        (constraints.maxHeight - 32) / 6.8,
       );
+
+      final hoverBg = widget.isDarkMode ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04);
+      final activeColor = widget.mySymbol == 1 ? const Color(0xFFFF4D4D) : const Color(0xFFFFD000);
 
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Column drop indicators matching the drop header behavior
+          // Column drop buttons matching .c4-drop-header and .c4-drop-btn
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(7, (col) {
-              final active = widget.myTurn &&
-                  !widget.gameOver &&
-                  _hoveredCol == col;
-              final dropColor = widget.mySymbol == 1
-                  ? const Color(0xFFFF4D4D)
-                  : const Color(0xFFFFD000);
+              final isHovered = _hoveredCol == col;
+              final canDrop = widget.myTurn && !widget.gameOver && widget.board[0][col] == 0;
 
-              return SizedBox(
+              return Container(
                 width: cellSize,
-                height: cellSize * 0.4,
-                child: Center(
-                  child: AnimatedOpacity(
-                    opacity: active ? 1.0 : 0.0,
+                height: cellSize * 0.85,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: GestureDetector(
+                  onTap: canDrop ? () => widget.onColumnTap(col) : null,
+                  onTapDown: (_) {
+                    if (canDrop) {
+                      setState(() => _hoveredCol = col);
+                    }
+                  },
+                  onTapUp: (_) => setState(() => _hoveredCol = null),
+                  onTapCancel: () => setState(() => _hoveredCol = null),
+                  child: AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
-                    child: Icon(
-                      Icons.arrow_downward_rounded,
-                      color: dropColor,
-                      size: cellSize * 0.5,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isHovered ? activeColor : hoverBg,
+                      border: Border.all(
+                        color: isHovered ? activeColor : borderColor,
+                        width: 1,
+                      ),
+                      boxShadow: isHovered
+                          ? [
+                              BoxShadow(
+                                color: activeColor.withOpacity(0.35),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              )
+                            ]
+                          : [],
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.arrow_downward_rounded,
+                        color: isHovered
+                            ? Colors.white
+                            : (widget.isDarkMode ? Colors.white70 : Colors.black54),
+                        size: cellSize * 0.4,
+                      ),
                     ),
                   ),
                 ),
               );
             }),
           ),
+          const SizedBox(height: 6),
 
           // Main board container (replicates web's .connectfour-grid-container and .connectfour-grid)
           Container(
