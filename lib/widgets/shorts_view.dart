@@ -126,20 +126,23 @@ class _ShortsViewState extends State<ShortsView> with WidgetsBindingObserver {
     if (mounted) {
       VideoPreloadManager().setReels(_feedController.reels);
 
-      // Récupère l'état d'abonnement et de like depuis l'API pour chaque vidéo du flux
-      for (var reel in _feedController.reels) {
-        final reelId = int.tryParse(reel['id']?.toString() ?? '');
-        final isLiked = reel['is_liked'] == true || reel['is_liked'] == 1 || reel['is_liked'] == 'true';
-        if (reelId != null && isLiked) {
-          _likedReelIds.add(reelId);
-        }
+      setState(() {
+        _likedReelIds.clear();
+        _followedUserIds.clear();
+        for (var reel in _feedController.reels) {
+          final reelId = int.tryParse(reel['id']?.toString() ?? '');
+          final isLiked = reel['is_liked'] == true || reel['is_liked'] == 1 || reel['is_liked'] == 'true';
+          if (reelId != null && isLiked) {
+            _likedReelIds.add(reelId);
+          }
 
-        final authorId = int.tryParse(reel['user_id']?.toString() ?? '');
-        final isFollowing = reel['is_author_following'] == true || reel['is_author_following'] == 1 || reel['is_following'] == true || reel['is_following'] == 1;
-        if (authorId != null && isFollowing) {
-          _followedUserIds.add(authorId);
+          final authorId = int.tryParse(reel['user_id']?.toString() ?? '');
+          final isFollowing = reel['is_author_following'] == true || reel['is_author_following'] == 1 || reel['is_following'] == true || reel['is_following'] == 1;
+          if (authorId != null && isFollowing) {
+            _followedUserIds.add(authorId);
+          }
         }
-      }
+      });
 
       if (_feedController.state == ShortsFeedState.success &&
           _feedController.reels.isNotEmpty &&
@@ -305,6 +308,8 @@ class _ShortsViewState extends State<ShortsView> with WidgetsBindingObserver {
         _followedUserIds.add(authorId);
       }
     });
+
+    _feedController.toggleFollowLocal(authorId, !isCurrentlyFollowing);
 
     widget.socket?.emit('follow-toggle', {
       'targetUserId': authorId,
@@ -1383,10 +1388,12 @@ class _ReelCommentsBottomSheetState extends State<ReelCommentsBottomSheet> {
     setState(() {
       if (_likedCommentIds.contains(commentId)) {
         _likedCommentIds.remove(commentId);
-        comment['likes_count'] = (comment['likes_count'] ?? 0) - 1;
+        final current = int.tryParse(comment['likes_count']?.toString() ?? '0') ?? 0;
+        comment['likes_count'] = (current - 1) < 0 ? 0 : (current - 1);
       } else {
         _likedCommentIds.add(commentId);
-        comment['likes_count'] = (comment['likes_count'] ?? 0) + 1;
+        final current = int.tryParse(comment['likes_count']?.toString() ?? '0') ?? 0;
+        comment['likes_count'] = current + 1;
       }
     });
   }

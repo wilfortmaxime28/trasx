@@ -171,7 +171,20 @@ class ShortsFeedController extends ChangeNotifier {
     if (index < 0 || index >= _reels.length) return;
     final reel = _reels[index];
     final currentLikes = int.tryParse(reel['likes_count']?.toString() ?? '0') ?? 0;
-    reel['likes_count'] = isLiked ? currentLikes + 1 : currentLikes - 1;
+    final nextLikes = isLiked ? currentLikes + 1 : currentLikes - 1;
+    reel['likes_count'] = nextLikes < 0 ? 0 : nextLikes;
+    reel['is_liked'] = isLiked;
+    notifyListeners();
+  }
+
+  void toggleFollowLocal(int authorId, bool isFollowing) {
+    for (var reel in _reels) {
+      final reelAuthorId = int.tryParse(reel['user_id']?.toString() ?? '');
+      if (reelAuthorId == authorId) {
+        reel['is_author_following'] = isFollowing;
+        reel['is_following'] = isFollowing;
+      }
+    }
     notifyListeners();
   }
 }

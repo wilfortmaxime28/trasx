@@ -993,10 +993,14 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
     setState(() {
       if (isCurrentlyLiked) {
         _likedReelIds.remove(reelId);
-        reel['likes_count'] = (reel['likes_count'] ?? 0) - 1;
+        final current = int.tryParse(reel['likes_count']?.toString() ?? '0') ?? 0;
+        reel['likes_count'] = (current - 1) < 0 ? 0 : (current - 1);
+        reel['is_liked'] = false;
       } else {
         _likedReelIds.add(reelId);
-        reel['likes_count'] = (reel['likes_count'] ?? 0) + 1;
+        final current = int.tryParse(reel['likes_count']?.toString() ?? '0') ?? 0;
+        reel['likes_count'] = current + 1;
+        reel['is_liked'] = true;
       }
     });
 
@@ -1016,6 +1020,15 @@ class _ShortsPlayerPageState extends State<ShortsPlayerPage> {
         _followedUserIds.remove(authorId);
       } else {
         _followedUserIds.add(authorId);
+      }
+
+      // Update follow state on all search result reels from this author
+      for (var r in widget.searchResults) {
+        final rAuthorId = int.tryParse(r['user_id']?.toString() ?? '');
+        if (rAuthorId == authorId) {
+          r['is_author_following'] = !isCurrentlyFollowing;
+          r['is_following'] = !isCurrentlyFollowing;
+        }
       }
     });
 
