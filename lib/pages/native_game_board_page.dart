@@ -8,6 +8,7 @@ import '../services/game_socket_service.dart';
 import '../widgets/connect4_board.dart';
 import '../widgets/gomoku_board.dart';
 import '../widgets/ludo_board.dart';
+import '../widgets/table_football_board.dart';
 
 /// Shown after the user picks a game type in the lobby.
 /// Replicates the web active match layout, including the scoreboard, headers, and status bars.
@@ -101,7 +102,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
     return 'https://trasx.com$cleanPath';
   }
 
-  static const _comingSoonGames = {'tablefootball', 'echecs'};
+  static const _comingSoonGames = {'echecs'};
 
   // ── Create game via REST ─────────────────────────────────────────────────
   Future<void> _createGame() async {
@@ -2358,7 +2359,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
 
     // Baby-foot: draw the table
     if (widget.gameType == 'tablefootball') {
-      return _buildTableFootballBoard();
+      return _buildTableFootballBoard(isOver);
     }
 
     // Coming soon for ludo & echecs
@@ -2500,43 +2501,77 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
     );
   }
 
-  Widget _buildTableFootballBoard() {
+  Widget _buildTableFootballBoard(bool isOver) {
+    if (_game == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final tfState = (_game?['tableFootballState'] as Map?)?.cast<String, dynamic>() ?? {};
+    final currentPlayerRaw = _game?['currentPlayer'];
+    final currentSlot = currentPlayerRaw is int ? currentPlayerRaw : int.tryParse('$currentPlayerRaw') ?? 1;
+
+    // Determine my slot: player1 is slot 1, player2 is slot 2
+    final p1 = _game?['player1'];
+    final p1Id = p1 is Map ? p1['id']?.toString() : null;
+    final mySlot = p1Id == '${widget.currentUserId}' ? 1 : 2;
+
+    final myTurn = _myTurn && !isOver;
+
+    // Real-time scores
+    final scoresMap = tfState['scores'] ?? {};
+    final p1Score = int.tryParse('${scoresMap['1']}') ?? 0;
+    final p2Score = int.tryParse('${scoresMap['2']}') ?? 0;
+
+    final p1Name = _game?['player1']?['username']?.toString() ?? 'Joueur 1';
+    final p2Name = _game?['player2']?['username']?.toString() ?? 'Joueur 2';
+
     return Column(
       children: [
         // Scoreboard
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          color: Colors.black,
+          color: widget.isDarkMode ? const Color(0xFF0F172A) : Colors.white,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildScorePanel(
-                name: _me?['first_name'] != null
-                    ? '${_me!['first_name']} ${_me!['last_name'] ?? ''}'.trim()
-                    : 'Moi',
-                score: 0,
+                name: p1Name,
+                score: p1Score,
                 color: const Color(0xFFEF4444),
               ),
               Column(
                 children: [
-                  const Text('VS', style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.bold)),
+                  Text(
+                    'VS',
+                    style: TextStyle(
+                      color: widget.isDarkMode ? Colors.white54 : Colors.black54,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Outfit',
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white12,
+                      color: widget.isDarkMode ? Colors.white10 : Colors.black12,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Baby-foot',
-                      style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: widget.isDarkMode ? Colors.white70 : Colors.black87,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Outfit',
+                      ),
                     ),
                   ),
                 ],
               ),
               _buildScorePanel(
-                name: 'Adversaire',
-                score: 0,
+                name: p2Name,
+                score: p2Score,
                 color: const Color(0xFF3B82F6),
               ),
             ],
@@ -2545,27 +2580,47 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
         // Pitch
         Expanded(
           child: Container(
-            color: Colors.black,
+            color: widget.isDarkMode ? const Color(0xFF0D0D1A) : const Color(0xFFF1F5F9),
             padding: const EdgeInsets.all(16),
             child: Center(
-              child: AspectRatio(
-                aspectRatio: 0.55,
-                child: CustomPaint(
-                  painter: _TableFootballPitchPainter(),
-                  child: const SizedBox.expand(),
-                ),
+              child: TableFootballBoard(
+                game: _game!,
+                mySlot: mySlot,
+                currentSlot: currentSlot,
+                myTurn: myTurn,
+                gameOver: isOver,
+                isDarkMode: widget.isDarkMode,
+                gameId: _gameId ?? '',
+                onSync: (finalState) {
+                  if (_gameId != null) {
+                    GameSocketService.instance.emitMove(
+                      gameId: _gameId!,
+                      r: 0,
+                      c: 0,
+                      extra: {
+                        'promotion': 'sync',
+                        'finalState': finalState,
+                        'nextPlayer': currentSlot == 1 ? 2 : 1,
+                      },
+                    );
+                  }
+                },
+                onShot: (puckIndex, vx, vy) {
+                  if (_gameId != null) {
+                    GameSocketService.instance.emitMove(
+                      gameId: _gameId!,
+                      r: puckIndex,
+                      c: 0,
+                      extra: {
+                        'promotion': 'shot',
+                        'toR': (vx * 1000).toInt(),
+                        'toC': (vy * 1000).toInt(),
+                      },
+                    );
+                  }
+                },
               ),
             ),
-          ),
-        ),
-        // Info banner at bottom
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          color: Colors.black,
-          child: const Text(
-            'Le jeu multijoueur en temps réel arrive bientôt.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white38, fontSize: 12),
           ),
         ),
       ],
