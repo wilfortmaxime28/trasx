@@ -249,8 +249,20 @@ class _LudoBoardState extends State<LudoBoard> with TickerProviderStateMixin {
   }
 
   Widget _buildBottomBar(List<int> legalMoves) {
+    final bgColor = widget.isDarkMode ? const Color(0xFF0F172A) : Colors.white;
+    final borderColor = widget.isDarkMode ? Colors.white10 : Colors.black12;
+    final textStyle = TextStyle(
+      color: widget.isDarkMode ? Colors.white70 : Colors.black87,
+      fontSize: 12,
+      fontFamily: 'Outfit',
+      fontWeight: FontWeight.w600,
+    );
+
     return Container(
-      color: Colors.black,
+      decoration: BoxDecoration(
+        color: bgColor,
+        border: Border(top: BorderSide(color: borderColor, width: 1.5)),
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       child: Row(
         children: [
@@ -268,14 +280,13 @@ class _LudoBoardState extends State<LudoBoard> with TickerProviderStateMixin {
                     onTap: _rolling ? null : widget.onRoll,
                   )
                 else if (_hasRolled && widget.myTurn && legalMoves.isNotEmpty)
-                  const Text('Appuyez sur un pion pour le déplacer',
-                      style: TextStyle(color: Colors.white70, fontSize: 12))
+                  Text('Appuyez sur un pion pour le déplacer', style: textStyle)
                 else if (!widget.myTurn)
-                  const Text("Attente de l'adversaire...",
-                      style: TextStyle(color: Colors.white38, fontSize: 12))
+                  Text("Attente de l'adversaire...",
+                      style: textStyle.copyWith(color: widget.isDarkMode ? Colors.white38 : Colors.black38))
                 else
                   Text('Aucun mouvement possible, tour passé',
-                      style: TextStyle(color: Colors.red.withOpacity(0.8), fontSize: 12)),
+                      style: textStyle.copyWith(color: Colors.red.withOpacity(0.8))),
               ],
             ),
           ),
@@ -285,14 +296,28 @@ class _LudoBoardState extends State<LudoBoard> with TickerProviderStateMixin {
   }
 
   Widget _buildDiceFace(int value) {
+    // Dice theme adaptation
+    final List<Color> colors = _rolling
+        ? [const Color(0xFF833AB4), const Color(0xFFFD1D1D)]
+        : (widget.isDarkMode
+            ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
+            : [const Color(0xFFFFFFFF), const Color(0xFFE2E8F0)]);
+
+    final border = Border.all(
+      color: widget.isDarkMode ? Colors.white10 : Colors.white.withOpacity(0.8),
+      width: 1.2,
+    );
+
+    final dotColor = _rolling
+        ? Colors.white
+        : (widget.isDarkMode ? Colors.white : const Color(0xFF1E293B));
+
     return Container(
       width: 44,
       height: 44,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: _rolling
-              ? [const Color(0xFF833AB4), const Color(0xFFFD1D1D)]
-              : [const Color(0xFFF8FAFC), const Color(0xFFE2E8F0)],
+          colors: colors,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -301,25 +326,23 @@ class _LudoBoardState extends State<LudoBoard> with TickerProviderStateMixin {
           BoxShadow(
             color: _rolling
                 ? const Color(0xFFFD1D1D).withOpacity(0.35)
-                : Colors.black.withOpacity(0.2),
+                : Colors.black.withOpacity(widget.isDarkMode ? 0.4 : 0.15),
             blurRadius: 6,
             offset: const Offset(0, 3),
           ),
-          BoxShadow(
-            color: Colors.white.withOpacity(0.9),
-            blurRadius: 1.5,
-            offset: const Offset(-1.5, -1.5),
-          ),
+          if (!widget.isDarkMode)
+            BoxShadow(
+              color: Colors.white.withOpacity(0.9),
+              blurRadius: 1.5,
+              offset: const Offset(-1.5, -1.5),
+            ),
         ],
-        border: Border.all(
-          color: Colors.white.withOpacity(0.8),
-          width: 1.2,
-        ),
+        border: border,
       ),
       child: Center(
         child: _DiceDots(
           value: value,
-          color: _rolling ? Colors.white : const Color(0xFF1E293B),
+          color: dotColor,
         ),
       ),
     );
@@ -449,14 +472,43 @@ class _LudoBoardPainter extends CustomPainter {
       3: Rect.fromLTWH(cs * 9, cs * 9, cs * 6, cs * 6),
       4: Rect.fromLTWH(0, cs * 9, cs * 6, cs * 6),
     };
+    final outerRadius = cs * 0.7;
+    final innerRadius = cs * 0.45;
+
     for (final e in homeZones.entries) {
-      final color = _kColors[e.key]!;
-      canvas.drawRect(e.value, Paint()..color = color.withOpacity(0.18));
-      final yard = e.value.deflate(cs * 0.5);
-      canvas.drawRRect(RRect.fromRectAndRadius(yard, Radius.circular(cs * 0.4)),
-          Paint()..color = color.withOpacity(0.4));
-      canvas.drawRRect(RRect.fromRectAndRadius(yard, Radius.circular(cs * 0.4)),
-          Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 2);
+      final slot = e.key;
+      final rect = e.value;
+      final color = _kColors[slot]!;
+
+      // Build zone RRect rounding only the respective outer corner
+      final RRect zoneRRect = switch (slot) {
+        1 => RRect.fromRectAndCorners(rect, topLeft: Radius.circular(outerRadius)),
+        2 => RRect.fromRectAndCorners(rect, topRight: Radius.circular(outerRadius)),
+        3 => RRect.fromRectAndCorners(rect, bottomRight: Radius.circular(outerRadius)),
+        4 => RRect.fromRectAndCorners(rect, bottomLeft: Radius.circular(outerRadius)),
+        _ => RRect.fromRectAndRadius(rect, Radius.zero),
+      };
+
+      canvas.drawRRect(zoneRRect, Paint()..color = color.withOpacity(0.18));
+
+      // Build yard RRect rounding only the respective outer corner
+      final yard = rect.deflate(cs * 0.5);
+      final RRect yardRRect = switch (slot) {
+        1 => RRect.fromRectAndCorners(yard, topLeft: Radius.circular(innerRadius)),
+        2 => RRect.fromRectAndCorners(yard, topRight: Radius.circular(innerRadius)),
+        3 => RRect.fromRectAndCorners(yard, bottomRight: Radius.circular(innerRadius)),
+        4 => RRect.fromRectAndCorners(yard, bottomLeft: Radius.circular(innerRadius)),
+        _ => RRect.fromRectAndRadius(yard, Radius.zero),
+      };
+
+      canvas.drawRRect(yardRRect, Paint()..color = color.withOpacity(0.35));
+      canvas.drawRRect(
+        yardRRect,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
     }
 
     final trackPaint = Paint()..color = Colors.white.withOpacity(0.05);
