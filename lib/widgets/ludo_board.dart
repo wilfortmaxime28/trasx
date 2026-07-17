@@ -387,8 +387,8 @@ class _Cell {
 _Cell? _tokenToCell(int slot, int step) {
   if (step == -1) return null;
   if (step >= _kFinalStep) return null;
-  if (step >= 52) {
-    final idx = step - 52;
+  if (step >= 51) {
+    final idx = step - 51;
     return switch (slot) {
       1 => _Cell(7, 1 + idx),
       2 => _Cell(1 + idx, 7),
