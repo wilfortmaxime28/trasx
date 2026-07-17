@@ -237,6 +237,19 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
   // ── Forfeit game ─────────────────────────────────────────────────────────
   void _forfeitGame() {
     if (_gameId == null) return;
+
+    final p1 = _game?['player1'];
+    final p1Id = p1 is Map ? p1['id']?.toString() : null;
+    final p2 = _game?['player2'];
+    final p2Id = p2 is Map ? p2['id']?.toString() : null;
+    final isSpectator = (p1Id != '${widget.currentUserId}' && p2Id != '${widget.currentUserId}');
+
+    if (isSpectator) {
+      GameSocketService.instance.leaveRoom();
+      widget.onBackToLobby();
+      return;
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -522,53 +535,91 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
     if (_modalShown) return;
     _modalShown = true;
 
+    final p1 = _game?['player1'];
+    final p1Name = p1 is Map ? (p1['username']?.toString() ?? 'Joueur 1') : 'Joueur 1';
+    final p1Id = p1 is Map ? p1['id']?.toString() : null;
+
+    final p2 = _game?['player2'];
+    final p2Name = p2 is Map ? (p2['username']?.toString() ?? 'Joueur 2') : 'Joueur 2';
+    final p2Id = p2 is Map ? p2['id']?.toString() : null;
+
+    final isSpectator = (p1Id != '${widget.currentUserId}' && p2Id != '${widget.currentUserId}');
+
     final winnerId = _gameOverData?['winnerId'];
     final isWin = winnerId != null && winnerId.toString() == '${widget.currentUserId}';
     final isDraw = winnerId == null || winnerId == 'draw';
 
-    final headerColor = isWin
-        ? const Color(0xFF10B981) // Green
-        : isDraw
-            ? const Color(0xFF64748B) // Slate grey
-            : const Color(0xFFEF4444); // Red
+    Color headerColor;
+    String title;
+    String subtitle;
+    IconData mainIcon;
 
-    final title = isWin
-        ? 'FÉLICITATIONS !'
-        : isDraw
-            ? 'MATCH NUL'
-            : 'DOMMAGE…';
-        
-    final subtitle = isWin
-        ? 'Vous avez remporté la victoire avec brio !'
-        : isDraw
-            ? 'Une belle partie ! Aucun vainqueur pour le moment.'
-            : 'Votre adversaire a gagné cette manche. Relevez le défi !';
+    if (isSpectator) {
+      if (isDraw) {
+        headerColor = const Color(0xFF64748B);
+        title = 'PARTIE TERMINÉE';
+        subtitle = 'Le match s\'est terminé sur un score nul.';
+        mainIcon = Icons.handshake_rounded;
+      } else {
+        final winnerName = (winnerId.toString() == p1Id) ? p1Name : p2Name;
+        headerColor = const Color(0xFF10B981);
+        title = 'VICTOIRE !';
+        subtitle = '$winnerName a remporté la partie !';
+        mainIcon = Icons.emoji_events_rounded;
+      }
+    } else {
+      headerColor = isWin
+          ? const Color(0xFF10B981) // Green
+          : isDraw
+              ? const Color(0xFF64748B) // Slate grey
+              : const Color(0xFFEF4444); // Red
 
-    final mainIcon = isWin
-        ? Icons.emoji_events_rounded
-        : isDraw
-            ? Icons.handshake_rounded
-            : Icons.sentiment_dissatisfied_rounded;
+      title = isWin
+          ? 'FÉLICITATIONS !'
+          : isDraw
+              ? 'MATCH NUL'
+              : 'DOMMAGE…';
+          
+      subtitle = isWin
+          ? 'Vous avez remporté la victoire avec brio !'
+          : isDraw
+              ? 'Une belle partie ! Aucun vainqueur pour le moment.'
+              : 'Votre adversaire a gagné cette manche. Relevez le défi !';
+
+      mainIcon = isWin
+          ? Icons.emoji_events_rounded
+          : isDraw
+              ? Icons.handshake_rounded
+              : Icons.sentiment_dissatisfied_rounded;
+    }
 
     final roundWinsSource = _gameOverData?['roundWins'] ?? _game?['roundWins'];
-    int myWins = 0;
-    int oppWins = 0;
+    int p1Wins = 0;
+    int p2Wins = 0;
     
     if (roundWinsSource != null) {
-      myWins = roundWinsSource['player${_mySymbol == 1 ? 1 : 2}'] ?? 0;
-      oppWins = roundWinsSource['player${_mySymbol == 1 ? 2 : 1}'] ?? 0;
+      p1Wins = roundWinsSource['player1'] ?? 0;
+      p2Wins = roundWinsSource['player2'] ?? 0;
     }
 
     // Dynamic score fallback if roundWins is 0 - 0 but winner is resolved
-    if (myWins == 0 && oppWins == 0 && !isDraw && winnerId != null) {
-      if (winnerId.toString() == '${widget.currentUserId}') {
-        myWins = 1;
-        oppWins = 0;
+    if (p1Wins == 0 && p2Wins == 0 && !isDraw && winnerId != null) {
+      if (winnerId.toString() == p1Id) {
+        p1Wins = 1;
+        p2Wins = 0;
       } else {
-        myWins = 0;
-        oppWins = 1;
+        p1Wins = 0;
+        p2Wins = 1;
       }
     }
+
+    final int mySlot = (p1Id == '${widget.currentUserId}') ? 1 : 2;
+    final int leftScore = isSpectator ? p1Wins : (mySlot == 1 ? p1Wins : p2Wins);
+    final int rightScore = isSpectator ? p2Wins : (mySlot == 1 ? p2Wins : p1Wins);
+    final String leftLabel = isSpectator ? p1Name : 'Vous';
+    final String rightLabel = isSpectator ? p2Name : 'Adversaire';
+    final Color leftColor = isSpectator ? const Color(0xFFEF4444) : _primaryColor;
+    final Color rightColor = isSpectator ? const Color(0xFF3B82F6) : const Color(0xFFEC4899);
 
     showGeneralDialog(
       context: context,
@@ -664,7 +715,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
                             Column(
                               children: [
                                 Text(
-                                  'Vous',
+                                  leftLabel,
                                   style: TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 13,
@@ -673,12 +724,12 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  '$myWins',
+                                  '$leftScore',
                                   style: TextStyle(
                                     fontFamily: 'Outfit',
                                     fontSize: 36,
                                     fontWeight: FontWeight.w900,
-                                    color: _primaryColor,
+                                    color: leftColor,
                                   ),
                                 ),
                               ],
@@ -702,7 +753,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
                             Column(
                               children: [
                                 Text(
-                                  'Adversaire',
+                                  rightLabel,
                                   style: TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 13,
@@ -711,12 +762,12 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  '$oppWins',
-                                  style: const TextStyle(
+                                  '$rightScore',
+                                  style: TextStyle(
                                     fontFamily: 'Outfit',
                                     fontSize: 36,
                                     fontWeight: FontWeight.w900,
-                                    color: Color(0xFFEC4899),
+                                    color: rightColor,
                                   ),
                                 ),
                               ],
@@ -1761,8 +1812,14 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
     final isComingSoon = _comingSoonGames.contains(widget.gameType);
     final entryModeText = widget.entryMode == 'paid' ? '${widget.betAmount.toStringAsFixed(2)} Tokens' : 'Mode Gratuit';
 
+    final p1 = _game?['player1'];
+    final p1Id = p1 is Map ? p1['id']?.toString() : null;
+    final p2 = _game?['player2'];
+    final p2Id = p2 is Map ? p2['id']?.toString() : null;
+    final isSpectator = (p1Id != '${widget.currentUserId}' && p2Id != '${widget.currentUserId}');
+
     return PopScope<void>(
-      canPop: isComingSoon || _phase != 'playing',
+      canPop: isComingSoon || _phase != 'playing' || isSpectator,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         _forfeitGame();
@@ -1776,7 +1833,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
                 leading: IconButton(
                   icon: Icon(Icons.arrow_back_ios_new_rounded, color: _textPrimaryColor),
                   onPressed: () {
-                    if (isComingSoon) {
+                    if (isComingSoon || isSpectator) {
                       widget.onBackToLobby();
                     } else if (_phase == 'playing') {
                       _forfeitGame();
@@ -2185,17 +2242,21 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         // Name (Top)
-        Text(
-          name,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w800,
-            color: _textPrimaryColor,
+        Container(
+          constraints: const BoxConstraints(maxWidth: 70),
+          child: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11.0,
+              fontWeight: FontWeight.w800,
+              color: _textPrimaryColor,
+            ),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         // Avatar Photo (Middle)
         Stack(
           clipBehavior: Clip.none,
@@ -2208,22 +2269,22 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
                   return Transform.scale(
                     scale: _turnRingAnimation.value,
                     child: Container(
-                      width: 38,
-                      height: 38,
+                      width: 32,
+                      height: 32,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4), width: 2.0),
+                        border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4), width: 1.5),
                       ),
                     ),
                   );
                 },
               ),
             Container(
-              width: 34,
-              height: 34,
+              width: 28,
+              height: 28,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: playerColor, width: 1.5),
+                border: Border.all(color: playerColor, width: 1.2),
               ),
               child: ClipOval(
                 child: avatar != null && avatar.isNotEmpty
@@ -2237,18 +2298,20 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
             ),
           ],
         ),
-        const SizedBox(height: 5),
+        const SizedBox(height: 3),
         // Pawn Color badge (Bottom)
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.0),
           decoration: BoxDecoration(
             color: symbolBadgeBg,
-            borderRadius: BorderRadius.circular(5),
+            borderRadius: BorderRadius.circular(4),
           ),
           child: Text(
             symbolLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 8.5,
+              fontSize: 7.5,
               fontWeight: FontWeight.bold,
               color: symbolBadgeText,
             ),
@@ -2265,7 +2328,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
         style: TextStyle(
           color: playerColor,
           fontWeight: FontWeight.bold,
-          fontSize: 13,
+          fontSize: 11.0,
         ),
       ),
     );
