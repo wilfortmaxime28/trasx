@@ -24,12 +24,22 @@ class GameSocketService {
   final _roundOverController = StreamController<Map<String, dynamic>>.broadcast();
   final _startedController = StreamController<Map<String, dynamic>>.broadcast();
   final _connectionController = StreamController<bool>.broadcast();
+  final _chatController = StreamController<Map<String, dynamic>>.broadcast();
+  final _chatLikedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _giftBroadcastController = StreamController<Map<String, dynamic>>.broadcast();
+  final _spectatorsController = StreamController<Map<String, dynamic>>.broadcast();
+  final _spectatorJoinedController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onGameStateUpdated => _stateController.stream;
   Stream<Map<String, dynamic>> get onGameOver => _gameOverController.stream;
   Stream<Map<String, dynamic>> get onRoundOver => _roundOverController.stream;
   Stream<Map<String, dynamic>> get onGameStarted => _startedController.stream;
   Stream<bool> get onConnectionChanged => _connectionController.stream;
+  Stream<Map<String, dynamic>> get onChatReceived => _chatController.stream;
+  Stream<Map<String, dynamic>> get onChatLiked => _chatLikedController.stream;
+  Stream<Map<String, dynamic>> get onGiftBroadcast => _giftBroadcastController.stream;
+  Stream<Map<String, dynamic>> get onSpectatorsUpdated => _spectatorsController.stream;
+  Stream<Map<String, dynamic>> get onSpectatorJoined => _spectatorJoinedController.stream;
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -105,6 +115,41 @@ class GameSocketService {
         _roundOverController.add(Map<String, dynamic>.from(data));
       }
     });
+
+    _socket!.on('game-chat-received', (data) {
+      debugPrint('[GameSocket] game-chat-received received');
+      if (data is Map) {
+        _chatController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    _socket!.on('game-chat-liked', (data) {
+      debugPrint('[GameSocket] game-chat-liked received');
+      if (data is Map) {
+        _chatLikedController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    _socket!.on('game-gift-broadcast', (data) {
+      debugPrint('[GameSocket] game-gift-broadcast received');
+      if (data is Map) {
+        _giftBroadcastController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    _socket!.on('game-spectators-updated', (data) {
+      debugPrint('[GameSocket] game-spectators-updated received');
+      if (data is Map) {
+        _spectatorsController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    _socket!.on('game-spectator-joined-announcement', (data) {
+      debugPrint('[GameSocket] game-spectator-joined-announcement received');
+      if (data is Map) {
+        _spectatorJoinedController.add(Map<String, dynamic>.from(data));
+      }
+    });
   }
 
   // ── Join game room ─────────────────────────────────────────────────────────
@@ -146,6 +191,71 @@ class GameSocketService {
     _socket!.emit('game-move', payload);
   }
 
+  // ── Send chat message ──────────────────────────────────────────────────────
+  void sendChatMessage({
+    required String gameId,
+    required String content,
+    String? parentId,
+    String? parentUsername,
+    String? parentContent,
+  }) {
+    _socket?.emit('game-chat-message', {
+      'gameId': gameId,
+      'content': content,
+      if (parentId != null) 'parentId': parentId,
+      if (parentUsername != null) 'parentUsername': parentUsername,
+      if (parentContent != null) 'parentContent': parentContent,
+    });
+  }
+
+  // ── Like chat message ──────────────────────────────────────────────────────
+  void likeChatMessage({
+    required String gameId,
+    required String messageId,
+  }) {
+    _socket?.emit('game-chat-like', {
+      'gameId': gameId,
+      'messageId': messageId,
+    });
+  }
+
+  // ── Send game gift ─────────────────────────────────────────────────────────
+  void sendGameGift({
+    required String gameId,
+    required int recipientId,
+    required double amount,
+  }) {
+    _socket?.emit('game-send-gift', {
+      'gameId': gameId,
+      'recipientId': recipientId,
+      'amount': amount,
+    });
+  }
+
+  // ── Emit forfeit ──────────────────────────────────────────────────────────
+  void emitForfeit({required String gameId}) {
+    _socket?.emit('game-forfeit', {'gameId': gameId});
+  }
+
+  // ── Ludo: roll the die ────────────────────────────────────────────────────
+  void emitLudoRoll({required String gameId}) {
+    _socket?.emit('game-move', {
+      'gameId': gameId,
+      'r': 0,
+      'c': 0,
+      'promotion': 'roll',
+    });
+  }
+
+  // ── Ludo: move a token ────────────────────────────────────────────────────
+  void emitLudoTokenMove({required String gameId, required int tokenIndex}) {
+    _socket?.emit('game-move', {
+      'gameId': gameId,
+      'r': tokenIndex,
+      'c': 0,
+    });
+  }
+
   // ── Dispose ───────────────────────────────────────────────────────────────
   void dispose() {
     _socket?.disconnect();
@@ -157,5 +267,10 @@ class GameSocketService {
     _roundOverController.close();
     _startedController.close();
     _connectionController.close();
+    _chatController.close();
+    _chatLikedController.close();
+    _giftBroadcastController.close();
+    _spectatorsController.close();
+    _spectatorJoinedController.close();
   }
 }

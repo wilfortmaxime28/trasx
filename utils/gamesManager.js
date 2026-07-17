@@ -291,6 +291,28 @@ class GamesManager {
 
   // Create a game session
   async createGame(creatorId, creatorInfo, gameType, opponentType, entryMode, opponentId = null, customBetAmount = 1.00, rounds = 1, liveMode = 'free', livePrice = 0.50, team1 = 'FR', team2 = 'BR', options = {}) {
+    // Automatically forfeit/cancel any stale, waiting, or bot games of this creator
+    if (creatorId) {
+      const numericId = parseInt(creatorId, 10);
+      for (const game of Object.values(this.games)) {
+        if (!['waiting', 'playing', 'invited'].includes(game.status)) continue;
+        
+        const isParticipant = this.getGameParticipants(game).some(player => player && !player.isBot && parseInt(player.id, 10) === numericId);
+        if (!isParticipant) continue;
+        
+        const isBotGame = this.getGameParticipants(game).some(player => player && player.isBot);
+        const isStale = game.createdAt && (Date.now() - game.createdAt) > 10 * 60 * 1000;
+        
+        if (game.status === 'waiting' || game.status === 'invited' || isBotGame || isStale) {
+          try {
+            await this.endGame(game.id, 'cancelled', null, true, { reason: 'auto_cancel', message: 'Partie annulée pour création d\'une nouvelle partie.' });
+          } catch (e) {
+            console.error(`[GamesManager] Error auto-cancelling game ${game.id}:`, e);
+          }
+        }
+      }
+    }
+
     if (this.isUserBusy(creatorId)) {
       throw new Error("Vous êtes déjà dans une partie ou avez une invitation en attente.");
     }
@@ -321,11 +343,11 @@ class GamesManager {
     const ludoConfig = gameType === 'ludo'
       ? this.buildLudoConfig(resolvedLudoPartyMode, 2)
       : null;
-    const normalizedEntryMode = gameType === 'ludo' ? 'free' : entryMode;
+    const normalizedEntryMode = entryMode;
     const normalizedOpponentType = gameType === 'ludo'
       ? (resolvedLudoPartyMode === 'players' ? 'player' : 'bot')
       : opponentType;
-    const isP2PInvite = gameType !== 'ludo' && normalizedOpponentType === 'player' && opponentId && !String(opponentId).startsWith('bot_');
+    const isP2PInvite = normalizedOpponentType === 'player' && opponentId && !String(opponentId).startsWith('bot_');
 
     if (isP2PInvite && this.isUserBusy(opponentId)) {
       throw new Error("Cet adversaire est déjà dans une partie ou a une invitation en attente.");

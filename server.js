@@ -2076,7 +2076,19 @@ app.post('/api/games/create-mobile', async (req, res) => {
     const user = await User.getById(currentUserId);
     if (!user) return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
 
-    const { gameType, opponentType, entryMode, betAmount, rounds, botId } = req.body || {};
+    const { gameType, opponentType, entryMode, betAmount, rounds, botId, opponentId } = req.body || {};
+
+    // Clean up any stale game sessions for this user to prevent "already busy" errors
+    const numericUserId = parseInt(currentUserId, 10);
+    Object.keys(gamesManager.games).forEach(gameId => {
+      const g = gamesManager.games[gameId];
+      if (g) {
+        const isParticipant = gamesManager.getGameParticipants(g).some(p => p && !p.isBot && parseInt(p.id, 10) === numericUserId);
+        if (isParticipant) {
+          delete gamesManager.games[gameId];
+        }
+      }
+    });
 
     const type = gameType || 'connect4';
     const oppType = opponentType || 'bot';
@@ -2084,7 +2096,7 @@ app.post('/api/games/create-mobile', async (req, res) => {
     const bet = parseFloat(betAmount || 1.00);
     const rds = parseInt(rounds || 1, 10);
     const bot_id = botId || '1';
-    const oppId = oppType === 'bot' ? `bot_${bot_id}` : null;
+    const oppId = oppType === 'bot' ? `bot_${bot_id}` : opponentId;
 
     const game = await gamesManager.createGame(
       user.id, user, type, oppType, mode, oppId, bet, rds, 'free', 0.50, 'FR', 'BR',
@@ -2098,6 +2110,45 @@ app.post('/api/games/create-mobile', async (req, res) => {
     return res.json({ success: true, gameId: game.id, gameType: game.gameType, status: game.status, board: game.board, currentPlayer: game.currentPlayer, player1: game.player1, player2: game.player2, rounds: game.rounds, currentRound: game.currentRound, roundWins: game.roundWins });
   } catch (err) {
     console.error('[Mobile Game Create Error]:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Erreur interne.' });
+  }
+});
+
+// GET /api/games/live
+// Returns all active live matches that can be spectated
+app.get('/api/games/live', async (req, res) => {
+  try {
+    const liveGames = gamesManager.getLiveGames().filter(g => g.status === 'playing' || g.status === 'waiting');
+    return res.json(liveGames);
+  } catch (err) {
+    console.error('[Get Live Games Error]:', err);
+    return res.status(500).json({ error: 'Failed to fetch live games' });
+  }
+});
+
+// GET /api/games/info/:gameId
+// Returns in-memory game state details for a specific gameId
+app.get('/api/games/info/:gameId', async (req, res) => {
+  try {
+    const game = gamesManager.games[req.params.gameId];
+    if (!game) {
+      return res.status(404).json({ success: false, error: 'Partie introuvable.' });
+    }
+    return res.json({
+      success: true,
+      gameId: game.id,
+      gameType: game.gameType,
+      status: game.status,
+      board: game.board,
+      currentPlayer: game.currentPlayer,
+      player1: game.player1,
+      player2: game.player2,
+      rounds: game.rounds,
+      currentRound: game.currentRound,
+      roundWins: game.roundWins
+    });
+  } catch (err) {
+    console.error('[Get Game Info Error]:', err);
     return res.status(500).json({ success: false, error: err.message || 'Erreur interne.' });
   }
 });
@@ -10008,6 +10059,12 @@ io.on('connection', (socket) => {
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         });
         
+        io.to(`game:${gameId}`).emit('game-gift-broadcast', {
+          senderName,
+          recipientName,
+          amount: parsedAmount
+        });
+        
         if (typeof ack === 'function') {
           ack({ success: true });
         }
@@ -10774,6 +10831,22 @@ io.on('connection', (socket) => {
       }
     } catch (err) {
       logSocketError('game-chat-delete', err);
+    }
+  });
+
+  socket.on('game-chat-like', (data) => {
+    try {
+      const currentUserId = session.userId;
+      if (!currentUserId) return;
+      const { gameId, messageId } = data || {};
+      if (!gameId || !messageId) return;
+
+      io.to(`game:${gameId}`).emit('game-chat-liked', {
+        messageId,
+        likerId: currentUserId
+      });
+    } catch (err) {
+      logSocketError('game-chat-like', err);
     }
   });
 

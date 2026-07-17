@@ -900,9 +900,9 @@ class User {
       `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar, certification_type AS certType,
               game_matches_played, game_matches_won, email
        FROM users 
-       WHERE username LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR display_name LIKE ? OR email LIKE ?
+       WHERE username LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR display_name LIKE ? OR email LIKE ? OR CONCAT(first_name, ' ', last_name) LIKE ?
        LIMIT 10`,
-      [searchQuery, searchQuery, searchQuery, searchQuery, searchQuery]
+      [searchQuery, searchQuery, searchQuery, searchQuery, searchQuery, searchQuery]
     );
     return this.attachGameStatsList(rows);
   }
