@@ -733,6 +733,13 @@ class _LudoBoardPainter extends CustomPainter {
 
   void _drawTokens(Canvas canvas, double cs) {
     final pulse = 0.75 + pulseValue * 0.25;
+
+    // Group 1: tokens that are on the track and can overlap
+    final Map<String, List<_TokenDrawInfo>> trackGroups = {};
+    
+    // Group 2: tokens at home or finished (which don't overlap or are handled separately)
+    final List<_TokenDrawInfo> specialTokens = [];
+
     for (final entry in tokenData.entries) {
       final slot = entry.key;
       if (!activeSlots.contains(slot)) continue;
@@ -741,18 +748,85 @@ class _LudoBoardPainter extends CustomPainter {
       final color = _kColors[slot]!;
       for (int i = 0; i < tokens.length; i++) {
         final step = tokens[i];
-
-        final center = _getTokenOffset(slot, step, i, cs);
-        if (center == null) continue;
-
-        final isLegal = myTurn && hasRolled && slot == mySlot && legalMoves.contains(i);
-        _drawToken(canvas, center, cs, color, i, isLegal, pulse);
+        if (step >= _kFinalStep || step == -1.0) {
+          specialTokens.add(_TokenDrawInfo(
+            slot: slot,
+            tokenIdx: i,
+            step: step,
+            color: color,
+            isLegal: myTurn && hasRolled && slot == mySlot && legalMoves.contains(i),
+          ));
+        } else {
+          final cell = _tokenToCell(slot, step.round());
+          if (cell != null) {
+            final key = "${cell.row},${cell.col}";
+            trackGroups.putIfAbsent(key, () => []).add(_TokenDrawInfo(
+              slot: slot,
+              tokenIdx: i,
+              step: step,
+              color: color,
+              isLegal: myTurn && hasRolled && slot == mySlot && legalMoves.contains(i),
+            ));
+          }
+        }
       }
+    }
+
+    // 1. Draw track groups with offsets and smaller sizes if multiple
+    trackGroups.forEach((cellKey, group) {
+      final count = group.length;
+      for (int j = 0; j < count; j++) {
+        final info = group[j];
+        
+        // Calculate offset and radius based on count
+        late Offset shift;
+        late double r;
+        if (count == 1) {
+          shift = Offset.zero;
+          r = cs * 0.35;
+        } else if (count == 2) {
+          // Slide side-by-side diagonally
+          final dir = (j == 0) ? -1.0 : 1.0;
+          shift = Offset(cs * 0.16 * dir, cs * 0.16 * dir);
+          r = cs * 0.22;
+        } else if (count == 3) {
+          // Triangle layout
+          if (j == 0) {
+            shift = Offset(-cs * 0.18, -cs * 0.18);
+          } else if (j == 1) {
+            shift = Offset(cs * 0.18, -cs * 0.18);
+          } else {
+            shift = Offset(0, cs * 0.18);
+          }
+          r = cs * 0.2;
+        } else {
+          // 2x2 grid layout
+          final dx = (j % 2 == 0) ? -cs * 0.18 : cs * 0.18;
+          final dy = (j < 2) ? -cs * 0.18 : cs * 0.18;
+          shift = Offset(dx, dy);
+          r = cs * 0.18;
+        }
+
+        final baseCenter = _getTokenOffset(info.slot, info.step, info.tokenIdx, cs);
+        if (baseCenter == null) continue;
+        final finalCenter = baseCenter + shift;
+
+        _drawToken(canvas, finalCenter, cs, info.color, info.tokenIdx, info.isLegal, pulse, r);
+      }
+    });
+
+    // 2. Draw special tokens (home and finished)
+    for (final info in specialTokens) {
+      final center = _getTokenOffset(info.slot, info.step, info.tokenIdx, cs);
+      if (center == null) continue;
+      
+      // Finished stars can be slightly smaller to fit together nicely in center triangles
+      final r = (info.step >= _kFinalStep) ? cs * 0.22 : cs * 0.35;
+      _drawToken(canvas, center, cs, info.color, info.tokenIdx, info.isLegal, pulse, r);
     }
   }
 
-  void _drawToken(Canvas canvas, Offset center, double cs, Color color, int idx, bool isLegal, double pulse) {
-    final r = cs * 0.35;
+  void _drawToken(Canvas canvas, Offset center, double cs, Color color, int idx, bool isLegal, double pulse, double r) {
     if (isLegal) {
       // Glow ring around the star
       canvas.drawCircle(
@@ -864,4 +938,23 @@ Offset _getHomeSpotOffset(int slot, int index, double cs) {
     3 => Offset(yardCenter.dx + d, yardCenter.dy + d),
     _ => yardCenter,
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Token Drawing Info Helper
+// ─────────────────────────────────────────────────────────────────────────────
+class _TokenDrawInfo {
+  final int slot;
+  final int tokenIdx;
+  final double step;
+  final Color color;
+  final bool isLegal;
+
+  _TokenDrawInfo({
+    required this.slot,
+    required this.tokenIdx,
+    required this.step,
+    required this.color,
+    required this.isLegal,
+  });
 }
