@@ -606,9 +606,66 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
   Widget build(BuildContext context) {
     final isDark = widget.isDarkMode;
     final bg = isDark ? Colors.black : Colors.white;
+    final showAppBar = _phase == 'playing' || _phase == 'over';
+    final gameTitle = widget.gameType == 'connect4' ? 'Puissance 4' : 'Gomoku';
+    final entryModeText = widget.entryMode == 'paid' ? '${widget.betAmount.toStringAsFixed(2)} Tokens' : 'Mode Gratuit';
 
     return Scaffold(
       backgroundColor: bg,
+      appBar: showAppBar
+          ? AppBar(
+              backgroundColor: bg,
+              elevation: 0,
+              leading: IconButton(
+                icon: Icon(Icons.arrow_back_ios_new_rounded, color: _textPrimaryColor),
+                onPressed: widget.onBackToLobby,
+              ),
+              centerTitle: true,
+              title: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    gameTitle,
+                    style: TextStyle(
+                      color: _textPrimaryColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    entryModeText,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: _textSecondaryColor,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                if (_phase == 'playing')
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: TextButton(
+                      onPressed: _forfeitGame,
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.redAccent,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      child: const Text(
+                        'Abandonner',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          fontFamily: 'Outfit',
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            )
+          : null,
       body: SafeArea(
         child: _phase == 'creating'
             ? _buildLoading()
@@ -683,11 +740,6 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
   Widget _buildGameUI(bool isDark) {
     return Column(
       children: [
-        // ── active-game-header ──────────────────────────────────────────
-        _buildActiveGameHeader(isDark),
-
-        const SizedBox(height: 12),
-
         // ── game-scoreboard ──────────────────────────────────────────────
         _buildGameScoreboard(isDark),
 
@@ -714,91 +766,6 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
     );
   }
 
-  Widget _buildActiveGameHeader(bool isDark) {
-    final gameTitle = widget.gameType == 'connect4' ? 'Puissance 4' : 'Gomoku';
-    final entryModeText = widget.entryMode == 'paid' ? '${widget.betAmount.toStringAsFixed(2)} Tokens' : 'Mode Gratuit';
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: _cardBgColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _borderColor, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Leave / Back button
-          GestureDetector(
-            onTap: widget.onBackToLobby,
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.arrow_back, color: _textPrimaryColor, size: 20),
-            ),
-          ),
-          const SizedBox(width: 12),
-
-          // Title & Mode Subtitle
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  gameTitle,
-                  style: TextStyle(
-                    fontFamily: 'Outfit',
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                    color: _textPrimaryColor,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  entryModeText,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: _textSecondaryColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Forfeit Button (Abandonner)
-          if (_phase == 'playing')
-            TextButton(
-              onPressed: _forfeitGame,
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.redAccent,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: Colors.redAccent, width: 1),
-                ),
-              ),
-              child: const Text(
-                'Abandonner',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, fontFamily: 'Outfit'),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildGameScoreboard(bool isDark) {
     final me = _me;
     final opp = _opponent;
@@ -815,7 +782,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: _cardBgColor,
         borderRadius: BorderRadius.circular(24),
@@ -829,6 +796,7 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
         ],
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           // Player 1 (Me)
           Expanded(
@@ -837,32 +805,13 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
               avatar: myAvatar,
               symbol: mySymbol,
               isActive: _myTurn && _phase == 'playing',
-              wins: myWins,
               isDark: isDark,
               isP1: true,
             ),
           ),
 
-          // VS circle
-          Container(
-            width: 38,
-            height: 38,
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: const Text(
-              'VS',
-              style: TextStyle(
-                fontFamily: 'Outfit',
-                fontWeight: FontWeight.w900,
-                fontSize: 14,
-                color: Colors.grey,
-              ),
-            ),
-          ),
+          // VS & Score center section
+          _buildCenterScoreSection(myWins, oppWins, isDark),
 
           // Player 2 (Opponent)
           Expanded(
@@ -871,9 +820,70 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
               avatar: oppAvatar,
               symbol: oppSymbol,
               isActive: !_myTurn && _phase == 'playing',
-              wins: oppWins,
               isDark: isDark,
               isP1: false,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCenterScoreSection(int p1Wins, int p2Wins, bool isDark) {
+    final scoreBg = isDark ? const Color(0xFF161616) : const Color(0xFFEEEEEE);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'VS',
+            style: TextStyle(
+              fontFamily: 'Outfit',
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
+              color: _textSecondaryColor.withOpacity(0.8),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: scoreBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _borderColor, width: 1),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '$p1Wins',
+                  style: TextStyle(
+                    fontFamily: 'Outfit',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: _primaryColor,
+                  ),
+                ),
+                Text(
+                  ' - ',
+                  style: TextStyle(
+                    fontFamily: 'Outfit',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: _textSecondaryColor,
+                  ),
+                ),
+                Text(
+                  '$p2Wins',
+                  style: const TextStyle(
+                    fontFamily: 'Outfit',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFFEC4899),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -886,12 +896,10 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
     String? avatar,
     required int symbol,
     required bool isActive,
-    required int wins,
     required bool isDark,
     required bool isP1,
   }) {
     final playerColor = isP1 ? _primaryColor : const Color(0xFFEC4899);
-    final score = wins.toString();
 
     final String symbolLabel = widget.gameType == 'connect4'
         ? (symbol == 1 ? 'Rouge' : 'Jaune')
@@ -905,12 +913,33 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
         ? _primaryColor
         : const Color(0xFFEC4899);
 
-    final scoreBg = isDark ? const Color(0xFF161616) : const Color(0xFFEEEEEE);
-
-    return Row(
-      textDirection: TextDirection.ltr, // Both players are aligned LTR for perfect symmetry
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Avatar stack (shows pulsing green ring on turn active)
+        // Name (Top)
+        Text(
+          name,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: _textPrimaryColor,
+          ),
+        ),
+        const SizedBox(height: 2),
+        // Level (Top)
+        Text(
+          'Niveau 1',
+          style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w600,
+            color: _textSecondaryColor,
+          ),
+        ),
+        const SizedBox(height: 6),
+        // Avatar Photo (Middle)
         Stack(
           clipBehavior: Clip.none,
           alignment: Alignment.center,
@@ -922,8 +951,8 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
                   return Transform.scale(
                     scale: _turnRingAnimation.value,
                     child: Container(
-                      width: 46,
-                      height: 46,
+                      width: 48,
+                      height: 48,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4), width: 2.5),
@@ -951,68 +980,20 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
             ),
           ],
         ),
-        const SizedBox(width: 10),
-
-        // Meta Column
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                name,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: _textPrimaryColor,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Niveau 1',
-                style: TextStyle(
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w600,
-                  color: _textSecondaryColor,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                decoration: BoxDecoration(
-                  color: symbolBadgeBg,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  symbolLabel,
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold,
-                    color: symbolBadgeText,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-
-        // Score Badge
+        const SizedBox(height: 6),
+        // Pawn Color badge (Bottom)
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
           decoration: BoxDecoration(
-            color: scoreBg,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _borderColor, width: 1),
+            color: symbolBadgeBg,
+            borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
-            score,
+            symbolLabel,
             style: TextStyle(
-              fontFamily: 'Outfit',
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: playerColor,
+              fontSize: 9,
+              fontWeight: FontWeight.bold,
+              color: symbolBadgeText,
             ),
           ),
         ),
@@ -1021,12 +1002,14 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
   }
 
   Widget _buildFallbackAvatar(String name, Color playerColor) {
-    return Text(
-      name.substring(0, name.isNotEmpty ? 1 : 0).toUpperCase(),
-      style: TextStyle(
-        color: playerColor,
-        fontWeight: FontWeight.bold,
-        fontSize: 16,
+    return Center(
+      child: Text(
+        name.substring(0, name.isNotEmpty ? 1 : 0).toUpperCase(),
+        style: TextStyle(
+          color: playerColor,
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
+        ),
       ),
     );
   }
