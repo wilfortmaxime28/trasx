@@ -100,9 +100,9 @@ class _Connect4BoardState extends State<Connect4Board>
           );
 
     return LayoutBuilder(builder: (context, constraints) {
-      // Math fix: subtract 80px (for drop buttons + padding + borders) from maxHeight to prevent any overflow
+      // Math fix: subtract 54px (for board padding + borders + safety margin) from maxWidth and 80px from maxHeight to prevent any overflow
       final cellSize = math.min(
-        (constraints.maxWidth - 32) / 7,
+        (constraints.maxWidth - 54) / 7,
         (constraints.maxHeight - 80) / 6.85,
       );
 
