@@ -685,7 +685,17 @@ class _LudoBoardPainter extends CustomPainter {
       return _getHomeSpotOffset(slot, tokenIdx, cs);
     }
     if (visualStep >= _kFinalStep) {
-      return null;
+      // Draw finished tokens stacked in the central triangle
+      final cx = cs * 7.5;
+      final cy = cs * 7.5;
+      final offset = (tokenIdx - 1.5) * cs * 0.22; // spread finished stars slightly
+      return switch (slot) {
+        1 => Offset(cx - cs * 0.8, cy + offset),
+        2 => Offset(cx + offset, cy - cs * 0.8),
+        3 => Offset(cx + cs * 0.8, cy + offset),
+        4 => Offset(cx + offset, cy + cs * 0.8),
+        _ => Offset(cx, cy),
+      };
     }
 
     if (visualStep < 0.0) {
@@ -731,7 +741,6 @@ class _LudoBoardPainter extends CustomPainter {
       final color = _kColors[slot]!;
       for (int i = 0; i < tokens.length; i++) {
         final step = tokens[i];
-        if (step >= _kFinalStep) continue;
 
         final center = _getTokenOffset(slot, step, i, cs);
         if (center == null) continue;

@@ -1820,25 +1820,6 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
                       tooltip: 'Commentaires',
                     ),
                   ],
-                  if (_phase == 'playing' && !isComingSoon)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: TextButton(
-                        onPressed: _forfeitGame,
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.redAccent,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        child: const Text(
-                          'Abandonner',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            fontFamily: 'Outfit',
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               )
             : null,
