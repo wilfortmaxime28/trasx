@@ -499,6 +499,15 @@ async function ensureWithdrawalsSchema() {
         await db.query('ALTER TABLE users ADD COLUMN kyc_dispute_admin_response VARCHAR(1000) NULL DEFAULT NULL');
       }
 
+      // Add is_online column for real-time presence persistence
+      const [isOnlineCols] = await db.query('SHOW COLUMNS FROM users LIKE ?', ['is_online']);
+      if (!isOnlineCols || isOnlineCols.length === 0) {
+        await db.query('ALTER TABLE users ADD COLUMN is_online TINYINT(1) NOT NULL DEFAULT 0 AFTER last_seen_at');
+        console.log('[Migration] Added is_online column to users table');
+      }
+      // Reset all users to offline on server start (presenceMap is empty after restart)
+      await db.query('UPDATE users SET is_online = 0 WHERE is_online = 1');
+
       // 3. Create bsc_withdrawals table
       await db.query(`
         CREATE TABLE IF NOT EXISTS bsc_withdrawals (
@@ -5654,16 +5663,19 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
       if (!onlineOnly) {
         return res.json([]);
       }
-      // Get users from in-memory presence map
+      // Get users from in-memory presence map (excludes current user)
       let onlineIds = presence.getOnlineUserIds().filter(id => id !== currentUserId);
 
       if (onlineIds.length > 0) {
         users = await User.getByIds(onlineIds);
       } else {
-        // Fallback: query DB for users seen in the last 10 minutes
-        // in case the server restarted and presenceMap is empty
+        // Fallback: query DB for users with is_online=1
+        // (set when socket connects, cleared when socket disconnects)
         const [recentRows] = await db.query(
-          `SELECT * FROM users WHERE last_seen_at >= NOW() - INTERVAL 10 MINUTE AND id != ? LIMIT 50`,
+          `SELECT id, username, first_name, last_name,
+            COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name,
+            avatar, game_matches_played, game_matches_won, is_online, last_seen_at
+           FROM users WHERE is_online = 1 AND id != ? LIMIT 50`,
           [currentUserId]
         );
         users = recentRows || [];
@@ -5682,15 +5694,8 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
     }));
 
     if (onlineOnly) {
-      // Consider users online if presenceMap says so OR if they were seen recently (last 5 min)
-      users = users.filter(u => {
-        if (u.isOnline) return true;
-        if (u.last_seen_at) {
-          const diffMs = Date.now() - new Date(u.last_seen_at).getTime();
-          return diffMs < 5 * 60 * 1000; // 5 minutes
-        }
-        return false;
-      });
+      // Keep user if presenceMap says online OR if DB field is_online=1
+      users = users.filter(u => u.isOnline || u.is_online === 1);
     }
 
     res.json(users);

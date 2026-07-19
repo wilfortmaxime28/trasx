@@ -64,6 +64,7 @@ CREATE TABLE users (
   is_verified BOOLEAN DEFAULT FALSE,
   verification_code VARCHAR(10) DEFAULT NULL,
   last_seen_at TIMESTAMP NULL DEFAULT NULL,
+  is_online TINYINT(1) NOT NULL DEFAULT 0,
   preferred_language ENUM('en', 'fr', 'es') DEFAULT 'en',
   events_status ENUM('locked', 'active') DEFAULT 'locked',
   events_followers_threshold INT DEFAULT 1000,

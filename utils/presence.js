@@ -39,8 +39,14 @@ async function markUserOnline(userId) {
   if (!id) return { isOnline: false, lastSeenAt: null };
 
   const state = getState(id);
+  const wasOffline = state.count === 0;
   state.count += 1;
   state.lastSeenAt = state.lastSeenAt || null;
+
+  // Persist online state to DB on first connection so the fallback query works
+  if (wasOffline) {
+    db.query('UPDATE users SET is_online = 1 WHERE id = ?', [id]).catch(() => {});
+  }
 
   return {
     isOnline: true,
@@ -67,7 +73,7 @@ async function markUserOffline(userId) {
   const lastSeenAt = new Date();
   state.lastSeenAt = lastSeenAt;
 
-  await db.query('UPDATE users SET last_seen_at = NOW() WHERE id = ?', [id]);
+  await db.query('UPDATE users SET last_seen_at = NOW(), is_online = 0 WHERE id = ?', [id]);
 
   return {
     isOnline: false,
