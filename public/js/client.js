@@ -29725,7 +29725,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         if (setupBotChoiceWrapper) setupBotChoiceWrapper.style.display = 'none';
         if (setupPlayerChoiceWrapper) setupPlayerChoiceWrapper.style.display = 'block';
-        await loadOnlineOpponentUsers({ keepOpen: true });
+        await loadOnlineOpponentUsers();
       }
     });
   });
@@ -29918,13 +29918,23 @@ document.addEventListener('DOMContentLoaded', () => {
     gamePlayerSearchResults.style.display = 'block';
   };
 
-  const loadOnlineOpponentUsers = async ({ keepOpen = false } = {}) => {
+  const loadOnlineOpponentUsers = async () => {
     if (!gamePlayerSearchResults) return;
     try {
       const res = await fetch('/api/users/search?onlineOnly=true');
       const users = await res.json();
       onlineOpponentUsers = Array.isArray(users) ? users : [];
-      if (keepOpen) {
+      // Re-apply current search filter if user has typed something
+      const currentQuery = gamePlayerSearchInput ? gamePlayerSearchInput.value.trim() : '';
+      if (currentQuery) {
+        const normalizedQuery = currentQuery.toLowerCase();
+        const matches = onlineOpponentUsers.filter((user) => {
+          const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim().toLowerCase();
+          const username = String(user.username || '').toLowerCase();
+          return fullName.includes(normalizedQuery) || username.includes(normalizedQuery);
+        });
+        renderGameOpponentSearchResults(matches, 'Aucun joueur en ligne ne correspond à votre recherche.');
+      } else {
         renderGameOpponentSearchResults(onlineOpponentUsers);
       }
     } catch (err) {
@@ -29933,46 +29943,30 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   if (gamePlayerSearchInput && gamePlayerSearchResults) {
-    gamePlayerSearchInput.addEventListener('focus', async () => {
-      await loadOnlineOpponentUsers({ keepOpen: true });
-    });
-
-    gamePlayerSearchInput.addEventListener('input', async (e) => {
+    // Filter the already-loaded online users list as the user types (no extra API call)
+    gamePlayerSearchInput.addEventListener('input', (e) => {
       const query = e.target.value.trim();
       if (!query) {
+        // Show full list of online users when input is cleared
         renderGameOpponentSearchResults(onlineOpponentUsers);
         return;
       }
+      const normalizedQuery = query.toLowerCase();
+      const matches = onlineOpponentUsers.filter((user) => {
+        const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim().toLowerCase();
+        const username = String(user.username || '').toLowerCase();
+        return fullName.includes(normalizedQuery) || username.includes(normalizedQuery);
+      });
+      renderGameOpponentSearchResults(matches, 'Aucun joueur en ligne ne correspond à votre recherche.');
+    });
 
-      try {
-        const normalizedQuery = query.toLowerCase();
-        // First check local online users cache for instant results
-        const onlineMatches = onlineOpponentUsers.filter((user) => {
-          const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim().toLowerCase();
-          const username = String(user.username || '').toLowerCase();
-          return fullName.includes(normalizedQuery) || username.includes(normalizedQuery);
-        });
-
-        if (onlineMatches.length > 0) {
-          renderGameOpponentSearchResults(onlineMatches);
-          // Still fetch from API in background to refresh online state
+    // Show the list again if user clicks back into the input after selecting
+    gamePlayerSearchInput.addEventListener('focus', () => {
+      if (gamePlayerSearchResults.style.display === 'none') {
+        const query = gamePlayerSearchInput.value.trim();
+        if (!query) {
+          renderGameOpponentSearchResults(onlineOpponentUsers);
         }
-
-        // Always fetch from API to get accurate results (including users online from other devices)
-        const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
-        const users = await res.json();
-        const filtered = Array.isArray(users)
-          ? users.filter(u => Number(u.id) !== Number(window.currentUserId))
-          : [];
-
-        if (filtered.length > 0) {
-          // Show all found users; mark online ones visually
-          renderGameOpponentSearchResults(filtered, 'Aucun joueur trouvé.');
-        } else if (onlineMatches.length === 0) {
-          renderGameOpponentSearchResults([], 'Aucun utilisateur trouvé.');
-        }
-      } catch (err) {
-        console.error('Error searching players:', err);
       }
     });
   }
@@ -29985,18 +29979,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (socket) {
+    // Refresh the online users list in real-time when any user goes online or offline
     socket.on('presence-updated', async (data) => {
       const playerRadio = document.querySelector('input[name="setupOpponent"]:checked');
       const playerSearchVisible = setupPlayerChoiceWrapper && setupPlayerChoiceWrapper.style.display !== 'none';
       if (playerRadio && playerRadio.value === 'player' && playerSearchVisible) {
-        await loadOnlineOpponentUsers({ keepOpen: document.activeElement === gamePlayerSearchInput });
+        await loadOnlineOpponentUsers();
       }
     });
   }
 
+  // If "Player" mode is already selected on page load, immediately show online users
   const initialOpponentRadio = document.querySelector('input[name="setupOpponent"]:checked');
   if (initialOpponentRadio && initialOpponentRadio.value === 'player') {
-    loadOnlineOpponentUsers({ keepOpen: true });
+    loadOnlineOpponentUsers();
   }
 
   // Handle pre-selected game opponent from query parameters
