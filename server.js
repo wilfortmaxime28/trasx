@@ -5642,6 +5642,7 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
   try {
     let query = req.query.q || '';
     const onlineOnly = req.query.onlineOnly === 'true';
+    const currentUserId = Number(req.session.userId);
     if (query.startsWith('@')) {
       query = query.substring(1);
     }
@@ -5653,15 +5654,26 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
       if (!onlineOnly) {
         return res.json([]);
       }
-      const onlineIds = presence.getOnlineUserIds();
+      // Get users from in-memory presence map
+      let onlineIds = presence.getOnlineUserIds().filter(id => id !== currentUserId);
+
       if (onlineIds.length > 0) {
         users = await User.getByIds(onlineIds);
       } else {
-        users = [];
+        // Fallback: query DB for users seen in the last 10 minutes
+        // in case the server restarted and presenceMap is empty
+        const [recentRows] = await db.query(
+          `SELECT * FROM users WHERE last_seen_at >= NOW() - INTERVAL 10 MINUTE AND id != ? LIMIT 50`,
+          [currentUserId]
+        );
+        users = recentRows || [];
       }
     } else {
       users = await User.search(query);
     }
+
+    // Exclude current user from results
+    users = users.filter(u => Number(u.id) !== currentUserId);
 
     // Map online state to all users
     users = users.map(u => ({
@@ -5670,7 +5682,15 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
     }));
 
     if (onlineOnly) {
-      users = users.filter(u => u.isOnline);
+      // Consider users online if presenceMap says so OR if they were seen recently (last 5 min)
+      users = users.filter(u => {
+        if (u.isOnline) return true;
+        if (u.last_seen_at) {
+          const diffMs = Date.now() - new Date(u.last_seen_at).getTime();
+          return diffMs < 5 * 60 * 1000; // 5 minutes
+        }
+        return false;
+      });
     }
 
     res.json(users);

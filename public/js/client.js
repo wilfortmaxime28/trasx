@@ -29877,6 +29877,10 @@ document.addEventListener('DOMContentLoaded', () => {
     filtered.forEach(user => {
       const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username || 'Utilisateur';
       const levelLine = formatPlayerLevelLine(user, { includeTitle: true });
+      const isOnline = !!user.isOnline;
+      const statusLabel = isOnline
+        ? `<span style="flex-shrink: 0; font-size: 0.72rem; font-weight: 700; color: #10b981;">En ligne</span>`
+        : `<span style="flex-shrink: 0; font-size: 0.72rem; font-weight: 600; color: var(--text-muted);">Hors ligne</span>`;
       const row = document.createElement('div');
       row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.2s;';
       row.innerHTML = `
@@ -29888,7 +29892,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(levelLine)}</div>
           </div>
         </div>
-        <span style="flex-shrink: 0; font-size: 0.72rem; font-weight: 700; color: #10b981;">En ligne</span>
+        ${statusLabel}
       `;
       row.addEventListener('mouseenter', () => {
         row.style.background = 'rgba(255, 255, 255, 0.05)';
@@ -29900,7 +29904,8 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedOpponentPlayerId = user.id;
         if (selectedGameOpponentAvatar) selectedGameOpponentAvatar.src = user.avatar || '/assets/avatar_placeholder.jpg';
         if (selectedGameOpponentName) selectedGameOpponentName.textContent = fullName;
-        if (selectedGameOpponentUsername) selectedGameOpponentUsername.textContent = `@${user.username} • En ligne • ${formatPlayerLevelChip(user)}`;
+        const statusText = isOnline ? 'En ligne' : 'Hors ligne';
+        if (selectedGameOpponentUsername) selectedGameOpponentUsername.textContent = `@${user.username} • ${statusText} • ${formatPlayerLevelChip(user)}`;
         if (selectedGameOpponentWrapper) selectedGameOpponentWrapper.style.display = 'flex';
 
         gamePlayerSearchResults.innerHTML = '';
@@ -29941,6 +29946,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
         const normalizedQuery = query.toLowerCase();
+        // First check local online users cache for instant results
         const onlineMatches = onlineOpponentUsers.filter((user) => {
           const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim().toLowerCase();
           const username = String(user.username || '').toLowerCase();
@@ -29949,22 +29955,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (onlineMatches.length > 0) {
           renderGameOpponentSearchResults(onlineMatches);
-          return;
+          // Still fetch from API in background to refresh online state
         }
 
+        // Always fetch from API to get accurate results (including users online from other devices)
         const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
         const users = await res.json();
         const filtered = Array.isArray(users)
           ? users.filter(u => Number(u.id) !== Number(window.currentUserId))
           : [];
 
-        const activeOnlineMatches = filtered.filter(u => u.isOnline);
-
-        if (activeOnlineMatches.length > 0) {
-          renderGameOpponentSearchResults(activeOnlineMatches);
-        } else if (filtered.length > 0) {
-          renderGameOpponentSearchResults([], "Cet utilisateur existe mais il est hors ligne. Contactez-le pour qu'il vienne se connecter.");
-        } else {
+        if (filtered.length > 0) {
+          // Show all found users; mark online ones visually
+          renderGameOpponentSearchResults(filtered, 'Aucun joueur trouvé.');
+        } else if (onlineMatches.length === 0) {
           renderGameOpponentSearchResults([], 'Aucun utilisateur trouvé.');
         }
       } catch (err) {
