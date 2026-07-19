@@ -5663,22 +5663,32 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
       if (!onlineOnly) {
         return res.json([]);
       }
-      // Get users from in-memory presence map (excludes current user)
-      let onlineIds = presence.getOnlineUserIds().filter(id => id !== currentUserId);
+
+      // Step 1: try in-memory presenceMap (fastest, most accurate)
+      const onlineIds = presence.getOnlineUserIds().filter(id => id !== currentUserId);
 
       if (onlineIds.length > 0) {
         users = await User.getByIds(onlineIds);
       } else {
-        // Fallback: query DB for users with is_online=1
-        // (set when socket connects, cleared when socket disconnects)
-        const [recentRows] = await db.query(
-          `SELECT id, username, first_name, last_name,
-            COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name,
-            avatar, game_matches_played, game_matches_won, is_online, last_seen_at
-           FROM users WHERE is_online = 1 AND id != ? LIMIT 50`,
-          [currentUserId]
-        );
-        users = recentRows || [];
+        // Step 2: fallback to DB — users seen in last 3 minutes
+        // last_seen_at is now updated on socket CONNECT (not just disconnect)
+        // so this accurately reflects who is currently online
+        try {
+          const [recentRows] = await db.query(
+            `SELECT id, username, first_name, last_name,
+              COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name,
+              avatar, game_matches_played, game_matches_won, last_seen_at
+             FROM users
+             WHERE last_seen_at >= NOW() - INTERVAL 3 MINUTE
+               AND id != ?
+             LIMIT 50`,
+            [currentUserId]
+          );
+          users = recentRows || [];
+        } catch (dbErr) {
+          console.error('Fallback presence query error:', dbErr.message);
+          users = [];
+        }
       }
     } else {
       users = await User.search(query);
@@ -5687,15 +5697,17 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
     // Exclude current user from results
     users = users.filter(u => Number(u.id) !== currentUserId);
 
-    // Map online state to all users
-    users = users.map(u => ({
-      ...u,
-      isOnline: presence.isUserOnline(u.id)
-    }));
+    // Map online state: presenceMap has priority, then check last_seen_at recency (3 min)
+    users = users.map(u => {
+      const inPresenceMap = presence.isUserOnline(u.id);
+      const recentlySeen = u.last_seen_at
+        ? (Date.now() - new Date(u.last_seen_at).getTime()) < 3 * 60 * 1000
+        : false;
+      return { ...u, isOnline: inPresenceMap || recentlySeen };
+    });
 
     if (onlineOnly) {
-      // Keep user if presenceMap says online OR if DB field is_online=1
-      users = users.filter(u => u.isOnline || u.is_online === 1);
+      users = users.filter(u => u.isOnline);
     }
 
     res.json(users);
