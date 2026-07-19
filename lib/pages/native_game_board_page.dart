@@ -2588,64 +2588,11 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
     final p1Name = _game?['player1']?['username']?.toString() ?? 'Joueur 1';
     final p2Name = _game?['player2']?['username']?.toString() ?? 'Joueur 2';
 
-    return Column(
-      children: [
-        // Scoreboard
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          color: widget.isDarkMode ? const Color(0xFF0F172A) : Colors.white,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildScorePanel(
-                name: p1Name,
-                score: p1Score,
-                color: const Color(0xFFEF4444),
-              ),
-              Column(
-                children: [
-                  Text(
-                    'VS',
-                    style: TextStyle(
-                      color: widget.isDarkMode ? Colors.white54 : Colors.black54,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Outfit',
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: widget.isDarkMode ? Colors.white10 : Colors.black12,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'Baby-foot',
-                      style: TextStyle(
-                        color: widget.isDarkMode ? Colors.white70 : Colors.black87,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'Outfit',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              _buildScorePanel(
-                name: p2Name,
-                score: p2Score,
-                color: const Color(0xFF3B82F6),
-              ),
-            ],
-          ),
-        ),
-        // Pitch
-        Expanded(
-          child: Container(
-            color: widget.isDarkMode ? const Color(0xFF0D0D1A) : const Color(0xFFF1F5F9),
-            padding: const EdgeInsets.all(16),
-            child: Center(
+    return Expanded(
+      child: Container(
+        color: widget.isDarkMode ? const Color(0xFF0D0D1A) : const Color(0xFFF1F5F9),
+        padding: const EdgeInsets.all(16),
+        child: Center(
               child: TableFootballBoard(
                 game: _game!,
                 mySlot: mySlot,
@@ -2682,12 +2629,10 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
                     );
                   }
                 },
-              ),
             ),
           ),
         ),
-      ],
-    );
+      );
   }
 
   Widget _buildScorePanel({required String name, required int score, required Color color}) {
