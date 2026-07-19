@@ -499,15 +499,6 @@ async function ensureWithdrawalsSchema() {
         await db.query('ALTER TABLE users ADD COLUMN kyc_dispute_admin_response VARCHAR(1000) NULL DEFAULT NULL');
       }
 
-      // Add is_online column for real-time presence persistence
-      const [isOnlineCols] = await db.query('SHOW COLUMNS FROM users LIKE ?', ['is_online']);
-      if (!isOnlineCols || isOnlineCols.length === 0) {
-        await db.query('ALTER TABLE users ADD COLUMN is_online TINYINT(1) NOT NULL DEFAULT 0 AFTER last_seen_at');
-        console.log('[Migration] Added is_online column to users table');
-      }
-      // Reset all users to offline on server start (presenceMap is empty after restart)
-      await db.query('UPDATE users SET is_online = 0 WHERE is_online = 1');
-
       // 3. Create bsc_withdrawals table
       await db.query(`
         CREATE TABLE IF NOT EXISTS bsc_withdrawals (
@@ -5663,48 +5654,25 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
       if (!onlineOnly) {
         return res.json([]);
       }
-
-      // Step 1: try in-memory presenceMap (fastest, most accurate)
+      // Utilise la fonction de présence en temps réel déjà disponible
       const onlineIds = presence.getOnlineUserIds().filter(id => id !== currentUserId);
-
       if (onlineIds.length > 0) {
         users = await User.getByIds(onlineIds);
       } else {
-        // Step 2: fallback to DB — users seen in last 3 minutes
-        // last_seen_at is now updated on socket CONNECT (not just disconnect)
-        // so this accurately reflects who is currently online
-        try {
-          const [recentRows] = await db.query(
-            `SELECT id, username, first_name, last_name,
-              COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name,
-              avatar, game_matches_played, game_matches_won, last_seen_at
-             FROM users
-             WHERE last_seen_at >= NOW() - INTERVAL 3 MINUTE
-               AND id != ?
-             LIMIT 50`,
-            [currentUserId]
-          );
-          users = recentRows || [];
-        } catch (dbErr) {
-          console.error('Fallback presence query error:', dbErr.message);
-          users = [];
-        }
+        users = [];
       }
     } else {
       users = await User.search(query);
     }
 
-    // Exclude current user from results
+    // Exclure l'utilisateur courant
     users = users.filter(u => Number(u.id) !== currentUserId);
 
-    // Map online state: presenceMap has priority, then check last_seen_at recency (3 min)
-    users = users.map(u => {
-      const inPresenceMap = presence.isUserOnline(u.id);
-      const recentlySeen = u.last_seen_at
-        ? (Date.now() - new Date(u.last_seen_at).getTime()) < 3 * 60 * 1000
-        : false;
-      return { ...u, isOnline: inPresenceMap || recentlySeen };
-    });
+    // Map l'état en ligne à l'aide de la fonction globale de présence en temps réel
+    users = users.map(u => ({
+      ...u,
+      isOnline: presence.isUserOnline(u.id)
+    }));
 
     if (onlineOnly) {
       users = users.filter(u => u.isOnline);

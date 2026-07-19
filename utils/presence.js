@@ -39,19 +39,8 @@ async function markUserOnline(userId) {
   if (!id) return { isOnline: false, lastSeenAt: null };
 
   const state = getState(id);
-  const wasOffline = state.count === 0;
   state.count += 1;
-  state.lastSeenAt = new Date();
-
-  // CRITICAL: update last_seen_at in DB on every new connection
-  // This is what makes the fallback query work (last_seen_at >= NOW() - INTERVAL X MINUTE)
-  db.query(
-    'UPDATE users SET last_seen_at = NOW(), is_online = 1 WHERE id = ?',
-    [id]
-  ).catch(() => {
-    // is_online column may not exist yet (migration pending), retry with just last_seen_at
-    db.query('UPDATE users SET last_seen_at = NOW() WHERE id = ?', [id]).catch(() => {});
-  });
+  state.lastSeenAt = state.lastSeenAt || null;
 
   return {
     isOnline: true,
@@ -78,12 +67,7 @@ async function markUserOffline(userId) {
   const lastSeenAt = new Date();
   state.lastSeenAt = lastSeenAt;
 
-  db.query(
-    'UPDATE users SET last_seen_at = NOW(), is_online = 0 WHERE id = ?',
-    [id]
-  ).catch(() => {
-    db.query('UPDATE users SET last_seen_at = NOW() WHERE id = ?', [id]).catch(() => {});
-  });
+  await db.query('UPDATE users SET last_seen_at = NOW() WHERE id = ?', [id]);
 
   return {
     isOnline: false,
@@ -115,18 +99,6 @@ function getOnlineUserIds() {
   }
   return ids;
 }
-
-// Heartbeat: refresh last_seen_at in DB every 2 minutes for all connected users
-// This keeps the fallback query working for long sessions
-setInterval(() => {
-  const onlineIds = getOnlineUserIds();
-  if (onlineIds.length === 0) return;
-  const placeholders = onlineIds.map(() => '?').join(', ');
-  db.query(
-    `UPDATE users SET last_seen_at = NOW() WHERE id IN (${placeholders})`,
-    onlineIds
-  ).catch(() => {});
-}, 2 * 60 * 1000); // every 2 minutes
 
 module.exports = {
   markUserOnline,
