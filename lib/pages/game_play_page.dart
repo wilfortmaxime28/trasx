@@ -1,14 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'native_game_board_page.dart';
-
+import '../services/game_socket_service.dart';
 
 class GamePlayPage extends StatefulWidget {
   final int currentUserId;
   final String? currentUserAvatar;
-  final String view; // e.g. "games"
+  final String view;
   final int? opponentId;
   final String? opponentName;
   final String? opponentAvatar;
@@ -37,16 +38,24 @@ class _GamePlayPageState extends State<GamePlayPage> {
   late final WebViewController _controller;
   bool _isLoading = false;
   bool _showNativeLobby = true;
-  bool _showNativeBoard = false; // true when playing native connect4/gomoku
   String? _errorMsg;
 
   // Selected game options
-  String _selectedGame = 'connect4'; // connect4, gomoku, ludo, tablefootball, echecs
+  String _selectedGame = 'connect4';
   String _opponentType = 'bot'; // bot, player
   String _botDifficulty = '1'; // 1=easy, 2=medium, 3=hard
   String _entryMode = 'free'; // free, paid
   double _betAmount = 1.00;
   int _rounds = 1;
+  String _selectedTeam1 = 'BR';
+  String _selectedTeam2 = 'FR';
+
+  // Tab navigation & Live Matches state
+  int _activeTab = 0; // 0 = Jouer & Défier, 1 = Matchs en direct
+  int? _selectedOpponentId;
+  String? _selectedOpponentName;
+  String? _selectedOpponentAvatar;
+  String? _selectedOpponentUsername;
 
   // Search and online players state variables
   final TextEditingController _searchController = TextEditingController();
@@ -55,46 +64,104 @@ class _GamePlayPageState extends State<GamePlayPage> {
   bool _isSearching = false;
   bool _isLoadingUsers = false;
   String _searchQuery = '';
+  Timer? _pollTimer;
+  StreamSubscription? _presenceSub;
 
-  // Tab navigation & Live Matches state
-  int _activeTab = 0; // 0 = Création, 1 = Matchs en direct
-  int? _selectedOpponentId;
   List<dynamic> _liveMatches = [];
   bool _isLoadingLiveMatches = false;
 
   /// Games rendered natively (no WebView)
   static const _nativeBoardGames = {'connect4', 'gomoku', 'ludo', 'tablefootball', 'echecs'};
 
+  static const Map<String, String> _footballTeams = {
+    'FR': '🇫🇷 France',
+    'BR': '🇧🇷 Brésil',
+    'AR': '🇦🇷 Argentine',
+    'DE': '🇩🇪 Allemagne',
+    'ES': '🇪🇸 Espagne',
+    'IT': '🇮🇹 Italie',
+    'PT': '🇵🇹 Portugal',
+    'GB': '🇬🇧 Angleterre',
+    'MA': '🇲🇦 Maroc',
+    'SN': '🇸🇳 Sénégal',
+    'BE': '🇧🇪 Belgique',
+    'NL': '🇳🇱 Pays-Bas',
+    'HR': '🇭🇷 Croatie',
+    'UY': '🇺🇾 Uruguay',
+    'CO': '🇨🇴 Colombie',
+    'US': '🇺🇸 États-Unis',
+    'MX': '🇲🇽 Mexique',
+    'CM': '🇨🇲 Cameroun',
+    'CI': '🇨🇮 Côte d\'Ivoire',
+    'DZ': '🇩🇿 Algérie',
+    'TN': '🇹🇳 Tunisie',
+    'EG': '🇪🇬 Égypte',
+    'JP': '🇯🇵 Japon',
+    'KR': '🇰🇷 Corée du Sud',
+    'SA': '🇸🇦 Arabie Saoudite',
+    'CH': '🇨🇭 Suisse',
+    'DK': '🇩🇰 Danemark',
+    'SE': '🇸🇪 Suède',
+    'NO': '🇳🇴 Norvège',
+    'PL': '🇵🇱 Pologne',
+    'UA': '🇺🇦 Ukraine',
+    'TR': '🇹🇷 Turquie',
+    'CA': '🇨🇦 Canada',
+    'CL': '🇨🇱 Chili',
+    'AU': '🇦🇺 Australie',
+    'NG': '🇳🇬 Nigéria',
+    'GH': '🇬🇭 Ghana',
+    'AT': '🇦🇹 Autriche',
+    'RO': '🇷🇴 Roumanie',
+    'HU': '🇭🇺 Hongrie',
+    'EC': '🇪🇨 Équateur',
+    'PE': '🇵🇪 Pérou',
+    'PY': '🇵🇾 Paraguay',
+    'VE': '🇻🇪 Venezuela',
+    'BO': '🇧🇴 Bolivie',
+    'QA': '🇶🇦 Qatar',
+    'IR': '🇮🇷 Iran',
+    'NZ': '🇳🇿 Nouvelle-Zélande',
+    'ZA': '🇿🇦 Afrique du Sud',
+    'IE': '🇮🇪 Irlande',
+    'HT': '🇭🇹 Haïti'
+  };
+
   final Map<String, Map<String, dynamic>> _gameDetails = {
     'connect4': {
       'title': 'Puissance 4',
-      'desc': 'Alignez 4 jetons pour vaincre votre adversaire.',
-      'icon': Icons.grid_3x3_outlined,
-      'gradient': [const Color(0xFFEF4444), const Color(0xFFF97316)],
-    },
-    'gomoku': {
-      'title': 'Gomoku',
-      'desc': 'Alignez 5 pierres sur le plateau.',
-      'icon': Icons.grid_on_outlined,
-      'gradient': [const Color(0xFF3B82F6), const Color(0xFF06B6D4)],
-    },
-    'ludo': {
-      'title': 'Ludo',
-      'desc': 'Jeu de société traditionnel à 2 joueurs.',
-      'icon': Icons.casino_outlined,
-      'gradient': [const Color(0xFFEAB308), const Color(0xFFF97316)],
+      'subtitle': 'Alignez 4 jetons',
+      'tag': 'POPULAIRE',
+      'icon': Icons.grid_3x3_rounded,
+      'color': const Color(0xFFFE2C55),
     },
     'tablefootball': {
       'title': 'Baby-foot',
-      'desc': 'Un match intense de football de table.',
-      'icon': Icons.sports_soccer_outlined,
-      'gradient': [const Color(0xFF10B981), const Color(0xFF14B8A6)],
+      'subtitle': 'Duel de football 1v1',
+      'tag': 'FOOTBALL',
+      'icon': Icons.sports_soccer_rounded,
+      'color': const Color(0xFF10B981),
+    },
+    'gomoku': {
+      'title': 'Gomoku',
+      'subtitle': '5 pierres alignées',
+      'tag': 'STRATÉGIE',
+      'icon': Icons.grain_rounded,
+      'color': const Color(0xFF38BDF8),
+    },
+    'ludo': {
+      'title': 'Ludo',
+      'subtitle': 'Jeu des petits chevaux',
+      'tag': 'MULTIJOUEUR',
+      'icon': Icons.casino_rounded,
+      'color': const Color(0xFFF59E0B),
     },
     'echecs': {
       'title': 'Échecs',
-      'desc': 'Stratégie et tactique classiques.',
-      'icon': Icons.emoji_events_outlined,
-      'gradient': [const Color(0xFF8B5CF6), const Color(0xFFEC4899)],
+      'subtitle': 'Tactique & réflexion',
+      'tag': 'CLASSIQUE',
+      'icon': Icons.psychology_rounded,
+      'color': const Color(0xFFA855F7),
     },
   };
 
@@ -113,10 +180,8 @@ class _GamePlayPageState extends State<GamePlayPage> {
               });
             }
           },
-          onPageStarted: (String url) {
-            // Keep WebView rendering visible as early as possible
-          },
-          onPageFinished: (String url) {
+          onPageStarted: (_) {},
+          onPageFinished: (_) {
             if (_isLoading && mounted) {
               setState(() {
                 _isLoading = false;
@@ -129,12 +194,65 @@ class _GamePlayPageState extends State<GamePlayPage> {
         ),
       );
 
-    // If an opponent or custom view is pre-provided, bypass native lobby
     if (widget.opponentId != null || widget.view != 'games') {
       _showNativeLobby = false;
       _isLoading = true;
       _authenticateAndLoadUrl();
+    } else {
+      _fetchOnlineUsers();
+      _fetchLiveMatches();
+
+      // Real-time socket presence connection & listener
+      GameSocketService.instance.connect(userId: widget.currentUserId);
+      _presenceSub = GameSocketService.instance.onPresenceUpdated.listen((data) {
+        if (mounted && _showNativeLobby) {
+          debugPrint('[GameLobby] Real-time presence update received: $data');
+          _fetchOnlineUsers();
+        }
+      });
+
+      // Background periodic polling fallback
+      _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+        if (mounted && _showNativeLobby) {
+          _fetchOnlineUsers();
+          if (_activeTab == 1) {
+            _fetchLiveMatches();
+          }
+        }
+      });
     }
+  }
+
+  @override
+  void dispose() {
+    _presenceSub?.cancel();
+    _pollTimer?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  /// Compact number formatter (e.g. 999 -> 999, 1200 -> 1.2K, 15000 -> 15K, 1200000 -> 1.2M)
+  String _formatCompactNumber(num number) {
+    if (number >= 1000000000) {
+      final val = number / 1000000000;
+      return '${val.toStringAsFixed(val >= 10 ? 0 : 1).replaceAll(RegExp(r'\.0$'), '')}B';
+    }
+    if (number >= 1000000) {
+      final val = number / 1000000;
+      return '${val.toStringAsFixed(val >= 10 ? 0 : 1).replaceAll(RegExp(r'\.0$'), '')}M';
+    }
+    if (number >= 1000) {
+      final val = number / 1000;
+      return '${val.toStringAsFixed(val >= 10 ? 0 : 1).replaceAll(RegExp(r'\.0$'), '')}K';
+    }
+    return number.toString();
+  }
+
+  String? _formatAvatarUrl(String? avatarPath) {
+    if (avatarPath == null || avatarPath.isEmpty) return null;
+    if (avatarPath.startsWith('http')) return avatarPath;
+    final cleanPath = avatarPath.startsWith('/') ? avatarPath : '/$avatarPath';
+    return 'https://trasx.com$cleanPath';
   }
 
   Future<void> _authenticateAndLoadUrl({
@@ -147,7 +265,6 @@ class _GamePlayPageState extends State<GamePlayPage> {
     String? botId,
   }) async {
     try {
-      // 1. Call api/auth/mobile-token to get signed signature
       final response = await http.get(
         Uri.parse('https://trasx.com/api/auth/mobile-token'),
         headers: {
@@ -168,7 +285,6 @@ class _GamePlayPageState extends State<GamePlayPage> {
       final String token = data['token'];
       final int timestamp = data['timestamp'];
 
-      // 2. Build authenticated session login URL
       var sessionUrl = 'https://trasx.com/api/auth/mobile-session'
           '?userId=${widget.currentUserId}'
           '&token=$token'
@@ -184,6 +300,9 @@ class _GamePlayPageState extends State<GamePlayPage> {
             '&betAmount=$betAmount'
             '&rounds=$rounds'
             '&botId=$botId';
+        if (gameType == 'tablefootball') {
+          sessionUrl += '&team1=$_selectedTeam1&team2=$_selectedTeam2';
+        }
       }
 
       if (widget.opponentId != null) {
@@ -199,7 +318,6 @@ class _GamePlayPageState extends State<GamePlayPage> {
         sessionUrl += '&opponentUsername=${Uri.encodeComponent(widget.opponentUsername!)}';
       }
 
-      // 3. Load URL in WebViewController
       await _controller.loadRequest(Uri.parse(sessionUrl));
     } catch (e) {
       if (mounted) {
@@ -211,8 +329,21 @@ class _GamePlayPageState extends State<GamePlayPage> {
     }
   }
 
-  void _startGame() {
-    // Native board games use NativeGameBoardPage
+  void _startGame({int? directOpponentId}) {
+    final opponentIdToUse = directOpponentId ?? (_opponentType == 'player' ? _selectedOpponentId : null);
+
+    if (_opponentType == 'player' && opponentIdToUse == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Sélectionnez un joueur à défier.'),
+          backgroundColor: const Color(0xFF262626),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+      return;
+    }
+
     if (_nativeBoardGames.contains(_selectedGame)) {
       Navigator.push(
         context,
@@ -228,16 +359,18 @@ class _GamePlayPageState extends State<GamePlayPage> {
             botDifficulty: _botDifficulty,
             isDarkMode: widget.isDarkMode,
             onBackToLobby: () => Navigator.pop(context),
-            opponentId: _opponentType == 'player' ? _selectedOpponentId : null,
+            opponentId: opponentIdToUse,
+            team1: _selectedGame == 'tablefootball' ? _selectedTeam1 : null,
+            team2: _selectedGame == 'tablefootball' ? _selectedTeam2 : null,
           ),
         ),
       );
       return;
     }
+
     setState(() {
       _isLoading = true;
       _showNativeLobby = false;
-      _showNativeBoard = false;
       _errorMsg = null;
     });
 
@@ -264,19 +397,6 @@ class _GamePlayPageState extends State<GamePlayPage> {
     });
 
     _authenticateAndLoadUrl(createGame: false);
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  String? _formatAvatarUrl(String? avatarPath) {
-    if (avatarPath == null || avatarPath.isEmpty) return null;
-    if (avatarPath.startsWith('http')) return avatarPath;
-    final cleanPath = avatarPath.startsWith('/') ? avatarPath : '/$avatarPath';
-    return 'https://trasx.com$cleanPath';
   }
 
   Future<void> _fetchOnlineUsers() async {
@@ -384,252 +504,14 @@ class _GamePlayPageState extends State<GamePlayPage> {
     }
   }
 
-  Widget _buildPlayersList(bool isDark, Color textColor) {
-    if (_searchQuery.isNotEmpty && _isSearching) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(16.0),
-          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF673DE6)),
-        ),
-      );
-    }
-
-    if (_searchQuery.isEmpty && _isLoadingUsers) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(16.0),
-          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF673DE6)),
-        ),
-      );
-    }
-
-    final list = _searchQuery.isNotEmpty ? _searchResults : _onlineUsers;
-
-    if (list.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _searchQuery.isNotEmpty ? Icons.search_off_rounded : Icons.people_outline_rounded,
-                color: Colors.grey,
-                size: 28,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _searchQuery.isNotEmpty
-                    ? 'Aucun joueur trouvé'
-                    : 'Aucun joueur en ligne actuellement',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.all(8),
-      itemCount: list.length,
-      separatorBuilder: (context, index) => Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
-      itemBuilder: (context, index) {
-        final player = list[index];
-        final name = player['first_name'] != null || player['last_name'] != null
-            ? '${player['first_name'] ?? ''} ${player['last_name'] ?? ''}'.trim()
-            : player['username'] ?? 'Joueur';
-        final username = player['username'] ?? '';
-        final avatar = player['avatar'] != null ? _formatAvatarUrl(player['avatar'].toString()) : null;
-        
-        final bool isOnline = player['isOnline'] == true || player['is_online'] == true;
-
-        final playerId = int.tryParse(player['id']?.toString() ?? '');
-        final isSelected = _selectedOpponentId == playerId;
-
-        return GestureDetector(
-          onTap: () {
-            setState(() {
-              _selectedOpponentId = playerId;
-            });
-          },
-          child: Container(
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? (isDark ? const Color(0xFF673DE6).withOpacity(0.15) : const Color(0xFF673DE6).withOpacity(0.08))
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-            child: Row(
-              children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(avatar) : null,
-                child: avatar == null || avatar.isEmpty
-                    ? Text(name.substring(0, 1).toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))
-                    : null,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Text(
-                          '@$username',
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 11,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isOnline ? const Color(0xFF22C55E) : Colors.redAccent,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          isOnline ? 'En ligne' : 'N\'est pas en ligne',
-                          style: TextStyle(
-                            color: isOnline ? const Color(0xFF22C55E) : Colors.redAccent,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (isOnline)
-                Container(
-                  height: 30,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF833AB4),
-                        Color(0xFFC13584),
-                        Color(0xFFE1306C),
-                        Color(0xFFFD1D1D),
-                        Color(0xFFF77737),
-                        Color(0xFFFCAF45),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.all(1.2),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF0F0F0F) : Colors.white,
-                      borderRadius: BorderRadius.circular(7.0),
-                    ),
-                    child: TextButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => NativeGameBoardPage(
-                              currentUserId: widget.currentUserId,
-                              currentUserAvatar: widget.currentUserAvatar,
-                              gameType: _selectedGame,
-                              opponentType: 'player',
-                              entryMode: _entryMode,
-                              betAmount: _betAmount,
-                              rounds: _rounds,
-                              botDifficulty: _botDifficulty,
-                              opponentId: int.tryParse(player['id']?.toString() ?? ''),
-                              isDarkMode: widget.isDarkMode,
-                              onBackToLobby: () => Navigator.pop(context),
-                            ),
-                          ),
-                        );
-                      },
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: ShaderMask(
-                        shaderCallback: (bounds) => const LinearGradient(
-                          colors: [
-                            Color(0xFF833AB4),
-                            Color(0xFFC13584),
-                            Color(0xFFE1306C),
-                            Color(0xFFFD1D1D),
-                            Color(0xFFF77737),
-                            Color(0xFFFCAF45),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ).createShader(bounds),
-                        child: const Text(
-                          'Défier',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-              else
-                Container(
-                  height: 30,
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.04),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    'Indisponible',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
-    },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_showNativeLobby) {
       return Scaffold(
-        backgroundColor: widget.isDarkMode ? const Color(0xFF0B0F19) : const Color(0xFFF4F6FA),
-        body: _buildNativeLobby(),
+        backgroundColor: widget.isDarkMode ? const Color(0xFF0F1117) : const Color(0xFFF6F8FB),
+        body: _buildLobbyContent(),
       );
     }
-
-    // WebView integration for other games (ludo, chess, etc.)
 
     final body = Stack(
       children: [
@@ -637,26 +519,30 @@ class _GamePlayPageState extends State<GamePlayPage> {
         if (_isLoading)
           const Center(
             child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6F63FF)),
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFE2C55)),
             ),
           ),
         if (_errorMsg != null)
           Container(
-            color: const Color(0xFF121317),
+            color: widget.isDarkMode ? const Color(0xFF0F1117) : Colors.white,
             child: Center(
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error_outline, color: Colors.redAccent, size: 64),
+                    const Icon(Icons.error_outline_rounded, color: Color(0xFFFE2C55), size: 48),
                     const SizedBox(height: 16),
                     Text(
                       _errorMsg!,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      style: TextStyle(
+                        color: widget.isDarkMode ? Colors.white : Colors.black87,
+                        fontSize: 14,
+                        fontFamily: 'Outfit',
+                      ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
                     ElevatedButton(
                       onPressed: () {
                         setState(() {
@@ -670,12 +556,10 @@ class _GamePlayPageState extends State<GamePlayPage> {
                         }
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6F63FF),
+                        backgroundColor: const Color(0xFFFE2C55),
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       child: const Text('Réessayer'),
                     ),
@@ -684,22 +568,22 @@ class _GamePlayPageState extends State<GamePlayPage> {
               ),
             ),
           ),
-        // Floating Back Button to exit gameplay and return to native lobby
         Positioned(
           top: 16,
           left: 16,
           child: SafeArea(
-            child: FloatingActionButton.small(
-              backgroundColor: const Color(0xFF673DE6),
-              foregroundColor: Colors.white,
-              elevation: 4,
-              onPressed: () {
-                setState(() {
-                  _showNativeLobby = true;
-                  _isLoading = false;
-                });
-              },
-              child: const Icon(Icons.arrow_back),
+            child: Material(
+              color: Colors.black.withValues(alpha: 0.5),
+              shape: const CircleBorder(),
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+                onPressed: () {
+                  setState(() {
+                    _showNativeLobby = true;
+                    _isLoading = false;
+                  });
+                },
+              ),
             ),
           ),
         ),
@@ -713,838 +597,1315 @@ class _GamePlayPageState extends State<GamePlayPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'TrasX Games',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Outfit',
-          ),
+          'Jeux',
+          style: TextStyle(fontWeight: FontWeight.w700, fontFamily: 'Outfit'),
         ),
-        backgroundColor: const Color(0xFF121317),
-        foregroundColor: Colors.white,
+        backgroundColor: widget.isDarkMode ? const Color(0xFF0F1117) : Colors.white,
+        foregroundColor: widget.isDarkMode ? Colors.white : const Color(0xFF161823),
         elevation: 0,
       ),
-      backgroundColor: const Color(0xFF121317),
+      backgroundColor: widget.isDarkMode ? const Color(0xFF0F1117) : const Color(0xFFF6F8FB),
       body: body,
     );
   }
 
-  Widget _buildNativeLobby() {
-    final theme = Theme.of(context);
+  // ══════════════════════════════════════════════════════════════════════════
+  // REFINED COMPACT & SOFT LOBBY
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildLobbyContent() {
     final isDark = widget.isDarkMode;
-    final primaryColor = const Color(0xFF673DE6);
-    final cardColor = isDark ? const Color(0xFF151F32) : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.black87;
+    final bgCard = isDark ? const Color(0xFF171A23) : Colors.white;
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+    final textSecondary = isDark ? const Color(0xFF8E9BAE) : const Color(0xFF64748B);
+    final borderSubtle = isDark ? Colors.white.withValues(alpha: 0.07) : const Color(0xFFE2E8F0);
 
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.only(left: 20.0, right: 20.0, top: 24.0, bottom: 32.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return SafeArea(
+      bottom: false,
+      child: Stack(
         children: [
-          // Top Tab Bar
-          Container(
-            height: 48,
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B).withOpacity(0.5) : const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
-            ),
-            padding: const EdgeInsets.all(4),
-            child: Row(
-              children: [
-                _buildTabButton(
-                  title: 'Créer une partie',
-                  isActive: _activeTab == 0,
-                  onTap: () {
-                    setState(() {
-                      _activeTab = 0;
-                    });
-                  },
-                  isDark: isDark,
-                ),
-                _buildTabButton(
-                  title: 'Matchs en direct',
-                  isActive: _activeTab == 1,
-                  onTap: () {
-                    setState(() {
-                      _activeTab = 1;
-                    });
-                    _fetchLiveMatches();
-                  },
-                  isDark: isDark,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          if (_activeTab == 0) ...[
-            // Header
-            Text(
-              'Défiez l\'IA ou jouez en ligne avec vos amis',
-              style: TextStyle(
-                color: isDark ? Colors.white54 : Colors.black54,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Horizontal games list
-            const Text(
-              'CHOISIR UN JEU',
-              style: TextStyle(
-                fontFamily: 'Outfit',
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.0,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 120,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                children: _gameDetails.entries.map((entry) {
-                  final key = entry.key;
-                  final val = entry.value;
-                  final isSelected = _selectedGame == key;
-                  final gradient = val['gradient'] as List<Color>;
-
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedGame = key;
-                      });
-                    },
-                    child: Container(
-                      width: 140,
-                      margin: const EdgeInsets.only(right: 12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        gradient: isSelected
-                            ? LinearGradient(
-                                colors: gradient,
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              )
-                            : null,
-                        color: isSelected ? null : cardColor,
-                        border: isSelected
-                            ? null
-                            : Border.all(
-                                color: isDark ? Colors.white10 : Colors.black12,
-                              ),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: gradient[0].withOpacity(0.3),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                )
-                              ]
-                            : null,
-                      ),
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            val['icon'] as IconData,
-                            color: isSelected ? Colors.white : gradient[0],
-                            size: 28,
-                          ),
-                          const Spacer(),
-                          Text(
-                            val['title'] as String,
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : textColor,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            val['desc'] as String,
-                            style: TextStyle(
-                              color: isSelected ? Colors.white70 : Colors.grey,
-                              fontSize: 10,
-                              height: 1.2,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Configuration section
-            const Text(
-              'OPTIONS DE LA PARTIE',
-              style: TextStyle(
-                fontFamily: 'Outfit',
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.0,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-
-            // Opponent Mode Selector
-            _buildSelectorRow(
-              title: 'Adversaire',
-              child: Row(
-                children: [
-                  _buildSegmentButton(
-                    label: 'Robot IA',
-                    isSelected: _opponentType == 'bot',
-                    onPressed: () {
-                      setState(() {
-                        _opponentType = 'bot';
-                      });
-                    },
-                  ),
-                  const SizedBox(width: 10),
-                  _buildSegmentButton(
-                    label: 'En ligne (Multi)',
-                    isSelected: _opponentType == 'player',
-                    onPressed: () {
-                      setState(() {
-                        _opponentType = 'player';
-                      });
-                      _fetchOnlineUsers();
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-
-            if (_opponentType == 'player') ...[
-              _buildSelectorRow(
-                title: 'Rechercher un joueur',
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (val) {
-                      setState(() {
-                        _searchQuery = val;
-                      });
-                      _performSearch(val);
-                    },
-                    style: TextStyle(color: textColor),
-                    decoration: InputDecoration(
-                      hintText: 'Saisissez le nom d\'utilisateur...',
-                      hintStyle: const TextStyle(color: Colors.grey, fontSize: 13.5),
-                      prefixIcon: const Icon(Icons.search_rounded, color: Colors.grey, size: 20),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded, color: Colors.grey, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {
-                                  _searchQuery = '';
-                                  _searchResults = [];
-                                });
-                              },
-                            )
-                          : null,
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildSelectorRow(
-                title: _searchQuery.isNotEmpty ? 'Résultats de la recherche' : 'Joueurs en ligne',
-                child: Container(
-                  constraints: const BoxConstraints(maxHeight: 220),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E293B).withOpacity(0.5) : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
-                  ),
-                  child: _buildPlayersList(isDark, textColor),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // Bot settings (Only if opponent is Bot)
-            if (_opponentType == 'bot') ...[
-              _buildSelectorRow(
-                title: 'Difficulté de l\'IA',
-                child: Row(
-                  children: [
-                    _buildSegmentButton(
-                      label: 'Facile',
-                      isSelected: _botDifficulty == '1',
-                      onPressed: () {
-                        setState(() {
-                          _botDifficulty = '1';
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _buildSegmentButton(
-                      label: 'Moyen',
-                      isSelected: _botDifficulty == '2',
-                      onPressed: () {
-                        setState(() {
-                          _botDifficulty = '2';
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _buildSegmentButton(
-                      label: 'Difficile',
-                      isSelected: _botDifficulty == '3',
-                      onPressed: () {
-                        setState(() {
-                          _botDifficulty = '3';
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // Rounds settings (rounds)
-            _buildSelectorRow(
-              title: 'Nombre de manches',
-              child: Row(
-                children: [
-                  _buildSegmentButton(
-                    label: '1 Manche',
-                    isSelected: _rounds == 1,
-                    onPressed: () {
-                      setState(() {
-                        _rounds = 1;
-                      });
-                    },
-                  ),
-                  const SizedBox(width: 10),
-                  _buildSegmentButton(
-                    label: '3 Manches',
-                    isSelected: _rounds == 3,
-                    onPressed: () {
-                      setState(() {
-                        _rounds = 3;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Entry Mode settings (Free or Paid)
-            _buildSelectorRow(
-              title: 'Type de partie',
-              child: Row(
-                children: [
-                  _buildSegmentButton(
-                    label: 'Gratuit',
-                    isSelected: _entryMode == 'free',
-                    onPressed: () {
-                      setState(() {
-                        _entryMode = 'free';
-                      });
-                    },
-                  ),
-                  const SizedBox(width: 10),
-                  _buildSegmentButton(
-                    label: 'Payant (Mise)',
-                    isSelected: _entryMode == 'paid',
-                    onPressed: () {
-                      setState(() {
-                        _entryMode = 'paid';
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Bet amount slider (only if entryMode is Paid)
-            if (_entryMode == 'paid') ...[
-              _buildSelectorRow(
-                title: 'Montant de la mise (Tokens)',
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
-                  ),
-                  child: Column(
+          CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              // 1. Top Header
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Mise', style: TextStyle(color: textColor, fontSize: 13)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFE2C55).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'ARENA',
+                              style: TextStyle(
+                                color: Color(0xFFFE2C55),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.5,
+                                fontFamily: 'Outfit',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           Text(
-                            '${_betAmount.toStringAsFixed(2)} Tokens',
+                            'Jeux & Duels',
                             style: TextStyle(
-                              color: primaryColor,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
+                              color: textPrimary,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              fontFamily: 'Outfit',
+                              letterSpacing: -0.3,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      Slider(
-                        value: _betAmount,
-                        min: 0.10,
-                        max: 10.00,
-                        divisions: 99,
-                        activeColor: primaryColor,
-                        inactiveColor: isDark ? Colors.white24 : Colors.black12,
-                        onChanged: (val) {
-                          setState(() {
-                            _betAmount = val;
-                          });
+                      GestureDetector(
+                        onTap: () {
+                          _fetchOnlineUsers();
+                          _fetchLiveMatches();
                         },
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: _onlineUsers.isNotEmpty
+                                    ? const Color(0xFF22C55E)
+                                    : textSecondary.withValues(alpha: 0.4),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              '${_formatCompactNumber(_onlineUsers.length)} en ligne',
+                              style: TextStyle(
+                                color: textSecondary,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ],
 
-            const SizedBox(height: 20),
-
-            // Actions Buttons
-            Container(
-              width: double.infinity,
-              height: 45,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF833AB4),
-                    Color(0xFFC13584),
-                    Color(0xFFE1306C),
-                    Color(0xFFFD1D1D),
-                    Color(0xFFF77737),
-                    Color(0xFFFCAF45),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFC13584).withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
+              // 2. Compact Segment Tab Switcher
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Container(
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF171A23) : const Color(0xFFEBECEE),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: borderSubtle),
+                    ),
+                    padding: const EdgeInsets.all(3),
+                    child: Row(
+                      children: [
+                        _buildTab(
+                          title: '⚡ Jouer',
+                          isActive: _activeTab == 0,
+                          isDark: isDark,
+                          onTap: () => setState(() => _activeTab = 0),
+                        ),
+                        _buildTab(
+                          title: '🔴 En direct',
+                          isActive: _activeTab == 1,
+                          badgeCount: _liveMatches.length,
+                          isDark: isDark,
+                          onTap: () {
+                            setState(() => _activeTab = 1);
+                            _fetchLiveMatches();
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
-              child: ElevatedButton(
-                onPressed: (_nativeBoardGames.contains(_selectedGame) || _opponentType == 'bot')
-                    ? _startGame
-                    : _openOnlineLobby,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  foregroundColor: Colors.white,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+
+              if (_activeTab == 0) ...[
+                // 3. Compact Games Carousel
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 4),
+                    child: _buildCompactGamesCarousel(isDark, bgCard, textPrimary, textSecondary, borderSubtle),
                   ),
-                  elevation: 0,
                 ),
-                child: Text(
-                  _opponentType == 'bot' ? 'LANCER LE MATCH' : 'REJOINDRE LE SALON',
-                  style: const TextStyle(
-                    fontFamily: 'Outfit',
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
+
+                // 4. Online Users Avatar Reel (Soft & Compact)
+                if (_onlineUsers.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: _buildCompactOnlineUsers(isDark, textPrimary, textSecondary),
+                    ),
                   ),
+
+                // 5. Match Configuration Options
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: _buildCompactOptionsCard(isDark, bgCard, textPrimary, textSecondary, borderSubtle),
+                  ),
+                ),
+
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: 90),
+                ),
+              ] else ...[
+                // Live Matches Tab
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: _buildLiveMatchesList(isDark, bgCard, textPrimary, textSecondary, borderSubtle),
+                  ),
+                ),
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: 40),
+                ),
+              ],
+            ],
+          ),
+
+          // 6. Compact Floating Action Bar
+          if (_activeTab == 0)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _buildCompactBottomCTA(isDark),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTab({
+    required String title,
+    required bool isActive,
+    required bool isDark,
+    required VoidCallback onTap,
+    int? badgeCount,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          decoration: BoxDecoration(
+            color: isActive
+                ? (isDark ? const Color(0xFF262A36) : Colors.white)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    )
+                  ]
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: isActive
+                      ? (isDark ? Colors.white : const Color(0xFF0F172A))
+                      : textSecondaryColor(isDark),
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 12.5,
+                  fontFamily: 'Outfit',
+                ),
+              ),
+              if (badgeCount != null && badgeCount > 0) ...[
+                const SizedBox(width: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFE2C55),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '$badgeCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color textSecondaryColor(bool isDark) => isDark ? const Color(0xFF8E9BAE) : const Color(0xFF64748B);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // COMPACT GAMES CAROUSEL
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildCompactGamesCarousel(
+    bool isDark,
+    Color bgCard,
+    Color textPrimary,
+    Color textSecondary,
+    Color borderSubtle,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'CHOISIR UN JEU',
+            style: TextStyle(
+              color: textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.6,
+              fontFamily: 'Outfit',
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 118,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: _gameDetails.length,
+            itemBuilder: (context, index) {
+              final entry = _gameDetails.entries.elementAt(index);
+              final key = entry.key;
+              final val = entry.value;
+              final isSelected = _selectedGame == key;
+              final accentColor = val['color'] as Color;
+
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _selectedGame = key;
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 130,
+                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? (isDark ? const Color(0xFF202532) : Colors.white)
+                        : bgCard,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFFFE2C55)
+                          : borderSubtle,
+                      width: isSelected ? 1.5 : 1.0,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFFFE2C55).withValues(alpha: 0.12),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            )
+                          ]
+                        : null,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: accentColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              val['tag'] as String,
+                              style: TextStyle(
+                                color: accentColor,
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ),
+                          if (isSelected)
+                            const Icon(Icons.check_circle_rounded, color: Color(0xFFFE2C55), size: 15),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Icon(
+                            val['icon'] as IconData,
+                            color: isSelected ? const Color(0xFFFE2C55) : (isDark ? Colors.white70 : const Color(0xFF0F172A)),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  val['title'] as String,
+                                  style: TextStyle(
+                                    color: textPrimary,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12.5,
+                                    fontFamily: 'Outfit',
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  val['subtitle'] as String,
+                                  style: TextStyle(
+                                    color: textSecondary,
+                                    fontSize: 9.5,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // COMPACT ONLINE PLAYERS REEL
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildCompactOnlineUsers(bool isDark, Color textPrimary, Color textSecondary) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              _onlineUsers.isNotEmpty
+                  ? 'JOUEURS EN LIGNE (${_formatCompactNumber(_onlineUsers.length)})'
+                  : 'JOUEURS EN LIGNE',
+              style: TextStyle(
+                color: textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+                fontFamily: 'Outfit',
+              ),
+            ),
+            if (_opponentType != 'player')
+              GestureDetector(
+                onTap: () => setState(() => _opponentType = 'player'),
+                child: const Text(
+                  'Défier en 1v1',
+                  style: TextStyle(
+                    color: Color(0xFFFE2C55),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 68,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            itemCount: _onlineUsers.length,
+            itemBuilder: (context, index) {
+              final player = _onlineUsers[index];
+              final name = player['first_name'] != null || player['last_name'] != null
+                  ? '${player['first_name'] ?? ''} ${player['last_name'] ?? ''}'.trim()
+                  : player['username'] ?? 'Joueur';
+              final username = player['username'] ?? '';
+              final avatar = player['avatar'] != null ? _formatAvatarUrl(player['avatar'].toString()) : null;
+              final playerId = int.tryParse(player['id']?.toString() ?? '');
+              final isSelected = _selectedOpponentId == playerId;
+
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _opponentType = 'player';
+                    _selectedOpponentId = playerId;
+                    _selectedOpponentName = name;
+                    _selectedOpponentAvatar = avatar;
+                    _selectedOpponentUsername = username;
+                  });
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(right: 12),
+                  child: Column(
+                    children: [
+                      Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: isDark ? const Color(0xFF262A36) : const Color(0xFFEBECEE),
+                            backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(avatar) : null,
+                            child: avatar == null || avatar.isEmpty
+                                ? Text(
+                                    name.substring(0, 1).toUpperCase(),
+                                    style: TextStyle(
+                                      color: textPrimary,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          if (isSelected)
+                            Positioned.fill(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: const Color(0xFFFE2C55), width: 2),
+                                ),
+                              ),
+                            ),
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF22C55E),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: isDark ? const Color(0xFF0F1117) : Colors.white,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      SizedBox(
+                        width: 48,
+                        child: Text(
+                          name.split(' ').first,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: isSelected ? const Color(0xFFFE2C55) : textSecondary,
+                            fontSize: 10,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // COMPACT OPTIONS CARD
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildCompactOptionsCard(
+    bool isDark,
+    Color bgCard,
+    Color textPrimary,
+    Color textSecondary,
+    Color borderSubtle,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bgCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Opponent Mode
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'ADVERSAIRE',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              _buildCompactPill(
+                label: 'Robot IA',
+                icon: Icons.smart_toy_outlined,
+                isSelected: _opponentType == 'bot',
+                isDark: isDark,
+                onTap: () => setState(() => _opponentType = 'bot'),
+              ),
+              const SizedBox(width: 8),
+              _buildCompactPill(
+                label: 'Joueur réel',
+                icon: Icons.person_outline_rounded,
+                isSelected: _opponentType == 'player',
+                isDark: isDark,
+                onTap: () {
+                  setState(() => _opponentType = 'player');
+                  _fetchOnlineUsers();
+                },
+              ),
+            ],
+          ),
+
+          // Bot Difficulty
+          if (_opponentType == 'bot') ...[
+            const SizedBox(height: 12),
+            Text(
+              'DIFFICULTÉ IA',
+              style: TextStyle(
+                color: textSecondary,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                _buildCompactPill(
+                  label: 'Facile',
+                  isSelected: _botDifficulty == '1',
+                  isDark: isDark,
+                  onTap: () => setState(() => _botDifficulty = '1'),
+                ),
+                const SizedBox(width: 6),
+                _buildCompactPill(
+                  label: 'Moyen',
+                  isSelected: _botDifficulty == '2',
+                  isDark: isDark,
+                  onTap: () => setState(() => _botDifficulty = '2'),
+                ),
+                const SizedBox(width: 6),
+                _buildCompactPill(
+                  label: 'Difficile',
+                  isSelected: _botDifficulty == '3',
+                  isDark: isDark,
+                  onTap: () => setState(() => _botDifficulty = '3'),
+                ),
+              ],
+            ),
+          ],
+
+          // Search player in Player Mode
+          if (_opponentType == 'player') ...[
+            const SizedBox(height: 12),
+            Container(
+              height: 36,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF202532) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (val) {
+                  setState(() => _searchQuery = val);
+                  _performSearch(val);
+                },
+                style: TextStyle(color: textPrimary, fontSize: 12.5),
+                decoration: InputDecoration(
+                  hintText: 'Rechercher un pseudo...',
+                  hintStyle: TextStyle(color: textSecondary, fontSize: 12),
+                  prefixIcon: const Icon(Icons.search_rounded, color: Colors.grey, size: 16),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded, color: Colors.grey, size: 14),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {
+                              _searchQuery = '';
+                              _searchResults = [];
+                            });
+                          },
+                        )
+                      : null,
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-
-            // Online lobbies quick link (only for Web View games)
-            if (_opponentType == 'bot' &&
-                !_nativeBoardGames.contains(_selectedGame))
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: TextButton.icon(
-                  onPressed: _openOnlineLobby,
-                  icon: const Icon(Icons.people_outline, size: 20),
-                  label: const Text(
-                    'Rejoindre le salon multijoueur en ligne',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: primaryColor,
-                  ),
+            if (_searchQuery.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 140),
+                child: _buildSearchUsersList(isDark, textPrimary, textSecondary),
+              ),
+            ],
+            if (_selectedOpponentId != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF202532) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 10,
+                      backgroundImage: _selectedOpponentAvatar != null && _selectedOpponentAvatar!.isNotEmpty
+                          ? NetworkImage(_selectedOpponentAvatar!)
+                          : null,
+                      child: _selectedOpponentAvatar == null || _selectedOpponentAvatar!.isEmpty
+                          ? Text((_selectedOpponentName ?? 'J')[0].toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold))
+                          : null,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '${_selectedOpponentName ?? 'Joueur'}${_selectedOpponentUsername != null && _selectedOpponentUsername!.isNotEmpty ? ' (@$_selectedOpponentUsername)' : ''}',
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedOpponentId = null;
+                          _selectedOpponentName = null;
+                          _selectedOpponentAvatar = null;
+                          _selectedOpponentUsername = null;
+                        });
+                      },
+                      child: Icon(Icons.close_rounded, size: 15, color: textSecondary),
+                    ),
+                  ],
                 ),
               ),
-          ] else ...[
-            // Matchs en direct Tab View
-            _buildLiveMatchesList(isDark, textColor, cardColor),
+            ],
+          ],
+
+          // Football teams if Table Football
+          if (_selectedGame == 'tablefootball') ...[
+            const SizedBox(height: 12),
+            Text(
+              'ÉQUIPES',
+              style: TextStyle(
+                color: textSecondary,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildCompactTeamTile(
+                    label: 'Vous',
+                    code: _selectedTeam1,
+                    isDark: isDark,
+                    onTap: () => _showTeamPickerModal(isTeam1: true),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildCompactTeamTile(
+                    label: 'Adversaire',
+                    code: _selectedTeam2,
+                    isDark: isDark,
+                    onTap: _opponentType == 'bot' ? () => _showTeamPickerModal(isTeam1: false) : null,
+                  ),
+                ),
+              ],
+            ),
+          ],
+
+          // Rounds (1 vs 3)
+          const SizedBox(height: 12),
+          Text(
+            'MANCHES',
+            style: TextStyle(
+              color: textSecondary,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              _buildCompactPill(
+                label: '1 Manche',
+                isSelected: _rounds == 1,
+                isDark: isDark,
+                onTap: () => setState(() => _rounds = 1),
+              ),
+              const SizedBox(width: 8),
+              _buildCompactPill(
+                label: '3 Manches',
+                isSelected: _rounds == 3,
+                isDark: isDark,
+                onTap: () => setState(() => _rounds = 3),
+              ),
+            ],
+          ),
+
+          // Free vs Paid Mode
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'TYPE DE MATCH',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              Row(
+                children: [
+                  _buildCompactToggle(
+                    label: 'Gratuit',
+                    isSelected: _entryMode == 'free',
+                    isDark: isDark,
+                    onTap: () => setState(() => _entryMode = 'free'),
+                  ),
+                  const SizedBox(width: 6),
+                  _buildCompactToggle(
+                    label: '🪙 Tokens',
+                    isSelected: _entryMode == 'paid',
+                    isDark: isDark,
+                    onTap: () => setState(() => _entryMode = 'paid'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          if (_entryMode == 'paid') ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [0.50, 1.00, 2.50, 5.00, 10.00].map((val) {
+                final isCur = (_betAmount - val).abs() < 0.01;
+                return GestureDetector(
+                  onTap: () => setState(() => _betAmount = val),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isCur
+                          ? const Color(0xFFFE2C55)
+                          : (isDark ? const Color(0xFF202532) : const Color(0xFFF1F5F9)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '${val.toStringAsFixed(val == val.roundToDouble() ? 0 : 2)} 🪙',
+                      style: TextStyle(
+                        color: isCur ? Colors.white : textSecondary,
+                        fontWeight: isCur ? FontWeight.w700 : FontWeight.w500,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildTabButton({
-    required String title,
-    required bool isActive,
-    required VoidCallback onTap,
+  Widget _buildCompactPill({
+    required String label,
+    IconData? icon,
+    required bool isSelected,
     required bool isDark,
+    required VoidCallback onTap,
   }) {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: isActive
-                ? const LinearGradient(
-                    colors: [
-                      Color(0xFF833AB4),
-                      Color(0xFFC13584),
-                      Color(0xFFE1306C),
-                      Color(0xFFFD1D1D),
-                      Color(0xFFF77737),
-                      Color(0xFFFCAF45),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                : null,
-            borderRadius: BorderRadius.circular(9),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            title,
-            style: TextStyle(
-              color: isActive ? Colors.white : (isDark ? Colors.white60 : Colors.black54),
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-              fontSize: 13,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLiveMatchesList(bool isDark, Color textColor, Color cardColor) {
-    if (_isLoadingLiveMatches) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(40.0),
-          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF673DE6)),
-        ),
-      );
-    }
-
-    if (_liveMatches.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: _fetchLiveMatches,
-        color: const Color(0xFF673DE6),
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Container(
-            height: 300,
-            alignment: Alignment.center,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.videogame_asset_outlined, color: Colors.grey, size: 48),
-                const SizedBox(height: 12),
-                Text(
-                  'Aucun match en direct actuellement.',
-                  style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _fetchLiveMatches,
-                  child: const Text('Actualiser', style: TextStyle(color: Color(0xFF673DE6), fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _fetchLiveMatches,
-      color: const Color(0xFF673DE6),
-      child: ListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: _liveMatches.length,
-        itemBuilder: (context, index) {
-          final game = _liveMatches[index];
-          final String gameId = game['id'] ?? '';
-          final String type = game['gameType'] ?? 'connect4';
-          final String status = game['status'] ?? 'playing';
-          final int round = game['currentRound'] ?? 1;
-
-          final p1 = game['player1'];
-          final p2 = game['player2'];
-
-          final String name1 = p1 != null
-              ? (p1['first_name'] != null || p1['last_name'] != null
-                  ? '${p1['first_name'] ?? ''} ${p1['last_name'] ?? ''}'.trim()
-                  : p1['username'] ?? 'Joueur 1')
-              : 'Joueur 1';
-
-          final String name2 = p2 != null
-              ? (p2['isBot'] == true ? 'Robot IA' : (p2['first_name'] != null || p2['last_name'] != null
-                  ? '${p2['first_name'] ?? ''} ${p2['last_name'] ?? ''}'.trim()
-                  : p2['username'] ?? 'Joueur 2'))
-              : 'En attente...';
-
-          final details = _gameDetails[type] ?? _gameDetails['connect4']!;
-          final List<Color> gradient = details['gradient'] as List<Color>;
-          final String title = details['title'] ?? 'Puissance 4';
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: cardColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: gradient,
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    details['icon'] as IconData? ?? Icons.grid_3x3_outlined,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '$name1 vs $name2',
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 13,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: status == 'playing' ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              status == 'playing' ? 'En cours' : 'Attente',
-                              style: TextStyle(
-                                color: status == 'playing' ? Colors.green : Colors.orange,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Manche $round',
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  height: 32,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF833AB4),
-                        Color(0xFFC13584),
-                        Color(0xFFE1306C),
-                        Color(0xFFFD1D1D),
-                        Color(0xFFF77737),
-                        Color(0xFFFCAF45),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => NativeGameBoardPage(
-                            currentUserId: widget.currentUserId,
-                            currentUserAvatar: widget.currentUserAvatar,
-                            gameType: type,
-                            opponentType: p2?['isBot'] == true ? 'bot' : 'player',
-                            entryMode: game['entryMode'] ?? 'free',
-                            betAmount: (game['betAmount'] as num?)?.toDouble() ?? 0.0,
-                            rounds: game['rounds'] ?? 1,
-                            botDifficulty: '1',
-                            opponentId: null,
-                            isDarkMode: widget.isDarkMode,
-                            gameId: gameId,
-                            onBackToLobby: () => Navigator.pop(context),
-                          ),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      foregroundColor: Colors.white,
-                      shadowColor: Colors.transparent,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'Regarder',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildSelectorRow({required String title, required Widget child}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey,
-          ),
-        ),
-        const SizedBox(height: 8),
-        child,
-      ],
-    );
-  }
-
-  Widget _buildSegmentButton({
-    required String label,
-    required bool isSelected,
-    required VoidCallback onPressed,
-  }) {
-    final isDark = widget.isDarkMode;
-
-    return Expanded(
-      child: GestureDetector(
-        onTap: onPressed,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          height: 40,
+          duration: const Duration(milliseconds: 140),
+          height: 32,
           decoration: BoxDecoration(
             color: isSelected
-                ? (isDark ? Colors.white.withOpacity(0.1) : const Color(0xFF673DE6).withOpacity(0.08))
-                : (isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03)),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: isSelected
-                  ? const Color(0xFF673DE6).withOpacity(0.5)
-                  : (isDark ? Colors.white10 : Colors.black12),
-              width: isSelected ? 1.5 : 1.0,
-            ),
+                ? (isDark ? Colors.white : const Color(0xFF0F172A))
+                : (isDark ? const Color(0xFF202532) : const Color(0xFFF1F5F9)),
+            borderRadius: BorderRadius.circular(7),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          alignment: Alignment.center,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (isSelected) ...[
-                const Icon(
-                  Icons.check_circle_rounded,
+              if (icon != null) ...[
+                Icon(
+                  icon,
                   size: 14,
-                  color: Color(0xFF673DE6),
+                  color: isSelected
+                      ? (isDark ? Colors.black : Colors.white)
+                      : (isDark ? Colors.white70 : const Color(0xFF0F172A)),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
               ],
               Text(
                 label,
                 style: TextStyle(
                   color: isSelected
-                      ? const Color(0xFF673DE6)
-                      : (isDark ? Colors.white70 : Colors.black87),
-                  fontSize: 12.5,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      ? (isDark ? Colors.black : Colors.white)
+                      : (isDark ? Colors.white70 : const Color(0xFF0F172A)),
+                  fontSize: 11.5,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildCompactToggle({
+    required String label,
+    required bool isSelected,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? (isDark ? Colors.white : const Color(0xFF0F172A))
+              : (isDark ? const Color(0xFF202532) : const Color(0xFFF1F5F9)),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected
+                ? (isDark ? Colors.black : Colors.white)
+                : (isDark ? Colors.white60 : const Color(0xFF64748B)),
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactTeamTile({
+    required String label,
+    required String code,
+    required bool isDark,
+    VoidCallback? onTap,
+  }) {
+    final name = _footballTeams[code] ?? code;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF202532) : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(7),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                name,
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (onTap != null)
+              const Icon(Icons.keyboard_arrow_down_rounded, size: 15, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showTeamPickerModal({required bool isTeam1}) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: widget.isDarkMode ? const Color(0xFF171A23) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: _footballTeams.length,
+          separatorBuilder: (_, _) => const Divider(height: 1),
+          itemBuilder: (context, idx) {
+            final entry = _footballTeams.entries.elementAt(idx);
+            final isSelected = (isTeam1 ? _selectedTeam1 : _selectedTeam2) == entry.key;
+            return ListTile(
+              dense: true,
+              title: Text(
+                entry.value,
+                style: TextStyle(
+                  color: isSelected
+                      ? const Color(0xFFFE2C55)
+                      : (widget.isDarkMode ? Colors.white : Colors.black87),
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.normal,
+                ),
+              ),
+              onTap: () {
+                setState(() {
+                  if (isTeam1) {
+                    _selectedTeam1 = entry.key;
+                  } else {
+                    _selectedTeam2 = entry.key;
+                  }
+                });
+                Navigator.pop(ctx);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSearchUsersList(bool isDark, Color textPrimary, Color textSecondary) {
+    if (_isSearching) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(10),
+          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFE2C55)),
+        ),
+      );
+    }
+    if (_searchResults.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(10),
+          child: Text('Aucun joueur trouvé.', style: TextStyle(color: Colors.grey, fontSize: 11.5)),
+        ),
+      );
+    }
+    return ListView.separated(
+      shrinkWrap: true,
+      itemCount: _searchResults.length,
+      separatorBuilder: (_, _) => Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
+      itemBuilder: (ctx, i) {
+        final u = _searchResults[i];
+        final name = u['first_name'] != null || u['last_name'] != null
+            ? '${u['first_name'] ?? ''} ${u['last_name'] ?? ''}'.trim()
+            : u['username'] ?? 'Joueur';
+        final username = u['username'] ?? '';
+        final avatar = u['avatar'] != null ? _formatAvatarUrl(u['avatar'].toString()) : null;
+        final uid = int.tryParse(u['id']?.toString() ?? '');
+
+        return ListTile(
+          dense: true,
+          leading: CircleAvatar(
+            radius: 12,
+            backgroundImage: avatar != null ? NetworkImage(avatar) : null,
+            child: avatar == null ? Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 10)) : null,
+          ),
+          title: Text(name, style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600, fontSize: 12)),
+          subtitle: Text('@$username', style: TextStyle(color: textSecondary, fontSize: 10.5)),
+          trailing: ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _selectedOpponentId = uid;
+                _selectedOpponentName = name;
+                _selectedOpponentAvatar = avatar;
+                _selectedOpponentUsername = username;
+                _searchQuery = '';
+                _searchController.clear();
+              });
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFE2C55),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              minimumSize: Size.zero,
+              elevation: 0,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+            ),
+            child: const Text('Choisir', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+          ),
+        );
+      },
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // COMPACT BOTTOM CTA (SIZED REFINED BUTTON)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildCompactBottomCTA(bool isDark) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(context).padding.bottom + 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0F1117).withValues(alpha: 0.95) : Colors.white.withValues(alpha: 0.95),
+        border: Border(
+          top: BorderSide(
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
+          ),
+        ),
+      ),
+      child: SizedBox(
+        height: 42,
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: () {
+            if (_nativeBoardGames.contains(_selectedGame) || _opponentType == 'bot') {
+              _startGame();
+            } else {
+              _openOnlineLobby();
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFE2C55),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.flash_on_rounded, color: Colors.white, size: 17),
+              const SizedBox(width: 6),
+              Text(
+                _opponentType == 'bot' ? 'Lancer la partie' : 'Défier & Jouer',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'Outfit',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LIVE MATCHES ARENA (COMPACT PK BATTLE STYLE)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildLiveMatchesList(
+    bool isDark,
+    Color bgCard,
+    Color textPrimary,
+    Color textSecondary,
+    Color borderSubtle,
+  ) {
+    if (_isLoadingLiveMatches) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(28),
+          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFE2C55)),
+        ),
+      );
+    }
+
+    if (_liveMatches.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: bgCard,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderSubtle),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.videogame_asset_outlined, color: textSecondary, size: 32),
+            const SizedBox(height: 10),
+            Text(
+              'Aucun match en direct',
+              style: TextStyle(color: textPrimary, fontSize: 13.5, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Les matchs en cours apparaîtront ici.',
+              style: TextStyle(color: textSecondary, fontSize: 11.5),
+            ),
+            const SizedBox(height: 14),
+            ElevatedButton(
+              onPressed: _fetchLiveMatches,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isDark ? const Color(0xFF202532) : const Color(0xFFF1F5F9),
+                foregroundColor: textPrimary,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+              ),
+              child: const Text('Actualiser', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _liveMatches.length,
+      itemBuilder: (context, index) {
+        final game = _liveMatches[index];
+        final String gameId = game['id'] ?? '';
+        final String type = game['gameType'] ?? 'connect4';
+        final int round = game['currentRound'] ?? 1;
+
+        final p1 = game['player1'];
+        final p2 = game['player2'];
+
+        final String name1 = p1 != null
+            ? (p1['first_name'] != null || p1['last_name'] != null
+                ? '${p1['first_name'] ?? ''} ${p1['last_name'] ?? ''}'.trim()
+                : p1['username'] ?? 'Joueur 1')
+            : 'Joueur 1';
+
+        final String name2 = p2 != null
+            ? (p2['isBot'] == true
+                ? 'Robot IA'
+                : (p2['first_name'] != null || p2['last_name'] != null
+                    ? '${p2['first_name'] ?? ''} ${p2['last_name'] ?? ''}'.trim()
+                    : p2['username'] ?? 'Joueur 2'))
+            : 'En attente...';
+
+        final details = _gameDetails[type] ?? _gameDetails['connect4']!;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: bgCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderSubtle),
+          ),
+          child: Row(
+            children: [
+              Icon(details['icon'] as IconData, color: textPrimary, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$name1 vs $name2',
+                      style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 12.5),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${details['title']} • Manche $round',
+                      style: TextStyle(color: textSecondary, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => NativeGameBoardPage(
+                        currentUserId: widget.currentUserId,
+                        currentUserAvatar: widget.currentUserAvatar,
+                        gameType: type,
+                        opponentType: p2?['isBot'] == true ? 'bot' : 'player',
+                        entryMode: game['entryMode'] ?? 'free',
+                        betAmount: (game['betAmount'] as num?)?.toDouble() ?? 0.0,
+                        rounds: game['rounds'] ?? 1,
+                        botDifficulty: '1',
+                        opponentId: null,
+                        isDarkMode: widget.isDarkMode,
+                        gameId: gameId,
+                        onBackToLobby: () => Navigator.pop(context),
+                      ),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFE2C55),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                child: const Text('Regarder', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

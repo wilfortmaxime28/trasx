@@ -60,6 +60,11 @@ const requireAuth = async (req, res, next) => {
       return res.redirect('/auth/login');
     }
 
+    try {
+      const presence = require('../utils/presence');
+      presence.touchUser(user.id);
+    } catch (_) {}
+
     if (user.account_status === 'Blocked' || user.account_status === 'Frozen') {
       req.session.destroy();
       if (isApi) {

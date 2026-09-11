@@ -2076,7 +2076,7 @@ app.post('/api/games/create-mobile', async (req, res) => {
     const user = await User.getById(currentUserId);
     if (!user) return res.status(404).json({ success: false, error: 'Utilisateur introuvable.' });
 
-    const { gameType, opponentType, entryMode, betAmount, rounds, botId, opponentId } = req.body || {};
+    const { gameType, opponentType, entryMode, betAmount, rounds, botId, opponentId, team1, team2 } = req.body || {};
 
     // Clean up any stale game sessions for this user to prevent "already busy" errors
     const numericUserId = parseInt(currentUserId, 10);
@@ -2099,7 +2099,7 @@ app.post('/api/games/create-mobile', async (req, res) => {
     const oppId = oppType === 'bot' ? `bot_${bot_id}` : opponentId;
 
     const game = await gamesManager.createGame(
-      user.id, user, type, oppType, mode, oppId, bet, rds, 'free', 0.50, 'FR', 'BR',
+      user.id, user, type, oppType, mode, oppId, bet, rds, 'free', 0.50, team1 || 'FR', team2 || 'BR',
       {
         ludoPartyMode: oppType === 'bot' ? 'bots' : 'players',
         ludoOpponentCount: 1,
@@ -2155,7 +2155,7 @@ app.get('/api/games/info/:gameId', async (req, res) => {
 
 app.get('/api/auth/mobile-session', async (req, res) => {
   try {
-    const { userId, token, timestamp, view, opponentId, opponentName, opponentAvatar, opponentUsername, createGame, gameType, opponentType, entryMode, betAmount, rounds, botId } = req.query;
+    const { userId, token, timestamp, view, opponentId, opponentName, opponentAvatar, opponentUsername, createGame, gameType, opponentType, entryMode, betAmount, rounds, botId, team1, team2 } = req.query;
     if (!userId || !token || !timestamp) {
       return res.status(400).send('Paramètres d\'authentification manquants.');
     }
@@ -2195,7 +2195,7 @@ app.get('/api/auth/mobile-session', async (req, res) => {
           const oppId = oppType === 'bot' ? `bot_${bot_id}` : null;
 
           const game = await gamesManager.createGame(
-            user.id, user, type, oppType, mode, oppId, bet, rds, 'free', 0.50, 'FR', 'BR',
+            user.id, user, type, oppType, mode, oppId, bet, rds, 'free', 0.50, team1 || 'FR', team2 || 'BR',
             {
               ludoPartyMode: oppType === 'bot' ? 'bots' : 'players',
               ludoOpponentCount: 1,
@@ -5648,6 +5648,9 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
     }
 
     const presence = require('./utils/presence');
+    if (currentUserId) {
+      presence.touchUser(currentUserId);
+    }
     let users = [];
 
     if (!query.trim()) {
@@ -5659,7 +5662,20 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
       if (onlineIds.length > 0) {
         users = await User.getByIds(onlineIds);
       } else {
-        users = [];
+        // Fallback: check users active in DB in last 5 minutes
+        const [recentRows] = await db.query(
+          `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar, game_matches_played, game_matches_won, last_seen_at
+           FROM users 
+           WHERE id != ? AND last_seen_at >= NOW() - INTERVAL 5 MINUTE
+           ORDER BY last_seen_at DESC LIMIT 50`,
+          [currentUserId]
+        );
+        if (recentRows && recentRows.length > 0) {
+          recentRows.forEach((r) => presence.touchUser(r.id));
+          users = await User.attachGameStatsList(recentRows);
+        } else {
+          users = [];
+        }
       }
     } else {
       users = await User.search(query);
@@ -5671,7 +5687,7 @@ app.get('/api/users/search', requireAuth, async (req, res) => {
     // Map l'état en ligne à l'aide de la fonction globale de présence en temps réel
     users = users.map(u => ({
       ...u,
-      isOnline: presence.isUserOnline(u.id)
+      isOnline: presence.isUserOnline(u.id) || (u.last_seen_at && new Date(u.last_seen_at).getTime() > Date.now() - 5 * 60 * 1000)
     }));
 
     if (onlineOnly) {

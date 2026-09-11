@@ -25,6 +25,8 @@ class NativeGameBoardPage extends StatefulWidget {
   final VoidCallback onBackToLobby;
   final int? opponentId;
   final String? gameId; // null if creating a new game, non-null if spectating/joining an existing game
+  final String? team1;
+  final String? team2;
 
   const NativeGameBoardPage({
     super.key,
@@ -40,6 +42,8 @@ class NativeGameBoardPage extends StatefulWidget {
     required this.onBackToLobby,
     this.opponentId,
     this.gameId,
+    this.team1,
+    this.team2,
   });
 
   @override
@@ -169,6 +173,8 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
           'rounds': widget.rounds,
           'botId': widget.botDifficulty,
           'opponentId': widget.opponentId,
+          'team1': widget.team1,
+          'team2': widget.team2,
         });
         debugPrint('[GameBoard] POST Request body: $requestBody');
 
@@ -623,223 +629,250 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
 
     showGeneralDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       barrierLabel: 'GameOver',
-      barrierColor: Colors.black.withOpacity(0.65),
-      transitionDuration: const Duration(milliseconds: 350),
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      transitionDuration: const Duration(milliseconds: 280),
       pageBuilder: (context, anim1, anim2) {
-        return const SizedBox.shrink(); // unused
+        return const SizedBox.shrink();
       },
       transitionBuilder: (context, anim1, anim2, child) {
-        final curveValue = Curves.easeInOutBack.transform(anim1.value);
-        return Transform.scale(
-          scale: curveValue,
-          child: Opacity(
-            opacity: anim1.value,
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-              child: Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: widget.isDarkMode ? const Color(0xEC0F172A) : const Color(0xFCEFEEFA),
-                    borderRadius: BorderRadius.circular(32),
-                    border: Border.all(color: headerColor.withOpacity(0.2), width: 1.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: headerColor.withOpacity(0.1),
-                        blurRadius: 30,
-                        spreadRadius: 5,
+        final curveValue = Curves.easeOutCubic.transform(anim1.value);
+        final scale = 0.92 + (0.08 * curveValue);
+        final slideY = (1.0 - curveValue) * 16.0;
+
+        return Opacity(
+          opacity: anim1.value.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(0, slideY),
+            child: Transform.scale(
+              scale: scale,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                child: Dialog(
+                  backgroundColor: Colors.transparent,
+                  insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 340),
+                    decoration: BoxDecoration(
+                      color: widget.isDarkMode ? const Color(0xFF171A24) : Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: headerColor.withValues(alpha: 0.2),
+                        width: 1.0,
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Header Glow Icon
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: headerColor.withOpacity(0.12),
-                          shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
                         ),
-                        margin: const EdgeInsets.only(top: 28, bottom: 16),
-                        child: Icon(
-                          mainIcon,
-                          size: 72,
-                          color: headerColor,
+                      ],
+                    ),
+                    padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Soft Header Icon
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: headerColor.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            mainIcon,
+                            size: 26,
+                            color: headerColor,
+                          ),
                         ),
-                      ),
-                      
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontFamily: 'Outfit',
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                          color: _textPrimaryColor,
-                          letterSpacing: 1.2,
+                        const SizedBox(height: 12),
+
+                        // Title
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontFamily: 'Outfit',
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            color: _textPrimaryColor,
+                            letterSpacing: -0.2,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Text(
+                        const SizedBox(height: 4),
+
+                        // Subtitle
+                        Text(
                           subtitle,
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: 12.5,
                             color: _textSecondaryColor,
-                            fontWeight: FontWeight.w600,
-                            height: 1.35,
+                            fontWeight: FontWeight.w500,
+                            height: 1.3,
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 24),
+                        const SizedBox(height: 16),
 
-                      // Professional Scoreboard Card
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 24),
-                        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
-                        decoration: BoxDecoration(
-                          color: widget.isDarkMode
-                              ? const Color(0xFF1E293B).withOpacity(0.6)
-                              : Colors.white.withOpacity(0.8),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: _borderColor),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            Column(
-                              children: [
-                                Text(
-                                  leftLabel,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 13,
-                                    color: _textPrimaryColor,
+                        // Soft Scoreboard Card
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: widget.isDarkMode
+                                ? const Color(0xFF202534)
+                                : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              Column(
+                                children: [
+                                  Text(
+                                    leftLabel,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                      color: _textSecondaryColor,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  '$leftScore',
-                                  style: TextStyle(
-                                    fontFamily: 'Outfit',
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.w900,
-                                    color: leftColor,
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '$leftScore',
+                                    style: TextStyle(
+                                      fontFamily: 'Outfit',
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w900,
+                                      color: leftColor,
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: headerColor.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
+                                ],
                               ),
-                              child: Text(
-                                'SCORE',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w900,
-                                  color: headerColor,
-                                  letterSpacing: 1.0,
-                                ),
-                              ),
-                            ),
-                            Column(
-                              children: [
-                                Text(
-                                  rightLabel,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 13,
-                                    color: _textPrimaryColor,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  '$rightScore',
-                                  style: TextStyle(
-                                    fontFamily: 'Outfit',
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.w900,
-                                    color: rightColor,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 28),
-
-                      // Actions
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () {
-                                  Navigator.pop(context); // Close modal, letting user see the board
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  side: BorderSide(color: _borderColor),
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: headerColor.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
-                                  'Voir le plateau',
+                                  'SCORE',
                                   style: TextStyle(
-                                    color: _textPrimaryColor,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    fontFamily: 'Outfit',
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: headerColor,
+                                    letterSpacing: 0.6,
+                                  ),
+                                ),
+                              ),
+                              Column(
+                                children: [
+                                  Text(
+                                    rightLabel,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                      color: _textSecondaryColor,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '$rightScore',
+                                    style: TextStyle(
+                                      fontFamily: 'Outfit',
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w900,
+                                      color: rightColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Token earnings chip if paid game
+                        if (widget.entryMode == 'paid') ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isWin
+                                  ? const Color(0xFF10B981).withValues(alpha: 0.12)
+                                  : const Color(0xFFFE2C55).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              isWin
+                                  ? '🪙 +${(widget.betAmount * 1.9).toStringAsFixed(2)} Tokens gagnés'
+                                  : '🪙 -${widget.betAmount.toStringAsFixed(2)} Tokens',
+                              style: TextStyle(
+                                color: isWin ? const Color(0xFF10B981) : const Color(0xFFFE2C55),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 18),
+
+                        // Actions
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: 38,
+                                child: OutlinedButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    side: BorderSide(color: _borderColor),
+                                    padding: EdgeInsets.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Plateau',
+                                    style: TextStyle(
+                                      color: _textSecondaryColor,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12.5,
+                                      fontFamily: 'Outfit',
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 10),
                             Expanded(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFFE536DB),
-                                      Color(0xFF673DE6),
-                                      Color(0xFF3AB0FF),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
+                              child: SizedBox(
+                                height: 38,
                                 child: ElevatedButton(
                                   onPressed: () {
-                                    Navigator.pop(context); // Close modal
-                                    widget.onBackToLobby(); // Return to lobby
+                                    Navigator.pop(context);
+                                    widget.onBackToLobby();
                                   },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
+                                    backgroundColor: const Color(0xFFFE2C55),
                                     foregroundColor: Colors.white,
-                                    shadowColor: Colors.transparent,
                                     elevation: 0,
-                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    padding: EdgeInsets.zero,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
+                                      borderRadius: BorderRadius.circular(10),
                                     ),
                                   ),
                                   child: const Text(
                                     'Quitter',
                                     style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12.5,
                                       fontFamily: 'Outfit',
                                     ),
                                   ),
@@ -848,8 +881,8 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
                             ),
                           ],
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -2226,13 +2259,39 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
   }) {
     final playerColor = widget.gameType == 'ludo'
         ? (isP1 ? const Color(0xFFEF4444) : const Color(0xFF22C55E))
-        : (isP1 ? _primaryColor : const Color(0xFFEC4899));
+        : (widget.gameType == 'tablefootball'
+            ? (isP1 ? const Color(0xFFEF4444) : const Color(0xFF3B82F6))
+            : (isP1 ? _primaryColor : const Color(0xFFEC4899)));
 
-    final String symbolLabel = widget.gameType == 'ludo'
-        ? (symbol == 1 ? 'Rouge (★)' : 'Vert (★)')
-        : (widget.gameType == 'connect4'
-            ? (symbol == 1 ? 'Rouge' : 'Jaune')
-            : (symbol == 1 ? 'Noir (X)' : 'Blanc (O)'));
+    String symbolLabel;
+    if (widget.gameType == 'ludo') {
+      symbolLabel = symbol == 1 ? 'Rouge (★)' : 'Vert (★)';
+    } else if (widget.gameType == 'connect4') {
+      symbolLabel = symbol == 1 ? 'Rouge' : 'Jaune';
+    } else if (widget.gameType == 'tablefootball') {
+      final t1Code = _game?['team1']?.toString() ?? 'FR';
+      final t2Code = _game?['team2']?.toString() ?? 'BR';
+      final countryFlags = {
+        'FR': '🇫🇷', 'BR': '🇧🇷', 'AR': '🇦🇷', 'DE': '🇩🇪', 'ES': '🇪🇸',
+        'IT': '🇮🇹', 'PT': '🇵🇹', 'GB': '🇬🇧', 'MA': '🇲🇦', 'SN': '🇸🇳',
+        'BE': '🇧🇪', 'NL': '🇳🇱', 'HR': '🇭🇷', 'UY': '🇺🇾', 'CO': '🇨🇴',
+        'US': '🇺🇸', 'MX': '🇲🇽', 'CM': '🇨🇲', 'CI': '🇨🇮', 'DZ': '🇩🇿',
+        'TN': '🇹🇳', 'EG': '🇪🇬', 'JP': '🇯🇵', 'KR': '🇰🇷', 'SA': '🇸🇦',
+        'CH': '🇨🇭', 'DK': '🇩🇰', 'SE': '🇸🇪', 'NO': '🇳🇴', 'PL': '🇵🇱',
+        'UA': '🇺🇦', 'TR': '🇹🇷', 'CA': '🇨🇦', 'CL': '🇨🇱', 'AU': '🇦🇺',
+        'NG': '🇳🇬', 'GH': '🇬🇭', 'AT': '🇦🇹', 'RO': '🇷🇴', 'HU': '🇭🇺',
+        'EC': '🇪🇨', 'PE': '🇵🇪', 'PY': '🇵🇾', 'VE': '🇻🇪', 'BO': '🇧🇴',
+        'QA': '🇶🇦', 'IR': '🇮🇷', 'NZ': '🇳🇿', 'ZA': '🇿🇦', 'IE': '🇮🇪',
+        'HT': '🇭🇹'
+      };
+      if (isP1) {
+        symbolLabel = '${countryFlags[t1Code.toUpperCase()] ?? ''} $t1Code (Rouge)';
+      } else {
+        symbolLabel = '${countryFlags[t2Code.toUpperCase()] ?? ''} $t2Code (Bleu)';
+      }
+    } else {
+      symbolLabel = symbol == 1 ? 'Noir (X)' : 'Blanc (O)';
+    }
         
     final Color symbolBadgeBg = playerColor.withOpacity(0.12);
     final Color symbolBadgeText = playerColor;
@@ -2497,29 +2556,27 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
               ),
             ),
             const SizedBox(height: 36),
-            GestureDetector(
-              onTap: widget.onBackToLobby,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 13),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFF833AB4),
-                      Color(0xFFC13584),
-                      Color(0xFFE1306C),
-                      Color(0xFFFD1D1D),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
+            SizedBox(
+              height: 38,
+              child: ElevatedButton.icon(
+                onPressed: widget.onBackToLobby,
+                icon: const Icon(Icons.arrow_back_rounded, size: 16, color: Colors.white),
+                label: const Text(
                   'Retour au salon',
                   style: TextStyle(
                     color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    fontFamily: 'Outfit',
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFE2C55),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
                   ),
                 ),
               ),
@@ -2659,82 +2716,103 @@ class _NativeGameBoardPageState extends State<NativeGameBoardPage>
 
   Widget _buildGameOverActions() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(
         children: [
+          // Bouton Lobby (compact & souple)
           Expanded(
             flex: 2,
-            child: OutlinedButton.icon(
-              onPressed: widget.onBackToLobby,
-              icon: const Icon(Icons.home_outlined, size: 18),
-              label: const Text('Lobby'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _textPrimaryColor,
-                side: BorderSide(color: _borderColor),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              height: 38,
+              child: OutlinedButton.icon(
+                onPressed: widget.onBackToLobby,
+                icon: Icon(Icons.home_outlined, size: 16, color: _textSecondaryColor),
+                label: Text(
+                  'Lobby',
+                  style: TextStyle(
+                    color: _textSecondaryColor,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Outfit',
+                  ),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: _borderColor),
+                  backgroundColor: widget.isDarkMode ? const Color(0xFF171A24) : const Color(0xFFF8FAFC),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: EdgeInsets.zero,
+                ),
               ),
             ),
           ),
           const SizedBox(width: 8),
+          // Bouton Rejouer (compact, souple, rouge TikTok uni)
           Expanded(
             flex: 2,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFFE536DB),
-                    Color(0xFF673DE6),
-                    Color(0xFF3AB0FF),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
+            child: SizedBox(
+              height: 38,
               child: ElevatedButton.icon(
                 onPressed: _createGame,
-                icon: const Icon(Icons.refresh_rounded, size: 18, color: Colors.white),
-                label: const Text('Rejouer', style: TextStyle(color: Colors.white)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                icon: const Icon(Icons.replay_rounded, size: 16, color: Colors.white),
+                label: const Text(
+                  'Rejouer',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'Outfit',
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFE2C55),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: EdgeInsets.zero,
                 ),
               ),
             ),
           ),
           const SizedBox(width: 8),
-          // Comment Button
-          Container(
-            decoration: BoxDecoration(
-              color: widget.isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _borderColor),
-            ),
-            child: IconButton(
-              onPressed: _showCommentsSheet,
-              icon: Icon(Icons.comment_outlined, color: _primaryColor),
-              tooltip: 'Commentaires',
+          // Bouton Commentaires (compact 38x38)
+          SizedBox(
+            width: 38,
+            height: 38,
+            child: Container(
+              decoration: BoxDecoration(
+                color: widget.isDarkMode ? const Color(0xFF171A24) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _borderColor),
+              ),
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                onPressed: _showCommentsSheet,
+                icon: Icon(Icons.comment_outlined, color: _textSecondaryColor, size: 17),
+                tooltip: 'Commentaires',
+              ),
             ),
           ),
           const SizedBox(width: 8),
-          // Gift Button
-          Container(
-            decoration: BoxDecoration(
-              color: widget.isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _borderColor),
-            ),
-            child: IconButton(
-              onPressed: _showGiftModal,
-              icon: Icon(Icons.card_giftcard_rounded, color: _primaryColor),
-              tooltip: 'Cadeau',
+          // Bouton Cadeau (compact 38x38)
+          SizedBox(
+            width: 38,
+            height: 38,
+            child: Container(
+              decoration: BoxDecoration(
+                color: widget.isDarkMode ? const Color(0xFF171A24) : const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _borderColor),
+              ),
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                onPressed: _showGiftModal,
+                icon: const Icon(Icons.card_giftcard_rounded, color: Color(0xFFFE2C55), size: 17),
+                tooltip: 'Cadeau',
+              ),
             ),
           ),
         ],

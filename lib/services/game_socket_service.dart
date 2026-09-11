@@ -29,6 +29,7 @@ class GameSocketService {
   final _giftBroadcastController = StreamController<Map<String, dynamic>>.broadcast();
   final _spectatorsController = StreamController<Map<String, dynamic>>.broadcast();
   final _spectatorJoinedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _presenceController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onGameStateUpdated => _stateController.stream;
   Stream<Map<String, dynamic>> get onGameOver => _gameOverController.stream;
@@ -40,6 +41,7 @@ class GameSocketService {
   Stream<Map<String, dynamic>> get onGiftBroadcast => _giftBroadcastController.stream;
   Stream<Map<String, dynamic>> get onSpectatorsUpdated => _spectatorsController.stream;
   Stream<Map<String, dynamic>> get onSpectatorJoined => _spectatorJoinedController.stream;
+  Stream<Map<String, dynamic>> get onPresenceUpdated => _presenceController.stream;
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -148,6 +150,13 @@ class GameSocketService {
       debugPrint('[GameSocket] game-spectator-joined-announcement received');
       if (data is Map) {
         _spectatorJoinedController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    _socket!.on('presence-updated', (data) {
+      debugPrint('[GameSocket] presence-updated received: $data');
+      if (data is Map) {
+        _presenceController.add(Map<String, dynamic>.from(data));
       }
     });
   }

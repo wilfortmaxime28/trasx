@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -717,15 +716,48 @@ class _PitchPainter extends CustomPainter {
     canvas.drawCircle(bOffset + const Offset(1, 2), bRadius, Paint()..color = Colors.black45);
     // main body
     canvas.drawCircle(bOffset, bRadius, Paint()..color = Colors.white);
-    // seams / detail
+    
+    // Draw outer boundary stroke
     canvas.drawCircle(
       bOffset,
       bRadius,
       Paint()
-        ..color = Colors.black26
+        ..color = const Color(0xFF666666)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0,
+        ..strokeWidth = 0.5,
     );
+
+    // Draw soccer ball patterns (pentagons)
+    final patternPaint = Paint()..color = const Color(0xFF1E293B);
+    
+    // Center pentagon
+    final path = Path();
+    for (int i = 0; i < 5; i++) {
+      final angle = (i * 2 * math.pi / 5) - math.pi / 2;
+      final px = bOffset.dx + math.cos(angle) * (bRadius * 0.35);
+      final py = bOffset.dy + math.sin(angle) * (bRadius * 0.35);
+      if (i == 0) {
+        path.moveTo(px, py);
+      } else {
+        path.lineTo(px, py);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, patternPaint);
+
+    // Lines from center pentagon vertices to outer edge
+    final ballLinePaint = Paint()
+      ..color = const Color(0xFF1E293B)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.75;
+    for (int i = 0; i < 5; i++) {
+      final angle = (i * 2 * math.pi / 5) - math.pi / 2;
+      final pxStart = bOffset.dx + math.cos(angle) * (bRadius * 0.35);
+      final pyStart = bOffset.dy + math.sin(angle) * (bRadius * 0.35);
+      final pxEnd = bOffset.dx + math.cos(angle) * bRadius;
+      final pyEnd = bOffset.dy + math.sin(angle) * bRadius;
+      canvas.drawLine(Offset(pxStart, pyStart), Offset(pxEnd, pyEnd), ballLinePaint);
+    }
   }
 
   void _drawTeamPuck(Canvas canvas, Offset center, double radius, String countryCode, bool isGK, int team) {
@@ -736,9 +768,15 @@ class _PitchPainter extends CustomPainter {
     final emojis = {
       'FR': '🇫🇷', 'BR': '🇧🇷', 'AR': '🇦🇷', 'DE': '🇩🇪', 'ES': '🇪🇸',
       'IT': '🇮🇹', 'PT': '🇵🇹', 'GB': '🇬🇧', 'MA': '🇲🇦', 'SN': '🇸🇳',
-      'HT': '🇭🇹', 'US': '🇺🇸', 'CA': '🇨🇦', 'BE': '🇧🇪', 'NL': '🇳🇱',
-      'ZA': '🇿🇦', 'IE': '🇮🇪', 'CM': '🇨🇲', 'CI': '🇨🇮', 'DZ': '🇩🇿',
+      'BE': '🇧🇪', 'NL': '🇳🇱', 'HR': '🇭🇷', 'UY': '🇺🇾', 'CO': '🇨🇴',
+      'US': '🇺🇸', 'MX': '🇲🇽', 'CM': '🇨🇲', 'CI': '🇨🇮', 'DZ': '🇩🇿',
       'TN': '🇹🇳', 'EG': '🇪🇬', 'JP': '🇯🇵', 'KR': '🇰🇷', 'SA': '🇸🇦',
+      'CH': '🇨🇭', 'DK': '🇩🇰', 'SE': '🇸🇪', 'NO': '🇳🇴', 'PL': '🇵🇱',
+      'UA': '🇺🇦', 'TR': '🇹🇷', 'CA': '🇨🇦', 'CL': '🇨🇱', 'AU': '🇦🇺',
+      'NG': '🇳🇬', 'GH': '🇬🇭', 'AT': '🇦🇹', 'RO': '🇷🇴', 'HU': '🇭🇺',
+      'EC': '🇪🇨', 'PE': '🇵🇪', 'PY': '🇵🇾', 'VE': '🇻🇪', 'BO': '🇧🇴',
+      'QA': '🇶🇦', 'IR': '🇮🇷', 'NZ': '🇳🇿', 'ZA': '🇿🇦', 'IE': '🇮🇪',
+      'HT': '🇭🇹'
     };
     final emoji = emojis[countryCode.toUpperCase()] ?? countryCode;
 

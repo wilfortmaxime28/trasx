@@ -36,6 +36,7 @@ import 'pages/private_call_page.dart';
 import 'services/private_call_session.dart';
 import 'services/push_notification_service.dart';
 import 'pages/game_play_page.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 
 
 class DashboardPage extends StatefulWidget {
@@ -6022,6 +6023,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   int? _replyToCommentId;
   String? _replyToUsername;
   final Set<int> _expandedCommentIds = {};
+  bool _showEmojiPicker = false;
 
   @override
   void initState() {
@@ -6577,55 +6579,145 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
 
           // 4. Input text bar at bottom
           SafeArea(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.pop(context); // close bottom sheet
-                      widget.onUserProfileTap(widget.currentUserId);
-                    },
-                    child: _buildCommentAvatar(
-                      widget.currentUsername,
-                      widget.currentUserAvatar,
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _commentController,
-                      style: TextStyle(
-                        color: widget.textPrimaryColor,
-                        fontSize: 13,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: "Ajouter un commentaire...",
-                        hintStyle: TextStyle(
-                          color: widget.textSecondaryColor,
-                          fontSize: 13,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.pop(context); // close bottom sheet
+                          widget.onUserProfileTap(widget.currentUserId);
+                        },
+                        child: _buildCommentAvatar(
+                          widget.currentUsername,
+                          widget.currentUserAvatar,
+                          size: 32,
                         ),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
                       ),
-                      onSubmitted: (_) => _postComment(),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: widget.isDarkMode
+                                ? Colors.white.withValues(alpha: 0.08)
+                                : Colors.black.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _commentController,
+                                  style: TextStyle(
+                                    color: widget.textPrimaryColor,
+                                    fontSize: 13,
+                                  ),
+                                  onTap: () {
+                                    if (_showEmojiPicker) {
+                                      setState(() {
+                                        _showEmojiPicker = false;
+                                      });
+                                    }
+                                  },
+                                  decoration: InputDecoration(
+                                    hintText: "Ajouter un commentaire...",
+                                    hintStyle: TextStyle(
+                                      color: widget.textSecondaryColor,
+                                      fontSize: 13,
+                                    ),
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                                  ),
+                                  onSubmitted: (_) => _postComment(),
+                                ),
+                              ),
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(4),
+                                icon: Icon(
+                                  _showEmojiPicker
+                                      ? Icons.keyboard_rounded
+                                      : Icons.emoji_emotions_outlined,
+                                  color: _showEmojiPicker
+                                      ? const Color(0xFFC13584)
+                                      : widget.textSecondaryColor,
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  if (!_showEmojiPicker) {
+                                    FocusScope.of(context).unfocus();
+                                  }
+                                  setState(() {
+                                    _showEmojiPicker = !_showEmojiPicker;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: _postComment,
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          "Publier",
+                          style: TextStyle(
+                            color: Color(0xFFC13584),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_showEmojiPicker)
+                  SizedBox(
+                    height: 220,
+                    child: EmojiPicker(
+                      textEditingController: _commentController,
+                      config: Config(
+                        height: 220,
+                        checkPlatformCompatibility: true,
+                        emojiViewConfig: EmojiViewConfig(
+                          columns: 8,
+                          emojiSizeMax: 28,
+                          backgroundColor: widget.isDarkMode
+                              ? Colors.black
+                              : Colors.white,
+                        ),
+                        categoryViewConfig: CategoryViewConfig(
+                          backgroundColor: widget.isDarkMode
+                              ? Colors.black
+                              : Colors.white,
+                          indicatorColor: const Color(0xFFC13584),
+                          iconColor: widget.textSecondaryColor,
+                          iconColorSelected: const Color(0xFFC13584),
+                          backspaceColor: const Color(0xFFC13584),
+                        ),
+                        bottomActionBarConfig: const BottomActionBarConfig(
+                          enabled: false,
+                        ),
+                        searchViewConfig: SearchViewConfig(
+                          backgroundColor: widget.isDarkMode
+                              ? Colors.black
+                              : Colors.white,
+                          buttonIconColor: widget.textSecondaryColor,
+                        ),
+                      ),
                     ),
                   ),
-                  TextButton(
-                    onPressed: _postComment,
-                    child: const Text(
-                      "Publier",
-                      style: TextStyle(
-                        color: Color(0xFFC13584),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
           ),
         ],

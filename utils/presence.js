@@ -8,7 +8,7 @@ const getState = (userId) => {
   const id = normalizeUserId(userId);
   if (!id) return null;
   if (!presenceMap.has(id)) {
-    presenceMap.set(id, { count: 0, lastSeenAt: null });
+    presenceMap.set(id, { count: 0, lastSeenAt: null, lastActiveAt: Date.now(), lastDbUpdate: 0 });
   }
   return presenceMap.get(id);
 };
@@ -34,12 +34,27 @@ const formatRelativeTime = (dateLike) => {
 
 const getPresenceText = (isOnline, lastSeenAt) => (isOnline ? 'Online now' : formatRelativeTime(lastSeenAt));
 
+function touchUser(userId) {
+  const id = normalizeUserId(userId);
+  if (!id) return;
+  const state = getState(id);
+  const now = Date.now();
+  state.lastActiveAt = now;
+  if (!state.lastDbUpdate || now - state.lastDbUpdate > 60000) {
+    state.lastDbUpdate = now;
+    db.query('UPDATE users SET last_seen_at = NOW() WHERE id = ?', [id]).catch((err) => {
+      console.error('[Presence] Error updating last_seen_at:', err.message);
+    });
+  }
+}
+
 async function markUserOnline(userId) {
   const id = normalizeUserId(userId);
   if (!id) return { isOnline: false, lastSeenAt: null };
 
   const state = getState(id);
   state.count += 1;
+  state.lastActiveAt = Date.now();
   state.lastSeenAt = state.lastSeenAt || null;
 
   return {
@@ -66,6 +81,7 @@ async function markUserOffline(userId) {
 
   const lastSeenAt = new Date();
   state.lastSeenAt = lastSeenAt;
+  state.lastActiveAt = 0;
 
   await db.query('UPDATE users SET last_seen_at = NOW() WHERE id = ?', [id]);
 
@@ -80,7 +96,9 @@ function isUserOnline(userId) {
   const id = normalizeUserId(userId);
   if (!id) return false;
   const state = presenceMap.get(id);
-  return !!state && state.count > 0;
+  if (!state) return false;
+  const isRecentlyActive = state.lastActiveAt && (Date.now() - state.lastActiveAt < 3 * 60 * 1000);
+  return state.count > 0 || isRecentlyActive;
 }
 
 function getLastSeenAt(userId) {
@@ -92,8 +110,9 @@ function getLastSeenAt(userId) {
 
 function getOnlineUserIds() {
   const ids = [];
+  const now = Date.now();
   for (const [id, state] of presenceMap.entries()) {
-    if (state && state.count > 0) {
+    if (state && (state.count > 0 || (state.lastActiveAt && (now - state.lastActiveAt < 3 * 60 * 1000)))) {
       ids.push(Number(id));
     }
   }
@@ -101,6 +120,7 @@ function getOnlineUserIds() {
 }
 
 module.exports = {
+  touchUser,
   markUserOnline,
   markUserOffline,
   isUserOnline,
