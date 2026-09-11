@@ -2180,6 +2180,38 @@ app.get('/api/games/online-summary', async (req, res) => {
   }
 });
 
+// GET /api/games/search-players
+// Returns players matching search query with real-time online status
+app.get('/api/games/search-players', async (req, res) => {
+  try {
+    const currentUserId = Number(req.session?.userId || req.headers['x-user-id'] || req.query.user_id || 0);
+    let query = req.query.q || '';
+    if (query.startsWith('@')) query = query.substring(1);
+
+    const User = require('./models/User');
+    const presence = require('./utils/presence');
+
+    if (!query.trim()) {
+      return res.json({ success: true, users: [] });
+    }
+
+    let users = await User.search(query.trim());
+    if (currentUserId > 0) {
+      users = users.filter(u => Number(u.id) !== currentUserId);
+    }
+
+    users = users.map(u => ({
+      ...u,
+      isOnline: presence.isUserOnline(u.id) || (u.last_seen_at && new Date(u.last_seen_at).getTime() > Date.now() - 5 * 60 * 1000)
+    }));
+
+    return res.json({ success: true, users: users });
+  } catch (err) {
+    console.error('[Search Players Error]:', err);
+    return res.status(500).json({ success: false, error: 'Search failed' });
+  }
+});
+
 // GET /api/games/info/:gameId
 // Returns in-memory game state details for a specific gameId
 app.get('/api/games/info/:gameId', async (req, res) => {

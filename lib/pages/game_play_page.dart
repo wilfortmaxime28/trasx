@@ -60,12 +60,12 @@ class _GamePlayPageState extends State<GamePlayPage> {
   // Search and online players state variables
   final TextEditingController _searchController = TextEditingController();
   List<dynamic> _onlineUsers = [];
-  int _totalOnlineCount = 0;
   List<dynamic> _searchResults = [];
   bool _isSearching = false;
   bool _isLoadingUsers = false;
   String _searchQuery = '';
   Timer? _pollTimer;
+  Timer? _searchDebounce;
   StreamSubscription? _presenceSub;
 
   List<dynamic> _liveMatches = [];
@@ -226,6 +226,7 @@ class _GamePlayPageState extends State<GamePlayPage> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _presenceSub?.cancel();
     _pollTimer?.cancel();
     _searchController.dispose();
@@ -418,11 +419,9 @@ class _GamePlayPageState extends State<GamePlayPage> {
         final dynamic data = jsonDecode(response.body);
         if (data is Map && data['success'] == true) {
           final List<dynamic> users = data['users'] ?? [];
-          final int total = data['totalOnline'] ?? (users.length + (widget.currentUserId > 0 ? 1 : 0));
           if (mounted) {
             setState(() {
               _onlineUsers = users.where((u) => u['id']?.toString() != '${widget.currentUserId}').toList();
-              _totalOnlineCount = total;
             });
           }
           return;
@@ -430,7 +429,6 @@ class _GamePlayPageState extends State<GamePlayPage> {
           if (mounted) {
             setState(() {
               _onlineUsers = data.where((u) => u['id']?.toString() != '${widget.currentUserId}').toList();
-              _totalOnlineCount = _onlineUsers.length + (widget.currentUserId > 0 ? 1 : 0);
             });
           }
           return;
@@ -451,7 +449,6 @@ class _GamePlayPageState extends State<GamePlayPage> {
         if (mounted) {
           setState(() {
             _onlineUsers = users.where((u) => u['id']?.toString() != '${widget.currentUserId}').toList();
-            _totalOnlineCount = _onlineUsers.length + (widget.currentUserId > 0 ? 1 : 0);
           });
         }
       }
@@ -500,7 +497,8 @@ class _GamePlayPageState extends State<GamePlayPage> {
   }
 
   Future<void> _performSearch(String query) async {
-    if (query.trim().isEmpty) {
+    final cleanQuery = query.trim();
+    if (cleanQuery.isEmpty) {
       setState(() {
         _searchResults = [];
         _isSearching = false;
@@ -512,7 +510,7 @@ class _GamePlayPageState extends State<GamePlayPage> {
     });
     try {
       final response = await http.get(
-        Uri.parse('https://trasx.com/api/users/search?q=${Uri.encodeComponent(query)}'),
+        Uri.parse('https://trasx.com/api/games/search-players?q=${Uri.encodeComponent(cleanQuery)}'),
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': '${widget.currentUserId}',
@@ -520,7 +518,32 @@ class _GamePlayPageState extends State<GamePlayPage> {
       ).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
-        final List<dynamic> users = jsonDecode(response.body);
+        final dynamic data = jsonDecode(response.body);
+        List<dynamic> users = [];
+        if (data is Map && data['success'] == true) {
+          users = data['users'] ?? [];
+        } else if (data is List) {
+          users = data;
+        }
+        if (mounted) {
+          setState(() {
+            _searchResults = users.where((u) => u['id']?.toString() != '${widget.currentUserId}').toList();
+          });
+          return;
+        }
+      }
+
+      // Fallback to /api/users/search
+      final fallbackResp = await http.get(
+        Uri.parse('https://trasx.com/api/users/search?q=${Uri.encodeComponent(cleanQuery)}'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.currentUserId}',
+        },
+      ).timeout(const Duration(seconds: 8));
+
+      if (fallbackResp.statusCode == 200) {
+        final List<dynamic> users = jsonDecode(fallbackResp.body);
         if (mounted) {
           setState(() {
             _searchResults = users.where((u) => u['id']?.toString() != '${widget.currentUserId}').toList();
@@ -536,6 +559,21 @@ class _GamePlayPageState extends State<GamePlayPage> {
         });
       }
     }
+  }
+
+  void _onSearchChanged(String val) {
+    setState(() => _searchQuery = val);
+    _searchDebounce?.cancel();
+    if (val.trim().isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      _performSearch(val);
+    });
   }
 
   @override
@@ -705,35 +743,28 @@ class _GamePlayPageState extends State<GamePlayPage> {
                           _fetchOnlineUsers();
                           _fetchLiveMatches();
                         },
-                        child: Builder(
-                          builder: (context) {
-                            final totalOnline = _totalOnlineCount > 0
-                                ? _totalOnlineCount
-                                : (_onlineUsers.length + (widget.currentUserId > 0 ? 1 : 0));
-                            return Row(
-                              children: [
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    color: totalOnline > 0
-                                        ? const Color(0xFF22C55E)
-                                        : textSecondary.withValues(alpha: 0.4),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  '${_formatCompactNumber(totalOnline)} en ligne',
-                                  style: TextStyle(
-                                    color: textSecondary,
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: _onlineUsers.isNotEmpty
+                                    ? const Color(0xFF22C55E)
+                                    : textSecondary.withValues(alpha: 0.4),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              '${_formatCompactNumber(_onlineUsers.length)} en ligne',
+                              style: TextStyle(
+                                color: textSecondary,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -1293,20 +1324,23 @@ class _GamePlayPageState extends State<GamePlayPage> {
           if (_opponentType == 'player') ...[
             const SizedBox(height: 12),
             Container(
-              height: 36,
+              height: 38,
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF202532) : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: borderSubtle),
               ),
               child: TextField(
                 controller: _searchController,
-                onChanged: (val) {
-                  setState(() => _searchQuery = val);
+                onChanged: _onSearchChanged,
+                onSubmitted: (val) {
+                  _searchDebounce?.cancel();
                   _performSearch(val);
                 },
+                textInputAction: TextInputAction.search,
                 style: TextStyle(color: textPrimary, fontSize: 12.5),
                 decoration: InputDecoration(
-                  hintText: 'Rechercher un pseudo...',
+                  hintText: 'Rechercher un joueur (pseudo ou nom)...',
                   hintStyle: TextStyle(color: textSecondary, fontSize: 12),
                   prefixIcon: const Icon(Icons.search_rounded, color: Colors.grey, size: 16),
                   suffixIcon: _searchQuery.isNotEmpty
@@ -1314,22 +1348,29 @@ class _GamePlayPageState extends State<GamePlayPage> {
                           icon: const Icon(Icons.clear_rounded, color: Colors.grey, size: 14),
                           onPressed: () {
                             _searchController.clear();
+                            _searchDebounce?.cancel();
                             setState(() {
                               _searchQuery = '';
                               _searchResults = [];
+                              _isSearching = false;
                             });
                           },
                         )
                       : null,
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 9),
                 ),
               ),
             ),
             if (_searchQuery.isNotEmpty) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               Container(
-                constraints: const BoxConstraints(maxHeight: 140),
+                constraints: const BoxConstraints(maxHeight: 180),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF171A24) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: borderSubtle),
+                ),
                 child: _buildSearchUsersList(isDark, textPrimary, textSecondary),
               ),
             ],
@@ -1681,21 +1722,30 @@ class _GamePlayPageState extends State<GamePlayPage> {
     if (_isSearching) {
       return const Center(
         child: Padding(
-          padding: EdgeInsets.all(10),
-          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFE2C55)),
+          padding: EdgeInsets.symmetric(vertical: 20),
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFE2C55)),
+          ),
         ),
       );
     }
     if (_searchResults.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(10),
-          child: Text('Aucun joueur trouvé.', style: TextStyle(color: Colors.grey, fontSize: 11.5)),
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          child: Text(
+            'Aucun joueur trouvé pour "$_searchQuery"',
+            style: TextStyle(color: textSecondary, fontSize: 11.5),
+          ),
         ),
       );
     }
     return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 4),
       shrinkWrap: true,
+      physics: const ClampingScrollPhysics(),
       itemCount: _searchResults.length,
       separatorBuilder: (_, _) => Divider(height: 1, color: isDark ? Colors.white10 : Colors.black12),
       itemBuilder: (ctx, i) {
@@ -1706,37 +1756,79 @@ class _GamePlayPageState extends State<GamePlayPage> {
         final username = u['username'] ?? '';
         final avatar = u['avatar'] != null ? _formatAvatarUrl(u['avatar'].toString()) : null;
         final uid = int.tryParse(u['id']?.toString() ?? '');
+        final isOnline = u['isOnline'] == true;
 
         return ListTile(
           dense: true,
-          leading: CircleAvatar(
-            radius: 12,
-            backgroundImage: avatar != null ? NetworkImage(avatar) : null,
-            child: avatar == null ? Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 10)) : null,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+          leading: Stack(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: isDark ? const Color(0xFF262A36) : const Color(0xFFEBECEE),
+                backgroundImage: avatar != null && avatar.isNotEmpty ? NetworkImage(avatar) : null,
+                child: avatar == null || avatar.isEmpty
+                    ? Text(
+                        name.isNotEmpty ? name[0].toUpperCase() : 'J',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textPrimary),
+                      )
+                    : null,
+              ),
+              if (isOnline)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF22C55E),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: isDark ? const Color(0xFF171A24) : Colors.white, width: 1),
+                    ),
+                  ),
+                ),
+            ],
           ),
-          title: Text(name, style: TextStyle(color: textPrimary, fontWeight: FontWeight.w600, fontSize: 12)),
-          subtitle: Text('@$username', style: TextStyle(color: textSecondary, fontSize: 10.5)),
-          trailing: ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _selectedOpponentId = uid;
-                _selectedOpponentName = name;
-                _selectedOpponentAvatar = avatar;
-                _selectedOpponentUsername = username;
-                _searchQuery = '';
-                _searchController.clear();
-              });
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFE2C55),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              minimumSize: Size.zero,
-              elevation: 0,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          title: Text(
+            name,
+            style: TextStyle(color: textPrimary, fontWeight: FontWeight.w700, fontSize: 12),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            '@$username${isOnline ? ' • En ligne' : ''}',
+            style: TextStyle(
+              color: isOnline ? const Color(0xFF22C55E) : textSecondary,
+              fontSize: 10.5,
+              fontWeight: isOnline ? FontWeight.w600 : FontWeight.normal,
             ),
-            child: const Text('Choisir', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: SizedBox(
+            height: 28,
+            child: ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _selectedOpponentId = uid;
+                  _selectedOpponentName = name;
+                  _selectedOpponentAvatar = avatar;
+                  _selectedOpponentUsername = username;
+                  _searchQuery = '';
+                  _searchController.clear();
+                  _searchResults = [];
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFE2C55),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('Défier', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+            ),
           ),
         );
       },
