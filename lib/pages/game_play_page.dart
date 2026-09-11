@@ -60,6 +60,7 @@ class _GamePlayPageState extends State<GamePlayPage> {
   // Search and online players state variables
   final TextEditingController _searchController = TextEditingController();
   List<dynamic> _onlineUsers = [];
+  int _totalOnlineCount = 0;
   List<dynamic> _searchResults = [];
   bool _isSearching = false;
   bool _isLoadingUsers = false;
@@ -406,7 +407,7 @@ class _GamePlayPageState extends State<GamePlayPage> {
     });
     try {
       final response = await http.get(
-        Uri.parse('https://trasx.com/api/users/search?onlineOnly=true'),
+        Uri.parse('https://trasx.com/api/games/online-summary'),
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': '${widget.currentUserId}',
@@ -414,10 +415,43 @@ class _GamePlayPageState extends State<GamePlayPage> {
       ).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
-        final List<dynamic> users = jsonDecode(response.body);
+        final dynamic data = jsonDecode(response.body);
+        if (data is Map && data['success'] == true) {
+          final List<dynamic> users = data['users'] ?? [];
+          final int total = data['totalOnline'] ?? (users.length + (widget.currentUserId > 0 ? 1 : 0));
+          if (mounted) {
+            setState(() {
+              _onlineUsers = users.where((u) => u['id']?.toString() != '${widget.currentUserId}').toList();
+              _totalOnlineCount = total;
+            });
+          }
+          return;
+        } else if (data is List) {
+          if (mounted) {
+            setState(() {
+              _onlineUsers = data.where((u) => u['id']?.toString() != '${widget.currentUserId}').toList();
+              _totalOnlineCount = _onlineUsers.length + (widget.currentUserId > 0 ? 1 : 0);
+            });
+          }
+          return;
+        }
+      }
+
+      // Fallback to /api/users/search?onlineOnly=true if online-summary is not yet active
+      final fallbackResp = await http.get(
+        Uri.parse('https://trasx.com/api/users/search?onlineOnly=true'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': '${widget.currentUserId}',
+        },
+      ).timeout(const Duration(seconds: 8));
+
+      if (fallbackResp.statusCode == 200) {
+        final List<dynamic> users = jsonDecode(fallbackResp.body);
         if (mounted) {
           setState(() {
             _onlineUsers = users.where((u) => u['id']?.toString() != '${widget.currentUserId}').toList();
+            _totalOnlineCount = _onlineUsers.length + (widget.currentUserId > 0 ? 1 : 0);
           });
         }
       }
@@ -671,28 +705,35 @@ class _GamePlayPageState extends State<GamePlayPage> {
                           _fetchOnlineUsers();
                           _fetchLiveMatches();
                         },
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: _onlineUsers.isNotEmpty
-                                    ? const Color(0xFF22C55E)
-                                    : textSecondary.withValues(alpha: 0.4),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              '${_formatCompactNumber(_onlineUsers.length)} en ligne',
-                              style: TextStyle(
-                                color: textSecondary,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
+                        child: Builder(
+                          builder: (context) {
+                            final totalOnline = _totalOnlineCount > 0
+                                ? _totalOnlineCount
+                                : (_onlineUsers.length + (widget.currentUserId > 0 ? 1 : 0));
+                            return Row(
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: totalOnline > 0
+                                        ? const Color(0xFF22C55E)
+                                        : textSecondary.withValues(alpha: 0.4),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  '${_formatCompactNumber(totalOnline)} en ligne',
+                                  style: TextStyle(
+                                    color: textSecondary,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     ],

@@ -2126,6 +2126,60 @@ app.get('/api/games/live', async (req, res) => {
   }
 });
 
+// GET /api/games/online-summary
+// Returns real-time online player count and list of active players for 1v1 challenges
+app.get('/api/games/online-summary', async (req, res) => {
+  try {
+    const currentUserId = Number(req.session?.userId || req.headers['x-user-id'] || req.query.user_id || 0);
+    const presence = require('./utils/presence');
+    const User = require('./models/User');
+
+    if (currentUserId > 0) {
+      presence.touchUser(currentUserId);
+    }
+
+    const onlineIds = presence.getOnlineUserIds();
+    let users = [];
+
+    if (onlineIds.length > 0) {
+      const otherOnlineIds = onlineIds.filter(id => id !== currentUserId);
+      if (otherOnlineIds.length > 0) {
+        users = await User.getByIds(otherOnlineIds);
+      }
+    }
+
+    // If user list is empty or memory is cold, supplement with users active in DB in last 10 minutes
+    if (users.length === 0) {
+      const [recentRows] = await db.query(
+        `SELECT id, username, first_name, last_name, COALESCE(display_name, CONCAT(first_name, ' ', last_name)) AS name, avatar, game_matches_played, game_matches_won, last_seen_at
+         FROM users 
+         WHERE id != ? AND last_seen_at >= NOW() - INTERVAL 10 MINUTE
+         ORDER BY last_seen_at DESC LIMIT 50`,
+        [currentUserId || 0]
+      );
+      if (recentRows && recentRows.length > 0) {
+        recentRows.forEach((r) => presence.touchUser(r.id));
+        users = await User.attachGameStatsList(recentRows);
+      }
+    }
+
+    const totalOnline = Math.max(
+      onlineIds.length,
+      users.length + (currentUserId > 0 ? 1 : 0),
+      currentUserId > 0 ? 1 : 0
+    );
+
+    return res.json({
+      success: true,
+      totalOnline: totalOnline,
+      users: users,
+    });
+  } catch (err) {
+    console.error('[Get Games Online Summary Error]:', err);
+    return res.status(500).json({ success: false, error: 'Failed to fetch online summary' });
+  }
+});
+
 // GET /api/games/info/:gameId
 // Returns in-memory game state details for a specific gameId
 app.get('/api/games/info/:gameId', async (req, res) => {
