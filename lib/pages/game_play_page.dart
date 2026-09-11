@@ -1797,7 +1797,7 @@ class _GamePlayPageState extends State<GamePlayPage> {
             overflow: TextOverflow.ellipsis,
           ),
           subtitle: Text(
-            '@$username${isOnline ? ' • En ligne' : ''}',
+            isOnline ? '@$username • En ligne' : '@$username • Hors ligne',
             style: TextStyle(
               color: isOnline ? const Color(0xFF22C55E) : textSecondary,
               fontSize: 10.5,
@@ -1809,25 +1809,39 @@ class _GamePlayPageState extends State<GamePlayPage> {
           trailing: SizedBox(
             height: 28,
             child: ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _selectedOpponentId = uid;
-                  _selectedOpponentName = name;
-                  _selectedOpponentAvatar = avatar;
-                  _selectedOpponentUsername = username;
-                  _searchQuery = '';
-                  _searchController.clear();
-                  _searchResults = [];
-                });
-              },
+              onPressed: isOnline
+                  ? () {
+                      setState(() {
+                        _selectedOpponentId = uid;
+                        _selectedOpponentName = name;
+                        _selectedOpponentAvatar = avatar;
+                        _selectedOpponentUsername = username;
+                        _searchQuery = '';
+                        _searchController.clear();
+                        _searchResults = [];
+                      });
+                    }
+                  : null,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFE2C55),
-                foregroundColor: Colors.white,
+                backgroundColor: isOnline
+                    ? const Color(0xFFFE2C55)
+                    : (isDark ? const Color(0xFF262A36) : const Color(0xFFE2E8F0)),
+                foregroundColor: isOnline
+                    ? Colors.white
+                    : (isDark ? Colors.white38 : Colors.black38),
+                disabledBackgroundColor: isDark ? const Color(0xFF202532) : const Color(0xFFEBECEE),
+                disabledForegroundColor: isDark ? Colors.white38 : Colors.black38,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              child: const Text('Défier', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+              child: Text(
+                isOnline ? 'Défier' : 'Hors ligne',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: isOnline ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
             ),
           ),
         );
